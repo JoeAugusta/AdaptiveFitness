@@ -51,4 +51,5 @@ export type RootStackParamList = {
     carbsG: number;
     fatsG: number;
   };
+  Dashboard: undefined;
 };

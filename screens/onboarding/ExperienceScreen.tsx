@@ -48,6 +48,14 @@ const DURATION_OPTIONS: Option[] = [
   { id: '90+', label: '90+ mins' },
 ];
 
+const SPLIT_OPTIONS: Option[] = [
+  { id: 'ppl', label: 'Push / Pull / Legs' },
+  { id: 'upper_lower', label: 'Upper / Lower' },
+  { id: 'full_body', label: 'Full Body' },
+  { id: 'bro_split', label: 'Bro Split' },
+  { id: 'custom', label: 'Custom' },
+];
+
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -56,8 +64,9 @@ export default function ExperienceScreen() {
   const [experience, setExperience] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<string | null>(null);
   const [sessionLength, setSessionLength] = useState<string | null>(null);
+  const [split, setSplit] = useState<string | null>(null);
 
-  const allSelected = experience && daysPerWeek && sessionLength;
+  const allSelected = experience && daysPerWeek && sessionLength && split;
 
   const handleContinue = () => {
     if (!allSelected) return;
@@ -66,6 +75,7 @@ export default function ExperienceScreen() {
       experience: experience!,
       daysPerWeek: daysPerWeek!,
       sessionLength: sessionLength!,
+      split: split!,
     });
   };
 
@@ -164,6 +174,34 @@ export default function ExperienceScreen() {
             );
           })}
         </View>
+
+        {/* Section 4 — Training Split */}
+        <Text style={[styles.heading, styles.sectionGap]}>Training Split</Text>
+        <Text style={styles.subtitle}>
+          How do you prefer to structure your training?
+        </Text>
+        <View style={styles.chipRow}>
+          {SPLIT_OPTIONS.map((opt) => {
+            const selected = split === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.7}
+                style={[styles.chip, selected && styles.chipSelected]}
+                onPress={() => setSplit(opt.id)}
+              >
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextSelected]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.splitHint}>
+          Not sure? Push / Pull / Legs is a great default for most goals.
+        </Text>
       </ScrollView>
 
       {/* Fixed footer */}
@@ -332,6 +370,11 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: TEXT_PRIMARY,
+  },
+  splitHint: {
+    fontSize: 12,
+    color: TEXT_SECONDARY,
+    marginTop: 10,
   },
 
   /* Footer */

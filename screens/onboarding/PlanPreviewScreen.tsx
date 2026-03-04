@@ -77,6 +77,23 @@ function formatExperience(exp: string): string {
   return exp.charAt(0).toUpperCase() + exp.slice(1);
 }
 
+function formatSplit(split: string): string {
+  switch (split) {
+    case 'ppl':
+      return 'Push/Pull/Legs';
+    case 'upper_lower':
+      return 'Upper/Lower';
+    case 'full_body':
+      return 'Full Body';
+    case 'bro_split':
+      return 'Bro Split';
+    case 'custom':
+      return 'Custom';
+    default:
+      return split.charAt(0).toUpperCase() + split.slice(1);
+  }
+}
+
 function formatEquipment(equipment: string): string {
   switch (equipment) {
     case 'full_gym':
@@ -111,6 +128,7 @@ export default function PlanPreviewScreen() {
     { label: 'Training days', value: `${params.daysPerWeek} days / week` },
     { label: 'Session length', value: params.sessionLength },
     { label: 'Equipment', value: formatEquipment(params.equipment) },
+    { label: 'Split', value: formatSplit(params.split) },
     { label: 'Plan length', value: '8 weeks' },
   ];
 

@@ -7,12 +7,14 @@ export type RootStackParamList = {
     experience: string;
     daysPerWeek: string;
     sessionLength: string;
+    split: string;
   };
   BodyMetrics: {
     goal: string;
     experience: string;
     daysPerWeek: string;
     sessionLength: string;
+    split: string;
     equipment: string;
     weakPoints: string[];
     excludedExercises: string[];
@@ -22,6 +24,7 @@ export type RootStackParamList = {
     experience: string;
     daysPerWeek: string;
     sessionLength: string;
+    split: string;
     equipment: string;
     weakPoints: string[];
     excludedExercises: string[];
@@ -37,6 +40,7 @@ export type RootStackParamList = {
     experience: string;
     daysPerWeek: string;
     sessionLength: string;
+    split: string;
     equipment: string;
     weakPoints: string[];
     excludedExercises: string[];

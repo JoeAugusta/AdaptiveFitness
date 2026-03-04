@@ -52,7 +52,7 @@ const DEFAULT_EXCLUDED: string[] = [
 export default function ConstraintsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { goal, experience, daysPerWeek, sessionLength } = route.params;
+  const { goal, experience, daysPerWeek, sessionLength, split } = route.params;
 
   const [equipment, setEquipment] = useState<string | null>(null);
   const [weakPoints, setWeakPoints] = useState<string[]>([]);
@@ -97,6 +97,7 @@ export default function ConstraintsScreen() {
       experience,
       daysPerWeek,
       sessionLength,
+      split,
       equipment: equipment!,
       weakPoints,
       excludedExercises,

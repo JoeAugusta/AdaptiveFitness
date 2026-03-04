@@ -61,8 +61,12 @@ export default function ExperienceScreen() {
 
   const handleContinue = () => {
     if (!allSelected) return;
-    console.log('Experience selections:', { goal, experience, daysPerWeek, sessionLength });
-    // TODO: navigate to the next onboarding screen
+    navigation.navigate('Constraints', {
+      goal,
+      experience: experience!,
+      daysPerWeek: daysPerWeek!,
+      sessionLength: sessionLength!,
+    });
   };
 
   return (

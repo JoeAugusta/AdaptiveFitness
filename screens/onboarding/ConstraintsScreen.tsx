@@ -31,6 +31,39 @@ interface Option {
   detail?: string;
 }
 
+const INJURY_OPTIONS: { id: string; label: string }[] = [
+  { id: 'shoulder', label: 'Shoulder' },
+  { id: 'lower_back', label: 'Lower Back' },
+  { id: 'knee', label: 'Knee' },
+  { id: 'hip', label: 'Hip' },
+  { id: 'wrist', label: 'Wrist' },
+  { id: 'elbow', label: 'Elbow' },
+];
+
+const INJURY_EXCLUSIONS: Record<string, string[]> = {
+  shoulder: [
+    'Overhead Press', 'Behind-the-neck Press', 'Upright Rows',
+    'Lateral Raises', 'Arnold Press',
+  ],
+  lower_back: [
+    'Deadlift', 'Good Mornings', 'Back Squat', 'Romanian Deadlift',
+    'Barbell Row',
+  ],
+  knee: [
+    'Back Squat', 'Lunges', 'Leg Press', 'Box Jumps', 'Step-ups',
+  ],
+  hip: [
+    'Hip Thrust', 'Sumo Deadlift', 'Wide Stance Squat', 'Lateral Lunges',
+  ],
+  wrist: [
+    'Barbell Curl', 'Front Squat', 'Clean and Press', 'Wrist Curls',
+  ],
+  elbow: [
+    'Dips', 'Skull Crushers', 'Close-grip Bench Press',
+    'Overhead Tricep Extension',
+  ],
+};
+
 const EQUIPMENT_OPTIONS: Option[] = [
   { id: 'full_gym', label: 'Full Gym', detail: 'Barbells, machines, cables' },
   { id: 'home_gym', label: 'Home Gym', detail: 'Rack, bench, barbell' },
@@ -54,6 +87,7 @@ export default function ConstraintsScreen() {
   const route = useRoute<RouteType>();
   const { goal, experience, daysPerWeek, sessionLength, split } = route.params;
 
+  const [injuries, setInjuries] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string | null>(null);
   const [weakPoints, setWeakPoints] = useState<string[]>([]);
   const [excludedExercises, setExcludedExercises] = useState<string[]>([]);
@@ -62,6 +96,27 @@ export default function ConstraintsScreen() {
   const [customExercise, setCustomExercise] = useState('');
 
   const canContinue = !!equipment;
+
+  const allInjuryExclusions = Object.values(INJURY_EXCLUSIONS).flat();
+
+  const toggleInjury = (id: string) => {
+    setInjuries((prev) => {
+      const updated = prev.includes(id)
+        ? prev.filter((i) => i !== id)
+        : [...prev, id];
+
+      const autoExcluded = updated.flatMap((i) => INJURY_EXCLUSIONS[i] || []);
+
+      setExcludedExercises((prevExcluded) => {
+        const manual = prevExcluded.filter(
+          (e) => !allInjuryExclusions.includes(e),
+        );
+        return [...new Set([...manual, ...autoExcluded])];
+      });
+
+      return updated;
+    });
+  };
 
   const toggleWeakPoint = (point: string) => {
     setWeakPoints((prev) =>
@@ -98,6 +153,7 @@ export default function ConstraintsScreen() {
       daysPerWeek,
       sessionLength,
       split,
+      injuries,
       equipment: equipment!,
       weakPoints,
       excludedExercises,
@@ -130,6 +186,7 @@ export default function ConstraintsScreen() {
         {/* Section 1 — Equipment */}
         <Text style={styles.heading}>Equipment</Text>
         <Text style={styles.subtitle}>What do you have access to?</Text>
+
         <View style={styles.cardsContainer}>
           {EQUIPMENT_OPTIONS.map((opt) => {
             const selected = equipment === opt.id;
@@ -179,7 +236,40 @@ export default function ConstraintsScreen() {
           })}
         </View>
 
-        {/* Section 3 — Exercises to Avoid */}
+        {/* Section 3 — Current Injuries */}
+        <Text style={[styles.heading, styles.sectionGap]}>Current Injuries</Text>
+        <Text style={styles.subtitle}>
+          We'll automatically remove movements that could aggravate these.
+        </Text>
+        <View style={styles.chipRow}>
+          {INJURY_OPTIONS.map((opt) => {
+            const selected = injuries.includes(opt.id);
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.7}
+                style={[styles.chip, selected && styles.chipSelected]}
+                onPress={() => toggleInjury(opt.id)}
+              >
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextSelected]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {injuries.length > 0 && (
+          <View style={styles.injuryFeedbackCard}>
+            <Text style={styles.injuryFeedbackText}>
+              {'Based on your injuries, we\'ve avoided: '}
+              {[...new Set(injuries.flatMap((i) => INJURY_EXCLUSIONS[i] || []))].join(', ')}
+            </Text>
+          </View>
+        )}
+
+        {/* Section 4 — Exercises to Avoid */}
         <Text style={[styles.heading, styles.sectionGap]}>
           Exercises to Avoid
         </Text>
@@ -492,6 +582,19 @@ const styles = StyleSheet.create({
   cancelBtnText: {
     fontSize: 15,
     color: TEXT_SECONDARY,
+  },
+
+  /* Injury feedback card */
+  injuryFeedbackCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  injuryFeedbackText: {
+    fontSize: 13,
+    color: TEXT_SECONDARY,
+    lineHeight: 18,
   },
 
   /* Footer */

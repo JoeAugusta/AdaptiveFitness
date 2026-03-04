@@ -6,6 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -30,12 +33,15 @@ const GOALS: Goal[] = [
   { id: 'general', emoji: '❤️', title: 'General Fitness', subtitle: 'Improve overall health and fitness' },
 ];
 
+type NavProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
+
 export default function OnboardingScreen() {
+  const navigation = useNavigation<NavProp>();
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
 
   const handleContinue = () => {
-    const goal = GOALS.find((g) => g.id === selectedGoal);
-    console.log('Selected goal:', goal);
+    if (!selectedGoal) return;
+    navigation.navigate('Experience', { goal: selectedGoal });
   };
 
   return (

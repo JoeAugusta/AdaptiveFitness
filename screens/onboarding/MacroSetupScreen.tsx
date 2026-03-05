@@ -10,6 +10,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import InfoTooltip from '../../components/InfoTooltip';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -177,7 +178,13 @@ export default function MacroSetupScreen() {
 
         {/* Section 1 — Calorie target card */}
         <View style={styles.calorieCard}>
-          <Text style={styles.calorieLabel}>Daily Calories</Text>
+          <View style={styles.headingRow}>
+            <Text style={styles.calorieLabel}>Daily Calories</Text>
+            <InfoTooltip
+              title="How were these calculated?"
+              content="Your calories are based on your Basal Metabolic Rate (BMR) — the energy your body burns at rest — multiplied by your activity level to get your Total Daily Energy Expenditure (TDEE). We then adjust up or down based on your goal."
+            />
+          </View>
           <View style={styles.calorieNumberRow}>
             <Text style={styles.calorieNumber}>{calories}</Text>
             <Text style={styles.calorieUnit}>kcal</Text>
@@ -254,6 +261,15 @@ export default function MacroSetupScreen() {
             </View>
             <Text style={styles.macroLabel}>Fats</Text>
           </View>
+        </View>
+
+        {/* Macro split tooltip */}
+        <View style={styles.macroTooltipRow}>
+          <Text style={styles.macroTooltipLabel}>How are macros split?</Text>
+          <InfoTooltip
+            title="Your macro breakdown"
+            content="Protein is set at 1g per lb of bodyweight to maximise muscle retention. Fats cover 25% of calories for hormone health. Carbohydrates fill the remainder to fuel your training sessions."
+          />
         </View>
 
         {/* Section 3 — Info note */}
@@ -405,6 +421,19 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
   },
   goalNote: {
+    fontSize: 13,
+    color: TEXT_SECONDARY,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  macroTooltipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  macroTooltipLabel: {
     fontSize: 13,
     color: TEXT_SECONDARY,
   },

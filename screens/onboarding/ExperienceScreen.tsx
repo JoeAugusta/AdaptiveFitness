@@ -10,6 +10,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import InfoTooltip from '../../components/InfoTooltip';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -192,7 +193,13 @@ export default function ExperienceScreen() {
         </View>
 
         {/* Section 4 — Training Split */}
-        <Text style={[styles.heading, styles.sectionGap]}>Training Split</Text>
+        <View style={styles.headingRow}>
+          <Text style={[styles.heading, styles.sectionGap]}>Training Split</Text>
+          <InfoTooltip
+            title="What's a training split?"
+            content="A training split defines how you divide muscle groups across your weekly sessions. Push/Pull/Legs is the most popular for intermediate lifters. Upper/Lower suits those training 4 days. Full Body works best for 3 days/week."
+          />
+        </View>
         <Text style={styles.subtitle}>
           How do you prefer to structure your training?
         </Text>
@@ -310,6 +317,10 @@ const styles = StyleSheet.create({
   },
   sectionGap: {
     marginTop: 32,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
   /* Cards (experience section) */

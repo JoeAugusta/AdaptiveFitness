@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import InfoTooltip from '../../components/InfoTooltip';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -57,6 +58,93 @@ const TIMELINE_WEEKS: Record<string, number> = {
   '24w': 24,
 };
 
+const SECONDARY_LIFT_OPTIONS: Option[] = [
+  { id: 'bench_press', label: 'Bench Press' },
+  { id: 'squat', label: 'Back Squat' },
+  { id: 'deadlift', label: 'Deadlift' },
+  { id: 'ohp', label: 'Overhead Press' },
+  { id: 'none', label: 'None' },
+];
+
+const PLAN_DURATION_OPTIONS: Option[] = [
+  { id: '8w', label: '8 Weeks' },
+  { id: '12w', label: '12 Weeks' },
+  { id: '16w', label: '16 Weeks' },
+];
+
+const GENERAL_PLAN_OPTIONS: Option[] = [
+  { id: '4w', label: '4 Weeks' },
+  { id: '8w', label: '8 Weeks' },
+  { id: '12w', label: '12 Weeks' },
+];
+
+const RECOMP_FOCUS_OPTIONS: (Option & { detail: string })[] = [
+  {
+    id: 'lose_fat',
+    label: 'Prioritise Fat Loss',
+    detail: 'Lose fat while maintaining muscle',
+  },
+  {
+    id: 'gain_muscle',
+    label: 'Prioritise Muscle Gain',
+    detail: 'Build muscle while minimising fat gain',
+  },
+];
+
+const GENERAL_FOCUS_OPTIONS: (Option & { detail: string })[] = [
+  {
+    id: 'habit',
+    label: 'Build a consistent habit',
+    detail: 'Show up regularly and make fitness part of my life',
+  },
+  {
+    id: 'strength',
+    label: 'Get stronger and fitter',
+    detail: 'Improve strength, endurance and overall fitness',
+  },
+  {
+    id: 'wellbeing',
+    label: 'Feel better and move better',
+    detail: 'Improve energy, mobility and daily function',
+  },
+  {
+    id: 'event',
+    label: 'Prepare for something specific',
+    detail: 'Training for a sport, event or physical challenge',
+  },
+];
+
+const STRENGTH_EXPECTATIONS: Record<string, string> = {
+  '8w': 'In 8 weeks of focused strength training, expect a 10–20lb increase on your target lift with consistent progressive overload.',
+  '12w': 'In 12 weeks, a 20–40lb 1RM increase is realistic. Your plan will peak you for a max attempt in week 12.',
+  '16w': '16 weeks gives you time for two strength phases. Expect 30–50lb gains with a structured deload built in.',
+};
+
+const HYPERTROPHY_EXPECTATIONS: Record<string, string> = {
+  '8w': '8 weeks is enough to see visible muscle definition changes. Expect 2–4 lbs of lean muscle gain.',
+  '12w': '12 weeks is the sweet spot for hypertrophy. Expect 4–6 lbs of lean mass with good nutrition adherence.',
+  '16w': '16 weeks of progressive overload can yield 6–8 lbs of lean muscle. Consistency is the key variable.',
+};
+
+const FAT_LOSS_EXPECTATIONS: Record<string, string> = {
+  '8w': '8 weeks is an aggressive cut. Expect 8–12 lbs of total weight loss if you hit your calorie targets consistently.',
+  '12w': '12 weeks at a moderate deficit is sustainable and effective. Expect 10–16 lbs lost while preserving muscle mass.',
+  '16w': '16 weeks gives you the best chance of keeping the weight off long term. Slower loss = more muscle retained.',
+  '24w': '24 weeks is a long-term lifestyle change. Expect 20–28 lbs lost at a safe, sustainable rate.',
+};
+
+const RECOMP_EXPECTATIONS: Record<string, string> = {
+  '8w': 'Body recomp in 8 weeks will show early changes in body composition. Scale weight may stay similar — trust the mirror over the scale.',
+  '12w': '12 weeks is the minimum to see meaningful recomp results. Expect noticeable changes in muscle tone and fat distribution.',
+  '16w': '16 weeks gives your body time to genuinely recompose. Most users see 3–5% body fat reduction alongside visible muscle gains.',
+};
+
+const GENERAL_EXPECTATIONS: Record<string, string> = {
+  '4w': "4 weeks builds the habit. By week 4 you'll have a consistent routine and noticeable energy improvements.",
+  '8w': '8 weeks of consistent training improves strength, endurance and mobility. Most users feel significantly better by week 6.',
+  '12w': '12 weeks transforms your baseline fitness. Expect meaningful strength gains and improved body composition.',
+};
+
 function StrengthContent({
   onContinue,
 }: {
@@ -65,6 +153,10 @@ function StrengthContent({
   const [targetLift, setTargetLift] = useState<string | null>(null);
   const [current1RM, setCurrent1RM] = useState('');
   const [target1RM, setTarget1RM] = useState('');
+  const [secondaryLift, setSecondaryLift] = useState<string | null>(null);
+  const [secondaryLiftError, setSecondaryLiftError] = useState(false);
+  const [planDuration, setPlanDuration] = useState('12w');
+  const [durationManuallySet, setDurationManuallySet] = useState(false);
 
   const canContinue = !!targetLift && current1RM.trim() !== '' && target1RM.trim() !== '';
 
@@ -72,32 +164,32 @@ function StrengthContent({
     if (!current1RM.trim() || !target1RM.trim()) return null;
     const diff = Number(target1RM) - Number(current1RM);
     if (diff <= 20) {
-      return {
-        message: `A ${diff}lb increase is very achievable. We recommend an `,
-        weeks: 8,
-        suffix: '-week plan.',
-      };
+      return { message: `A ${diff}lb increase is very achievable. We recommend an `, weeks: 8, suffix: '-week plan.' };
     }
     if (diff <= 40) {
-      return {
-        message: `A ${diff}lb increase is realistic with focused programming. We recommend a `,
-        weeks: 12,
-        suffix: '-week plan.',
-      };
+      return { message: `A ${diff}lb increase is realistic with focused programming. We recommend a `, weeks: 12, suffix: '-week plan.' };
     }
     if (diff <= 60) {
-      return {
-        message: `A ${diff}lb increase is ambitious but possible. We recommend a `,
-        weeks: 16,
-        suffix: '-week plan.',
-      };
+      return { message: `A ${diff}lb increase is ambitious but possible. We recommend a `, weeks: 16, suffix: '-week plan.' };
     }
-    return {
-      message: `A ${diff}lb increase is a long-term goal. Consider breaking it into phases. We recommend starting with a `,
-      weeks: 12,
-      suffix: '-week block.',
-    };
+    return { message: `A ${diff}lb increase is a long-term goal. Consider breaking it into phases. We recommend starting with a `, weeks: 12, suffix: '-week block.' };
   }, [current1RM, target1RM]);
+
+  useEffect(() => {
+    if (feasibility && !durationManuallySet) {
+      const w = feasibility.weeks;
+      setPlanDuration(w <= 8 ? '8w' : w <= 12 ? '12w' : '16w');
+    }
+  }, [feasibility, durationManuallySet]);
+
+  const handleSecondaryLift = (id: string) => {
+    if (id !== 'none' && id === targetLift) {
+      setSecondaryLiftError(true);
+      return;
+    }
+    setSecondaryLiftError(false);
+    setSecondaryLift(id);
+  };
 
   return (
     <ScreenShell
@@ -110,6 +202,8 @@ function StrengthContent({
           targetLift,
           current1RM: current1RM.trim(),
           target1RM: target1RM.trim(),
+          secondaryLift,
+          planDuration,
         })
       }
     >
@@ -122,7 +216,13 @@ function StrengthContent({
               key={opt.id}
               activeOpacity={0.7}
               style={[styles.card, selected && styles.cardSelected]}
-              onPress={() => setTargetLift(opt.id)}
+              onPress={() => {
+                setTargetLift(opt.id);
+                if (secondaryLift === opt.id) {
+                  setSecondaryLift(null);
+                  setSecondaryLiftError(false);
+                }
+              }}
             >
               <View style={styles.cardContent}>
                 <Text style={styles.cardLabel}>{opt.label}</Text>
@@ -163,12 +263,74 @@ function StrengthContent({
         <View style={styles.infoCard}>
           <Text style={styles.infoText}>
             {feasibility.message}
-            <Text style={styles.infoHighlight}>
-              {feasibility.weeks}
-            </Text>
+            <Text style={styles.infoHighlight}>{feasibility.weeks}</Text>
             {feasibility.suffix}
           </Text>
         </View>
+      )}
+
+      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionSubtitle}>
+        Based on your goal, we recommend:
+      </Text>
+      <View style={styles.chipRow}>
+        {PLAN_DURATION_OPTIONS.map((opt) => {
+          const selected = planDuration === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => {
+                setDurationManuallySet(true);
+                setPlanDuration(opt.id);
+              }}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {STRENGTH_EXPECTATIONS[planDuration] && (
+        <View style={styles.expectationCard}>
+          <Text style={styles.expectationText}>
+            {STRENGTH_EXPECTATIONS[planDuration]}
+          </Text>
+        </View>
+      )}
+
+      <Text style={[styles.heading, styles.sectionGap]}>
+        Secondary Lift (Optional)
+      </Text>
+      <Text style={styles.sectionSubtitle}>
+        Want to track progress on another lift too?
+      </Text>
+      <View style={styles.cardsContainer}>
+        {SECONDARY_LIFT_OPTIONS.map((opt) => {
+          const selected = secondaryLift === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.card, selected && styles.cardSelected]}
+              onPress={() => handleSecondaryLift(opt.id)}
+            >
+              <View style={styles.cardContent}>
+                <Text style={styles.cardLabel}>{opt.label}</Text>
+              </View>
+              <View style={[styles.radio, selected && styles.radioSelected]}>
+                {selected && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {secondaryLiftError && (
+        <Text style={styles.errorText}>
+          Must be different from your primary lift
+        </Text>
       )}
     </ScreenShell>
   );
@@ -180,6 +342,7 @@ function HypertrophyContent({
   onContinue: (params: Record<string, unknown>) => void;
 }) {
   const [priorityMuscles, setPriorityMuscles] = useState<string[]>([]);
+  const [planDuration, setPlanDuration] = useState('12w');
 
   const toggleMuscle = (muscle: string) => {
     setPriorityMuscles((prev) => {
@@ -195,7 +358,7 @@ function HypertrophyContent({
       subtitle="Select up to 3 muscle groups you want to prioritise. Your plan will give these extra volume."
       canContinue
       buttonLabel={priorityMuscles.length > 0 ? 'Continue' : 'Skip'}
-      onContinue={() => onContinue({ priorityMuscles })}
+      onContinue={() => onContinue({ priorityMuscles, planDuration })}
     >
       <View style={styles.chipRow}>
         {MUSCLE_OPTIONS.map((muscle) => {
@@ -227,26 +390,57 @@ function HypertrophyContent({
           These muscles will receive priority volume in your program.
         </Text>
       )}
+
+      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionSubtitle}>
+        How many weeks do you want to commit to?
+      </Text>
+      <View style={styles.chipRow}>
+        {PLAN_DURATION_OPTIONS.map((opt) => {
+          const selected = planDuration === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => setPlanDuration(opt.id)}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {HYPERTROPHY_EXPECTATIONS[planDuration] && (
+        <View style={styles.expectationCard}>
+          <Text style={styles.expectationText}>
+            {HYPERTROPHY_EXPECTATIONS[planDuration]}
+          </Text>
+        </View>
+      )}
     </ScreenShell>
   );
 }
 
 function FatLossContent({
   onContinue,
-  weightLbs,
 }: {
   onContinue: (params: Record<string, unknown>) => void;
-  weightLbs?: string;
 }) {
+  const [currentWeightLbs, setCurrentWeightLbs] = useState('');
   const [targetWeightLbs, setTargetWeightLbs] = useState('');
   const [targetDate, setTargetDate] = useState<string | null>(null);
 
-  const canContinue = targetWeightLbs.trim() !== '' && !!targetDate;
+  const canContinue =
+    currentWeightLbs.trim() !== '' &&
+    targetWeightLbs.trim() !== '' &&
+    !!targetDate;
 
   const rateCheck = useMemo(() => {
-    if (!targetWeightLbs.trim() || !targetDate || !weightLbs) return null;
+    if (!currentWeightLbs.trim() || !targetWeightLbs.trim() || !targetDate) return null;
     const weeks = TIMELINE_WEEKS[targetDate];
-    const weeklyRate = (Number(weightLbs) - Number(targetWeightLbs)) / weeks;
+    const weeklyRate = (Number(currentWeightLbs) - Number(targetWeightLbs)) / weeks;
 
     if (weeklyRate <= 0) {
       return {
@@ -270,7 +464,7 @@ function FatLossContent({
       message: `~${weeklyRate.toFixed(1)} lbs/week — this is very aggressive. Consider a longer timeline.`,
       color: DANGER_RED,
     };
-  }, [targetWeightLbs, targetDate, weightLbs]);
+  }, [currentWeightLbs, targetWeightLbs, targetDate]);
 
   return (
     <ScreenShell
@@ -280,12 +474,25 @@ function FatLossContent({
       buttonLabel="Continue"
       onContinue={() =>
         onContinue({
+          startingWeightLbs: currentWeightLbs.trim(),
           targetWeightLbs: targetWeightLbs.trim(),
           targetDate,
         })
       }
     >
       <View style={styles.inputCard}>
+        <Text style={styles.inputLabel}>Current Weight (lbs)</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="e.g. 185"
+          placeholderTextColor={TEXT_SECONDARY}
+          keyboardType="numeric"
+          value={currentWeightLbs}
+          onChangeText={setCurrentWeightLbs}
+        />
+      </View>
+
+      <View style={[styles.inputCard, { marginTop: 10 }]}>
         <Text style={styles.inputLabel}>Target Weight (lbs)</Text>
         <TextInput
           style={styles.textInput}
@@ -298,7 +505,7 @@ function FatLossContent({
       </View>
 
       <Text style={[styles.heading, styles.sectionGap]}>
-        When do you want to reach it?
+        Timeline & Plan Duration
       </Text>
       <View style={styles.chipRow}>
         {TIMELINE_OPTIONS.map((opt) => {
@@ -327,6 +534,13 @@ function FatLossContent({
           </Text>
         </View>
       )}
+      {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
+        <View style={styles.expectationCard}>
+          <Text style={styles.expectationText}>
+            {FAT_LOSS_EXPECTATIONS[targetDate]}
+          </Text>
+        </View>
+      )}
     </ScreenShell>
   );
 }
@@ -336,42 +550,71 @@ function RecompContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
-  const [targetBodyFatPct, setTargetBodyFatPct] = useState('');
+  const [recompFocus, setRecompFocus] = useState<string | null>(null);
+  const [planDuration, setPlanDuration] = useState('12w');
 
   return (
     <ScreenShell
       title="Body Composition"
       subtitle="Help us understand where you're starting from."
-      canContinue
-      buttonLabel={targetBodyFatPct.trim() ? 'Continue' : 'Skip'}
-      onContinue={() =>
-        onContinue({
-          targetBodyFatPct: targetBodyFatPct.trim() || undefined,
-        })
-      }
+      canContinue={recompFocus !== null}
+      buttonLabel="Continue"
+      onContinue={() => onContinue({ recompFocus, planDuration })}
     >
-      <View style={styles.inputCard}>
-        <Text style={styles.inputLabel}>Target Body Fat %</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="e.g. 15"
-          placeholderTextColor={TEXT_SECONDARY}
-          keyboardType="numeric"
-          value={targetBodyFatPct}
-          onChangeText={setTargetBodyFatPct}
-        />
-        <Text style={styles.inputHelper}>
-          Average: Men 15–20%, Women 22–28%
-        </Text>
+      <Text style={styles.heading}>What's your main focus?</Text>
+      <Text style={styles.sectionSubtitle}>
+        We'll adjust your plan balance accordingly.
+      </Text>
+      <View style={styles.cardsContainer}>
+        {RECOMP_FOCUS_OPTIONS.map((opt) => {
+          const selected = recompFocus === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.card, selected && styles.cardSelected]}
+              onPress={() => setRecompFocus(opt.id)}
+            >
+              <View style={styles.cardContent}>
+                <Text style={styles.cardLabel}>{opt.label}</Text>
+                <Text style={styles.cardDetail}>{opt.detail}</Text>
+              </View>
+              <View style={[styles.radio, selected && styles.radioSelected]}>
+                {selected && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <View style={[styles.infoCard, styles.sectionGap]}>
-        <Text style={styles.infoText}>
-          Body recomposition is a slow process — expect 3–6 months to see
-          significant changes. Your plan will balance muscle gain and fat loss
-          simultaneously.
-        </Text>
+      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionSubtitle}>
+        How many weeks do you want to commit to?
+      </Text>
+      <View style={styles.chipRow}>
+        {PLAN_DURATION_OPTIONS.map((opt) => {
+          const selected = planDuration === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => setPlanDuration(opt.id)}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
+      {RECOMP_EXPECTATIONS[planDuration] && (
+        <View style={styles.expectationCard}>
+          <Text style={styles.expectationText}>
+            {RECOMP_EXPECTATIONS[planDuration]}
+          </Text>
+        </View>
+      )}
     </ScreenShell>
   );
 }
@@ -381,13 +624,16 @@ function GeneralContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
+  const [generalFocus, setGeneralFocus] = useState<string | null>(null);
+  const [planDuration, setPlanDuration] = useState('8w');
+
   return (
     <ScreenShell
       title="General Fitness"
       subtitle="No specific targets needed — we'll build a balanced program to improve your overall fitness."
       canContinue
       buttonLabel="Let's Build My Plan"
-      onContinue={() => onContinue({})}
+      onContinue={() => onContinue({ generalFocus, planDuration })}
     >
       <View style={styles.generalInfoCard}>
         <Text style={styles.generalInfoText}>
@@ -396,6 +642,63 @@ function GeneralContent({
           habit.
         </Text>
       </View>
+
+      <Text style={[styles.heading, styles.sectionGap]}>
+        What does fitness mean to you right now?
+      </Text>
+      <Text style={styles.sectionSubtitle}>
+        This helps us personalise your program.
+      </Text>
+      <View style={styles.cardsContainer}>
+        {GENERAL_FOCUS_OPTIONS.map((opt) => {
+          const selected = generalFocus === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.card, selected && styles.cardSelected]}
+              onPress={() => setGeneralFocus(opt.id)}
+            >
+              <View style={styles.cardContent}>
+                <Text style={styles.cardLabel}>{opt.label}</Text>
+                <Text style={styles.cardDetail}>{opt.detail}</Text>
+              </View>
+              <View style={[styles.radio, selected && styles.radioSelected]}>
+                {selected && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionSubtitle}>
+        How many weeks do you want to commit to?
+      </Text>
+      <View style={styles.chipRow}>
+        {GENERAL_PLAN_OPTIONS.map((opt) => {
+          const selected = planDuration === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => setPlanDuration(opt.id)}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {GENERAL_EXPECTATIONS[planDuration] && (
+        <View style={styles.expectationCard}>
+          <Text style={styles.expectationText}>
+            {GENERAL_EXPECTATIONS[planDuration]}
+          </Text>
+        </View>
+      )}
     </ScreenShell>
   );
 }
@@ -479,7 +782,7 @@ export default function GoalDetailsScreen() {
     case 'hypertrophy':
       return <HypertrophyContent onContinue={handleContinue} />;
     case 'fat_loss':
-      return <FatLossContent onContinue={handleContinue} />;
+      return <FatLossContent onContinue={handleContinue} />; 
     case 'recomp':
       return <RecompContent onContinue={handleContinue} />;
     case 'general':
@@ -565,6 +868,17 @@ const styles = StyleSheet.create({
   sectionGap: {
     marginTop: 24,
   },
+  sectionSubtitle: {
+    fontSize: 15,
+    color: TEXT_SECONDARY,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  errorText: {
+    fontSize: 12,
+    color: DANGER_RED,
+    marginTop: 6,
+  },
 
   /* Cards */
   cardsContainer: {
@@ -590,6 +904,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: TEXT_PRIMARY,
+  },
+  cardDetail: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+    marginTop: 2,
   },
   radio: {
     width: 22,
@@ -666,6 +985,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: TEXT_SECONDARY,
     marginTop: 8,
+  },
+
+  /* Expectation card */
+  expectationCard: {
+    backgroundColor: '#0F2027',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#1E3A4A',
+  },
+  expectationText: {
+    fontSize: 13,
+    color: TEXT_SECONDARY,
+    lineHeight: 19,
   },
 
   /* Info card */

@@ -11,6 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import InfoTooltip from '../../components/InfoTooltip';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -232,7 +233,13 @@ export default function ConstraintsScreen() {
         </View>
 
         {/* Section 2 — Lagging Areas */}
-        <Text style={[styles.heading, styles.sectionGap]}>Lagging Areas</Text>
+        <View style={styles.headingRow}>
+          <Text style={[styles.heading, styles.sectionGap]}>Lagging Areas</Text>
+          <InfoTooltip
+            title="What are lagging areas?"
+            content="Lagging areas are muscle groups that are underdeveloped relative to the rest of your physique. Your coach will add extra sets and frequency to these muscles throughout your plan."
+          />
+        </View>
         <Text style={styles.subtitle}>
           Any muscle groups you want to prioritise? (optional)
         </Text>
@@ -290,9 +297,15 @@ export default function ConstraintsScreen() {
         )}
 
         {/* Section 4 — Exercises to Avoid */}
-        <Text style={[styles.heading, styles.sectionGap]}>
-          Exercises to Avoid
-        </Text>
+        <View style={styles.headingRow}>
+          <Text style={[styles.heading, styles.sectionGap]}>
+            Exercises to Avoid
+          </Text>
+          <InfoTooltip
+            title="Why exclude exercises?"
+            content="Excluded exercises will never appear in your plan — not even as alternatives. Use this for movements that cause pain, that you lack equipment for, or that you simply don't want to do."
+          />
+        </View>
         <Text style={styles.subtitle}>
           Select any exercises you can't or don't want to do (optional)
         </Text>
@@ -460,6 +473,10 @@ const styles = StyleSheet.create({
   },
   sectionGap: {
     marginTop: 32,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
   /* Cards (equipment section) */

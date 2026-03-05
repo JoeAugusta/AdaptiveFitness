@@ -13,15 +13,17 @@ Config files: lib/supabase.ts, lib/revenuecat.ts
 - S05 Body Metrics ✅
 - S06 Macro Setup ✅
 - S07 Plan Preview + Paywall ✅ (RevenueCat mocked)
+- S07b Building Plan (loading screen) ✅
 
 ## CURRENT PHASE
 Phase 1 — Foundation
-Next task: Wire RevenueCat, then build S08 Home Dashboard
+Onboarding v1 complete and tagged.
+Next task: Wire RevenueCat purchase flow on S07
 
 ## NAVIGATION STACK (navigation/index.tsx)
 Splash → Onboarding → GoalDetails → Experience → 
 Constraints → BodyMetrics → MacroSetup → PlanPreview → 
-Dashboard (not yet built)
+BuildingPlan → Dashboard (not yet built)
 
 ## PARAMS CHAIN
 By S07 the following params are available for Claude API plan generation:
@@ -32,6 +34,11 @@ By S07 the following params are available for Claude API plan generation:
 - equipment, weakPoints[], excludedExercises[], injuries[]
 - sex, age, heightFt, heightIn, weightLbs, bodyFatPct
 - calories, proteinG, carbsG, fatsG
+- secondaryLift (optional, strength only)
+- planDuration (all goals)
+- recompFocus (optional, recomp only)
+- generalFocus (optional, general only)
+- startingWeightLbs (optional, fat loss only)
 
 ## RULES FOR THIS PROJECT
 - React Native + Expo only, no bare React Native

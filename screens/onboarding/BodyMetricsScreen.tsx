@@ -11,6 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import InfoTooltip from '../../components/InfoTooltip';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -214,7 +215,13 @@ export default function BodyMetricsScreen() {
         </View>
 
         {/* Section 4 — Body Fat % (Optional) */}
-        <Text style={[styles.heading, styles.sectionGap]}>Body Fat %</Text>
+        <View style={styles.headingRow}>
+          <Text style={[styles.heading, styles.sectionGap]}>Body Fat %</Text>
+          <InfoTooltip
+            title="How to estimate body fat"
+            content="If you're lean with visible abs: 10–15%. Average build with some muscle definition: 15–20%. Soft build with little definition: 20–30%+. Women add approximately 8–10% to each range. Leave blank and we'll estimate from your other stats."
+          />
+        </View>
         <Text style={styles.subtitle}>Optional — estimate is fine.</Text>
         <View style={styles.inputCard}>
           <TextInput
@@ -321,6 +328,10 @@ const styles = StyleSheet.create({
   },
   sectionGap: {
     marginTop: 32,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
   /* Cards (sex section) */

@@ -2,10 +2,15 @@ type GoalDetailParams = {
   targetLift?: string;
   current1RM?: string;
   target1RM?: string;
+  secondaryLift?: string;
   priorityMuscles?: string[];
+  startingWeightLbs?: string;
   targetWeightLbs?: string;
   targetDate?: string;
   targetBodyFatPct?: string;
+  recompFocus?: string;
+  generalFocus?: string;
+  planDuration?: string;
 };
 
 export type RootStackParamList = {
@@ -49,6 +54,27 @@ export type RootStackParamList = {
     bodyFatPct: string | null;
   } & GoalDetailParams;
   PlanPreview: {
+    goal: string;
+    experience: string;
+    daysPerWeek: string;
+    sessionLength: string;
+    split: string;
+    injuries: string[];
+    equipment: string;
+    weakPoints: string[];
+    excludedExercises: string[];
+    age: string;
+    sex: string;
+    heightFt: string;
+    heightIn: string;
+    weightLbs: string;
+    bodyFatPct: string | null;
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatsG: number;
+  } & GoalDetailParams;
+  BuildingPlan: {
     goal: string;
     experience: string;
     daysPerWeek: string;

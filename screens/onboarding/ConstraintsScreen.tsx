@@ -85,7 +85,20 @@ const DEFAULT_EXCLUDED: string[] = [
 export default function ConstraintsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { goal, experience, daysPerWeek, sessionLength, split } = route.params;
+  const {
+    goal,
+    targetLift,
+    current1RM,
+    target1RM,
+    priorityMuscles,
+    targetWeightLbs,
+    targetDate,
+    targetBodyFatPct,
+    experience,
+    daysPerWeek,
+    sessionLength,
+    split,
+  } = route.params;
 
   const [injuries, setInjuries] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string | null>(null);
@@ -149,6 +162,13 @@ export default function ConstraintsScreen() {
     if (!canContinue) return;
     navigation.navigate('BodyMetrics', {
       goal,
+      targetLift,
+      current1RM,
+      target1RM,
+      priorityMuscles,
+      targetWeightLbs,
+      targetDate,
+      targetBodyFatPct,
       experience,
       daysPerWeek,
       sessionLength,
@@ -176,7 +196,7 @@ export default function ConstraintsScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 3 of 6</Text>
+        <Text style={styles.stepLabel}>Step 4 of 7</Text>
       </View>
 
       <ScrollView
@@ -387,7 +407,7 @@ const styles = StyleSheet.create({
     marginTop: 60,
   },
   progressFill: {
-    width: '50%',
+    width: '57.1%',
     height: '100%',
     backgroundColor: ACCENT_BLUE,
     borderRadius: 2,

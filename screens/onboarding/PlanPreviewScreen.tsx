@@ -94,6 +94,21 @@ function formatSplit(split: string): string {
   }
 }
 
+function formatLift(lift: string): string {
+  switch (lift) {
+    case 'bench_press':
+      return 'Bench Press';
+    case 'squat':
+      return 'Back Squat';
+    case 'deadlift':
+      return 'Deadlift';
+    case 'ohp':
+      return 'Overhead Press';
+    default:
+      return lift.charAt(0).toUpperCase() + lift.slice(1);
+  }
+}
+
 function formatEquipment(equipment: string): string {
   switch (equipment) {
     case 'full_gym':
@@ -129,8 +144,31 @@ export default function PlanPreviewScreen() {
     { label: 'Session length', value: params.sessionLength },
     { label: 'Equipment', value: formatEquipment(params.equipment) },
     { label: 'Split', value: formatSplit(params.split) },
-    { label: 'Plan length', value: '8 weeks' },
   ];
+
+  if (params.goal === 'strength' && params.targetLift) {
+    stats.push({ label: 'Target Lift', value: formatLift(params.targetLift) });
+  }
+  if (params.goal === 'strength' && params.current1RM && params.target1RM) {
+    stats.push({ label: '1RM Goal', value: `${params.current1RM} → ${params.target1RM} lbs` });
+  }
+  if (params.goal === 'hypertrophy') {
+    stats.push({
+      label: 'Priority Muscles',
+      value: params.priorityMuscles?.length ? params.priorityMuscles.join(', ') : 'Not specified',
+    });
+  }
+  if (params.goal === 'fat_loss' && params.targetWeightLbs) {
+    stats.push({ label: 'Target Weight', value: `${params.targetWeightLbs} lbs` });
+  }
+  if (params.goal === 'fat_loss' && params.targetDate) {
+    stats.push({ label: 'Timeline', value: params.targetDate.replace('w', ' Weeks') });
+  }
+  if (params.goal === 'recomp' && params.targetBodyFatPct) {
+    stats.push({ label: 'Target Body Fat', value: `${params.targetBodyFatPct}%` });
+  }
+
+  stats.push({ label: 'Plan length', value: '8 weeks' });
 
   return (
     <View style={styles.container}>

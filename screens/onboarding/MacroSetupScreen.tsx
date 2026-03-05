@@ -163,7 +163,7 @@ export default function MacroSetupScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 5 of 6</Text>
+        <Text style={styles.stepLabel}>Step 6 of 7</Text>
       </View>
 
       <ScrollView
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     marginTop: 60,
   },
   progressFill: {
-    width: '83.3%',
+    width: '85.7%',
     height: '100%',
     backgroundColor: ACCENT_BLUE,
     borderRadius: 2,

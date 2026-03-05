@@ -39,6 +39,13 @@ export default function BodyMetricsScreen() {
   const route = useRoute<RouteType>();
   const {
     goal,
+    targetLift,
+    current1RM,
+    target1RM,
+    priorityMuscles,
+    targetWeightLbs,
+    targetDate,
+    targetBodyFatPct,
     experience,
     daysPerWeek,
     sessionLength,
@@ -67,6 +74,13 @@ export default function BodyMetricsScreen() {
     if (!canContinue) return;
     navigation.navigate('MacroSetup', {
       goal,
+      targetLift,
+      current1RM,
+      target1RM,
+      priorityMuscles,
+      targetWeightLbs,
+      targetDate,
+      targetBodyFatPct,
       experience,
       daysPerWeek,
       sessionLength,
@@ -100,7 +114,7 @@ export default function BodyMetricsScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 4 of 6</Text>
+        <Text style={styles.stepLabel}>Step 5 of 7</Text>
       </View>
 
       <ScrollView
@@ -254,7 +268,7 @@ const styles = StyleSheet.create({
     marginTop: 60,
   },
   progressFill: {
-    width: '66.6%',
+    width: '71.4%',
     height: '100%',
     backgroundColor: ACCENT_BLUE,
     borderRadius: 2,

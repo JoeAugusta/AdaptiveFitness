@@ -41,7 +41,7 @@ export default function OnboardingScreen() {
 
   const handleContinue = () => {
     if (!selectedGoal) return;
-    navigation.navigate('Experience', { goal: selectedGoal });
+    navigation.navigate('GoalDetails', { goal: selectedGoal });
   };
 
   return (
@@ -49,7 +49,7 @@ export default function OnboardingScreen() {
       <View style={styles.progressBar}>
         <View style={styles.progressFill} />
       </View>
-      <Text style={styles.stepLabel}>Step 1 of 6</Text>
+      <Text style={styles.stepLabel}>Step 1 of 7</Text>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     marginTop: 60,
   },
   progressFill: {
-    width: '16.6%',
+    width: '14.3%',
     height: '100%',
     backgroundColor: ACCENT_BLUE,
     borderRadius: 2,

@@ -59,7 +59,16 @@ const SPLIT_OPTIONS: Option[] = [
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { goal } = route.params;
+  const {
+    goal,
+    targetLift,
+    current1RM,
+    target1RM,
+    priorityMuscles,
+    targetWeightLbs,
+    targetDate,
+    targetBodyFatPct,
+  } = route.params;
 
   const [experience, setExperience] = useState<string | null>(null);
   const [daysPerWeek, setDaysPerWeek] = useState<string | null>(null);
@@ -72,6 +81,13 @@ export default function ExperienceScreen() {
     if (!allSelected) return;
     navigation.navigate('Constraints', {
       goal,
+      targetLift,
+      current1RM,
+      target1RM,
+      priorityMuscles,
+      targetWeightLbs,
+      targetDate,
+      targetBodyFatPct,
       experience: experience!,
       daysPerWeek: daysPerWeek!,
       sessionLength: sessionLength!,
@@ -95,7 +111,7 @@ export default function ExperienceScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 2 of 6</Text>
+        <Text style={styles.stepLabel}>Step 3 of 7</Text>
       </View>
 
       <ScrollView
@@ -241,7 +257,7 @@ const styles = StyleSheet.create({
     marginTop: 60,
   },
   progressFill: {
-    width: '33.3%',
+    width: '42.8%',
     height: '100%',
     backgroundColor: ACCENT_BLUE,
     borderRadius: 2,

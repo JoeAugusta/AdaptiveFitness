@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
+import Purchases from 'react-native-purchases';
+import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
+import { supabase } from '../../Lib/supabase';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -125,6 +130,23 @@ function formatEquipment(equipment: string): string {
   }
 }
 
+async function updateSupabaseSubscription(customerInfo: CustomerInfo): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const activeEntitlement = customerInfo.entitlements.active['pro'];
+    await supabase
+      .from('users')
+      .update({
+        subscription_status: 'pro',
+        subscription_tier: activeEntitlement?.identifier ?? 'pro',
+      })
+      .eq('id', user.id);
+  } catch (e) {
+    console.error('updateSupabaseSubscription error:', e);
+  }
+}
+
 export default function PlanPreviewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -132,9 +154,67 @@ export default function PlanPreviewScreen() {
 
   const [selectedPlan, setSelectedPlan] = useState<PlanOption>('annual');
 
-  const handlePurchase = () => {
-    // TODO: wire RevenueCat purchase flow
-    navigation.navigate('BuildingPlan', { ...params });
+  const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
+  const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
+  const [isLoadingOfferings, setIsLoadingOfferings] = useState(true);
+  const [offeringsError, setOfferingsError] = useState(false);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+
+  const fetchOfferings = useCallback(async () => {
+    setIsLoadingOfferings(true);
+    setOfferingsError(false);
+    try {
+      const offerings = await Purchases.getOfferings();
+      if (offerings.current) {
+        setMonthlyPackage(offerings.current.monthly ?? null);
+        setAnnualPackage(offerings.current.annual ?? null);
+      }
+    } catch {
+      setOfferingsError(true);
+    } finally {
+      setIsLoadingOfferings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOfferings();
+  }, [fetchOfferings]);
+
+  const handlePurchase = async () => {
+    const pkg = selectedPlan === 'monthly' ? monthlyPackage : annualPackage;
+    if (!pkg) return;
+    setIsPurchasing(true);
+    try {
+      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      if (customerInfo.entitlements.active['pro']) {
+        await updateSupabaseSubscription(customerInfo);
+        navigation.navigate('BuildingPlan', { ...params });
+      }
+    } catch (e: unknown) {
+      const err = e as { userCancelled?: boolean; message?: string };
+      if (err.userCancelled) return;
+      Alert.alert('Purchase Failed', err.message ?? 'Something went wrong.');
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setIsPurchasing(true);
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      if (customerInfo.entitlements.active['pro']) {
+        await updateSupabaseSubscription(customerInfo);
+        navigation.navigate('BuildingPlan', { ...params });
+      } else {
+        Alert.alert('No active subscription found');
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      Alert.alert('Restore Failed', err.message ?? 'Something went wrong.');
+    } finally {
+      setIsPurchasing(false);
+    }
   };
 
   const stats: { label: string; value: string }[] = [
@@ -306,22 +386,27 @@ export default function PlanPreviewScreen() {
       </ScrollView>
 
       {/* Fixed paywall footer */}
+      {/* RevenueCat wired — v1.1 */}
+      {/* Entitlement key: 'pro' */}
+      {/* Offerings fetched on mount, packages stored in state */}
       <View style={styles.footer}>
         {/* Pricing row */}
         <View style={styles.pricingRow}>
           {/* Monthly option */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[
-              styles.planCard,
-              selectedPlan === 'monthly' && styles.planCardSelected,
-            ]}
-            onPress={() => setSelectedPlan('monthly')}
-          >
-            <Text style={styles.planName}>Monthly</Text>
-            <Text style={styles.planPrice}>$14.99</Text>
-            <Text style={styles.planSub}>per month</Text>
-          </TouchableOpacity>
+          <View style={styles.monthlyWrapper}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.planCard,
+                selectedPlan === 'monthly' && styles.planCardSelected,
+              ]}
+              onPress={() => setSelectedPlan('monthly')}
+            >
+              <Text style={styles.planName}>Monthly</Text>
+              <Text style={styles.planPrice}>$14.99</Text>
+              <Text style={styles.planSub}>per month</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Annual option */}
           <View style={styles.annualWrapper}>
@@ -346,16 +431,33 @@ export default function PlanPreviewScreen() {
         {/* CTA button */}
         <TouchableOpacity
           activeOpacity={0.8}
-          style={styles.ctaButton}
-          onPress={handlePurchase}
+          style={[
+            styles.ctaButton,
+            (isPurchasing || isLoadingOfferings) && styles.ctaButtonDisabled,
+          ]}
+          onPress={offeringsError ? fetchOfferings : handlePurchase}
+          disabled={isPurchasing || isLoadingOfferings}
         >
-          <Text style={styles.ctaText}>Start My Plan — Free 7-Day Trial</Text>
+          {isPurchasing ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : isLoadingOfferings ? (
+            <Text style={styles.ctaText}>Loading...</Text>
+          ) : offeringsError ? (
+            <Text style={styles.ctaText}>Unable to load — tap to retry</Text>
+          ) : (
+            <Text style={styles.ctaText}>Start My Plan — Free 7-Day Trial</Text>
+          )}
         </TouchableOpacity>
 
         {/* Fine print */}
         <Text style={styles.finePrint}>
           Cancel anytime. Billed annually. Recurring subscription.
         </Text>
+
+        {/* Restore purchases */}
+        <TouchableOpacity onPress={handleRestore} activeOpacity={0.7}>
+          <Text style={styles.restoreLink}>Restore purchases</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -571,8 +673,12 @@ const styles = StyleSheet.create({
   /* Pricing row */
   pricingRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
+    alignItems: 'flex-end',
     marginBottom: 14,
+  },
+  monthlyWrapper: {
+    flex: 1,
   },
   annualWrapper: {
     flex: 1,
@@ -593,15 +699,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   planCard: {
-    flex: 1,
     width: '100%',
     backgroundColor: BG_DARK,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 90,
   },
   planCardSelected: {
     borderColor: ACCENT_BLUE,
@@ -630,6 +737,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
+  ctaButtonDisabled: {
+    opacity: 0.6,
+  },
   ctaText: {
     fontSize: 16,
     fontWeight: '700',
@@ -637,6 +747,12 @@ const styles = StyleSheet.create({
   },
   finePrint: {
     fontSize: 11,
+    color: TEXT_SECONDARY,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  restoreLink: {
+    fontSize: 12,
     color: TEXT_SECONDARY,
     textAlign: 'center',
     marginTop: 8,

@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -181,6 +182,10 @@ export default function PlanPreviewScreen() {
   }, [fetchOfferings]);
 
   const handlePurchase = async () => {
+    if (Platform.OS === 'web') {
+      navigation.navigate('BuildingPlan', { ...params });
+      return;
+    }
     const pkg = selectedPlan === 'monthly' ? monthlyPackage : annualPackage;
     if (!pkg) return;
     setIsPurchasing(true);
@@ -433,12 +438,14 @@ export default function PlanPreviewScreen() {
           activeOpacity={0.8}
           style={[
             styles.ctaButton,
-            (isPurchasing || isLoadingOfferings) && styles.ctaButtonDisabled,
+            Platform.OS !== 'web' && (isPurchasing || isLoadingOfferings) && styles.ctaButtonDisabled,
           ]}
-          onPress={offeringsError ? fetchOfferings : handlePurchase}
-          disabled={isPurchasing || isLoadingOfferings}
+          onPress={Platform.OS !== 'web' && offeringsError ? fetchOfferings : handlePurchase}
+          disabled={Platform.OS !== 'web' && (isPurchasing || isLoadingOfferings)}
         >
-          {isPurchasing ? (
+          {Platform.OS === 'web' ? (
+            <Text style={styles.ctaText}>Continue (Dev Mode)</Text>
+          ) : isPurchasing ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : isLoadingOfferings ? (
             <Text style={styles.ctaText}>Loading...</Text>

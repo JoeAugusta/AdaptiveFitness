@@ -10,6 +10,8 @@ import MacroSetupScreen from '../screens/onboarding/MacroSetupScreen';
 import PlanPreviewScreen from '../screens/onboarding/PlanPreviewScreen';
 import BuildingPlanScreen from '../screens/onboarding/BuildingPlanScreen';
 import HomeScreen from '../screens/HomeScreen';
+import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
+import WorkoutCompleteScreen from '../screens/WorkoutCompleteScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -31,6 +33,8 @@ export default function RootNavigator() {
       <Stack.Screen name="PlanPreview" component={PlanPreviewScreen} />
       <Stack.Screen name="BuildingPlan" component={BuildingPlanScreen} />
       <Stack.Screen name="Dashboard" component={HomeScreen} />
+      <Stack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
+      <Stack.Screen name="WorkoutComplete" component={WorkoutCompleteScreen} />
     </Stack.Navigator>
   );
 }

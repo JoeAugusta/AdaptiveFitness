@@ -2,7 +2,7 @@
 App: Adaptive Fitness Coach — iOS/Android subscription SaaS
 Stack: React Native + Expo, Supabase, RevenueCat, Claude API, Zustand
 Supabase tables: user_profiles, goals, plans, workout_logs, macro_plans
-Config files: lib/supabase.ts, lib/revenuecat.ts
+Config files: Lib/supabase.ts, Lib/Revenuecat.ts
 
 ## COMPLETED SCREENS
 - S01 Splash ✅
@@ -12,38 +12,50 @@ Config files: lib/supabase.ts, lib/revenuecat.ts
 - S04 Constraints & Equipment ✅
 - S05 Body Metrics ✅
 - S06 Macro Setup ✅
-- S07 Plan Preview + Paywall ✅ (RevenueCat mocked)
+- S07 Plan Preview + Paywall ✅ (RevenueCat wired — native only, web dev bypass active)
 - S07b Building Plan (loading screen) ✅
+- S08 Home Dashboard ✅ (mock data — Supabase wiring pending)
 
 ## CURRENT PHASE
 Phase 1 — Foundation
-Onboarding v1 complete and tagged.
-Next task: Wire RevenueCat purchase flow on S07
+Onboarding complete and merged to main.
+RevenueCat wired on S07 (native only).
+S08 Home Dashboard built with mock data.
+Next task: S09 Active Workout
 
 ## NAVIGATION STACK (navigation/index.tsx)
-Splash → Onboarding → GoalDetails → Experience → 
-Constraints → BodyMetrics → MacroSetup → PlanPreview → 
-BuildingPlan → Dashboard (not yet built)
+Splash → Onboarding → GoalDetails → Experience →
+Constraints → BodyMetrics → MacroSetup → PlanPreview →
+BuildingPlan → Dashboard
 
 ## PARAMS CHAIN
-By S07 the following params are available for Claude API plan generation:
+By S07b the following params are available for Claude API plan generation:
 - goal, targetLift, current1RM, target1RM, recommendedWeeks (optional)
-- priorityMuscles (optional), targetWeightLbs, targetDate (optional)
+- secondaryLift (optional, strength only)
+- priorityMuscles (optional, hypertrophy only)
+- recompFocus (optional, recomp only)
+- generalFocus (optional, general only)
+- startingWeightLbs (optional, fat loss only)
+- targetWeightLbs, targetDate (optional)
 - targetBodyFatPct (optional)
+- planDuration (all goals)
 - experience, daysPerWeek, sessionLength, split
 - equipment, weakPoints[], excludedExercises[], injuries[]
 - sex, age, heightFt, heightIn, weightLbs, bodyFatPct
 - calories, proteinG, carbsG, fatsG
-- secondaryLift (optional, strength only)
-- planDuration (all goals)
-- recompFocus (optional, recomp only)
-- generalFocus (optional, general only)
-- startingWeightLbs (optional, fat loss only)
+
+## KNOWN ISSUES / NOTES
+- Lib/ folder uses capital L on disk — all imports must match this casing exactly
+- Lib/supabase.ts uses EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY from .env
+- .env is in .gitignore — never commit it
+- RevenueCat entitlement key is 'pro'
+- RevenueCat does not work on web — Platform.OS === 'web' bypass in PlanPreviewScreen.tsx navigates directly to BuildingPlan
+- S08 Home Dashboard is all mock data — Supabase wiring is a Phase 1 cleanup task before Phase 2 begins
 
 ## RULES FOR THIS PROJECT
 - React Native + Expo only, no bare React Native
 - TypeScript everywhere, no JavaScript files
-- All database calls go through lib/supabase.ts
+- All database calls go through Lib/supabase.ts
 - Never hardcode API keys
 - Keep components in /components folder
 - Keep screens in /screens folder
@@ -68,3 +80,7 @@ const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
 const TEXT_PRIMARY = '#F8FAFC';
 const TEXT_SECONDARY = '#94A3B8';
 const DISABLED_BG = '#334155';
+
+## DO NOT CHANGE
+- The filename — it must remain CLOUDE_CONTEXT.md
+- Any other files in the project

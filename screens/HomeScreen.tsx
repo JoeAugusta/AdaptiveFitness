@@ -7,6 +7,9 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -23,7 +26,11 @@ const DIVIDER_COLOR = '#2D3F55';
 // card: CARD_BG, same borderRadius, centered content showing
 // "Rest Day 💤" heading and a short recovery tip message.
 
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
 export default function HomeScreen() {
+  const navigation = useNavigation<NavProp>();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
@@ -91,7 +98,12 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.ctaButton}
             activeOpacity={0.8}
-            onPress={() => console.log('Start Workout pressed')}
+            onPress={() => navigation.navigate('ActiveWorkout', {
+              planId: 'mock',
+              weekNumber: 1,
+              dayNumber: 3,
+              workoutTitle: 'Upper Body A',
+            })}
           >
             <Text style={styles.ctaText}>Start Workout →</Text>
           </TouchableOpacity>

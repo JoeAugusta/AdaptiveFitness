@@ -96,4 +96,20 @@ export type RootStackParamList = {
     fatsG: number;
   } & GoalDetailParams;
   Dashboard: undefined;
+  ActiveWorkout: {
+    planId: string;
+    weekNumber: number;
+    dayNumber: number;
+    workoutTitle?: string;
+  };
+  WorkoutComplete: {
+    planId: string;
+    weekNumber: number;
+    dayNumber: number;
+    totalSets: number;
+    totalExercises: number;
+    durationMinutes: number;
+    fatigueRating: number;
+    prsHit: number;
+  };
 };

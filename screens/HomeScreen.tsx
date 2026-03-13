@@ -107,6 +107,13 @@ export default function HomeScreen() {
           >
             <Text style={styles.ctaText}>Start Workout →</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('PlanView', { planId: 'mock' })}
+            style={styles.viewPlanLink}
+          >
+            <Text style={styles.viewPlanText}>View Full Plan →</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── 3. Week Progress Bar ── */}
@@ -348,6 +355,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 15,
+  },
+  viewPlanLink: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  viewPlanText: {
+    fontSize: 13,
+    color: ACCENT_BLUE,
   },
 
   /* ── Week Progress Card ── */

@@ -112,5 +112,8 @@ export type RootStackParamList = {
     fatigueRating: number;
     prsHit: number;
   };
-  PlanView: undefined;
+  PlanView: {
+    planId: string;
+    weekNumber?: number;
+  } | undefined;
 };

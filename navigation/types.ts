@@ -112,4 +112,5 @@ export type RootStackParamList = {
     fatigueRating: number;
     prsHit: number;
   };
+  PlanView: undefined;
 };

@@ -10,6 +10,7 @@ import {
   TouchableWithoutFeedback,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -84,6 +85,26 @@ const MOCK_WORKOUT = {
   ] satisfies Exercise[],
 };
 
+type ExerciseSet = {
+  setNumber: number;
+  targetReps: string;
+  targetWeight: number;
+  targetRpe: number;
+};
+
+type WorkoutExercise = {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  sets: ExerciseSet[];
+  alternatives: string[];
+};
+
+type WorkoutData = {
+  title: string;
+  exercises: WorkoutExercise[];
+};
+
 const formatTime = (seconds: number): string => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -94,8 +115,12 @@ export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const params = route.params;
-  const workoutTitle = params.workoutTitle ?? MOCK_WORKOUT.title;
+  const workoutTitle = params.workoutTitle ?? workout?.title ?? 'Workout';
   const sessionStartedAt = useRef(new Date()).current;
+
+  // Workout data
+  const [workout, setWorkout] = useState<WorkoutData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Session state
   const [sets, setSets] = useState<LoggedSet[]>([]);
@@ -123,7 +148,105 @@ export default function ActiveWorkoutScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const totalSetsCount = MOCK_WORKOUT.exercises.reduce(
+  // Load workout data
+  useEffect(() => {
+    loadWorkoutData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getAlternatives = (muscleGroup: string): string[] => {
+    const map: Record<string, string[]> = {
+      Chest: ['Incline DB Press', 'Cable Fly', 'Machine Chest Press'],
+      Back: ['Cable Row', 'DB Row', 'Chest-Supported Row'],
+      Legs: ['Leg Press', 'Hack Squat', 'DB Lunges'],
+      Shoulders: ['DB Shoulder Press', 'Arnold Press', 'Landmine Press'],
+      Arms: ['Preacher Curl', 'Hammer Curl', 'Cable Curl'],
+      Triceps: ['Overhead Tricep Extension', 'Cable Pushdown', 'Close-grip Bench'],
+      Biceps: ['Preacher Curl', 'Hammer Curl', 'Incline DB Curl'],
+      Glutes: ['Hip Thrust', 'Cable Kickback', 'Bulgarian Split Squat'],
+      Hamstrings: ['Leg Curl', 'Nordic Curl', 'Stiff-leg Deadlift'],
+      Calves: ['Seated Calf Raise', 'Leg Press Calf Raise', 'Single-leg Calf Raise'],
+      Core: ['Plank', 'Cable Crunch', 'Ab Wheel'],
+    };
+    return map[muscleGroup] ?? ['Alternative Exercise 1', 'Alternative Exercise 2', 'Alternative Exercise 3'];
+  };
+
+  const buildWorkoutFromMock = (): WorkoutData => {
+    setIsLoading(false);
+    return MOCK_WORKOUT;
+  };
+
+  const loadWorkoutData = async () => {
+    try {
+      if (params.planId === 'mock') {
+        setWorkout(buildWorkoutFromMock());
+        return;
+      }
+
+      const { data: plan, error } = await supabase
+        .from('plans')
+        .select('plan_json, current_week')
+        .eq('id', params.planId)
+        .single();
+
+      if (error || !plan) {
+        setWorkout(buildWorkoutFromMock());
+        return;
+      }
+
+      const planJson = plan.plan_json;
+      const weekData =
+        planJson.weeks?.find(
+          (w: { weekNumber: number }) => w.weekNumber === params.weekNumber,
+        ) ?? planJson.weeks?.[0];
+
+      if (!weekData) {
+        setWorkout(buildWorkoutFromMock());
+        return;
+      }
+
+      const dayData = weekData.days?.find(
+        (d: { dayNumber: number }) => d.dayNumber === params.dayNumber,
+      );
+
+      if (!dayData || dayData.type === 'rest') {
+        setWorkout(buildWorkoutFromMock());
+        return;
+      }
+
+      const exercises: WorkoutExercise[] = dayData.exercises.map(
+        (ex: {
+          id: string;
+          name: string;
+          muscleGroup: string;
+          sets: number;
+          reps: string;
+          targetWeight: number;
+          targetRpe: number;
+        }) => ({
+          id: ex.id,
+          name: ex.name,
+          muscleGroup: ex.muscleGroup,
+          sets: Array.from({ length: ex.sets }, (_, i) => ({
+            setNumber: i + 1,
+            targetReps: ex.reps,
+            targetWeight: ex.targetWeight,
+            targetRpe: ex.targetRpe,
+          })),
+          alternatives: getAlternatives(ex.muscleGroup),
+        }),
+      );
+
+      setWorkout({ title: dayData.title, exercises });
+    } catch (e) {
+      console.error('Failed to load workout:', e);
+      setWorkout(buildWorkoutFromMock());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const totalSetsCount = (workout?.exercises ?? []).reduce(
     (sum, ex) => sum + ex.sets.length,
     0,
   );
@@ -219,7 +342,7 @@ export default function ActiveWorkoutScreen() {
       setIsRestActive(true);
     }
 
-    const exercise = MOCK_WORKOUT.exercises.find(
+    const exercise = (workout?.exercises ?? []).find(
       (ex) => ex.id === exerciseId,
     );
     if (exercise) {
@@ -292,7 +415,7 @@ export default function ActiveWorkoutScreen() {
     setShowFatigueSheet(false);
 
     const prsHit = sets.filter((s) => {
-      const exercise = MOCK_WORKOUT.exercises.find(
+      const exercise = (workout?.exercises ?? []).find(
         (ex) => ex.id === s.exerciseId,
       );
       const target = exercise?.sets.find(
@@ -306,12 +429,20 @@ export default function ActiveWorkoutScreen() {
       weekNumber: params.weekNumber,
       dayNumber: params.dayNumber,
       totalSets: sets.length,
-      totalExercises: MOCK_WORKOUT.exercises.length,
+      totalExercises: (workout?.exercises ?? []).length,
       durationMinutes: Math.floor(elapsedSeconds / 60),
       fatigueRating,
       prsHit,
     });
   };
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -337,7 +468,7 @@ export default function ActiveWorkoutScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {MOCK_WORKOUT.exercises.map((exercise) => (
+        {(workout?.exercises ?? []).map((exercise) => (
           <ExerciseCard
             key={exercise.id}
             exercise={exercise}

@@ -13,6 +13,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
 import WorkoutCompleteScreen from '../screens/WorkoutCompleteScreen';
 import PlanViewScreen from '../screens/PlanViewScreen';
+import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -37,6 +38,7 @@ export default function RootNavigator() {
       <Stack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
       <Stack.Screen name="WorkoutComplete" component={WorkoutCompleteScreen} />
       <Stack.Screen name="PlanView" component={PlanViewScreen} />
+      <Stack.Screen name="WeeklyCoachSummary" component={WeeklyCoachSummaryScreen} />
     </Stack.Navigator>
   );
 }

@@ -116,4 +116,8 @@ export type RootStackParamList = {
     planId: string;
     weekNumber?: number;
   } | undefined;
+  WeeklyCoachSummary: {
+    planId: string;
+    weekNumber: number;
+  };
 };

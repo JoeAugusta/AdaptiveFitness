@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -70,6 +70,7 @@ export default function WorkoutCompleteScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const {
+    planId,
     weekNumber,
     dayNumber,
     totalSets,
@@ -100,6 +101,60 @@ export default function WorkoutCompleteScreen() {
     require('react').useState<string | null>(null);
   const [coachLoading, setCoachLoading] =
     require('react').useState(true);
+
+  const [showSummaryBanner, setShowSummaryBanner] = useState(false);
+
+  // Check whether the completed session finishes the week — if so, pre-generate the summary
+  useEffect(() => {
+    async function checkWeekCompletion() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) return;
+
+        const { data: logs } = await supabase
+          .from('workout_logs')
+          .select('day_number')
+          .eq('user_id', userId)
+          .eq('plan_id', planId)
+          .eq('week_number', weekNumber);
+
+        const distinctDays = new Set((logs ?? []).map((r: any) => r.day_number)).size;
+
+        const { data: planRow } = await supabase
+          .from('plans')
+          .select('plan_json')
+          .eq('id', planId)
+          .single();
+
+        const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
+
+        if (distinctDays < daysPerWeek) return;
+
+        supabase.functions
+          .invoke('weekly-coach-summary', { body: { userId, planId, weekNumber } })
+          .then(async ({ data, error }) => {
+            if (error || !data?.summary) return;
+            await supabase.from('weekly_summaries').insert({
+              user_id: userId,
+              plan_id: planId,
+              week_number: weekNumber,
+              summary_json: data.summary,
+              generated_at: new Date().toISOString(),
+            });
+            setShowSummaryBanner(true);
+          })
+          .catch(() => {
+            // Non-critical — don't surface this error on the complete screen
+          });
+      } catch {
+        // Non-critical
+      }
+    }
+
+    checkWeekCompletion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // 1 — Checkmark spring
@@ -170,6 +225,23 @@ export default function WorkoutCompleteScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Week Complete Banner (appears once Edge Function resolves) ── */}
+        {showSummaryBanner && (
+          <View style={styles.summaryBanner}>
+            <Text style={styles.summaryBannerTitle}>Week {weekNumber} Complete 🎉</Text>
+            <Text style={styles.summaryBannerSubtitle}>
+              Your weekly coach review is ready.
+            </Text>
+            <TouchableOpacity
+              style={styles.summaryBannerButton}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('WeeklyCoachSummary', { planId, weekNumber })}
+            >
+              <Text style={styles.summaryBannerButtonText}>View Weekly Summary</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ── Section 1: Hero ── */}
         <View style={styles.heroSection}>
           <Animated.View
@@ -393,4 +465,37 @@ const styles = StyleSheet.create({
     borderColor: ACCENT_BLUE,
   },
   secondaryButtonText: { fontSize: 17, fontWeight: '600', color: ACCENT_BLUE },
+
+  /* Week complete summary banner */
+  summaryBanner: {
+    backgroundColor: CARD_BG,
+    borderLeftWidth: 4,
+    borderLeftColor: ACCENT_BLUE,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  summaryBannerTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  summaryBannerSubtitle: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  summaryBannerButton: {
+    backgroundColor: ACCENT_BLUE,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  summaryBannerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

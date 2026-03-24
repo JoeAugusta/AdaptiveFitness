@@ -355,7 +355,12 @@ export default function HomeScreen() {
           <View style={styles.coachFooterRow}>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => console.log('Weekly Summary pressed')}
+              onPress={() =>
+                navigation.navigate('WeeklyCoachSummary', {
+                  planId: planData?.planId ?? '',
+                  weekNumber: planData?.currentWeek ?? 1,
+                })
+              }
             >
               <Text style={styles.coachLink}>Weekly Summary →</Text>
             </TouchableOpacity>

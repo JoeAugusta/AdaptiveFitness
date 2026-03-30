@@ -103,6 +103,7 @@ export default function WorkoutCompleteScreen() {
     require('react').useState(true);
 
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
+  const [nextWeekReady, setNextWeekReady] = useState(false);
 
   // Check whether the completed session finishes the week — if so, pre-generate the summary
   useEffect(() => {
@@ -146,6 +147,19 @@ export default function WorkoutCompleteScreen() {
           })
           .catch(() => {
             // Non-critical — don't surface this error on the complete screen
+          });
+
+        supabase.functions
+          .invoke('generate-next-week', {
+            body: { userId, planId, completedWeekNumber: weekNumber },
+          })
+          .then(({ data, error }) => {
+            if (error) return;
+            if (data?.status === 'success') setNextWeekReady(true);
+            if (data?.status === 'plan_complete') setNextWeekReady(false);
+          })
+          .catch(() => {
+            // Non-critical — plan generation failure is silent here
           });
       } catch {
         // Non-critical
@@ -232,6 +246,11 @@ export default function WorkoutCompleteScreen() {
             <Text style={styles.summaryBannerSubtitle}>
               Your weekly coach review is ready.
             </Text>
+            {nextWeekReady && (
+              <Text style={styles.summaryBannerSubtitle}>
+                Week {weekNumber + 1} is ready — head to your Dashboard.
+              </Text>
+            )}
             <TouchableOpacity
               style={styles.summaryBannerButton}
               activeOpacity={0.8}

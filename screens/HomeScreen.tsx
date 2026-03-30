@@ -43,6 +43,7 @@ type WorkoutDay = {
   title: string;
   muscleGroups: string[];
   exercises: Exercise[];
+  isNextWeek?: boolean;
 };
 
 type PlanData = {
@@ -54,6 +55,8 @@ type PlanData = {
   todayWorkout: WorkoutDay | null;
   weekDays: WorkoutDay[];
   completedSessions: number;
+  nextWeekReady: boolean;
+  nextWeekFirstWorkout: WorkoutDay | null;
 };
 
 export default function HomeScreen() {
@@ -109,10 +112,25 @@ export default function HomeScreen() {
       );
       const completedSessions = completedDayNumbers.size;
 
-      const todayWorkout =
+      let todayWorkout: WorkoutDay | null =
         weekDays.find(
           (d) => d.type === 'workout' && !completedDayNumbers.has(d.dayNumber),
         ) ?? null;
+
+      const nextWeekData =
+        planJson.weeks?.find(
+          (w: { weekNumber: number }) => w.weekNumber === plan.current_week + 1,
+        ) ?? null;
+
+      const nextWeekWorkoutDays: WorkoutDay[] =
+        nextWeekData?.days?.filter((d: WorkoutDay) => d.type === 'workout') ?? [];
+
+      const nextWeekFirstWorkout: WorkoutDay | null = nextWeekWorkoutDays[0] ?? null;
+      const nextWeekReady = !!nextWeekFirstWorkout;
+
+      if (!todayWorkout && nextWeekReady && nextWeekFirstWorkout) {
+        todayWorkout = { ...nextWeekFirstWorkout, isNextWeek: true };
+      }
 
       setPlanData({
         planId: plan.id,
@@ -123,6 +141,8 @@ export default function HomeScreen() {
         todayWorkout,
         weekDays,
         completedSessions,
+        nextWeekReady,
+        nextWeekFirstWorkout,
       });
     } catch (e) {
       console.error('Dashboard load error:', e);
@@ -182,7 +202,11 @@ export default function HomeScreen() {
             <View style={styles.workoutTopRow}>
               <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
               <View style={styles.dayBadge}>
-                <Text style={styles.dayBadgeText}>Day {today.dayNumber}</Text>
+                <Text style={styles.dayBadgeText}>
+                  {today.isNextWeek
+                    ? `Week ${(planData?.currentWeek ?? 1) + 1} · Day ${today.dayNumber}`
+                    : `Day ${today.dayNumber}`}
+                </Text>
               </View>
             </View>
 
@@ -224,7 +248,9 @@ export default function HomeScreen() {
               onPress={() =>
                 navigation.navigate('ActiveWorkout', {
                   planId: planData?.planId ?? 'mock',
-                  weekNumber: planData?.currentWeek ?? 1,
+                  weekNumber: today.isNextWeek
+                    ? (planData?.currentWeek ?? 1) + 1
+                    : planData?.currentWeek ?? 1,
                   dayNumber: today.dayNumber,
                   workoutTitle: today.title,
                 })
@@ -304,6 +330,34 @@ export default function HomeScreen() {
             })}
           </View>
         </View>
+
+        {/* ── 3b. Next Week Ready Banner ── */}
+        {planData?.nextWeekReady && planData.completedSessions >= planData.daysPerWeek && (
+          <View style={styles.nextWeekBanner}>
+            <Text style={styles.nextWeekBannerTitle}>
+              Week {planData.currentWeek + 1} is Ready 🚀
+            </Text>
+            <Text style={styles.nextWeekBannerSubtitle}>
+              Your adapted plan is waiting. Keep the momentum going.
+            </Text>
+            <TouchableOpacity
+              style={styles.nextWeekBannerButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.navigate('ActiveWorkout', {
+                  planId: planData.planId,
+                  weekNumber: planData.currentWeek + 1,
+                  dayNumber: planData.nextWeekFirstWorkout?.dayNumber ?? 1,
+                  workoutTitle: planData.nextWeekFirstWorkout?.title ?? 'Workout',
+                })
+              }
+            >
+              <Text style={styles.nextWeekBannerButtonText}>
+                Start Week {planData.currentWeek + 1}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── 4. Quick Stats Row (mock — Phase 2) ── */}
         <View style={styles.quickStatsRow}>
@@ -699,5 +753,38 @@ const styles = StyleSheet.create({
   coachUpdated: {
     fontSize: 11,
     color: TEXT_SECONDARY,
+  },
+
+  /* ── Next Week Ready Banner ── */
+  nextWeekBanner: {
+    backgroundColor: CARD_BG,
+    borderLeftWidth: 4,
+    borderLeftColor: '#22C55E',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
+  nextWeekBannerTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  nextWeekBannerSubtitle: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  nextWeekBannerButton: {
+    backgroundColor: '#22C55E',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  nextWeekBannerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

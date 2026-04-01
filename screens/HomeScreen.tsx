@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -57,6 +58,7 @@ type PlanData = {
   completedSessions: number;
   nextWeekReady: boolean;
   nextWeekFirstWorkout: WorkoutDay | null;
+  showGenerateNextWeekCTA: boolean;
 };
 
 type SetItem = {
@@ -77,6 +79,7 @@ export default function HomeScreen() {
   const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -153,6 +156,13 @@ export default function HomeScreen() {
         todayWorkout = { ...nextWeekFirstWorkout, isNextWeek: true };
       }
 
+      const totalSessionsThisWeek = weekDays.filter((d) => d.type === 'workout').length;
+      const allSessionsComplete = completedSessions >= totalSessionsThisWeek && totalSessionsThisWeek > 0;
+      const nextWeekAlreadyGenerated: boolean =
+        (planJson.weeks as Array<{ weekNumber: number }>)
+          ?.some((w) => w.weekNumber === plan.current_week + 1) ?? false;
+      const showGenerateNextWeekCTA = allSessionsComplete && !nextWeekAlreadyGenerated;
+
       setPlanData({
         planId: plan.id,
         planTitle: planJson.title ?? plan.title,
@@ -164,6 +174,7 @@ export default function HomeScreen() {
         completedSessions,
         nextWeekReady,
         nextWeekFirstWorkout,
+        showGenerateNextWeekCTA,
       });
 
       // Fire stats in background — dashboard renders immediately
@@ -241,6 +252,25 @@ export default function HomeScreen() {
     }
   };
 
+  const handleGenerateNextWeek = async () => {
+    if (!planData) return;
+    setIsGenerating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) throw new Error('No session');
+      const { error } = await supabase.functions.invoke('generate-next-week', {
+        body: { userId, planId: planData.planId, completedWeekNumber: planData.currentWeek },
+      });
+      if (error) throw error;
+      await loadDashboardData();
+    } catch {
+      Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -255,6 +285,7 @@ export default function HomeScreen() {
   const today = planData?.todayWorkout ?? null;
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;
+  const showGenerateNextWeekCTA = planData?.showGenerateNextWeekCTA ?? false;
   const exerciseCount = today?.exercises?.length ?? 0;
   const totalSets = today?.exercises?.reduce((sum, ex) => sum + ex.sets, 0) ?? 0;
   const estMins = totalSets > 0 ? Math.round(totalSets * 2.5) : 45;
@@ -359,6 +390,33 @@ export default function HomeScreen() {
               style={styles.viewPlanLink}
             >
               <Text style={styles.viewPlanText}>View Full Plan →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : showGenerateNextWeekCTA ? (
+          <View style={styles.generateCTACard}>
+            <View style={styles.generateCTATitleRow}>
+              <Text style={styles.generateCTACheckmark}>✅</Text>
+              <Text style={styles.generateCTATitle}>
+                Week {planData?.currentWeek} Complete!
+              </Text>
+            </View>
+            <Text style={styles.generateCTASubtitle}>
+              All sessions done. Jordan is preparing your Week{' '}
+              {(planData?.currentWeek ?? 0) + 1} plan.
+            </Text>
+            <TouchableOpacity
+              style={styles.generateCTAButton}
+              activeOpacity={0.8}
+              onPress={handleGenerateNextWeek}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.generateCTAButtonText}>
+                  Generate Week {(planData?.currentWeek ?? 0) + 1}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         ) : (
@@ -684,6 +742,45 @@ const styles = StyleSheet.create({
   },
 
   /* ── Rest Day Card ── */
+  generateCTACard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: 16,
+  },
+  generateCTATitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  generateCTACheckmark: {
+    fontSize: 20,
+  },
+  generateCTATitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  generateCTASubtitle: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    marginTop: 6,
+  },
+  generateCTAButton: {
+    backgroundColor: ACCENT_BLUE,
+    borderRadius: 14,
+    height: 50,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  generateCTAButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
   restCard: {
     backgroundColor: CARD_BG,
     borderRadius: 16,

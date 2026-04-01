@@ -9,6 +9,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
 
@@ -140,6 +143,7 @@ function LineChart({
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: screenWidth } = useWindowDimensions();
   const chartWidth = screenWidth - 72; // card padding + scroll padding
 
@@ -360,6 +364,10 @@ export default function ProgressChartsScreen() {
           <Text style={styles.headerTitle}>Progress</Text>
           <Text style={styles.headerSubtitle}>Track your performance over time</Text>
         </View>
+
+        <TouchableOpacity onPress={() => navigation.navigate('GoalTracker')} style={styles.goalLink} activeOpacity={0.7}>
+          <Text style={styles.goalLinkText}>My Goal →</Text>
+        </TouchableOpacity>
 
         {!hasData ? (
           <View style={styles.card}>
@@ -592,6 +600,8 @@ const styles = StyleSheet.create({
   header: { marginTop: 20, marginBottom: 24 },
   headerTitle: { color: TEXT_PRIMARY, fontSize: 24, fontWeight: '700' },
   headerSubtitle: { color: TEXT_SECONDARY, fontSize: 14, marginTop: 2 },
+  goalLink: { marginBottom: 16 },
+  goalLinkText: { color: ACCENT_BLUE, fontSize: 14, fontWeight: '700' },
 
   card: {
     backgroundColor: CARD_BG,

@@ -123,6 +123,7 @@ export type RootStackParamList = {
   WorkoutHome: undefined;
   ExerciseLibrary: undefined;
   ProgressCharts: undefined;
+  GoalTracker: undefined;
   MacroTracker: undefined;
   ProfileSettings: undefined;
 };

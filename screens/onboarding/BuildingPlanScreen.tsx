@@ -36,6 +36,73 @@ const STEPS = [
   'Training plan structured',
 ];
 
+// ── Goal projection (fire-and-forget after plan save) ──
+
+async function saveGoalProjection(
+  goalId: string,
+  goal: string,
+  planDuration: number,
+  p: {
+    current1RM?: string;
+    target1RM?: string;
+    targetLift?: string;
+    startingWeightLbs?: string;
+    targetWeightLbs?: string;
+  },
+) {
+  try {
+    const current1rm = p.current1RM ? parseFloat(p.current1RM) : 0;
+    const target1rm  = p.target1RM  ? parseFloat(p.target1RM)  : 0;
+    const startWeight = p.startingWeightLbs ? parseFloat(p.startingWeightLbs) : 0;
+    const targetWeight = p.targetWeightLbs   ? parseFloat(p.targetWeightLbs)  : startWeight - 10;
+    const lift = p.targetLift ?? '';
+
+    let projectionText = '';
+    const projectionMetrics: Record<string, number | string> = {
+      expectedWeeklyVolumeIncreasePct: 5,
+      expectedConsistencyTarget: 0.8,
+      planDurationWeeks: planDuration,
+      goalType: goal,
+    };
+
+    if (goal === 'strength') {
+      const gainLow  = Math.round((target1rm - current1rm) * 0.7);
+      const gainHigh = Math.round(target1rm - current1rm);
+      projectionText =
+        `Based on your current ${current1rm}lb ${lift}, a ${planDuration}-week program ` +
+        `targeting progressive overload should add ${gainLow}–${gainHigh}lbs to your 1RM.`;
+      projectionMetrics.expectedStrengthGainLbs = target1rm - current1rm;
+    } else if (goal === 'hypertrophy') {
+      projectionText =
+        `Over ${planDuration} weeks of consistent training, you can expect visible muscle ` +
+        `development, improved definition, and strength increases of 10–20% on key lifts.`;
+    } else if (goal === 'fat_loss') {
+      const lossLow  = Math.round((startWeight - targetWeight) * 0.7);
+      const lossHigh = startWeight - targetWeight;
+      projectionText =
+        `A ${planDuration}-week caloric deficit program targeting ${lossLow}–${lossHigh}lbs ` +
+        `of total weight loss at a sustainable pace.`;
+      projectionMetrics.expectedWeightLossLbs = startWeight - targetWeight;
+    } else if (goal === 'recomp') {
+      projectionText =
+        `Over ${planDuration} weeks, expect gradual fat loss and muscle gain simultaneously. ` +
+        `Progress is slower than dedicated bulk/cut phases but changes in body composition ` +
+        `will be noticeable by week 6–8.`;
+    } else {
+      projectionText =
+        `A ${planDuration}-week program to build consistent training habits, improve ` +
+        `cardiovascular fitness, and develop a foundation of strength across all major muscle groups.`;
+    }
+
+    await supabase
+      .from('goals')
+      .update({ projection_text: projectionText, projection_metrics: projectionMetrics })
+      .eq('id', goalId);
+  } catch (err) {
+    console.error('saveGoalProjection failed:', err);
+  }
+}
+
 const parseDuration = (sessionLength: string): number => {
   if (sessionLength === '30-45') return 37;
   if (sessionLength === '45-60') return 52;
@@ -227,6 +294,20 @@ export default function BuildingPlanScreen() {
         .single();
 
       if (planError) throw planError;
+
+      // Fire-and-forget: save goal projection — does not block navigation
+      saveGoalProjection(
+        goalData.id,
+        params.goal,
+        parseInt(params.planDuration ?? '12'),
+        {
+          current1RM:        params.current1RM,
+          target1RM:         params.target1RM,
+          targetLift:        params.targetLift,
+          startingWeightLbs: params.startingWeightLbs,
+          targetWeightLbs:   params.targetWeightLbs,
+        },
+      );
 
       navigateAfterDelay(3000);
     } catch (error) {

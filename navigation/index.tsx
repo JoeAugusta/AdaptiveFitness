@@ -19,6 +19,7 @@ import PlanViewScreen from '../screens/PlanViewScreen';
 import WorkoutHomeScreen from '../screens/WorkoutHomeScreen';
 import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
+import GoalTrackerScreen from '../screens/GoalTrackerScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
@@ -63,6 +64,7 @@ function ProgressTabStack() {
   return (
     <ProgressStack.Navigator screenOptions={{ headerShown: false }}>
       <ProgressStack.Screen name="ProgressCharts" component={ProgressChartsScreen} />
+      <ProgressStack.Screen name="GoalTracker" component={GoalTrackerScreen} />
     </ProgressStack.Navigator>
   );
 }

@@ -26,6 +26,7 @@ import { supabase } from '../Lib/supabase';
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
 const CARD_BG = '#1E293B';
+const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
 const TEXT_PRIMARY = '#F8FAFC';
 const TEXT_SECONDARY = '#94A3B8';
 const DISABLED_BG = '#334155';
@@ -61,6 +62,69 @@ interface DailyTotal {
   protein_g: number;
   carbs_g: number;
   fats_g: number;
+}
+
+type MealSuggestion = {
+  name: 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
+  title: string;
+  description: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fats_g: number;
+};
+
+const DIET_OPTIONS = [
+  'omnivore',
+  'vegetarian',
+  'vegan',
+  'pescatarian',
+  'keto',
+  'paleo',
+] as const;
+
+const ALLERGY_OPTIONS = ['Gluten', 'Dairy', 'Nuts', 'Eggs', 'Soy', 'Shellfish', 'None'] as const;
+
+function formatDietLabel(key: string): string {
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function parseSuggestionsJson(json: unknown): { meals: MealSuggestion[]; jordanNote: string | null } {
+  if (!json || typeof json !== 'object') return { meals: [], jordanNote: null };
+  const o = json as Record<string, unknown>;
+  const names: MealSuggestion['name'][] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+  const jordanNote = typeof o.jordanNote === 'string' ? o.jordanNote : null;
+  if (!Array.isArray(o.meals)) return { meals: [], jordanNote };
+  const meals: MealSuggestion[] = [];
+  for (const item of o.meals) {
+    if (!item || typeof item !== 'object') continue;
+    const m = item as Record<string, unknown>;
+    const name = m.name;
+    if (name !== 'Breakfast' && name !== 'Lunch' && name !== 'Dinner' && name !== 'Snack') continue;
+    if (
+      typeof m.title !== 'string' ||
+      typeof m.description !== 'string' ||
+      typeof m.calories !== 'number' ||
+      typeof m.protein_g !== 'number' ||
+      typeof m.carbs_g !== 'number' ||
+      typeof m.fats_g !== 'number'
+    ) {
+      continue;
+    }
+    meals.push({
+      name,
+      title: m.title,
+      description: m.description,
+      calories: m.calories,
+      protein_g: m.protein_g,
+      carbs_g: m.carbs_g,
+      fats_g: m.fats_g,
+    });
+  }
+  const ordered = names
+    .map((n) => meals.find((x) => x.name === n))
+    .filter((x): x is MealSuggestion => x != null);
+  return { meals: ordered, jordanNote };
 }
 
 const DEFAULT_TARGETS: MacroTargets = { calories: 2000, protein_g: 150, carbs_g: 200, fats_g: 65 };
@@ -227,6 +291,14 @@ export default function MacroTrackerScreen() {
   const [carbs, setCarbs] = useState('');
   const [fats, setFats] = useState('');
 
+  const [mealPrefsSet, setMealPrefsSet] = useState(false);
+  const [showPrefsModal, setShowPrefsModal] = useState(false);
+  const [selectedDiet, setSelectedDiet] = useState<string>('omnivore');
+  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [mealSuggestions, setMealSuggestions] = useState<MealSuggestion[]>([]);
+  const [jordanMealNote, setJordanMealNote] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -237,7 +309,24 @@ export default function MacroTrackerScreen() {
       const today = todayStr();
       const weekAgo = daysAgoStr(6);
 
-      const [targetsRes, todayRes, weekRes] = await Promise.all([
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('meal_prefs_set, dietary_style, food_allergies')
+        .eq('user_id', userId)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const prefsDone = profile?.meal_prefs_set ?? false;
+      setMealPrefsSet(prefsDone);
+      if (profile?.dietary_style && typeof profile.dietary_style === 'string') {
+        setSelectedDiet(profile.dietary_style);
+      }
+      if (Array.isArray(profile?.food_allergies)) {
+        setSelectedAllergies(profile.food_allergies as string[]);
+      }
+
+      const [targetsRes, todayRes, weekRes, mealSuggestRes] = await Promise.all([
         supabase
           .from('macro_plans')
           .select('calories_target, protein_g, carbs_g, fats_g')
@@ -256,7 +345,23 @@ export default function MacroTrackerScreen() {
           .eq('user_id', userId)
           .gte('log_date', weekAgo)
           .order('log_date', { ascending: true }),
+        prefsDone
+          ? supabase
+              .from('meal_suggestions')
+              .select('suggestions_json, calories_target')
+              .eq('user_id', userId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
+
+      if (prefsDone && mealSuggestRes.data) {
+        const parsed = parseSuggestionsJson(mealSuggestRes.data.suggestions_json);
+        setMealSuggestions(parsed.meals);
+        setJordanMealNote(parsed.jordanNote);
+      } else {
+        setMealSuggestions([]);
+        setJordanMealNote(null);
+      }
 
       if (targetsRes.data) {
         setTargets({
@@ -269,8 +374,17 @@ export default function MacroTrackerScreen() {
         setTargets(DEFAULT_TARGETS);
       }
 
+      type TodayLogRow = {
+        id: string;
+        meal_name: string;
+        calories: number;
+        protein_g: number;
+        carbs_g: number;
+        fats_g: number;
+      };
+
       setTodayLogs(
-        (todayRes.data ?? []).map((r: any) => ({
+        (todayRes.data ?? []).map((r: TodayLogRow) => ({
           id: r.id,
           meal_name: r.meal_name,
           calories: r.calories,
@@ -400,6 +514,82 @@ export default function MacroTrackerScreen() {
     setFats(String(opt.fats_g));
   };
 
+  const toggleAllergy = (label: string) => {
+    if (label === 'None') {
+      setSelectedAllergies(['None']);
+      return;
+    }
+    setSelectedAllergies((prev) => {
+      const withoutNone = prev.filter((x) => x !== 'None');
+      if (withoutNone.includes(label)) {
+        return withoutNone.filter((x) => x !== label);
+      }
+      return [...withoutNone, label];
+    });
+  };
+
+  const handleSavePrefs = async () => {
+    setSavingPrefs(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id;
+      if (!uid) throw new Error('No user');
+
+      const allergiesToSave = selectedAllergies.includes('None') ? [] : selectedAllergies;
+
+      const { error: upErr } = await supabase
+        .from('user_profiles')
+        .update({
+          dietary_style: selectedDiet,
+          food_allergies: allergiesToSave,
+          meal_prefs_set: true,
+        })
+        .eq('user_id', uid);
+
+      if (upErr) throw upErr;
+
+      const { error: fnErr } = await supabase.functions.invoke('generate-meals', {
+        body: { userId: uid },
+      });
+
+      if (fnErr) throw fnErr;
+
+      setMealPrefsSet(true);
+      setShowPrefsModal(false);
+      await loadData();
+    } catch {
+      Alert.alert('Error', 'Could not save preferences. Please try again.');
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  const handleLogSuggestedMeal = async (meal: MealSuggestion) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const { error } = await supabase.from('macro_logs').upsert(
+      {
+        user_id: userId,
+        log_date: todayStr(),
+        meal_name: meal.name,
+        calories: meal.calories,
+        protein_g: meal.protein_g,
+        carbs_g: meal.carbs_g,
+        fats_g: meal.fats_g,
+      },
+      { onConflict: 'user_id,log_date,meal_name' },
+    );
+
+    if (error) {
+      Alert.alert('Error', 'Could not log meal. Please try again.');
+      return;
+    }
+
+    loadData();
+  };
+
   // ── Render ──
 
   if (isLoading) {
@@ -424,6 +614,22 @@ export default function MacroTrackerScreen() {
           <Text style={styles.headerTitle}>Nutrition</Text>
           <Text style={styles.headerSubtitle}>{formatDate(new Date())}</Text>
         </View>
+
+        {!mealPrefsSet && (
+          <View style={styles.mealSetupCard}>
+            <Text style={styles.mealSetupTitle}>🍽️ Set Up Meal Recommendations</Text>
+            <Text style={styles.mealSetupBody}>
+              Tell Jordan about your diet and we’ll suggest meals that hit your exact macro targets.
+            </Text>
+            <TouchableOpacity
+              style={styles.mealSetupCta}
+              onPress={() => setShowPrefsModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.mealSetupCtaText}>Get Started</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Section 1 — Calorie Ring */}
         <View style={[styles.card, styles.calorieCard]}>
@@ -458,6 +664,55 @@ export default function MacroTrackerScreen() {
             );
           })}
         </View>
+
+        {mealPrefsSet && mealSuggestions.length > 0 && (
+          <View style={styles.mealPlanSection}>
+            <Text style={styles.mealPlanHeading}>{"TODAY'S MEAL PLAN"}</Text>
+            {jordanMealNote ? (
+              <Text style={styles.jordanMealNote}>💬 {jordanMealNote}</Text>
+            ) : null}
+            <Text style={styles.mealPlanSub}>Tap any meal to log it</Text>
+            {mealSuggestions.map((meal) => (
+              <TouchableOpacity
+                key={meal.name}
+                style={styles.suggestedMealCard}
+                onPress={() => handleLogSuggestedMeal(meal)}
+                activeOpacity={0.75}
+              >
+                <View style={styles.suggestedMealRow1}>
+                  <View style={styles.mealNamePill}>
+                    <Text style={styles.mealNamePillText}>{meal.name}</Text>
+                  </View>
+                  <Text style={styles.suggestedMealTitle} numberOfLines={2}>
+                    {meal.title}
+                  </Text>
+                </View>
+                <Text style={styles.suggestedMealDesc}>{meal.description}</Text>
+                <View style={styles.suggestedMacroRow}>
+                  <View style={styles.sMacroPillNeutral}>
+                    <Text style={styles.sMacroPillNeutralText}>{meal.calories} cal</Text>
+                  </View>
+                  <View style={styles.sMacroPillBlue}>
+                    <Text style={styles.sMacroPillWhiteText}>{meal.protein_g}g protein</Text>
+                  </View>
+                  <View style={styles.sMacroPillAmber}>
+                    <Text style={styles.sMacroPillWhiteText}>{meal.carbs_g}g carbs</Text>
+                  </View>
+                  <View style={styles.sMacroPillGreen}>
+                    <Text style={styles.sMacroPillWhiteText}>{meal.fats_g}g fat</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {mealPrefsSet && mealSuggestions.length === 0 && (
+          <View style={styles.generatingRow}>
+            <ActivityIndicator size="small" color={ACCENT_BLUE} />
+            <Text style={styles.generatingText}>Generating your meal plan...</Text>
+          </View>
+        )}
 
         {/* Section 3 — Today's Meals */}
         <View style={styles.sectionHeaderRow}>
@@ -561,23 +816,27 @@ export default function MacroTrackerScreen() {
                   ))}
                 </View>
 
-                {/* Quick options */}
-                <Text style={[styles.modalSectionLabel, { marginTop: 16 }]}>OR CHOOSE A QUICK OPTION</Text>
-                <View style={styles.quickGrid}>
-                  {QUICK_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.name}
-                      style={styles.quickCard}
-                      onPress={() => fillPreset(opt)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickName}>{opt.name}</Text>
-                      <Text style={styles.quickMacros}>
-                        P:{opt.protein_g}g C:{opt.carbs_g}g F:{opt.fats_g}g
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {/* Quick options — only when meal prefs not set */}
+                {!mealPrefsSet && (
+                  <>
+                    <Text style={[styles.modalSectionLabel, { marginTop: 16 }]}>OR CHOOSE A QUICK OPTION</Text>
+                    <View style={styles.quickGrid}>
+                      {QUICK_OPTIONS.map((opt) => (
+                        <TouchableOpacity
+                          key={opt.name}
+                          style={styles.quickCard}
+                          onPress={() => fillPreset(opt)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.quickName}>{opt.name}</Text>
+                          <Text style={styles.quickMacros}>
+                            P:{opt.protein_g}g C:{opt.carbs_g}g F:{opt.fats_g}g
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
 
                 {/* Footer */}
                 <View style={styles.modalFooter}>
@@ -592,6 +851,84 @@ export default function MacroTrackerScreen() {
             </ScrollView>
           </KeyboardAvoidingView>
         </View>
+      </Modal>
+
+      {/* ── Meal Preferences Modal ── */}
+      <Modal
+        visible={showPrefsModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowPrefsModal(false)}
+      >
+        <SafeAreaView style={styles.prefsModalSafe}>
+          <View style={styles.prefsHeader}>
+            <TouchableOpacity onPress={() => setShowPrefsModal(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Text style={styles.prefsClose}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.prefsHeaderTitle} pointerEvents="none">
+              Meal Preferences
+            </Text>
+          </View>
+
+          <ScrollView
+            style={styles.prefsScroll}
+            contentContainerStyle={styles.prefsScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.prefsSectionLabel}>YOUR DIET</Text>
+            <View style={styles.dietGrid}>
+              {DIET_OPTIONS.map((diet) => {
+                const selected = selectedDiet === diet;
+                return (
+                  <TouchableOpacity
+                    key={diet}
+                    style={[styles.dietCard, selected && styles.dietCardSelected]}
+                    onPress={() => setSelectedDiet(diet)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dietCardLabel}>{formatDietLabel(diet)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.prefsSectionLabel, styles.prefsSectionSpacer]}>ALLERGIES & INTOLERANCES</Text>
+            <Text style={styles.prefsAllergiesHint}>Select all that apply</Text>
+            <View style={styles.allergyChipWrap}>
+              {ALLERGY_OPTIONS.map((a) => {
+                const selected = selectedAllergies.includes(a);
+                return (
+                  <TouchableOpacity
+                    key={a}
+                    style={[styles.allergyChip, selected && styles.allergyChipSelected]}
+                    onPress={() => toggleAllergy(a)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.allergyChipText, selected && styles.allergyChipTextSelected]}>
+                      {a}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={styles.prefsFooter}>
+            <TouchableOpacity
+              style={styles.prefsSaveBtn}
+              onPress={handleSavePrefs}
+              disabled={savingPrefs}
+              activeOpacity={0.85}
+            >
+              {savingPrefs ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.prefsSaveBtnText}>Save & Generate Meals</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -682,4 +1019,187 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: TEXT_SECONDARY, fontSize: 15, fontWeight: '600' },
   logBtn: { flex: 1, backgroundColor: ACCENT_BLUE, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
   logBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+
+  /* Meal prefs setup card */
+  mealSetupCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+  },
+  mealSetupTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
+  mealSetupBody: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  mealSetupCta: {
+    backgroundColor: ACCENT_BLUE,
+    height: 46,
+    borderRadius: 12,
+    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealSetupCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+
+  /* Jordan meal plan */
+  mealPlanSection: { marginBottom: 8 },
+  mealPlanHeading: {
+    color: TEXT_SECONDARY,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+  },
+  jordanMealNote: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  mealPlanSub: { color: TEXT_SECONDARY, fontSize: 13, marginBottom: 12 },
+  suggestedMealCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+  },
+  suggestedMealRow1: { flexDirection: 'row', alignItems: 'center' },
+  mealNamePill: {
+    backgroundColor: DISABLED_BG,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  mealNamePillText: {
+    color: TEXT_SECONDARY,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  suggestedMealTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
+  },
+  suggestedMealDesc: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  suggestedMacroRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  sMacroPillNeutral: {
+    backgroundColor: DISABLED_BG,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sMacroPillNeutralText: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '600' },
+  sMacroPillBlue: {
+    backgroundColor: ACCENT_BLUE,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sMacroPillAmber: {
+    backgroundColor: AMBER,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sMacroPillGreen: {
+    backgroundColor: GREEN,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+
+  generatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    paddingVertical: 8,
+  },
+  generatingText: { color: TEXT_SECONDARY, fontSize: 14 },
+
+  /* Prefs modal */
+  prefsModalSafe: { flex: 1, backgroundColor: BG_DARK },
+  prefsHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  prefsClose: { color: TEXT_SECONDARY, fontSize: 22, width: 44 },
+  prefsHeaderTitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    color: TEXT_PRIMARY,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  prefsScroll: { flex: 1 },
+  prefsScrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  prefsSectionLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+  },
+  prefsSectionSpacer: { marginTop: 24 },
+  prefsAllergiesHint: { color: TEXT_SECONDARY, fontSize: 13, marginBottom: 12 },
+  dietGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  dietCard: {
+    width: '47%',
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  dietCardSelected: {
+    backgroundColor: CARD_SELECTED_BG,
+    borderColor: ACCENT_BLUE,
+  },
+  dietCardLabel: { color: TEXT_PRIMARY, fontSize: 14, fontWeight: '500', textAlign: 'center' },
+  allergyChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  allergyChip: {
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  allergyChipSelected: { backgroundColor: ACCENT_BLUE },
+  allergyChipText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
+  allergyChipTextSelected: { color: '#FFFFFF' },
+  prefsFooter: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+    paddingTop: 8,
+  },
+  prefsSaveBtn: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: ACCENT_BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prefsSaveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });

@@ -137,18 +137,34 @@ export default function WorkoutCompleteScreen() {
         supabase.functions
           .invoke('weekly-coach-summary', { body: { userId, planId, weekNumber } })
           .then(async ({ data, error }) => {
-            if (error || !data?.summary) return;
-            await supabase.from('weekly_summaries').insert({
-              user_id: userId,
-              plan_id: planId,
-              week_number: weekNumber,
-              summary_json: data.summary,
-              generated_at: new Date().toISOString(),
-            });
+            if (error) {
+              console.error('weekly-coach-summary error:', error);
+              return;
+            }
+            if (!data?.summary) {
+              console.error('weekly-coach-summary: no summary in response', data);
+              return;
+            }
+            const { error: upsertError } = await supabase
+              .from('weekly_summaries')
+              .upsert(
+                {
+                  user_id: userId,
+                  plan_id: planId,
+                  week_number: weekNumber,
+                  summary_json: data.summary,
+                  generated_at: new Date().toISOString(),
+                },
+                { onConflict: 'user_id,plan_id,week_number' },
+              );
+            if (upsertError) {
+              console.error('weekly_summaries upsert error:', upsertError);
+              return;
+            }
             setShowSummaryBanner(true);
           })
-          .catch(() => {
-            // Non-critical — don't surface this error on the complete screen
+          .catch((err) => {
+            console.error('weekly-coach-summary invoke failed:', err);
           });
 
         supabase.functions

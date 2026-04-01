@@ -352,6 +352,15 @@ export default function PlanViewScreen() {
             </Text>
           </View>
         )}
+
+        {/* Exercise Library link */}
+        <TouchableOpacity
+          style={styles.libraryLink}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('ExerciseLibrary')}
+        >
+          <Text style={styles.libraryLinkText}>Browse Exercise Library →</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -543,4 +552,7 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 40, marginBottom: 4 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY },
   emptySubtitle: { fontSize: 14, color: TEXT_SECONDARY },
+
+  libraryLink: { alignItems: 'center', paddingVertical: 16 },
+  libraryLinkText: { color: ACCENT_BLUE, fontSize: 14 },
 });

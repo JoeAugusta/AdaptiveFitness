@@ -120,6 +120,7 @@ export type RootStackParamList = {
     planId: string;
     weekNumber: number;
   };
+  ExerciseLibrary: undefined;
   ProgressCharts: undefined;
   MacroTracker: undefined;
   ProfileSettings: undefined;

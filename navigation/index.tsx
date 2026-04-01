@@ -20,6 +20,7 @@ import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
+import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
 
 const ACCENT_BLUE = '#3B82F6';
 const CARD_BG = '#1E293B';
@@ -51,6 +52,7 @@ function WorkoutTabStack() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
       <WorkoutStack.Screen name="PlanView" component={PlanViewScreen} />
+      <WorkoutStack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
     </WorkoutStack.Navigator>
   );
 }

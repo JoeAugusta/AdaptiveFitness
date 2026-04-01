@@ -99,7 +99,6 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
       {/* Coach Note Card */}
       <View style={[styles.card, styles.coachCard]}>
         <Text style={styles.coachNote}>{summary.motivationalNote}</Text>
-        <Text style={styles.coachSignoff}>— Your AI Coach</Text>
       </View>
     </>
   );
@@ -412,12 +411,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     lineHeight: 22,
-  },
-  coachSignoff: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
   },
   loadingCard: {
     alignItems: 'center',

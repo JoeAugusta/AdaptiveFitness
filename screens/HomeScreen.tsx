@@ -80,6 +80,10 @@ export default function HomeScreen() {
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [coachSummary, setCoachSummary] = useState<{
+    headline: string;
+    week_number: number;
+  } | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -96,7 +100,8 @@ export default function HomeScreen() {
         return;
       }
 
-      setUserName(session.user.email?.split('@')[0] ?? 'there');
+      const rawName = session.user.email?.split('@')[0] ?? '';
+      setUserName(rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : '');
 
       const { data: plan, error: planError } = await supabase
         .from('plans')
@@ -176,6 +181,29 @@ export default function HomeScreen() {
         nextWeekFirstWorkout,
         showGenerateNextWeekCTA,
       });
+
+      // Fetch latest weekly summary for coach card
+      const { data: latestSummary } = await supabase
+        .from('weekly_summaries')
+        .select('summary_json, week_number')
+        .eq('user_id', userId)
+        .eq('plan_id', plan.id)
+        .order('week_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (
+        latestSummary &&
+        latestSummary.week_number >= plan.current_week - 1
+      ) {
+        const summaryJson = latestSummary.summary_json as { headline?: string } | null;
+        setCoachSummary({
+          headline: summaryJson?.headline ?? '',
+          week_number: latestSummary.week_number,
+        });
+      } else {
+        setCoachSummary(null);
+      }
 
       // Fire stats in background — dashboard renders immediately
       loadStats(userId, plan.id, plan.current_week);
@@ -282,6 +310,12 @@ export default function HomeScreen() {
     );
   }
 
+  const hour = new Date().getHours();
+  const timeGreeting =
+    hour < 12 ? 'Good morning' :
+    hour < 17 ? 'Good afternoon' :
+    'Good evening';
+
   const today = planData?.todayWorkout ?? null;
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;
@@ -305,8 +339,8 @@ export default function HomeScreen() {
         {/* ── 1. Header ── */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greetingTop}>Good morning,</Text>
-            <Text style={styles.greetingName}>{userName || 'there'}</Text>
+            <Text style={styles.greetingTop}>{timeGreeting}</Text>
+            {userName ? <Text style={styles.greetingName}>{userName}</Text> : null}
           </View>
           <View style={styles.profileButton}>
             <Text style={styles.profileInitial}>{profileInitial}</Text>
@@ -382,9 +416,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() =>
-                navigation.navigate('PlanView', {
-                  planId: planData?.planId ?? 'mock',
-                  weekNumber: planData?.currentWeek ?? 1,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                navigation.navigate('WorkoutTab' as any, {
+                  screen: 'PlanView',
+                  params: { planId: planData?.planId ?? 'mock', weekNumber: planData?.currentWeek ?? 1 },
                 })
               }
               style={styles.viewPlanLink}
@@ -428,9 +463,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() =>
-                navigation.navigate('PlanView', {
-                  planId: planData?.planId ?? 'mock',
-                  weekNumber: planData?.currentWeek ?? 1,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                navigation.navigate('WorkoutTab' as any, {
+                  screen: 'PlanView',
+                  params: { planId: planData?.planId ?? 'mock', weekNumber: planData?.currentWeek ?? 1 },
                 })
               }
               style={styles.viewPlanLink}
@@ -529,9 +565,11 @@ export default function HomeScreen() {
               <Text style={styles.quickStatValue}>
                 {statsLoading
                   ? '—'
-                  : weeklyVolume >= 1000
-                  ? `${Math.round((weeklyVolume / 1000) * 10) / 10}k`
-                  : weeklyVolume}
+                  : weeklyVolume === 0
+                    ? '—'
+                    : weeklyVolume >= 1000
+                      ? `${Math.round((weeklyVolume / 1000) * 10) / 10}k`
+                      : String(weeklyVolume)}
               </Text>
               <Text style={styles.volUnit}>sets</Text>
             </View>
@@ -547,11 +585,13 @@ export default function HomeScreen() {
               <Text style={styles.coachEmoji}>🤖</Text>
               <Text style={styles.coachTitle}>Your Coach</Text>
             </View>
-            <View style={styles.weekPill}>
-              <Text style={styles.weekPillText}>
-                Week {planData?.currentWeek ?? 1}
-              </Text>
-            </View>
+            {coachSummary && (
+              <View style={styles.weekPill}>
+                <Text style={styles.weekPillText}>
+                  Week {coachSummary.week_number}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Divider */}
@@ -559,8 +599,7 @@ export default function HomeScreen() {
 
           {/* Message */}
           <Text style={styles.coachMessage}>
-            Great start to the week. Focus on progressive overload and
-            hit your target RPE on each set. Let's keep the momentum going.
+            {coachSummary?.headline ?? 'Your weekly summary will appear here after your first week.'}
           </Text>
 
           {/* Bottom row */}

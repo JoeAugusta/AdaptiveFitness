@@ -59,12 +59,24 @@ type PlanData = {
   nextWeekFirstWorkout: WorkoutDay | null;
 };
 
+type SetItem = {
+  setNumber: number;
+  weightLbs: number;
+  reps: number;
+  rpe: number | null;
+  swapped: boolean;
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [totalSessions, setTotalSessions] = useState<number>(0);
+  const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
+  const [currentStreak, setCurrentStreak] = useState<number>(0);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     loadDashboardData();
@@ -76,7 +88,10 @@ export default function HomeScreen() {
 
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        setStatsLoading(false);
+        return;
+      }
 
       setUserName(session.user.email?.split('@')[0] ?? 'there');
 
@@ -89,7 +104,10 @@ export default function HomeScreen() {
         .limit(1)
         .single();
 
-      if (planError || !plan) return;
+      if (planError || !plan) {
+        setStatsLoading(false);
+        return;
+      }
 
       const planJson = plan.plan_json;
       const currentWeekData =
@@ -97,7 +115,10 @@ export default function HomeScreen() {
           (w: { weekNumber: number }) => w.weekNumber === plan.current_week,
         ) ?? planJson.weeks?.[0];
 
-      if (!currentWeekData) return;
+      if (!currentWeekData) {
+        setStatsLoading(false);
+        return;
+      }
 
       const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
 
@@ -144,10 +165,79 @@ export default function HomeScreen() {
         nextWeekReady,
         nextWeekFirstWorkout,
       });
+
+      // Fire stats in background — dashboard renders immediately
+      loadStats(userId, plan.id, plan.current_week);
     } catch (e) {
       console.error('Dashboard load error:', e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadStats = async (uid: string, planId: string, currentWeek: number) => {
+    try {
+      setStatsLoading(true);
+
+      const [countRes, weeklyRes, allLogsRes] = await Promise.all([
+        supabase
+          .from('workout_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', uid),
+        supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('user_id', uid)
+          .eq('week_number', currentWeek)
+          .eq('plan_id', planId),
+        supabase
+          .from('workout_logs')
+          .select('logged_at')
+          .eq('user_id', uid)
+          .order('logged_at', { ascending: false }),
+      ]);
+
+      // 1. Total sessions
+      setTotalSessions(countRes.count ?? 0);
+
+      // 2. Weekly volume — sum the length of each sets_json array
+      let volume = 0;
+      for (const row of (weeklyRes.data ?? []) as { sets_json: SetItem[] }[]) {
+        if (Array.isArray(row.sets_json)) {
+          volume += row.sets_json.length;
+        }
+      }
+      setWeeklyVolume(volume);
+
+      // 3. Current streak — consecutive training days up to today
+      const sessionDates = new Set<string>();
+      const toDateStr = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      for (const row of (allLogsRes.data ?? []) as { logged_at: string }[]) {
+        sessionDates.add(toDateStr(new Date(row.logged_at)));
+      }
+
+      const now = new Date();
+      const todayStr = toDateStr(now);
+
+      // If today has no session yet, start counting from yesterday
+      const cursor = new Date(now);
+      if (!sessionDates.has(todayStr)) {
+        cursor.setDate(cursor.getDate() - 1);
+      }
+
+      let streak = 0;
+      while (sessionDates.has(toDateStr(cursor))) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      setCurrentStreak(streak);
+    } catch (err) {
+      console.error('loadStats error:', err);
+      // Silent — stats are non-critical, leave values at 0
+    } finally {
+      setStatsLoading(false);
     }
   };
 
@@ -305,7 +395,7 @@ export default function HomeScreen() {
 
           {/* Progress bar */}
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: progressPct }]} />
+            <View style={[styles.progressFill, { width: progressPct as `${number}%` }]} />
           </View>
 
           {/* Day dots */}
@@ -359,23 +449,33 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── 4. Quick Stats Row (mock — Phase 2) ── */}
+        {/* ── 4. Quick Stats Row ── */}
         <View style={styles.quickStatsRow}>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>🔥</Text>
-            <Text style={styles.quickStatValue}>7</Text>
+            <Text style={styles.quickStatValue}>
+              {statsLoading ? '—' : currentStreak}
+            </Text>
             <Text style={styles.quickStatLabel}>Day streak</Text>
           </View>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>⚡</Text>
-            <Text style={styles.quickStatValue}>24</Text>
+            <Text style={styles.quickStatValue}>
+              {statsLoading ? '—' : totalSessions}
+            </Text>
             <Text style={styles.quickStatLabel}>Sessions</Text>
           </View>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>📈</Text>
             <View style={styles.volRow}>
-              <Text style={styles.quickStatValue}>12,400</Text>
-              <Text style={styles.volUnit}>kg</Text>
+              <Text style={styles.quickStatValue}>
+                {statsLoading
+                  ? '—'
+                  : weeklyVolume >= 1000
+                  ? `${Math.round((weeklyVolume / 1000) * 10) / 10}k`
+                  : weeklyVolume}
+              </Text>
+              <Text style={styles.volUnit}>sets</Text>
             </View>
             <Text style={styles.quickStatLabel}>Vol. this week</Text>
           </View>

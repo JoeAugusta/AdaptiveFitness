@@ -1174,7 +1174,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: 20,
+    marginTop: 16,
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',

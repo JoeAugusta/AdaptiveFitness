@@ -28,6 +28,16 @@ interface StrengthDataPoint {
   estimated1RM: number;
 }
 
+interface WeightLogPoint {
+  log_date: string;
+  weight_lbs: number;
+}
+
+const formatChartDate = (dateStr: string): string => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 interface ConsistencyDay {
   dateStr: string;
   trained: boolean;
@@ -140,6 +150,125 @@ function LineChart({
   );
 }
 
+// ── Weight Line Chart ──
+
+function WeightLineChart({
+  data,
+  width,
+  height,
+}: {
+  data: WeightLogPoint[];
+  width: number;
+  height: number;
+}) {
+  if (data.length < 2) return null;
+
+  const padL = 44;
+  const padR = 20;
+  const padT = 24;
+  const padB = 28;
+  const cw = width - padL - padR;
+  const ch = height - padT - padB;
+
+  const weights = data.map((d) => d.weight_lbs);
+  const minV = Math.floor(Math.min(...weights) - 2);
+  const maxV = Math.ceil(Math.max(...weights) + 2);
+  const rangeV = maxV - minV || 1;
+
+  const toX = (i: number) => padL + (i / (data.length - 1)) * cw;
+  const toY = (v: number) => padT + ch - ((v - minV) / rangeV) * ch;
+
+  const points = data.map((d, i) => ({ x: toX(i), y: toY(d.weight_lbs) }));
+
+  // Max 7 evenly-spaced X axis labels
+  const labelStep = data.length <= 7 ? 1 : Math.floor((data.length - 1) / 6);
+  const labelIndices: number[] = [];
+  for (let i = 0; i < data.length; i += labelStep) {
+    labelIndices.push(i);
+  }
+  if (labelIndices[labelIndices.length - 1] !== data.length - 1) {
+    labelIndices.push(data.length - 1);
+  }
+
+  // 4 Y-axis grid lines
+  const yTicks = 4;
+  const yStep = rangeV / yTicks;
+
+  const lastPt = points[points.length - 1];
+  const lastWeight = data[data.length - 1].weight_lbs;
+
+  return (
+    <Svg width={width} height={height}>
+      {/* Y axis grid + labels */}
+      {Array.from({ length: yTicks + 1 }, (_, i) => {
+        const val = minV + i * yStep;
+        const y = toY(val);
+        return (
+          <G key={`yw-${i}`}>
+            <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={GRID_COLOR} strokeWidth={1} />
+            <SvgText x={padL - 6} y={y + 4} fill={TEXT_SECONDARY} fontSize={10} textAnchor="end">
+              {Math.round(val)}
+            </SvgText>
+          </G>
+        );
+      })}
+
+      {/* X axis baseline */}
+      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={GRID_COLOR} strokeWidth={1} />
+
+      {/* X axis date labels */}
+      {labelIndices.map((idx) => (
+        <SvgText
+          key={`xw-${idx}`}
+          x={points[idx].x}
+          y={height - 6}
+          fill={TEXT_SECONDARY}
+          fontSize={10}
+          textAnchor="middle"
+        >
+          {formatChartDate(data[idx].log_date)}
+        </SvgText>
+      ))}
+
+      {/* Line segments */}
+      {points.length > 1 && (() => {
+        const segs: React.ReactNode[] = [];
+        for (let i = 1; i < points.length; i++) {
+          segs.push(
+            <SvgLine
+              key={`wseg-${i}`}
+              x1={points[i - 1].x}
+              y1={points[i - 1].y}
+              x2={points[i].x}
+              y2={points[i].y}
+              stroke={ACCENT_BLUE}
+              strokeWidth={2}
+            />,
+          );
+        }
+        return segs;
+      })()}
+
+      {/* Data point dots */}
+      {points.map((p, i) => (
+        <Circle key={`wdot-${i}`} cx={p.x} cy={p.y} r={4} fill={ACCENT_BLUE} />
+      ))}
+
+      {/* Most recent weight callout */}
+      <SvgText
+        x={lastPt.x}
+        y={lastPt.y - 10}
+        fill={TEXT_PRIMARY}
+        fontSize={13}
+        fontWeight="600"
+        textAnchor="middle"
+      >
+        {`${lastWeight} lbs`}
+      </SvgText>
+    </Svg>
+  );
+}
+
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
@@ -155,6 +284,7 @@ export default function ProgressChartsScreen() {
   const [exerciseMap, setExerciseMap] = useState<Record<string, ExerciseInfo>>({});
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
+  const [weightData, setWeightData] = useState<WeightLogPoint[]>([]);
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -204,6 +334,15 @@ export default function ProgressChartsScreen() {
 
       if (le) throw new Error(le.message);
       setLogs(wlogs ?? []);
+
+      const { data: wlWeightLogs } = await supabase
+        .from('weight_logs')
+        .select('log_date, weight_lbs')
+        .eq('user_id', userId)
+        .order('log_date', { ascending: true })
+        .limit(30);
+
+      setWeightData((wlWeightLogs ?? []) as WeightLogPoint[]);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -525,16 +664,17 @@ export default function ProgressChartsScreen() {
               );
             })()}
 
-            {/* ── Bodyweight Trend (placeholder) ── */}
+            {/* ── Bodyweight Trend ── */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Bodyweight Trend</Text>
-              <View style={styles.placeholderCenter}>
-                <Text style={styles.placeholderEmoji}>📊</Text>
-                <Text style={styles.placeholderTitleText}>Bodyweight tracking coming soon</Text>
-                <Text style={styles.placeholderSubText}>
-                  Log your weight daily to track progress toward your goal.
+              <Text style={styles.cardSubtitle}>Last 30 days</Text>
+              {weightData.length < 2 ? (
+                <Text style={styles.weightChartEmpty}>
+                  Log your weight daily on the Dashboard to track your trend here.
                 </Text>
-              </View>
+              ) : (
+                <WeightLineChart data={weightData} width={chartWidth} height={180} />
+              )}
             </View>
 
             {/* ── Consistency Heatmap ── */}
@@ -624,6 +764,12 @@ const styles = StyleSheet.create({
   placeholderSubText: { color: TEXT_SECONDARY, fontSize: 13, textAlign: 'center', marginTop: 8 },
 
   hintText: { color: TEXT_SECONDARY, fontSize: 12, textAlign: 'center', marginTop: 8 },
+  weightChartEmpty: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 20,
+  },
 
   errorCard: {
     backgroundColor: CARD_BG,

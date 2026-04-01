@@ -163,6 +163,18 @@ export default function WorkoutCompleteScreen() {
               return;
             }
             setShowSummaryBanner(true);
+
+            try {
+              const { data: macroAdj } = await supabase.functions.invoke(
+                'adjust-macros',
+                { body: { userId, planId, weekNumber } },
+              );
+              if (macroAdj?.status === 'adjusted' && macroAdj.reasoning) {
+                setMacroAdjustment(macroAdj.reasoning);
+              }
+            } catch (macroErr) {
+              console.error('adjust-macros invoke failed:', macroErr);
+            }
           })
           .catch((err) => {
             console.error('weekly-coach-summary invoke failed:', err);
@@ -277,6 +289,14 @@ export default function WorkoutCompleteScreen() {
             >
               <Text style={styles.summaryBannerButtonText}>View Weekly Summary</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Macro Adjustment Card ── */}
+        {macroAdjustment && (
+          <View style={styles.macroCard}>
+            <Text style={styles.macroCardTitle}>Macros Updated 📊</Text>
+            <Text style={styles.macroCardBody}>{macroAdjustment}</Text>
           </View>
         )}
 
@@ -535,5 +555,26 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  /* Macro adjustment card */
+  macroCard: {
+    backgroundColor: CARD_BG,
+    borderLeftWidth: 4,
+    borderLeftColor: ACCENT_BLUE,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  macroCardTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  macroCardBody: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

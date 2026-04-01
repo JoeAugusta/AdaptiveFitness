@@ -120,4 +120,6 @@ export type RootStackParamList = {
     planId: string;
     weekNumber: number;
   };
+  ProgressCharts: undefined;
+  ProfileSettings: undefined;
 };

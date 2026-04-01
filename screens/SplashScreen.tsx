@@ -29,6 +29,7 @@ export default function SplashScreen() {
           .select('id')
           .eq('user_id', session.user.id)
           .eq('status', 'active')
+          .order('created_at', { ascending: false })
           .limit(1)
           .single();
 

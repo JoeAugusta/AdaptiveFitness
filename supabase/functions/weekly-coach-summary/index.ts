@@ -56,6 +56,17 @@ serve(async (req) => {
     const planJson = planResult.data.plan_json;
     const logs = logsResult.data ?? [];
 
+    const exerciseMap: Record<string, string> = {};
+    for (const week of planJson.weeks ?? []) {
+      for (const day of week.days ?? []) {
+        for (const ex of day.exercises ?? []) {
+          if (ex.id && ex.name) {
+            exerciseMap[ex.id] = ex.name;
+          }
+        }
+      }
+    }
+
     // Step 2 — Find the matching week in plan_json and extract workout day targets
     const weekData = (planJson.weeks ?? []).find((w: any) => w.weekNumber === weekNumber);
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
@@ -75,7 +86,7 @@ serve(async (req) => {
     }
 
     // Step 3 — Compute performance metrics
-    const sessionsCompleted = logs.length;
+    const sessionsCompleted = new Set(logs.map((l: any) => l.day_number)).size;
     const sessionsPlanned = daysPerWeek;
     const completionRate = sessionsPlanned > 0 ? sessionsCompleted / sessionsPlanned : 0;
 
@@ -105,12 +116,16 @@ serve(async (req) => {
     for (const log of logs) {
       const setsJson: any[] = log.sets_json ?? [];
       for (const set of setsJson) {
-        const name: string = set.exerciseName ?? set.name ?? '';
+        const name: string =
+          exerciseMap[set.exerciseId] ??
+          set.exerciseName ??
+          set.name ??
+          '';
         if (!name) continue;
         if (!actualMap[name]) {
           actualMap[name] = { totalWeight: 0, totalReps: 0, totalRpe: 0, count: 0, maxWeight: 0 };
         }
-        const weight = Number(set.weight ?? set.loggedWeight ?? 0);
+        const weight = Number(set.weightLbs ?? set.weight ?? set.loggedWeight ?? 0);
         const reps = Number(set.reps ?? set.loggedReps ?? 0);
         const rpe = Number(set.rpe ?? set.loggedRpe ?? 0);
         actualMap[name].totalWeight += weight;
@@ -174,7 +189,26 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1000,
-        system: `You are an expert personal trainer and coach writing a weekly debrief for a fitness app user. Be direct, specific, and motivating. Reference actual numbers and exercises by name. Keep each section concise — this is a mobile app, not an essay. Return ONLY valid JSON with no prose, preamble, or markdown.`,
+        system: `You are Jordan, the athlete's personal coach. You have their full week of training data. Write their weekly debrief.
+
+Your response must be a JSON object with these exact fields:
+{
+  "headline": "One punchy sentence summarising the week. No filler.",
+  "performanceRating": "strong | on-track | tough-week",
+  "highlights": ["Array of 2-3 strings. Each is a specific win with real numbers. No generic statements."],
+  "performanceSummary": "2-3 sentences. Jordan's honest read of the week. Reference specific exercises and numbers. If it was a tough week, say so clearly.",
+  "nextWeekChanges": "2-3 sentences. What Jordan is changing and exactly why. Reference the performance data that drove the decision.",
+  "nutritionCheckin": "1-2 sentences on macro targets. Keep brief.",
+  "motivationalNote": "1-2 sentences. Specific to the user's goal. Forward-looking. End with '— Jordan'."
+}
+
+Tone rules:
+- Write as Jordan in first person throughout
+- Reference actual weights, reps, and RPE from the data
+- The motivationalNote must reference the user's specific goal (e.g. their target 1RM, their target weight loss, their muscle goals)
+- Never use filler praise like 'Great job!', 'Keep it up!', 'Well done!', or 'Fantastic work!'
+- The sign-off '— Jordan' appears only at the end of motivationalNote, nowhere else
+- Return only valid JSON, no markdown, no prose outside the JSON`,
         messages: [
           {
             role: 'user',

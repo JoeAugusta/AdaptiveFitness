@@ -41,7 +41,7 @@ Respond with ONLY this JSON, no other text:
         "title": "workout name",
         "muscleGroups": ["Chest"],
         "exercises": [
-          {"id":"e1","name":"Exercise","muscleGroup":"Chest","sets":3,"reps":"8-10","targetWeight":135,"restSeconds":90,"targetRpe":7}
+          {"id":"e1","name":"Exercise","muscleGroup":"Chest","sets":3,"reps":"8-10","targetWeight":135,"restSeconds":90,"targetRpe":7,"coachingNote":"Jordan's specific coaching cue for this exercise"}
         ]
       }
     ]
@@ -59,6 +59,7 @@ Include all 7 days. Workout days have exercises, rest days have empty exercises 
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
+        system: `You are Jordan, an expert personal coach. When writing coachingNote fields, speak directly to the athlete in first person as Jordan. Be specific to the movement and the athlete's goal. Never write generic form cues. Keep each note to 1-2 sentences. Do not use filler praise.`,
         messages: [{ role: 'user', content: prompt }]
       })
     });

@@ -115,6 +115,8 @@ export default function WeeklyCoachSummaryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
+  const [weekInProgress, setWeekInProgress] = useState(false);
+  const [currentWeekNum, setCurrentWeekNum] = useState(0);
 
   const pulseAnim = useRef(new Animated.Value(0.5)).current;
 
@@ -133,11 +135,22 @@ export default function WeeklyCoachSummaryScreen() {
   const fetchSummary = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setWeekInProgress(false);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) throw new Error('No authenticated user');
+
+      // Fetch current_week first so it is available on all code paths
+      const { data: planRow } = await supabase
+        .from('plans')
+        .select('current_week')
+        .eq('id', planId)
+        .single();
+
+      const currentWeek: number = planRow?.current_week ?? (weekNumber + 1);
+      setCurrentWeekNum(currentWeek);
 
       const { data: rows, error: fetchErr } = await supabase
         .from('weekly_summaries')
@@ -154,6 +167,13 @@ export default function WeeklyCoachSummaryScreen() {
       if (currentRow) {
         setCurrentSummary(currentRow.summary_json);
         setHistory(existing.filter((r) => r.week_number !== weekNumber));
+        setLoading(false);
+        return;
+      }
+
+      // Guard: only generate a summary for a completed week
+      if (weekNumber >= currentWeek) {
+        setWeekInProgress(true);
         setLoading(false);
         return;
       }
@@ -224,6 +244,17 @@ export default function WeeklyCoachSummaryScreen() {
           </Animated.View>
         )}
 
+        {/* Week In Progress State */}
+        {!loading && weekInProgress && (
+          <View style={styles.inProgressCard}>
+            <Text style={styles.inProgressEmoji}>🏋️</Text>
+            <Text style={styles.inProgressTitle}>Week {weekNumber} is in progress</Text>
+            <Text style={styles.inProgressBody}>
+              Your weekly summary from Jordan will be ready once you've completed this week's sessions.
+            </Text>
+          </View>
+        )}
+
         {/* Error State */}
         {!loading && error && (
           <View style={[styles.card, styles.errorCard]}>
@@ -242,45 +273,40 @@ export default function WeeklyCoachSummaryScreen() {
         )}
 
         {/* History Section */}
-        {!loading && (
-          <>
-            <Text style={styles.sectionHeader}>Previous Weeks</Text>
+        {!loading && (() => {
+          const previousWeekNumbers = Array.from(
+            { length: currentWeekNum - 1 },
+            (_, i) => i + 1,
+          ).reverse();
 
-            {history.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.emptyText}>
-                  Previous weeks will appear here as you complete them.
-                </Text>
-              </View>
-            ) : (
-              history.map((row) => {
-                const isExpanded = expandedWeek === row.week_number;
-                const s = row.summary_json;
-                return (
-                  <View key={row.id} style={styles.card}>
-                    <TouchableOpacity
-                      onPress={() => toggleHistory(row.week_number)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.historyHeader}>
-                        <Text style={styles.historyWeekLabel}>Week {row.week_number}</Text>
-                        <RatingBadge rating={s.performanceRating} />
-                        <Text style={[styles.chevronIcon, isExpanded && styles.chevronUp]}>›</Text>
-                      </View>
-                      {!isExpanded && (
-                        <Text style={styles.historyHeadline} numberOfLines={1}>
-                          {s.headline}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
+          return (
+            <>
+              <Text style={styles.sectionHeader}>Previous Weeks</Text>
 
-                    {isExpanded && <SummaryCards summary={s} />}
-                  </View>
-                );
-              })
-            )}
-          </>
-        )}
+              {previousWeekNumbers.length === 0 ? (
+                <View style={styles.card}>
+                  <Text style={styles.emptyText}>
+                    Previous weeks will appear here as you complete them.
+                  </Text>
+                </View>
+              ) : (
+                previousWeekNumbers.map((n) => (
+                  <TouchableOpacity
+                    key={n}
+                    style={styles.prevWeekRow}
+                    onPress={() =>
+                      navigation.navigate('WeeklyCoachSummary', { planId, weekNumber: n })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.prevWeekLabel}>Week {n}</Text>
+                    <Text style={styles.prevWeekChevron}>›</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </>
+          );
+        })()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -457,5 +483,54 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
     fontSize: 13,
     marginTop: 4,
+  },
+
+  // ── Week in progress ──
+  inProgressCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  inProgressEmoji: {
+    fontSize: 32,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  inProgressTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  inProgressBody: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 6,
+  },
+
+  // ── Previous weeks list ──
+  prevWeekRow: {
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  prevWeekLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  prevWeekChevron: {
+    color: TEXT_SECONDARY,
+    fontSize: 18,
   },
 });

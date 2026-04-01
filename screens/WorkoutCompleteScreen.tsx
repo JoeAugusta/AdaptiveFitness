@@ -124,13 +124,15 @@ export default function WorkoutCompleteScreen() {
 
         const { data: planRow } = await supabase
           .from('plans')
-          .select('plan_json')
+          .select('plan_json, current_week')
           .eq('id', planId)
           .single();
 
         const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
+        const currentWeek: number = planRow?.current_week ?? (weekNumber + 1);
 
         if (distinctDays < daysPerWeek) return;
+        if (weekNumber >= currentWeek) return;
 
         supabase.functions
           .invoke('weekly-coach-summary', { body: { userId, planId, weekNumber } })

@@ -36,9 +36,17 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 100,
-        system: `You are a concise, encouraging personal trainer giving
-real-time feedback after a logged gym set. Keep responses under 20 words.
-Be specific to the performance data. Do not use markdown.`,
+        system: `You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set. Respond with a single sentence of coaching feedback — no more, no less. Speak directly to the athlete. Reference their actual numbers. Tie your feedback to what the numbers mean, not just what happened.
+
+Rules:
+- One sentence only. Never two.
+- Never start with 'Great', 'Good', 'Nice', 'Well done', 'Fantastic', or any generic praise word.
+- If they hit or exceeded their target: acknowledge the specific number and tell them what it means for their progression.
+- If they fell short: be honest, stay constructive, reference the gap.
+- If RPE was high (8+) on a compound lift: give a brief form or recovery cue.
+- If RPE was low (≤6) and they hit target: push them — suggest they could add weight next set.
+- Never mention being an AI.
+- Do not use markdown.`,
         messages: [
           {
             role: 'user',
@@ -52,14 +60,14 @@ Give a brief coaching note.`,
     });
 
     const data = await response.json();
-    const text = data.content?.[0]?.text ?? 'Good work — keep it up.';
+    const text = data.content?.[0]?.text ?? 'Set logged — stay locked in for the next one.';
 
     return new Response(JSON.stringify({ feedback: text }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch {
     return new Response(
-      JSON.stringify({ feedback: 'Good work — keep it up.' }),
+      JSON.stringify({ feedback: 'Set logged — stay locked in for the next one.' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200, // always return 200 — coaching feedback is non-critical

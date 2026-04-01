@@ -16,6 +16,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
 import WorkoutCompleteScreen from '../screens/WorkoutCompleteScreen';
 import PlanViewScreen from '../screens/PlanViewScreen';
+import WorkoutHomeScreen from '../screens/WorkoutHomeScreen';
 import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
@@ -51,6 +52,7 @@ function HomeTabStack() {
 function WorkoutTabStack() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
+      <WorkoutStack.Screen name="WorkoutHome" component={WorkoutHomeScreen} />
       <WorkoutStack.Screen name="PlanView" component={PlanViewScreen} />
       <WorkoutStack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
     </WorkoutStack.Navigator>

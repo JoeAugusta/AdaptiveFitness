@@ -169,14 +169,17 @@ export default function WeeklyCoachSummaryScreen() {
 
       const summary: WeeklySummaryData = fnData.summary;
 
-      // Save to weekly_summaries
-      const { error: insertErr } = await supabase.from('weekly_summaries').insert({
-        user_id: userId,
-        plan_id: planId,
-        week_number: weekNumber,
-        summary_json: summary,
-        generated_at: new Date().toISOString(),
-      });
+      // Save to weekly_summaries — upsert to handle duplicate calls gracefully
+      const { error: insertErr } = await supabase.from('weekly_summaries').upsert(
+        {
+          user_id: userId,
+          plan_id: planId,
+          week_number: weekNumber,
+          summary_json: summary,
+          generated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,plan_id,week_number' },
+      );
 
       if (insertErr) console.warn('Failed to save summary:', insertErr.message);
 

@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
+import { supabase } from '../Lib/supabase';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -46,103 +48,40 @@ interface PlanWeek {
   days: PlanDay[];
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Supabase data shape ──────────────────────────────────────────────────────
 
-const MOCK_PLAN = {
-  title: 'Upper/Lower Hypertrophy — 12 Weeks',
-  currentWeek: 1,
-  totalWeeks: 12,
-  daysPerWeek: 4,
-  weeks: [
-    {
-      weekNumber: 1,
-      days: [
-        {
-          dayNumber: 1,
-          type: 'workout' as const,
-          title: 'Upper Body A',
-          muscleGroups: ['Chest', 'Back', 'Shoulders'],
-          exercises: [
-            { name: 'Barbell Bench Press', sets: 3, reps: '8–10', weight: 135 },
-            { name: 'Barbell Row', sets: 3, reps: '8–10', weight: 115 },
-            { name: 'Overhead Press', sets: 3, reps: '8–10', weight: 75 },
-            { name: 'Face Pulls', sets: 3, reps: '12–15', weight: 40 },
-            { name: 'Tricep Pushdown', sets: 3, reps: '10–12', weight: 50 },
-            { name: 'Barbell Curl', sets: 3, reps: '10–12', weight: 60 },
-          ],
-          completed: true,
-        },
-        {
-          dayNumber: 2,
-          type: 'workout' as const,
-          title: 'Lower Body A',
-          muscleGroups: ['Quads', 'Hamstrings', 'Glutes'],
-          exercises: [
-            { name: 'Back Squat', sets: 4, reps: '6–8', weight: 185 },
-            { name: 'Romanian Deadlift', sets: 3, reps: '8–10', weight: 155 },
-            { name: 'Leg Press', sets: 3, reps: '10–12', weight: 270 },
-            { name: 'Leg Curl', sets: 3, reps: '10–12', weight: 80 },
-            { name: 'Calf Raise', sets: 4, reps: '12–15', weight: 90 },
-          ],
-          completed: true,
-        },
-        {
-          dayNumber: 3,
-          type: 'rest' as const,
-          title: 'Rest Day',
-          muscleGroups: [],
-          exercises: [],
-          completed: false,
-        },
-        {
-          dayNumber: 4,
-          type: 'workout' as const,
-          title: 'Upper Body B',
-          muscleGroups: ['Chest', 'Back', 'Arms'],
-          exercises: [
-            { name: 'Incline DB Press', sets: 3, reps: '8–10', weight: 65 },
-            { name: 'Cable Row', sets: 3, reps: '10–12', weight: 120 },
-            { name: 'DB Lateral Raise', sets: 4, reps: '12–15', weight: 20 },
-            { name: 'Chest Fly', sets: 3, reps: '12–15', weight: 35 },
-            { name: 'Hammer Curl', sets: 3, reps: '10–12', weight: 35 },
-            { name: 'Skull Crushers', sets: 3, reps: '10–12', weight: 65 },
-          ],
-          completed: false,
-        },
-        {
-          dayNumber: 5,
-          type: 'workout' as const,
-          title: 'Lower Body B',
-          muscleGroups: ['Quads', 'Glutes', 'Calves'],
-          exercises: [
-            { name: 'Deadlift', sets: 4, reps: '5–6', weight: 225 },
-            { name: 'Bulgarian Split Squat', sets: 3, reps: '8–10', weight: 50 },
-            { name: 'Hack Squat', sets: 3, reps: '10–12', weight: 180 },
-            { name: 'Hip Thrust', sets: 3, reps: '10–12', weight: 135 },
-            { name: 'Seated Calf Raise', sets: 4, reps: '12–15', weight: 70 },
-          ],
-          completed: false,
-        },
-        {
-          dayNumber: 6,
-          type: 'rest' as const,
-          title: 'Rest Day',
-          muscleGroups: [],
-          exercises: [],
-          completed: false,
-        },
-        {
-          dayNumber: 7,
-          type: 'rest' as const,
-          title: 'Rest Day',
-          muscleGroups: [],
-          exercises: [],
-          completed: false,
-        },
-      ],
-    },
-  ] as PlanWeek[],
-};
+interface RawExercise {
+  id?: string;
+  name: string;
+  muscleGroup?: string;
+  sets: number;
+  reps: string;
+  targetWeight?: number;
+  restSeconds?: number;
+  targetRpe?: number;
+  coachingNote?: string;
+}
+
+interface RawDay {
+  dayNumber: number;
+  type: 'workout' | 'rest';
+  title: string;
+  muscleGroups?: string[];
+  exercises?: RawExercise[];
+}
+
+interface RawWeek {
+  weekNumber: number;
+  days: RawDay[];
+}
+
+interface LoadedPlan {
+  title: string;
+  currentWeek: number;
+  totalWeeks: number;
+  daysPerWeek: number;
+  weeks: PlanWeek[];
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -237,12 +176,86 @@ function RestDayCard({ day }: { day: PlanDay }) {
 export default function PlanViewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const params = route.params;
-  const planId = params?.planId ?? 'mock';
+  const planId = route.params?.planId ?? '';
 
-  const [selectedWeek, setSelectedWeek] = useState(MOCK_PLAN.currentWeek);
+  const [planData, setPlanData] = useState<LoadedPlan | null>(null);
+  const [completedSet, setCompletedSet] = useState<Set<string>>(new Set());
+  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  const weekData = MOCK_PLAN.weeks.find((w) => w.weekNumber === selectedWeek);
+  const loadPlanData = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId || !planId) throw new Error('No session or planId');
+
+      // Fetch plan row and workout logs in parallel
+      const [planResult, logsResult] = await Promise.all([
+        supabase
+          .from('plans')
+          .select('id, plan_json, current_week, total_weeks, title')
+          .eq('id', planId)
+          .single(),
+        supabase
+          .from('workout_logs')
+          .select('week_number, day_number')
+          .eq('plan_id', planId)
+          .eq('user_id', userId),
+      ]);
+
+      if (planResult.error) throw planResult.error;
+      const plan = planResult.data;
+      const planJson = plan.plan_json ?? {};
+
+      // Build completed lookup: "weekNumber-dayNumber"
+      const logSet = new Set<string>(
+        (logsResult.data ?? []).map(
+          (l: { week_number: number; day_number: number }) =>
+            `${l.week_number}-${l.day_number}`,
+        ),
+      );
+
+      // Map raw weeks into typed PlanWeek[]
+      const rawWeeks: RawWeek[] = planJson.weeks ?? [];
+      const mappedWeeks: PlanWeek[] = rawWeeks.map((rw) => ({
+        weekNumber: rw.weekNumber,
+        days: rw.days.map((rd) => ({
+          dayNumber: rd.dayNumber,
+          type: rd.type,
+          title: rd.title ?? (rd.type === 'rest' ? 'Rest Day' : 'Workout'),
+          muscleGroups: rd.muscleGroups ?? [],
+          exercises: (rd.exercises ?? []).map((ex) => ({
+            name: ex.name,
+            sets: ex.sets,
+            reps: ex.reps,
+            weight: ex.targetWeight ?? 0,
+          })),
+          completed: logSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
+        })),
+      }));
+
+      const currentWeek: number = plan.current_week ?? 1;
+
+      setPlanData({
+        title: plan.title ?? planJson.title ?? 'My Plan',
+        currentWeek,
+        totalWeeks: plan.total_weeks ?? planJson.totalWeeks ?? 12,
+        daysPerWeek: planJson.daysPerWeek ?? 4,
+        weeks: mappedWeeks,
+      });
+      setCompletedSet(logSet);
+      setSelectedWeek(currentWeek);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [planId]);
+
+  useEffect(() => { loadPlanData(); }, [loadPlanData]);
 
   const handleStartWorkout = (day: PlanDay) => {
     navigation.navigate('ActiveWorkout', {
@@ -253,10 +266,47 @@ export default function PlanViewScreen() {
     });
   };
 
-  const allWeekNumbers = Array.from(
-    { length: MOCK_PLAN.totalWeeks },
-    (_, i) => i + 1,
-  );
+  // ── Loading ──
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+            <Text style={styles.backArrow}>{'‹'}</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>My Plan</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+        </View>
+      </View>
+    );
+  }
+
+  // ── Error ──
+  if (error || !planData) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+            <Text style={styles.backArrow}>{'‹'}</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>My Plan</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Couldn't load plan</Text>
+          <TouchableOpacity onPress={loadPlanData} style={styles.retryButton} activeOpacity={0.7}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const allWeekNumbers = Array.from({ length: planData.totalWeeks }, (_, i) => i + 1);
+  const weekData = planData.weeks.find((w) => w.weekNumber === selectedWeek);
 
   return (
     <View style={styles.container}>
@@ -281,17 +331,17 @@ export default function PlanViewScreen() {
         {/* ── Plan summary card ── */}
         <View style={styles.summaryCard}>
           <Text style={styles.planTitle} numberOfLines={2}>
-            {MOCK_PLAN.title}
+            {planData.title}
           </Text>
           <View style={styles.pillRow}>
             <View style={styles.weekPill}>
               <Text style={styles.weekPillText}>
-                Week {MOCK_PLAN.currentWeek} of {MOCK_PLAN.totalWeeks}
+                Week {planData.currentWeek} of {planData.totalWeeks}
               </Text>
             </View>
             <View style={styles.daysPill}>
               <Text style={styles.daysPillText}>
-                {MOCK_PLAN.daysPerWeek} days/week
+                {planData.daysPerWeek} days/week
               </Text>
             </View>
           </View>
@@ -306,7 +356,8 @@ export default function PlanViewScreen() {
         >
           {allWeekNumbers.map((wn) => {
             const isSelected = wn === selectedWeek;
-            const isCurrent = wn === MOCK_PLAN.currentWeek;
+            const isCurrent = wn === planData.currentWeek;
+            const hasLogs = [...completedSet].some((k) => k.startsWith(`${wn}-`));
             return (
               <TouchableOpacity
                 key={wn}
@@ -322,15 +373,16 @@ export default function PlanViewScreen() {
                 >
                   W{wn}
                 </Text>
-                {isCurrent && !isSelected && (
-                  <View style={styles.currentDot} />
+                {/* Dot for current week (when not selected) or past weeks with logs */}
+                {!isSelected && (isCurrent || hasLogs) && (
+                  <View style={[styles.currentDot, hasLogs && !isCurrent && styles.completedDot]} />
                 )}
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {/* ── Day cards / empty state ── */}
+        {/* ── Day cards / locked state ── */}
         {weekData ? (
           weekData.days.map((day) =>
             day.type === 'workout' ? (
@@ -348,7 +400,7 @@ export default function PlanViewScreen() {
             <Text style={styles.emptyIcon}>🔒</Text>
             <Text style={styles.emptyTitle}>Week {selectedWeek} Locked</Text>
             <Text style={styles.emptySubtitle}>
-              Complete Week {MOCK_PLAN.currentWeek} to unlock
+              Complete Week {planData.currentWeek} to unlock
             </Text>
           </View>
         )}
@@ -370,6 +422,10 @@ export default function PlanViewScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG_DARK },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  errorText: { color: TEXT_SECONDARY, fontSize: 15 },
+  retryButton: { backgroundColor: ACCENT_BLUE, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 
   /* Header */
   header: {
@@ -453,6 +509,7 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT_BLUE,
     marginTop: 3,
   },
+  completedDot: { backgroundColor: GREEN },
 
   /* Workout day card */
   dayCard: {

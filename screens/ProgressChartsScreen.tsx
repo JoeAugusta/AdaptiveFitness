@@ -25,24 +25,25 @@ interface StrengthDataPoint {
   estimated1RM: number;
 }
 
-interface VolumeDataPoint {
-  week: number;
-  sets: number;
-  muscleGroup: string;
-}
-
 interface ConsistencyDay {
   dateStr: string;
   trained: boolean;
 }
 
 const MUSCLE_COLORS: Record<string, string> = {
-  Chest: '#3B82F6',
-  Back: '#22C55E',
-  Legs: '#F59E0B',
-  Shoulders: '#8B5CF6',
+  'chest':        '#3B82F6',
+  'back':         '#22C55E',
+  'quadriceps':   '#F59E0B',
+  'quads':        '#F59E0B',
+  'shoulders':    '#8B5CF6',
+  'hamstrings':   '#EC4899',
+  'glutes':       '#F97316',
+  'biceps':       '#06B6D4',
+  'triceps':      '#84CC16',
+  'calves':       '#A78BFA',
+  'core':         '#FB923C',
+  'other':        '#334155',
 };
-const FALLBACK_COLORS = ['#EC4899', '#06B6D4', '#F97316', '#14B8A6'];
 
 // ── SVG Line Chart ──
 
@@ -136,86 +137,6 @@ function LineChart({
   );
 }
 
-// ── SVG Bar Chart ──
-
-function BarChart({
-  weekData,
-  groups,
-  width,
-  height,
-}: {
-  weekData: Map<number, Map<string, number>>;
-  groups: string[];
-  width: number;
-  height: number;
-}) {
-  const padL = 36;
-  const padR = 16;
-  const padT = 12;
-  const padB = 28;
-  const cw = width - padL - padR;
-  const ch = height - padT - padB;
-
-  const weeks = Array.from(weekData.keys()).sort((a, b) => a - b);
-  if (weeks.length === 0) return null;
-
-  let maxSets = 0;
-  for (const mg of weekData.values()) {
-    for (const v of mg.values()) {
-      if (v > maxSets) maxSets = v;
-    }
-  }
-  maxSets = maxSets || 1;
-
-  const groupW = cw / weeks.length;
-  const barW = Math.max(4, (groupW * 0.7) / groups.length);
-  const gapW = (groupW - barW * groups.length) / 2;
-
-  const colorMap: Record<string, string> = {};
-  let fallbackIdx = 0;
-  for (const g of groups) {
-    colorMap[g] = MUSCLE_COLORS[g] ?? FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length];
-  }
-
-  return (
-    <Svg width={width} height={height}>
-      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={GRID_COLOR} strokeWidth={1} />
-      {weeks.map((wk, wi) => {
-        const x0 = padL + wi * groupW + gapW;
-        const mg = weekData.get(wk)!;
-        return (
-          <G key={`wg-${wk}`}>
-            {groups.map((g, gi) => {
-              const val = mg.get(g) ?? 0;
-              const barH = (val / maxSets) * ch;
-              return (
-                <Rect
-                  key={`b-${wk}-${g}`}
-                  x={x0 + gi * barW}
-                  y={padT + ch - barH}
-                  width={barW - 1}
-                  height={barH}
-                  fill={colorMap[g]}
-                  rx={2}
-                />
-              );
-            })}
-            <SvgText
-              x={padL + wi * groupW + groupW / 2}
-              y={height - 6}
-              fill={TEXT_SECONDARY}
-              fontSize={10}
-              textAnchor="middle"
-            >
-              W{wk}
-            </SvgText>
-          </G>
-        );
-      })}
-    </Svg>
-  );
-}
-
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
@@ -226,7 +147,10 @@ export default function ProgressChartsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [planId, setPlanId] = useState<string | null>(null);
+  interface ExerciseInfo { name: string; muscleGroup: string; }
+  const [exerciseMap, setExerciseMap] = useState<Record<string, ExerciseInfo>>({});
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -253,6 +177,19 @@ export default function ProgressChartsScreen() {
       }
 
       setPlanId(plan.id);
+
+      // Build exerciseId → { name, muscleGroup } lookup from plan_json
+      const eMap: Record<string, { name: string; muscleGroup: string }> = {};
+      for (const week of (plan.plan_json?.weeks ?? [])) {
+        for (const day of (week.days ?? [])) {
+          for (const ex of (day.exercises ?? [])) {
+            if (ex.id && ex.name) {
+              eMap[ex.id] = { name: ex.name, muscleGroup: ex.muscleGroup ?? '' };
+            }
+          }
+        }
+      }
+      setExerciseMap(eMap);
 
       const { data: wlogs, error: le } = await supabase
         .from('workout_logs')
@@ -292,10 +229,14 @@ export default function ProgressChartsScreen() {
 
       const sets: any[] = log.sets_json ?? [];
       for (const s of sets) {
-        const name: string = s.exerciseName ?? s.name ?? '';
-        const weight = Number(s.weight ?? s.loggedWeight ?? 0);
+        const name: string =
+          s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
+        const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
         const reps = Number(s.reps ?? s.loggedReps ?? 0);
-        const muscleGroup: string = s.muscleGroup ?? 'Other';
+        const rawMuscle: string =
+          s.muscleGroup ?? exerciseMap[s.exerciseId]?.muscleGroup ?? 'Other';
+        // Normalise to Title Case to prevent duplicate keys ("back" vs "Back")
+        const muscleGroup = rawMuscle.charAt(0).toUpperCase() + rawMuscle.slice(1).toLowerCase();
         if (!name || weight === 0) continue;
 
         // Strength: Epley 1RM
@@ -317,18 +258,6 @@ export default function ProgressChartsScreen() {
     // Top 4 exercises by volume
     const sorted = Object.entries(exerciseVolume).sort((a, b) => b[1] - a[1]);
     const top4 = sorted.slice(0, 4).map(([name]) => name);
-
-    // All unique muscle groups from volume data, pick top 4
-    const mgTotals: Record<string, number> = {};
-    for (const wkMap of volMap.values()) {
-      for (const [mg, sets] of wkMap.entries()) {
-        mgTotals[mg] = (mgTotals[mg] ?? 0) + sets;
-      }
-    }
-    const vGroups = Object.entries(mgTotals)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([mg]) => mg);
 
     // Consistency: last 10 weeks calendar
     const today = new Date();
@@ -374,13 +303,12 @@ export default function ProgressChartsScreen() {
       strengthMap: sMap,
       topExercises: top4,
       volumeWeekData: volMap,
-      volumeGroups: vGroups,
       consistencyDays: cDays,
       totalWorkouts: logs.length,
       currentStreak: streak,
       bestWeek: bw ? { week: Number(bw[0]), sessions: bw[1] } : null,
     };
-  }, [logs]);
+  }, [logs, exerciseMap]);
 
   const activeExercise = selectedExercise ?? topExercises[0] ?? null;
   const strengthData: StrengthDataPoint[] = useMemo(() => {
@@ -512,36 +440,82 @@ export default function ProgressChartsScreen() {
             </View>
 
             {/* ── Weekly Volume ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Weekly Volume</Text>
-              <Text style={styles.cardSubtitle}>Total sets per muscle group</Text>
+            {(() => {
+              const volumeWeeks = Array.from(volumeWeekData.keys()).sort((a, b) => a - b);
+              const activeVolWeek = selectedVolumeWeek ?? volumeWeeks[volumeWeeks.length - 1] ?? null;
+              const weekMuscleData = activeVolWeek != null ? volumeWeekData.get(activeVolWeek) : null;
+              const muscleRows = weekMuscleData
+                ? Array.from(weekMuscleData.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6)
+                : [];
+              const maxSets = muscleRows[0]?.[1] ?? 1;
+              const totalSets = muscleRows.reduce((sum, [, s]) => sum + s, 0);
 
-              {volumeGroups.length > 0 ? (
-                <>
-                  <BarChart
-                    weekData={volumeWeekData}
-                    groups={volumeGroups}
-                    width={chartWidth}
-                    height={200}
-                  />
-                  <View style={styles.legendRow}>
-                    {volumeGroups.map((g, i) => {
-                      const color = MUSCLE_COLORS[g] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
-                      return (
-                        <View key={g} style={styles.legendItem}>
-                          <View style={[styles.legendDot, { backgroundColor: color }]} />
-                          <Text style={styles.legendText}>{g}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : (
-                <Text style={styles.placeholderText}>
-                  Log workouts to see weekly volume breakdown.
-                </Text>
-              )}
-            </View>
+              return (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Weekly Volume</Text>
+                  <Text style={styles.cardSubtitle}>Total sets this week by muscle group</Text>
+
+                  {volumeWeeks.length === 0 ? (
+                    <Text style={styles.placeholderText}>
+                      Log workouts to see weekly volume breakdown.
+                    </Text>
+                  ) : (
+                    <>
+                      {/* Week selector chips */}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.chipScroll}
+                        contentContainerStyle={styles.chipRow}
+                      >
+                        {volumeWeeks.map((wk) => {
+                          const active = wk === activeVolWeek;
+                          return (
+                            <TouchableOpacity
+                              key={wk}
+                              style={[styles.chip, active && styles.chipActive]}
+                              onPress={() => setSelectedVolumeWeek(wk)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                                W{wk}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+
+                      {/* Muscle group bar list */}
+                      {muscleRows.length > 0 ? (
+                        <>
+                          {muscleRows.map(([mg, sets]) => {
+                            const color = MUSCLE_COLORS[mg.toLowerCase()] ?? DISABLED_BG;
+                            const pct = sets / maxSets;
+                            return (
+                              <View key={mg} style={styles.volRow}>
+                                <View style={styles.volRowHeader}>
+                                  <Text style={styles.volMuscle}>{mg}</Text>
+                                  <Text style={styles.volSets}>{sets} sets</Text>
+                                </View>
+                                <View style={styles.volBarBg}>
+                                  <View style={[styles.volBarFill, { width: `${pct * 100}%` as any, backgroundColor: color }]} />
+                                </View>
+                              </View>
+                            );
+                          })}
+                          <View style={styles.volDivider} />
+                          <Text style={styles.volSummary}>
+                            Week {activeVolWeek} · {totalSets} total sets across {muscleRows.length} muscle groups
+                          </Text>
+                        </>
+                      ) : (
+                        <Text style={styles.placeholderText}>No sets logged for this week.</Text>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            })()}
 
             {/* ── Bodyweight Trend (placeholder) ── */}
             <View style={styles.card}>
@@ -675,11 +649,15 @@ const styles = StyleSheet.create({
   chipText: { color: TEXT_SECONDARY, fontSize: 12 },
   chipTextActive: { color: '#FFFFFF' },
 
-  /* Legend */
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { color: TEXT_SECONDARY, fontSize: 11 },
+  /* Volume list */
+  volRow: { marginBottom: 10 },
+  volRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  volMuscle: { color: TEXT_PRIMARY, fontSize: 14, flex: 1 },
+  volSets: { color: TEXT_SECONDARY, fontSize: 13 },
+  volBarBg: { height: 6, borderRadius: 3, backgroundColor: DISABLED_BG, overflow: 'hidden' },
+  volBarFill: { height: 6, borderRadius: 3 },
+  volDivider: { height: 1, backgroundColor: DISABLED_BG, marginVertical: 12 },
+  volSummary: { color: TEXT_SECONDARY, fontSize: 13, textAlign: 'center' },
 
   /* Heatmap */
   heatmapContainer: { flexDirection: 'row', marginTop: 12 },

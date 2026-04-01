@@ -126,4 +126,5 @@ export type RootStackParamList = {
   GoalTracker: undefined;
   MacroTracker: undefined;
   ProfileSettings: undefined;
+  SubscriptionManagement: undefined;
 };

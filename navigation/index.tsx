@@ -21,6 +21,7 @@ import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import GoalTrackerScreen from '../screens/GoalTrackerScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
+import SubscriptionManagementScreen from '../screens/SubscriptionManagementScreen';
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
 
@@ -81,6 +82,7 @@ function ProfileTabStack() {
   return (
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+      <ProfileStack.Screen name="SubscriptionManagement" component={SubscriptionManagementScreen} />
     </ProfileStack.Navigator>
   );
 }

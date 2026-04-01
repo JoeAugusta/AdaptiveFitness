@@ -22,6 +22,8 @@ import Svg, {
   G,
 } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
+import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
+import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
 
 const BG_DARK = '#0F172A';
 const ACCENT_BLUE = '#3B82F6';
@@ -130,6 +132,17 @@ function parseSuggestionsJson(json: unknown): { meals: MealSuggestion[]; jordanN
 const DEFAULT_TARGETS: MacroTargets = { calories: 2000, protein_g: 150, carbs_g: 200, fats_g: 65 };
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const;
+
+const MEAL_SLOT_ORDER: MealSlot[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+
+const ALLERGEN_LIST: Allergen[] = [
+  'Gluten',
+  'Dairy',
+  'Nuts',
+  'Eggs',
+  'Soy',
+  'Shellfish',
+];
 
 const QUICK_OPTIONS = [
   { name: 'High Protein Meal', calories: 500, protein_g: 50, carbs_g: 30, fats_g: 15 },
@@ -299,6 +312,11 @@ export default function MacroTrackerScreen() {
   const [mealSuggestions, setMealSuggestions] = useState<MealSuggestion[]>([]);
   const [jordanMealNote, setJordanMealNote] = useState<string | null>(null);
 
+  const [builderVisible, setBuilderVisible] = useState(false);
+  const [builderSlot, setBuilderSlot] = useState<MealSlot>('Breakfast');
+  const [builderTargetCals, setBuilderTargetCals] = useState(0);
+  const [builderTargetProtein, setBuilderTargetProtein] = useState(0);
+
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -417,6 +435,34 @@ export default function MacroTrackerScreen() {
   }, [loadData]);
 
   const t = targets ?? DEFAULT_TARGETS;
+
+  const userDietaryStyle = useMemo((): DietaryStyle => {
+    const allowed: DietaryStyle[] = [
+      'omnivore',
+      'vegetarian',
+      'vegan',
+      'pescatarian',
+      'keto',
+      'paleo',
+    ];
+    return allowed.includes(selectedDiet as DietaryStyle)
+      ? (selectedDiet as DietaryStyle)
+      : 'omnivore';
+  }, [selectedDiet]);
+
+  const userAllergies = useMemo((): Allergen[] => {
+    return selectedAllergies.filter((x): x is Allergen =>
+      ALLERGEN_LIST.includes(x as Allergen),
+    );
+  }, [selectedAllergies]);
+
+  const firstUnloggedSlot = useMemo((): MealSlot => {
+    const logged = new Set(todayLogs.map((l) => l.meal_name));
+    for (const m of MEAL_SLOT_ORDER) {
+      if (!logged.has(m)) return m;
+    }
+    return 'Snack';
+  }, [todayLogs]);
 
   const todayTotals = useMemo(
     () =>
@@ -590,6 +636,46 @@ export default function MacroTrackerScreen() {
     loadData();
   };
 
+  const openBuilderForMeal = (meal: MealSuggestion) => {
+    setBuilderSlot(meal.name as MealSlot);
+    setBuilderTargetCals(meal.calories);
+    setBuilderTargetProtein(meal.protein_g);
+    setBuilderVisible(true);
+  };
+
+  const openBuilderFromAddMeal = () => {
+    const slot = firstUnloggedSlot;
+    setBuilderSlot(slot);
+    const sug = mealSuggestions.find((m) => m.name === slot);
+    if (sug) {
+      setBuilderTargetCals(sug.calories);
+      setBuilderTargetProtein(sug.protein_g);
+    } else {
+      setBuilderTargetCals(Math.max(200, Math.round(t.calories / 4)));
+      setBuilderTargetProtein(Math.max(20, Math.round(t.protein_g / 4)));
+    }
+    setBuilderVisible(true);
+  };
+
+  const handleBuilderLog = async (builtMeal: BuiltMeal) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('macro_logs').upsert(
+      {
+        user_id: user.id,
+        log_date: todayStr(),
+        meal_name: builtMeal.slot,
+        calories: builtMeal.totalCalories,
+        protein_g: builtMeal.totalProtein,
+        carbs_g: builtMeal.totalCarbs,
+        fats_g: builtMeal.totalFats,
+      },
+      { onConflict: 'user_id,log_date,meal_name' },
+    );
+    await loadData();
+  };
+
   // ── Render ──
 
   if (isLoading) {
@@ -673,36 +759,43 @@ export default function MacroTrackerScreen() {
             ) : null}
             <Text style={styles.mealPlanSub}>Tap any meal to log it</Text>
             {mealSuggestions.map((meal) => (
-              <TouchableOpacity
-                key={meal.name}
-                style={styles.suggestedMealCard}
-                onPress={() => handleLogSuggestedMeal(meal)}
-                activeOpacity={0.75}
-              >
-                <View style={styles.suggestedMealRow1}>
-                  <View style={styles.mealNamePill}>
-                    <Text style={styles.mealNamePillText}>{meal.name}</Text>
+              <View key={meal.name} style={styles.suggestedMealCard}>
+                <TouchableOpacity
+                  onPress={() => handleLogSuggestedMeal(meal)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.suggestedMealRow1}>
+                    <View style={styles.mealNamePill}>
+                      <Text style={styles.mealNamePillText}>{meal.name}</Text>
+                    </View>
+                    <Text style={styles.suggestedMealTitle} numberOfLines={2}>
+                      {meal.title}
+                    </Text>
                   </View>
-                  <Text style={styles.suggestedMealTitle} numberOfLines={2}>
-                    {meal.title}
-                  </Text>
-                </View>
-                <Text style={styles.suggestedMealDesc}>{meal.description}</Text>
-                <View style={styles.suggestedMacroRow}>
-                  <View style={styles.sMacroPillNeutral}>
-                    <Text style={styles.sMacroPillNeutralText}>{meal.calories} cal</Text>
+                  <Text style={styles.suggestedMealDesc}>{meal.description}</Text>
+                  <View style={styles.suggestedMacroRow}>
+                    <View style={styles.sMacroPillNeutral}>
+                      <Text style={styles.sMacroPillNeutralText}>{meal.calories} cal</Text>
+                    </View>
+                    <View style={styles.sMacroPillBlue}>
+                      <Text style={styles.sMacroPillWhiteText}>{meal.protein_g}g protein</Text>
+                    </View>
+                    <View style={styles.sMacroPillAmber}>
+                      <Text style={styles.sMacroPillWhiteText}>{meal.carbs_g}g carbs</Text>
+                    </View>
+                    <View style={styles.sMacroPillGreen}>
+                      <Text style={styles.sMacroPillWhiteText}>{meal.fats_g}g fat</Text>
+                    </View>
                   </View>
-                  <View style={styles.sMacroPillBlue}>
-                    <Text style={styles.sMacroPillWhiteText}>{meal.protein_g}g protein</Text>
-                  </View>
-                  <View style={styles.sMacroPillAmber}>
-                    <Text style={styles.sMacroPillWhiteText}>{meal.carbs_g}g carbs</Text>
-                  </View>
-                  <View style={styles.sMacroPillGreen}>
-                    <Text style={styles.sMacroPillWhiteText}>{meal.fats_g}g fat</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.customiseBtn}
+                  onPress={() => openBuilderForMeal(meal)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.customiseBtnText}>Customise →</Text>
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
@@ -717,7 +810,16 @@ export default function MacroTrackerScreen() {
         {/* Section 3 — Today's Meals */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Today's Meals</Text>
-          <TouchableOpacity onPress={() => setShowAddModal(true)} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={() => {
+              if (mealPrefsSet) {
+                openBuilderFromAddMeal();
+              } else {
+                setShowAddModal(true);
+              }
+            }}
+            activeOpacity={0.7}
+          >
             <Text style={styles.addMealBtn}>+ Add Meal</Text>
           </TouchableOpacity>
         </View>
@@ -930,6 +1032,17 @@ export default function MacroTrackerScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <MealBuilderModal
+        visible={builderVisible}
+        onClose={() => setBuilderVisible(false)}
+        onLog={handleBuilderLog}
+        slot={builderSlot}
+        targetCalories={builderTargetCals}
+        targetProtein={builderTargetProtein}
+        dietaryStyle={userDietaryStyle}
+        allergies={userAllergies}
+      />
     </SafeAreaView>
   );
 }
@@ -1067,6 +1180,8 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
   },
+  customiseBtn: { alignSelf: 'flex-end', marginTop: 6 },
+  customiseBtnText: { color: ACCENT_BLUE, fontSize: 13, fontWeight: '500' },
   suggestedMealRow1: { flexDirection: 'row', alignItems: 'center' },
   mealNamePill: {
     backgroundColor: DISABLED_BG,

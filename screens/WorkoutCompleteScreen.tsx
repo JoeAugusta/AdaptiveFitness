@@ -121,7 +121,9 @@ export default function WorkoutCompleteScreen() {
           .eq('plan_id', planId)
           .eq('week_number', weekNumber);
 
-        const distinctDays = new Set((logs ?? []).map((r: any) => r.day_number)).size;
+        const distinctDays = new Set(
+          (logs ?? []).map((r: { day_number: number }) => r.day_number),
+        ).size;
 
         const { data: planRow } = await supabase
           .from('plans')
@@ -174,6 +176,12 @@ export default function WorkoutCompleteScreen() {
               }
             } catch (macroErr) {
               console.error('adjust-macros invoke failed:', macroErr);
+            }
+
+            try {
+              await supabase.functions.invoke('generate-meals', { body: { userId } });
+            } catch {
+              // Silent — weekly meal refresh is non-critical
             }
           })
           .catch((err) => {

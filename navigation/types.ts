@@ -127,4 +127,5 @@ export type RootStackParamList = {
   MacroTracker: undefined;
   ProfileSettings: undefined;
   SubscriptionManagement: undefined;
+  NotificationsSettings: undefined;
 };

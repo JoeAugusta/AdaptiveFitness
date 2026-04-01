@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Switch,
   Linking,
   Alert,
   Animated,
@@ -482,13 +481,14 @@ export default function ProfileSettingsScreen() {
         {/* ── 5. App ── */}
         <Text style={styles.sectionHeading}>APP</Text>
         <View style={styles.sectionCard}>
-          <View style={styles.row}>
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => navigation.navigate('NotificationsSettings' as never)}
+            activeOpacity={0.7}
+          >
             <Text style={styles.rowLabel}>Workout Reminders</Text>
-            <View style={styles.switchRow}>
-              <Text style={styles.comingSoonText}>(Coming soon)</Text>
-              <Switch value={false} disabled />
-            </View>
-          </View>
+            <Text style={styles.chevronSmall}>›</Text>
+          </TouchableOpacity>
           <Divider />
           <TouchableOpacity
             style={styles.row}
@@ -678,8 +678,6 @@ const styles = StyleSheet.create({
   },
 
   // ── App section ──
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  comingSoonText: { color: TEXT_SECONDARY, fontSize: 12 },
   chevronSmall: { color: TEXT_SECONDARY, fontSize: 22 },
 
   // ── Sign Out ──

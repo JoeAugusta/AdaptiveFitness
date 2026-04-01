@@ -45,6 +45,8 @@ interface NotificationPreferences {
   weeklySummary: boolean;
   streakProtection: boolean;
   reminderTimeISO: string;
+  weighInReminder: boolean;
+  weighInTimeISO: string;
 }
 
 // ── Helpers ──
@@ -85,11 +87,24 @@ export default function NotificationsSettingsScreen() {
   const [reminderTime, setReminderTime] = useState<Date>(defaultTime);
   const [pendingTime, setPendingTime] = useState<Date>(defaultTime);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [weighInReminderEnabled, setWeighInReminderEnabled] = useState(false);
+  const [weighInTime, setWeighInTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(7, 0, 0, 0);
+    return d;
+  });
+  const [pendingWeighInTime, setPendingWeighInTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(7, 0, 0, 0);
+    return d;
+  });
+  const [showWeighInTimePicker, setShowWeighInTimePicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const weighInNotifId = useRef<string | null>(null);
 
   // Skeleton pulse while loading
   useEffect(() => {
@@ -130,6 +145,16 @@ export default function NotificationsSettingsScreen() {
             setReminderTime(savedTime);
             setPendingTime(savedTime);
           }
+          if (prefs.weighInReminder !== undefined) {
+            setWeighInReminderEnabled(prefs.weighInReminder);
+          }
+          if (prefs.weighInTimeISO) {
+            const savedWeighInTime = new Date(prefs.weighInTimeISO);
+            if (!isNaN(savedWeighInTime.getTime())) {
+              setWeighInTime(savedWeighInTime);
+              setPendingWeighInTime(savedWeighInTime);
+            }
+          }
         }
       } catch (e) {
         console.error('NotificationsSettings init error:', e);
@@ -153,6 +178,8 @@ export default function NotificationsSettingsScreen() {
             weeklySummary: weeklySummaryEnabled,
             streakProtection: streakProtectionEnabled,
             reminderTimeISO: reminderTime.toISOString(),
+            weighInReminder: weighInReminderEnabled,
+            weighInTimeISO: weighInTime.toISOString(),
             ...overrides,
           };
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
@@ -167,6 +194,8 @@ export default function NotificationsSettingsScreen() {
       weeklySummaryEnabled,
       streakProtectionEnabled,
       reminderTime,
+      weighInReminderEnabled,
+      weighInTime,
     ],
   );
 
@@ -206,6 +235,68 @@ export default function NotificationsSettingsScreen() {
     },
     [reminderTime, scheduleWorkoutReminder, schedulePreferencesSave],
   );
+
+  const toggleWeighInReminder = useCallback(
+    async (value: boolean) => {
+      setWeighInReminderEnabled(value);
+      if (Platform.OS !== 'web') {
+        try {
+          if (value) {
+            const id = await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Time to weigh in 🌅',
+                body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
+                sound: true,
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DAILY,
+                hour: weighInTime.getHours(),
+                minute: weighInTime.getMinutes(),
+              },
+            });
+            weighInNotifId.current = id;
+          } else if (weighInNotifId.current) {
+            await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
+            weighInNotifId.current = null;
+          }
+        } catch (e) {
+          console.error('Weigh-in notification error:', e);
+        }
+      }
+      schedulePreferencesSave({ weighInReminder: value });
+    },
+    [weighInTime, schedulePreferencesSave],
+  );
+
+  const confirmWeighInTime = () => {
+    setWeighInTime(pendingWeighInTime);
+    setShowWeighInTimePicker(false);
+    if (weighInReminderEnabled && Platform.OS !== 'web') {
+      (async () => {
+        try {
+          if (weighInNotifId.current) {
+            await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
+          }
+          const id = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Time to weigh in 🌅',
+              body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
+              sound: true,
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: pendingWeighInTime.getHours(),
+              minute: pendingWeighInTime.getMinutes(),
+            },
+          });
+          weighInNotifId.current = id;
+        } catch (e) {
+          console.error('Weigh-in reschedule error:', e);
+        }
+      })();
+    }
+    schedulePreferencesSave({ weighInTimeISO: pendingWeighInTime.toISOString() });
+  };
 
   // ── Permission request ──
 
@@ -317,6 +408,40 @@ export default function NotificationsSettingsScreen() {
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
                 <Text style={styles.timeValue}>{formatTime(reminderTime)}</Text>
+                <Text style={styles.chevron}>›</Text>
+              </View>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <Divider />
+        <View style={styles.prefRow}>
+          <View style={styles.prefLabelGroup}>
+            <Text style={styles.prefLabel}>Daily Weigh-In</Text>
+            <Text style={styles.prefSubLabel}>Morning reminder to log your weight</Text>
+          </View>
+          <Switch
+            value={weighInReminderEnabled}
+            onValueChange={toggleWeighInReminder}
+            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        {weighInReminderEnabled && (
+          <>
+            <Divider />
+            <TouchableOpacity
+              style={styles.prefRow}
+              onPress={() => {
+                setPendingWeighInTime(weighInTime);
+                setShowWeighInTimePicker(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.prefLabel}>Reminder Time</Text>
+              <View style={styles.timeRight}>
+                <Text style={styles.timeValue}>{formatTime(weighInTime)}</Text>
                 <Text style={styles.chevron}>›</Text>
               </View>
             </TouchableOpacity>
@@ -440,6 +565,45 @@ export default function NotificationsSettingsScreen() {
               <TouchableOpacity
                 style={styles.modalConfirmBtn}
                 onPress={confirmTime}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Weigh-In Time Picker Modal ── */}
+      <Modal
+        visible={showWeighInTimePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowWeighInTimePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Weigh-In Reminder Time</Text>
+            <DateTimePicker
+              value={pendingWeighInTime}
+              mode="time"
+              display="spinner"
+              onChange={(_event, date) => {
+                if (date) setPendingWeighInTime(date);
+              }}
+              textColor={TEXT_PRIMARY}
+            />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowWeighInTimePicker(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={confirmWeighInTime}
                 activeOpacity={0.8}
               >
                 <Text style={styles.modalConfirmText}>Confirm</Text>

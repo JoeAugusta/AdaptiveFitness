@@ -5,8 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  TextInput,
   Linking,
   Alert,
   Animated,
@@ -165,11 +163,12 @@ export default function ProfileSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  const [weightModalVisible, setWeightModalVisible] = useState(false);
-  const [weightInput, setWeightInput] = useState('');
+  const [latestWeightLog, setLatestWeightLog] = useState<{
+    weight_lbs: number;
+    log_date: string;
+  } | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
-  const toastAnim = useRef(new Animated.Value(0)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
@@ -186,14 +185,6 @@ export default function ProfileSettingsScreen() {
       pulseLoop.current?.stop();
     }
   }, [loading, pulseAnim]);
-
-  const showToast = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(toastAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(2000),
-      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-    ]).start();
-  }, [toastAnim]);
 
   const loadData = useCallback(async () => {
     try {
@@ -213,7 +204,7 @@ export default function ProfileSettingsScreen() {
       const uid = user.id;
       console.log('ProfileSettings uid:', uid); // confirm uid is valid
 
-      const [profileRes, goalRes, planRes] = await Promise.all([
+      const [profileRes, goalRes, planRes, weightLogRes] = await Promise.all([
         supabase
           .from('user_profiles')
           .select('*')
@@ -237,12 +228,22 @@ export default function ProfileSettingsScreen() {
           .order('id', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        supabase
+          .from('weight_logs')
+          .select('weight_lbs, log_date')
+          .eq('user_id', uid)
+          .order('log_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (profileRes.error) {
         console.error('user_profiles error:', profileRes.error);
         throw profileRes.error;
       }
+
+      const weightLog = weightLogRes.data as { weight_lbs: number; log_date: string } | null;
+      setLatestWeightLog(weightLog);
 
       setData({
         email: user.email ?? '',
@@ -262,35 +263,6 @@ export default function ProfileSettingsScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleSaveWeight = async () => {
-    const parsed = parseFloat(weightInput);
-    if (Number.isNaN(parsed) || parsed < 50 || parsed > 500) {
-      Alert.alert('Invalid Weight', 'Please enter a valid weight between 50 and 500 lbs.');
-      return;
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ weight_lbs: parsed })
-      .eq('user_id', user.id);
-
-    if (error) {
-      Alert.alert('Error', 'Failed to update weight. Please try again.');
-      return;
-    }
-
-    setData((prev) =>
-      prev ? { ...prev, profile: { ...prev.profile, weight_lbs: parsed } } : prev,
-    );
-    setWeightModalVisible(false);
-    showToast();
-  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -332,14 +304,6 @@ export default function ProfileSettingsScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Toast banner */}
-      <Animated.View
-        style={[styles.toast, { opacity: toastAnim }]}
-        pointerEvents="none"
-      >
-        <Text style={styles.toastText}>Weight updated ✓</Text>
-      </Animated.View>
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -409,20 +373,22 @@ export default function ProfileSettingsScreen() {
           <SkeletonCard count={4} pulseAnim={pulseAnim} />
         ) : (
           <View style={styles.sectionCard}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => {
-                setWeightInput(String(data?.profile.weight_lbs ?? ''));
-                setWeightModalVisible(true);
-              }}
-              activeOpacity={0.7}
-            >
+            <View style={styles.row}>
               <Text style={styles.rowLabel}>Weight</Text>
-              <View style={styles.rowRightGroup}>
-                <Text style={styles.rowValue}>{data?.profile.weight_lbs} lbs</Text>
-                <Text style={styles.editIcon}>✏️</Text>
+              <View style={styles.weightValueGroup}>
+                <Text style={styles.rowValue}>
+                  {latestWeightLog
+                    ? `${latestWeightLog.weight_lbs} lbs`
+                    : `${data?.profile.weight_lbs ?? '—'} lbs`}
+                </Text>
+                {latestWeightLog ? (
+                  <Text style={styles.weightLogDate}>
+                    {`Logged ${new Date(latestWeightLog.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                  </Text>
+                ) : null}
+                <Text style={styles.weightLogHint}>Log daily from Dashboard</Text>
               </View>
-            </TouchableOpacity>
+            </View>
             <Divider />
             <Row
               label="Height"
@@ -535,45 +501,6 @@ export default function ProfileSettingsScreen() {
         <Text style={styles.versionText}>Adaptive Fitness • v1.0.0</Text>
       </ScrollView>
 
-      {/* ── Weight Edit Modal ── */}
-      <Modal
-        visible={weightModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setWeightModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Update Weight</Text>
-            <Text style={styles.modalSubtitle}>Your macros update automatically</Text>
-            <TextInput
-              style={styles.weightInput}
-              value={weightInput}
-              onChangeText={setWeightInput}
-              keyboardType="numeric"
-              placeholderTextColor={TEXT_SECONDARY}
-              placeholder="0"
-            />
-            <Text style={styles.lbsLabel}>lbs</Text>
-            <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setWeightModalVisible(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSaveBtn}
-                onPress={handleSaveWeight}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalSaveText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -582,19 +509,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG_DARK },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
-
-  // ── Toast ──
-  toast: {
-    position: 'absolute',
-    top: 64,
-    alignSelf: 'center',
-    backgroundColor: '#10B981',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    zIndex: 999,
-  },
-  toastText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 
   // ── Profile header card ──
   profileCard: {
@@ -663,8 +577,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginLeft: 12,
   },
-  rowRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  editIcon: { fontSize: 14 },
+  weightValueGroup: { alignItems: 'flex-end' },
+  weightLogDate: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 2 },
+  weightLogHint: { color: TEXT_SECONDARY, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
 
   // ── Divider ──
   divider: { height: 1, backgroundColor: DIVIDER_COLOR },
@@ -756,61 +671,4 @@ const styles = StyleSheet.create({
   },
   retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 
-  // ── Weight Modal ──
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: CARD_BG,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-  },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '700' },
-  modalSubtitle: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  weightInput: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 32,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: TEXT_PRIMARY,
-  },
-  lbsLabel: {
-    color: TEXT_SECONDARY,
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  modalBtns: { flexDirection: 'row', gap: 12 },
-  modalCancelBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCancelText: { color: TEXT_PRIMARY, fontSize: 15 },
-  modalSaveBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: ACCENT_BLUE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSaveText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 });

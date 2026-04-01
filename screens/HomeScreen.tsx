@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -85,6 +87,13 @@ export default function HomeScreen() {
     week_number: number;
   } | null>(null);
 
+  const [todayWeight, setTodayWeight] = useState<number | null>(null);
+  const [weightLoggedToday, setWeightLoggedToday] = useState(false);
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [weightInput, setWeightInput] = useState('');
+  const [weightSaving, setWeightSaving] = useState(false);
+  const uidRef = useRef<string | null>(null);
+
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -99,9 +108,26 @@ export default function HomeScreen() {
         setStatsLoading(false);
         return;
       }
+      uidRef.current = userId;
 
       const rawName = session.user.email?.split('@')[0] ?? '';
       setUserName(rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : '');
+
+      // Load today's weight log
+      const todayDate = new Date().toISOString().split('T')[0];
+      const { data: todayLog } = await supabase
+        .from('weight_logs')
+        .select('weight_lbs')
+        .eq('user_id', userId)
+        .eq('log_date', todayDate)
+        .maybeSingle();
+
+      if (todayLog) {
+        setTodayWeight(todayLog.weight_lbs as number);
+        setWeightLoggedToday(true);
+      } else {
+        setWeightLoggedToday(false);
+      }
 
       const { data: plan, error: planError } = await supabase
         .from('plans')
@@ -296,6 +322,38 @@ export default function HomeScreen() {
       Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleSaveWeight = async () => {
+    const val = parseFloat(weightInput);
+    if (isNaN(val) || val < 50 || val > 500) {
+      Alert.alert('Invalid weight', 'Please enter a weight between 50 and 500 lbs.');
+      return;
+    }
+    setWeightSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id;
+      if (!uid) throw new Error('No authenticated user');
+      const todayDate = new Date().toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('weight_logs')
+        .upsert(
+          { user_id: uid, log_date: todayDate, weight_lbs: val },
+          { onConflict: 'user_id,log_date' },
+        );
+      if (error) {
+        Alert.alert('Error', 'Could not save weight. Please try again.');
+      } else {
+        setTodayWeight(val);
+        setWeightLoggedToday(true);
+        setShowWeightModal(false);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not save weight. Please try again.');
+    } finally {
+      setWeightSaving(false);
     }
   };
 
@@ -543,6 +601,47 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* ── 3c. Daily Weight Log Card ── */}
+        <View style={styles.weightLogCard}>
+          {weightLoggedToday ? (
+            <>
+              <View style={styles.weightLogLeft}>
+                <View style={styles.weightLoggedRow}>
+                  <Text style={styles.weightLogCheck}>✓</Text>
+                  <Text style={styles.weightLogTitle}>Weighed In</Text>
+                </View>
+                <Text style={styles.weightLogSub}>{todayWeight} lbs today</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setWeightInput(String(todayWeight ?? ''));
+                  setShowWeightModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.weightEditBtn}>Edit</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.weightLogLeft}>
+                <Text style={styles.weightLogTitle}>Daily Weigh-In</Text>
+                <Text style={styles.weightLogSub}>Tap to log today's weight</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.weightLogBtn}
+                onPress={() => {
+                  setWeightInput('');
+                  setShowWeightModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.weightLogBtnText}>Log Weight</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
         {/* ── 4. Quick Stats Row ── */}
         <View style={styles.quickStatsRow}>
           <View style={styles.quickStatCard}>
@@ -619,6 +718,52 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* ── Weight Log Modal ── */}
+      <Modal
+        visible={showWeightModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowWeightModal(false)}
+      >
+        <View style={styles.weightModalOverlay}>
+          <View style={styles.weightModalSheet}>
+            <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
+            <Text style={styles.weightModalTip}>
+              🌅 For best accuracy, weigh yourself first thing in the morning
+            </Text>
+            <TextInput
+              style={styles.weightModalInput}
+              keyboardType="numeric"
+              value={weightInput}
+              onChangeText={setWeightInput}
+              placeholderTextColor={TEXT_SECONDARY}
+            />
+            <Text style={styles.weightModalUnit}>lbs</Text>
+            <View style={styles.weightModalBtns}>
+              <TouchableOpacity
+                style={styles.weightModalCancelBtn}
+                onPress={() => setShowWeightModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.weightModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.weightModalSaveBtn}
+                onPress={handleSaveWeight}
+                disabled={weightSaving}
+                activeOpacity={0.8}
+              >
+                {weightSaving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.weightModalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1022,5 +1167,128 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  /* ── Weight Log Card ── */
+  weightLogCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weightLogLeft: {
+    flex: 1,
+  },
+  weightLoggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weightLogCheck: {
+    color: ACCENT_BLUE,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  weightLogTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  weightLogSub: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  weightLogBtn: {
+    backgroundColor: ACCENT_BLUE,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  weightLogBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  weightEditBtn: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+  },
+
+  /* ── Weight Log Modal ── */
+  weightModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  weightModalSheet: {
+    backgroundColor: CARD_BG,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+  },
+  weightModalTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  weightModalTip: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    marginBottom: 20,
+  },
+  weightModalInput: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: DIVIDER_COLOR,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 32,
+    fontWeight: '700',
+    textAlign: 'center',
+    color: TEXT_PRIMARY,
+  },
+  weightModalUnit: {
+    color: TEXT_SECONDARY,
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  weightModalBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  weightModalCancelBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: DIVIDER_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weightModalCancelText: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+  },
+  weightModalSaveBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: ACCENT_BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weightModalSaveText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

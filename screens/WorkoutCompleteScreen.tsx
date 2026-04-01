@@ -104,6 +104,7 @@ export default function WorkoutCompleteScreen() {
 
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
   const [nextWeekReady, setNextWeekReady] = useState(false);
+  const [macroAdjustment, setMacroAdjustment] = useState<string | null>(null);
 
   // Check whether the completed session finishes the week — if so, pre-generate the summary
   useEffect(() => {

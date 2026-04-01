@@ -19,6 +19,7 @@ import PlanViewScreen from '../screens/PlanViewScreen';
 import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
+import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 
 const ACCENT_BLUE = '#3B82F6';
 const CARD_BG = '#1E293B';
@@ -30,6 +31,7 @@ const TEXT_SECONDARY = '#94A3B8';
 const HomeStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
 const ProgressStack = createNativeStackNavigator();
+const NutritionStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const Root = createNativeStackNavigator<RootStackParamList>();
@@ -61,6 +63,14 @@ function ProgressTabStack() {
   );
 }
 
+function NutritionTabStack() {
+  return (
+    <NutritionStack.Navigator screenOptions={{ headerShown: false }}>
+      <NutritionStack.Screen name="MacroTracker" component={MacroTrackerScreen} />
+    </NutritionStack.Navigator>
+  );
+}
+
 function ProfileTabStack() {
   return (
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
@@ -71,20 +81,22 @@ function ProfileTabStack() {
 
 // ── Bottom tab navigator ──
 
-type TabRouteName = 'HomeTab' | 'WorkoutTab' | 'ProgressTab' | 'ProfileTab';
+type TabRouteName = 'HomeTab' | 'WorkoutTab' | 'ProgressTab' | 'NutritionTab' | 'ProfileTab';
 
 const TAB_ICONS: Record<TabRouteName, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
-  HomeTab:     ['home',        'home-outline'],
-  WorkoutTab:  ['barbell',     'barbell-outline'],
-  ProgressTab: ['stats-chart', 'stats-chart-outline'],
-  ProfileTab:  ['person',      'person-outline'],
+  HomeTab:       ['home',        'home-outline'],
+  WorkoutTab:    ['barbell',     'barbell-outline'],
+  ProgressTab:   ['stats-chart', 'stats-chart-outline'],
+  NutritionTab:  ['nutrition',   'nutrition-outline'],
+  ProfileTab:    ['person',      'person-outline'],
 };
 
 const TAB_LABELS: Record<TabRouteName, string> = {
-  HomeTab:     'Home',
-  WorkoutTab:  'Workout',
-  ProgressTab: 'Progress',
-  ProfileTab:  'Profile',
+  HomeTab:      'Home',
+  WorkoutTab:   'Workout',
+  ProgressTab:  'Progress',
+  NutritionTab: 'Nutrition',
+  ProfileTab:   'Profile',
 };
 
 function MainTabs() {
@@ -111,10 +123,11 @@ function MainTabs() {
         };
       }}
     >
-      <Tab.Screen name="HomeTab"     component={HomeTabStack} />
-      <Tab.Screen name="WorkoutTab"  component={WorkoutTabStack} />
-      <Tab.Screen name="ProgressTab" component={ProgressTabStack} />
-      <Tab.Screen name="ProfileTab"  component={ProfileTabStack} />
+      <Tab.Screen name="HomeTab"      component={HomeTabStack} />
+      <Tab.Screen name="WorkoutTab"   component={WorkoutTabStack} />
+      <Tab.Screen name="ProgressTab"  component={ProgressTabStack} />
+      <Tab.Screen name="NutritionTab" component={NutritionTabStack} />
+      <Tab.Screen name="ProfileTab"   component={ProfileTabStack} />
     </Tab.Navigator>
   );
 }

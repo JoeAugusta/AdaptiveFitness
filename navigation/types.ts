@@ -121,5 +121,6 @@ export type RootStackParamList = {
     weekNumber: number;
   };
   ProgressCharts: undefined;
+  MacroTracker: undefined;
   ProfileSettings: undefined;
 };

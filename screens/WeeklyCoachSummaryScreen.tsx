@@ -14,7 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -39,37 +39,61 @@ interface WeeklySummaryRow {
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WeeklyCoachSummary'>;
 type RouteType = RouteProp<RootStackParamList, 'WeeklyCoachSummary'>;
 
-const RATING_CONFIG: Record<PerformanceRating, { bg: string; label: string }> = {
-  'strong': { bg: Colors.success, label: 'Strong Week' },
-  'on-track': { bg: Colors.accent, label: 'On Track' },
-  'tough-week': { bg: Colors.warning, label: 'Tough Week' },
+const RATING_LABELS: Record<PerformanceRating, string> = {
+  strong: 'Strong Week',
+  'on-track': 'On Track',
+  'tough-week': 'Tough Week',
 };
 
 function RatingBadge({ rating }: { rating: PerformanceRating }) {
-  const config = RATING_CONFIG[rating] ?? RATING_CONFIG['on-track'];
+  const label = RATING_LABELS[rating] ?? RATING_LABELS['on-track'];
+  const pillExtra =
+    rating === 'strong'
+      ? styles.ratingPillStrong
+      : rating === 'tough-week'
+        ? styles.ratingPillTough
+        : styles.ratingPillOnTrack;
+  const textExtra =
+    rating === 'strong'
+      ? styles.ratingPillTextStrong
+      : rating === 'tough-week'
+        ? styles.ratingPillTextTough
+        : styles.ratingPillTextOnTrack;
+
   return (
-    <View style={[styles.badge, { backgroundColor: config.bg }]}>
-      <Text style={styles.badgeText}>{config.label}</Text>
+    <View style={[styles.ratingPill, pillExtra]}>
+      <Text style={[styles.ratingPillText, textExtra]}>{label}</Text>
     </View>
   );
 }
 
 function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
+  const headlineBorder =
+    summary.performanceRating === 'strong'
+      ? styles.headlineCardBorderStrong
+      : summary.performanceRating === 'tough-week'
+        ? styles.headlineCardBorderTough
+        : styles.headlineCardBorderOnTrack;
+
   return (
-    <>
-      {/* Performance Card */}
-      <View style={styles.card}>
+    <View style={styles.summaryContent}>
+      <View style={[styles.headlineCard, headlineBorder]}>
         <Text style={styles.headline}>{summary.headline}</Text>
         <RatingBadge rating={summary.performanceRating} />
-        <Text style={styles.bodyText}>{summary.performanceSummary}</Text>
+        <Text style={styles.performanceSummary}>{summary.performanceSummary}</Text>
       </View>
 
-      {/* Highlights Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>This Week's Wins 🏆</Text>
+      <Text style={styles.sectionHeadingWins}>{"THIS WEEK'S WINS"}</Text>
+      <View style={styles.contentCard}>
         <View style={styles.highlightsList}>
           {summary.highlights.map((item, i) => (
-            <View key={i} style={styles.highlightRow}>
+            <View
+              key={i}
+              style={[
+                styles.highlightRow,
+                i === summary.highlights.length - 1 && styles.highlightRowLast,
+              ]}
+            >
               <Text style={styles.checkIcon}>✓</Text>
               <Text style={styles.highlightText}>{item}</Text>
             </View>
@@ -77,23 +101,23 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
         </View>
       </View>
 
-      {/* Next Week Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>What's Changing Next Week</Text>
-        <Text style={styles.bodyText}>{summary.nextWeekChanges}</Text>
+      <Text style={styles.sectionHeadingNext}>{"WHAT'S CHANGING NEXT WEEK"}</Text>
+      <View style={styles.contentCard}>
+        <Text style={styles.sectionBody}>{summary.nextWeekChanges}</Text>
       </View>
 
-      {/* Nutrition Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Nutrition Check-in</Text>
-        <Text style={styles.bodyText}>{summary.nutritionCheckin}</Text>
+      <Text style={styles.sectionHeadingNutrition}>NUTRITION CHECK-IN</Text>
+      <View style={styles.contentCard}>
+        <Text style={styles.sectionBody}>{summary.nutritionCheckin}</Text>
       </View>
 
-      {/* Coach Note Card */}
-      <View style={[styles.card, styles.coachCard]}>
-        <Text style={styles.coachNote}>{summary.motivationalNote}</Text>
+      <View style={styles.jordanNoteCard}>
+        <View style={styles.jordanLabelRow}>
+          <Text style={styles.jordanLabel}>JORDAN</Text>
+        </View>
+        <Text style={styles.jordanNoteText}>{summary.motivationalNote}</Text>
       </View>
-    </>
+    </View>
   );
 }
 
@@ -134,7 +158,6 @@ export default function WeeklyCoachSummaryScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No authenticated user');
 
-      // Fetch current_week first so it is available on all code paths
       const { data: planRow } = await supabase
         .from('plans')
         .select('current_week')
@@ -163,14 +186,12 @@ export default function WeeklyCoachSummaryScreen() {
         return;
       }
 
-      // Guard: only generate a summary for a completed week
       if (weekNumber >= currentWeek) {
         setWeekInProgress(true);
         setLoading(false);
         return;
       }
 
-      // Generate via Edge Function
       const { data: fnData, error: fnErr } = await supabase.functions.invoke(
         'weekly-coach-summary',
         { body: { userId, planId, weekNumber } },
@@ -181,7 +202,6 @@ export default function WeeklyCoachSummaryScreen() {
 
       const summary: WeeklySummaryData = fnData.summary;
 
-      // Save to weekly_summaries — upsert to handle duplicate calls gracefully
       const { error: insertErr } = await supabase.from('weekly_summaries').upsert(
         {
           user_id: userId,
@@ -215,43 +235,46 @@ export default function WeeklyCoachSummaryScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={styles.backHit}
+          >
             <Text style={styles.backChevron}>‹</Text>
           </TouchableOpacity>
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>Weekly Review</Text>
             <Text style={styles.headerSubtitle}>Week {weekNumber}</Text>
           </View>
-          <View style={{ width: 24 }} />
         </View>
 
-        {/* Loading State */}
         {loading && (
-          <Animated.View style={[styles.card, styles.loadingCard, { opacity: pulseAnim }]}>
-            <ActivityIndicator color={Colors.accent} style={{ marginBottom: 12 }} />
-            <Text style={styles.loadingText}>Your coach is reviewing your week...</Text>
+          <Animated.View style={[styles.loadingCard, { opacity: pulseAnim }]}>
+            <View style={styles.loadingSpinnerWrap}>
+              <ActivityIndicator size="small" color={Colors.accent} />
+            </View>
+            <Text style={styles.loadingTitle}>JORDAN IS REVIEWING YOUR WEEK</Text>
             <Text style={styles.loadingSubtext}>This takes a few seconds</Text>
           </Animated.View>
         )}
 
-        {/* Week In Progress State */}
         {!loading && weekInProgress && (
           <View style={styles.inProgressCard}>
             <Text style={styles.inProgressEmoji}>🏋️</Text>
             <Text style={styles.inProgressTitle}>Week {weekNumber} is in progress</Text>
             <Text style={styles.inProgressBody}>
-              Your weekly summary from Jordan will be ready once you've completed this week's sessions.
+              {
+                "Your weekly summary from Jordan will be ready once you've completed this week's sessions."
+              }
             </Text>
           </View>
         )}
 
-        {/* Error State */}
         {!loading && error && (
-          <View style={[styles.card, styles.errorCard]}>
-            <Text style={styles.bodyText}>
-              Couldn't load your weekly summary. Check your connection and try again.
+          <View style={styles.errorCard}>
+            <Text style={styles.errorMessage}>
+              Couldn&apos;t load your weekly summary. Check your connection and try again.
             </Text>
             <TouchableOpacity onPress={fetchSummary} style={styles.retryButton}>
               <Text style={styles.retryText}>Retry</Text>
@@ -259,12 +282,10 @@ export default function WeeklyCoachSummaryScreen() {
           </View>
         )}
 
-        {/* Current Week Summary */}
         {!loading && !error && currentSummary && (
           <SummaryCards summary={currentSummary} />
         )}
 
-        {/* History Section */}
         {!loading && (() => {
           const previousWeekNumbers = Array.from(
             { length: currentWeekNum - 1 },
@@ -273,28 +294,36 @@ export default function WeeklyCoachSummaryScreen() {
 
           return (
             <>
-              <Text style={styles.sectionHeader}>Previous Weeks</Text>
+              <Text style={styles.previousSectionHeading}>PREVIOUS WEEKS</Text>
 
               {previousWeekNumbers.length === 0 ? (
-                <View style={styles.card}>
-                  <Text style={styles.emptyText}>
+                <View style={styles.previousWeeksCard}>
+                  <Text style={styles.previousWeeksEmpty}>
                     Previous weeks will appear here as you complete them.
                   </Text>
                 </View>
               ) : (
-                previousWeekNumbers.map((n) => (
-                  <TouchableOpacity
-                    key={n}
-                    style={styles.prevWeekRow}
-                    onPress={() =>
-                      navigation.navigate('WeeklyCoachSummary', { planId, weekNumber: n })
-                    }
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.prevWeekLabel}>Week {n}</Text>
-                    <Text style={styles.prevWeekChevron}>›</Text>
-                  </TouchableOpacity>
-                ))
+                <View style={styles.previousWeeksCard}>
+                  {previousWeekNumbers.map((n, idx) => (
+                    <TouchableOpacity
+                      key={n}
+                      style={[
+                        styles.prevWeekRow,
+                        idx < previousWeekNumbers.length - 1 && styles.prevWeekRowDivider,
+                      ]}
+                      onPress={() =>
+                        navigation.navigate('WeeklyCoachSummary', {
+                          planId,
+                          weekNumber: n,
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.prevWeekLabel}>Week {n}</Text>
+                      <Text style={styles.prevWeekChevron}>›</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               )}
             </>
           );
@@ -311,225 +340,322 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    backgroundColor: Colors.bgPrimary,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 56,
+    paddingBottom: Spacing.sm,
+  },
+  backHit: {
+    marginRight: 12,
   },
   backChevron: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary,
-    fontSize: FontSizes.display,
-    lineHeight: 36,
-    paddingRight: 8,
+    fontSize: 28,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
   },
   headerText: {
     flex: 1,
   },
   headerTitle: {
-    color: Colors.textPrimary,
     fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
   },
   headerSubtitle: {
+    fontSize: FontSizes.caption,
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
     marginTop: 2,
   },
-  card: {
+
+  loadingCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xxl,
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: Radius.lg,
+    padding: Spacing.xxxl,
+    alignItems: 'center',
   },
-  headline: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold, 
-    marginBottom: 8,
+  loadingSpinnerWrap: {
+    marginBottom: Spacing.md,
   },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+  loadingTitle: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginBottom: 6,
   },
-  badgeText: {
-    color: '#FFFFFF', // TODO: map to design token
+  loadingSubtext: {
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold, 
-  },
-  bodyText: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    lineHeight: 20,
-    marginTop: 12,
+    textAlign: 'center',
   },
-  cardTitle: {
+
+  inProgressCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xxl,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xxxl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  inProgressEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 40,
+    marginBottom: Spacing.md,
+  },
+  inProgressTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
-    marginBottom: 8,
+    textAlign: 'center',
+  },
+  inProgressBody: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    lineHeight: 22,
+  },
+
+  errorCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xxl,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.danger,
+  },
+  errorMessage: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  retryButton: {
+    marginTop: Spacing.md,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  retryText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+
+  summaryContent: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xxl,
+  },
+  headlineCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderLeftWidth: 3,
+  },
+  headlineCardBorderStrong: {
+    borderLeftColor: Colors.success,
+  },
+  headlineCardBorderOnTrack: {
+    borderLeftColor: Colors.accent,
+  },
+  headlineCardBorderTough: {
+    borderLeftColor: Colors.warning,
+  },
+  headline: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    lineHeight: 28,
+    marginBottom: Spacing.md,
+  },
+  ratingPill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+  },
+  ratingPillStrong: {
+    backgroundColor: Colors.successMuted,
+  },
+  ratingPillOnTrack: {
+    backgroundColor: Colors.accentMuted,
+  },
+  ratingPillTough: {
+    backgroundColor: Colors.warningMuted,
+  },
+  ratingPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+  },
+  ratingPillTextStrong: {
+    color: Colors.success,
+  },
+  ratingPillTextOnTrack: {
+    color: Colors.accent,
+  },
+  ratingPillTextTough: {
+    color: Colors.warning,
+  },
+  performanceSummary: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginTop: Spacing.md,
+  },
+
+  sectionHeadingWins: {
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  sectionHeadingNext: {
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  sectionHeadingNutrition: {
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  contentCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
   },
   highlightsList: {
-    gap: 8,
+    gap: 0,
   },
   highlightRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: Spacing.md,
+  },
+  highlightRowLast: {
+    marginBottom: 0,
   },
   checkIcon: {
+    width: 20,
     color: Colors.accent,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
-    marginRight: 8,
-    lineHeight: 20,
+    fontFamily: Fonts.bold,
   },
   highlightText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary,
-    fontSize: FontSizes.caption,
-    lineHeight: 20,
     flex: 1,
-  },
-  coachCard: {
-    backgroundColor: '#243044', // TODO: map to design token
-  },
-  coachNote: {
+    fontSize: FontSizes.body,
     fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontStyle: 'italic',
-    textAlign: 'center',
     lineHeight: 22,
   },
-  loadingCard: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  loadingText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
+  sectionBody: {
     fontSize: FontSizes.body,
-    fontStyle: 'italic',
-  },
-  loadingSubtext: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginTop: 6,
+    lineHeight: 22,
   },
-  errorCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.danger,
+
+  jordanNoteCard: {
+    marginTop: Spacing.xxl,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
   },
-  retryButton: {
-    marginTop: 8,
+  jordanLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  retryText: {
+  jordanLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
     color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  jordanNoteText: {
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
+    fontFamily: Fonts.regular,
+    fontStyle: 'italic',
+    color: Colors.textPrimary,
+    lineHeight: 24,
   },
-  sectionHeader: {
+
+  previousSectionHeading: {
+    marginTop: Spacing.xxxl,
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.semiBold, 
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 24,
-    marginBottom: 12,
   },
-  emptyText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    textAlign: 'center',
-    paddingVertical: 4,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  historyWeekLabel: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
-  },
-  chevronIcon: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.heading2,
-    marginLeft: 'auto',
-    transform: [{ rotate: '90deg' }],
-  },
-  chevronUp: {
-    transform: [{ rotate: '-90deg' }],
-  },
-  historyHeadline: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginTop: 4,
-  },
-
-  // ── Week in progress ──
-  inProgressCard: {
+  previousWeeksCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 20,
-    marginTop: 24,
-    alignItems: 'center',
+    borderRadius: Radius.lg,
+    marginHorizontal: Spacing.xl,
+    overflow: 'hidden',
   },
-  inProgressEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.display,
+  previousWeeksEmpty: {
+    padding: Spacing.xl,
     textAlign: 'center',
-    marginBottom: 8,
-  },
-  inProgressTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
-    textAlign: 'center',
-  },
-  inProgressBody: {
+    fontSize: FontSizes.body,
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 6,
   },
-
-  // ── Previous weeks list ──
   prevWeekRow: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 8,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
+  prevWeekRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
   },
   prevWeekLabel: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
     color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
   },
   prevWeekChevron: {
+    fontSize: 20,
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.heading2,
   },
 });

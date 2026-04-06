@@ -5,21 +5,26 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Pressable,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
-const COLOR_FATS = '#10B981'; // TODO: map to design token
+const COLOR_FATS = Colors.success;
 
 const MIN_CALORIES = 1200;
 const MAX_CALORIES = 5000;
 const CALORIE_STEP = 50;
+
+const MACRO_INFO_BODY =
+  'Protein is set at 1g per lb of bodyweight to maximise muscle retention. Fats cover 25% of calories for hormone health. Carbohydrates fill the remainder to fuel your training sessions.\n\nThese targets will adjust weekly based on your weight trend and performance data.';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'MacroSetup'>;
 type RouteType = RouteProp<RootStackParamList, 'MacroSetup'>;
@@ -115,6 +120,7 @@ function formatGoalLabel(goal: string): string {
 export default function MacroSetupScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const insets = useSafeAreaInsets();
   const params = route.params;
 
   const initialCalories = useMemo(() => calcInitialCalories(params), []);
@@ -143,141 +149,147 @@ export default function MacroSetupScreen() {
     });
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Progress bar */}
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
-      </View>
+  const decreaseDisabled = calories <= MIN_CALORIES;
+  const increaseDisabled = calories >= MAX_CALORIES;
 
-      {/* Header row: back button + step label */}
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backButton}
+          style={styles.backHit}
           activeOpacity={0.7}
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 6 of 7</Text>
+        <Text style={styles.stepIndicator}>6 of 7</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heading}>Your Daily Targets</Text>
-        <Text style={styles.subtitle}>
-          Review and adjust your calorie goal below.
-        </Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>Your Daily Targets</Text>
+          <Text style={styles.screenSubtitle}>
+            Review and adjust your calorie goal below.
+          </Text>
+        </View>
 
-        {/* Section 1 — Calorie target card */}
         <View style={styles.calorieCard}>
-          <View style={styles.headingRow}>
-            <Text style={styles.calorieLabel}>Daily Calories</Text>
+          <View style={styles.calorieLabelRow}>
+            <Text style={styles.dailyCaloriesLabel}>Daily Calories</Text>
             <InfoTooltip
               title="How were these calculated?"
               content="Your calories are based on your Basal Metabolic Rate (BMR) — the energy your body burns at rest — multiplied by your activity level to get your Total Daily Energy Expenditure (TDEE). We then adjust up or down based on your goal."
             />
           </View>
-          <View style={styles.calorieNumberRow}>
+          <View style={styles.calorieValueRow}>
             <Text style={styles.calorieNumber}>{calories}</Text>
-            <Text style={styles.calorieUnit}>kcal</Text>
+            <Text style={styles.calorieKcalSuffix}> kcal</Text>
           </View>
           <View style={styles.adjustRow}>
-            <TouchableOpacity
-              style={[
+            <Pressable
+              style={({ pressed }) => [
                 styles.adjustButton,
-                calories <= MIN_CALORIES && styles.adjustButtonDisabled,
+                pressed && !decreaseDisabled && styles.adjustButtonPressed,
+                decreaseDisabled && styles.adjustButtonDisabled,
               ]}
               onPress={handleDecrease}
-              activeOpacity={0.7}
-              disabled={calories <= MIN_CALORIES}
+              disabled={decreaseDisabled}
             >
-              <Text
-                style={[
-                  styles.adjustButtonText,
-                  calories <= MIN_CALORIES && styles.adjustButtonTextDisabled,
-                ]}
-              >
-                − 50
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
+              {({ pressed }) => (
+                <Text
+                  style={[
+                    styles.adjustButtonLabel,
+                    pressed &&
+                      !decreaseDisabled &&
+                      styles.adjustButtonLabelPressed,
+                    decreaseDisabled && styles.adjustButtonLabelDisabled,
+                  ]}
+                >
+                  − 50
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
                 styles.adjustButton,
-                calories >= MAX_CALORIES && styles.adjustButtonDisabled,
+                pressed && !increaseDisabled && styles.adjustButtonPressed,
+                increaseDisabled && styles.adjustButtonDisabled,
               ]}
               onPress={handleIncrease}
-              activeOpacity={0.7}
-              disabled={calories >= MAX_CALORIES}
+              disabled={increaseDisabled}
             >
-              <Text
-                style={[
-                  styles.adjustButtonText,
-                  calories >= MAX_CALORIES && styles.adjustButtonTextDisabled,
-                ]}
-              >
-                + 50
-              </Text>
-            </TouchableOpacity>
+              {({ pressed }) => (
+                <Text
+                  style={[
+                    styles.adjustButtonLabel,
+                    pressed &&
+                      !increaseDisabled &&
+                      styles.adjustButtonLabelPressed,
+                    increaseDisabled && styles.adjustButtonLabelDisabled,
+                  ]}
+                >
+                  + 50
+                </Text>
+              )}
+            </Pressable>
           </View>
           <Text style={styles.goalNote}>
             Based on your {formatGoalLabel(params.goal)} goal
           </Text>
         </View>
 
-        {/* Section 2 — Macro breakdown */}
         <View style={styles.macroRow}>
           <View style={styles.macroCard}>
-            <View style={styles.macroNumberRow}>
-              <Text style={[styles.macroNumber, { color: COLOR_PROTEIN }]}>
+            <View style={styles.macroAmountRow}>
+              <Text style={[styles.macroAmount, { color: COLOR_PROTEIN }]}>
                 {proteinG}
               </Text>
-              <Text style={styles.macroUnit}>g</Text>
+              <Text style={[styles.macroGSuffix, { color: COLOR_PROTEIN }]}>
+                g
+              </Text>
             </View>
-            <Text style={styles.macroLabel}>Protein</Text>
+            <Text style={styles.macroName}>Protein</Text>
           </View>
           <View style={styles.macroCard}>
-            <View style={styles.macroNumberRow}>
-              <Text style={[styles.macroNumber, { color: COLOR_CARBS }]}>
+            <View style={styles.macroAmountRow}>
+              <Text style={[styles.macroAmount, { color: COLOR_CARBS }]}>
                 {carbsG}
               </Text>
-              <Text style={styles.macroUnit}>g</Text>
+              <Text style={[styles.macroGSuffix, { color: COLOR_CARBS }]}>
+                g
+              </Text>
             </View>
-            <Text style={styles.macroLabel}>Carbs</Text>
+            <Text style={styles.macroName}>Carbs</Text>
           </View>
           <View style={styles.macroCard}>
-            <View style={styles.macroNumberRow}>
-              <Text style={[styles.macroNumber, { color: COLOR_FATS }]}>
+            <View style={styles.macroAmountRow}>
+              <Text style={[styles.macroAmount, { color: COLOR_FATS }]}>
                 {fatsG}
               </Text>
-              <Text style={styles.macroUnit}>g</Text>
+              <Text style={[styles.macroGSuffix, { color: COLOR_FATS }]}>
+                g
+              </Text>
             </View>
-            <Text style={styles.macroLabel}>Fats</Text>
+            <Text style={styles.macroName}>Fats</Text>
           </View>
         </View>
 
-        {/* Macro split tooltip */}
-        <View style={styles.macroTooltipRow}>
-          <Text style={styles.macroTooltipLabel}>How are macros split?</Text>
-          <InfoTooltip
-            title="Your macro breakdown"
-            content="Protein is set at 1g per lb of bodyweight to maximise muscle retention. Fats cover 25% of calories for hormone health. Carbohydrates fill the remainder to fuel your training sessions."
-          />
-        </View>
-
-        {/* Section 3 — Info note */}
+        <Text style={styles.infoSectionHeading}>How are macros split?</Text>
         <View style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            These targets will adjust weekly based on your weight trend and
-            performance data.
-          </Text>
+          <Text style={styles.infoCardText}>{MACRO_INFO_BODY}</Text>
         </View>
       </ScrollView>
 
-      {/* Fixed footer */}
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           style={styles.button}
@@ -286,7 +298,7 @@ export default function MacroSetupScreen() {
           <Text style={styles.buttonText}>Build My Plan</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -296,213 +308,203 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
 
-  /* Progress */
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
-  },
-  progressFill: {
-    width: '85.7%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-
-  /* Header */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  backHit: {
+    paddingRight: 8,
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1,
-    color: Colors.textPrimary,
-    marginTop: -2,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
   },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
-  /* Scroll */
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
 
-  /* Heading */
-  heading: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  titleBlock: {
+    marginTop: 56,
   },
-  subtitle: {
+  screenTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 24,
+    marginTop: 8,
+    marginBottom: 32,
   },
 
-  /* Calorie card */
   calorieCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.xxl,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.md,
   },
-  calorieLabel: {
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    fontFamily: Fonts.medium, 
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  calorieNumberRow: {
+  calorieLabelRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  dailyCaloriesLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  calorieValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: 8,
   },
   calorieNumber: {
-    fontSize: 48, // TODO: map to design token
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
     color: Colors.textPrimary,
-    lineHeight: 52,
   },
-  calorieUnit: {
-    fontSize: FontSizes.heading2,
+  calorieKcalSuffix: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    fontFamily: Fonts.medium, 
-    marginLeft: 6,
-    marginBottom: 6,
   },
   adjustRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 14,
+    marginTop: 16,
   },
   adjustButton: {
-    paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#273449', // TODO: map to design token
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.divider,
+    borderColor: Colors.border,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+  },
+  adjustButtonPressed: {
+    borderColor: Colors.accent,
   },
   adjustButtonDisabled: {
     opacity: 0.35,
   },
-  adjustButtonText: {
+  adjustButtonLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
+    textAlign: 'center',
   },
-  adjustButtonTextDisabled: {
+  adjustButtonLabelPressed: {
+    color: Colors.accent,
+  },
+  adjustButtonLabelDisabled: {
     color: Colors.textSecondary,
   },
   goalNote: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  macroTooltipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  macroTooltipLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
+    marginTop: 12,
+    textAlign: 'center',
   },
 
-  /* Macro row */
   macroRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
+    gap: 8,
+    marginBottom: Spacing.md,
   },
   macroCard: {
     flex: 1,
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    paddingVertical: 18,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
     alignItems: 'center',
   },
-  macroNumberRow: {
+  macroAmountRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'baseline',
   },
-  macroNumber: {
-    fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
-    lineHeight: 32,
+  macroAmount: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
   },
-  macroUnit: {
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    fontFamily: Fonts.medium, 
+  macroGSuffix: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     marginLeft: 2,
-    marginBottom: 2,
   },
-  macroLabel: {
+  macroName: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 4,
   },
 
-  /* Info note */
+  infoSectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 28,
+    marginBottom: 12,
+  },
   infoCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
   },
-  infoText: {
+  infoCardText: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    lineHeight: 19,
+    lineHeight: 22,
   },
 
-  /* Footer */
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
 });

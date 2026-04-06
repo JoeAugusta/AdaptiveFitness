@@ -9,14 +9,13 @@ import {
   Modal,
   TextInput,
   Animated,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -120,9 +119,15 @@ function buildMilestones(progressPct: number): Milestone[] {
   }));
 }
 
+const formatLiftName = (lift: string) =>
+  lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
 function getGoalTitle(goal: GoalRow): string {
   const gt = goal.goal_type;
-  if (gt === 'strength') return `Hit ${goal.target_1rm ?? '?'}lbs ${goal.target_lift ?? ''}`;
+  if (gt === 'strength') {
+    const lift = goal.target_lift ? formatLiftName(goal.target_lift) : '';
+    return lift ? `Hit ${goal.target_1rm ?? '?'}lbs ${lift}` : `Hit ${goal.target_1rm ?? '?'}lbs`;
+  }
   if (gt === 'hypertrophy') return `Build Muscle — ${goal.plan_duration_weeks ?? '?'} Week Plan`;
   if (gt === 'fat_loss') return `Lose Weight — Target ${goal.target_weight_lbs ?? '?'}lbs`;
   if (gt === 'recomp') return `Body Recomposition — ${goal.plan_duration_weeks ?? '?'} Weeks`;
@@ -150,6 +155,8 @@ export default function GoalTrackerScreen() {
   const [history, setHistory] = useState<GoalRow[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTarget, setEditTarget] = useState('');
+  const [modalInputFocused, setModalInputFocused] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
 
@@ -279,7 +286,7 @@ export default function GoalTrackerScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.accent} />
         </View>
@@ -320,9 +327,8 @@ export default function GoalTrackerScreen() {
     : 0;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Text style={styles.backChevron}>‹</Text>
@@ -339,26 +345,27 @@ export default function GoalTrackerScreen() {
           </View>
         ) : (
           <View style={styles.goalCard}>
-            {/* Top row: badge + edit */}
             <View style={styles.goalTopRow}>
-              {badge && (
-                <View style={[styles.goalBadge, { backgroundColor: badge.color }]}>
+              {badge ? (
+                <View style={styles.goalBadge}>
                   <Text style={styles.goalBadgeText}>{badge.label}</Text>
                 </View>
-              )}
-              <TouchableOpacity onPress={() => {
-                if (goal.goal_type === 'strength') setEditTarget(String(goal.target_1rm ?? ''));
-                else if (goal.goal_type === 'fat_loss') setEditTarget(String(goal.target_weight_lbs ?? ''));
-                setShowEditModal(true);
-              }}>
+              ) : null}
+              <TouchableOpacity
+                style={styles.editBtnTouch}
+                onPress={() => {
+                  if (goal.goal_type === 'strength') setEditTarget(String(goal.target_1rm ?? ''));
+                  else if (goal.goal_type === 'fat_loss') setEditTarget(String(goal.target_weight_lbs ?? ''));
+                  setShowEditModal(true);
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.editBtn}>Edit →</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Title */}
             <Text style={styles.goalTitle}>{getGoalTitle(goal)}</Text>
 
-            {/* Progress */}
             {progress && (
               <View style={styles.progressSection}>
                 <Text style={styles.progressLabel}>{progress.progressLabel}</Text>
@@ -369,7 +376,6 @@ export default function GoalTrackerScreen() {
                   <Text style={styles.progressHint}>Log your weight to track fat loss progress</Text>
                 )}
 
-                {/* Progress bar */}
                 <View style={styles.progressTrack}>
                   <Animated.View
                     style={[
@@ -386,8 +392,6 @@ export default function GoalTrackerScreen() {
               </View>
             )}
 
-            {/* Stats row */}
-            <View style={styles.statsDivider} />
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{weeksCompleted}</Text>
@@ -398,7 +402,7 @@ export default function GoalTrackerScreen() {
                 <Text style={styles.statLabel}>Sessions</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{daysRemaining}</Text>
+                <Text style={[styles.statValue, daysRemaining > 0 && styles.statValueAccent]}>{daysRemaining}</Text>
                 <Text style={styles.statLabel}>Days left</Text>
               </View>
             </View>
@@ -407,24 +411,19 @@ export default function GoalTrackerScreen() {
 
         {/* ── Expectations vs Reality ── */}
         {goal && (
-          <View style={styles.evrCard}>
-            {/* Header row */}
-            <View style={styles.evrHeaderRow}>
-              <Text style={styles.evrTitle}>Expectations vs Reality</Text>
+          <>
+            <View style={styles.evrHeadingRow}>
+              <Text style={styles.evrHeadingLabel}>EXPECTATIONS VS REALITY</Text>
               <TouchableOpacity
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => Alert.alert(
-                  'About this card',
-                  'This card compares what your plan projected at the start vs your actual training data so far.',
-                )}
+                onPress={() => setShowTooltip(true)}
               >
                 <Text style={styles.evrInfoIcon}>ⓘ</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Projection */}
-            <View style={styles.evrSection}>
-              <Text style={styles.evrSectionLabel}>YOUR PLAN PROJECTED</Text>
+            <View style={styles.evrCard}>
+              <Text style={styles.evrSubLabelProjected}>YOUR PLAN PROJECTED</Text>
               {goal.projection_text ? (
                 <View style={styles.evrQuote}>
                   <Text style={styles.evrQuoteText}>{goal.projection_text}</Text>
@@ -434,122 +433,102 @@ export default function GoalTrackerScreen() {
                   Projection data not available for this goal.
                 </Text>
               )}
-            </View>
 
-            <View style={styles.evrDivider} />
+              <Text style={styles.evrSubLabelReality}>WHAT&apos;S ACTUALLY HAPPENING</Text>
 
-            {/* Reality */}
-            <Text style={styles.evrSectionLabel}>WHAT'S ACTUALLY HAPPENING</Text>
-
-            {/* Row 1 — Volume Trend */}
-            <View style={styles.evrMetricRow}>
-              <Text style={styles.evrMetricIcon}>
-                {!hasVolumeData ? '➡️' : volumeChangePct > 0 ? '📈' : volumeChangePct < 0 ? '📉' : '➡️'}
-              </Text>
-              <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
-              {!hasVolumeData ? (
-                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>Not enough data yet</Text>
-              ) : volumeChangePct === 0 ? (
-                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>No change vs Week 1</Text>
-              ) : (
-                <Text style={[styles.evrMetricValue, { color: volumeChangePct > 0 ? Colors.success : Colors.danger }]}>
-                  {volumeChangePct > 0 ? '+' : ''}{Math.round(volumeChangePct)}% vs Week 1
+              <View style={styles.evrMetricRow}>
+                <Text style={styles.evrMetricIcon}>
+                  {!hasVolumeData ? '➡️' : volumeChangePct > 0 ? '📈' : volumeChangePct < 0 ? '📉' : '➡️'}
                 </Text>
-              )}
-            </View>
-
-            {/* Row 2 — Consistency */}
-            <View style={styles.evrMetricRow}>
-              <Text style={styles.evrMetricIcon}>🎯</Text>
-              <Text style={styles.evrMetricLabel}>Training Consistency</Text>
-              {currentWeek <= 1 ? (
-                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>Just getting started</Text>
-              ) : (
-                <Text style={[styles.evrMetricValue, {
-                  color: consistencyRate >= 0.8 ? Colors.success : consistencyRate >= 0.6 ? Colors.warning : Colors.danger,
-                }]}>
-                  {Math.round(consistencyRate * 100)}% of weeks trained
-                </Text>
-              )}
-            </View>
-
-            {/* Row 3 — Pace */}
-            <View style={styles.evrMetricRow}>
-              <Text style={styles.evrMetricIcon}>⚡</Text>
-              <Text style={styles.evrMetricLabel}>Sessions per Week</Text>
-              <View style={styles.evrPaceValue}>
-                <Text style={[styles.evrMetricValue, {
-                  color: avgSessionsPerWeek >= daysPerWeek * 0.8
-                    ? Colors.success
-                    : avgSessionsPerWeek >= daysPerWeek * 0.6
-                    ? Colors.warning
-                    : Colors.danger,
-                }]}>
-                  {currentWeek <= 1 ? '—' : `${avgSessionsPerWeek.toFixed(1)} avg`}
-                </Text>
-                <Text style={styles.evrPaceTarget}> (target: {daysPerWeek})</Text>
+                <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
+                {!hasVolumeData ? (
+                  <Text style={styles.evrMetricValue}>Not enough data yet</Text>
+                ) : volumeChangePct === 0 ? (
+                  <Text style={styles.evrMetricValue}>No change vs Week 1</Text>
+                ) : (
+                  <Text style={styles.evrMetricValue}>
+                    {volumeChangePct > 0 ? '+' : ''}{Math.round(volumeChangePct)}% vs Week 1
+                  </Text>
+                )}
               </View>
-            </View>
 
-            {currentWeek <= 2 && (
-              <Text style={styles.evrBottomNote}>
-                Check back after a few more weeks for meaningful trends.
-              </Text>
-            )}
-          </View>
+              <View style={styles.evrMetricRow}>
+                <Text style={styles.evrMetricIcon}>🎯</Text>
+                <Text style={styles.evrMetricLabel}>Training Consistency</Text>
+                {currentWeek <= 1 ? (
+                  <Text style={styles.evrMetricValue}>Just getting started</Text>
+                ) : (
+                  <Text style={styles.evrMetricValue}>
+                    {Math.round(consistencyRate * 100)}% of weeks trained
+                  </Text>
+                )}
+              </View>
+
+              <View style={[styles.evrMetricRow, styles.evrMetricRowLast]}>
+                <Text style={styles.evrMetricIcon}>⚡</Text>
+                <Text style={styles.evrMetricLabel}>Sessions per Week</Text>
+                <View style={styles.evrPaceValue}>
+                  <Text
+                    style={[
+                      styles.evrMetricValue,
+                      currentWeek <= 1 && styles.evrMetricValueWarning,
+                    ]}
+                  >
+                    {currentWeek <= 1 ? '—' : `${avgSessionsPerWeek.toFixed(1)} avg`}
+                  </Text>
+                  <Text style={styles.evrPaceTarget}> (target: {daysPerWeek})</Text>
+                </View>
+              </View>
+
+              {currentWeek <= 2 && (
+                <Text style={styles.evrBottomNote}>
+                  Check back after a few more weeks for meaningful trends.
+                </Text>
+              )}
+            </View>
+          </>
         )}
 
         {/* ── Milestones ── */}
         {goal && progress && (
-          <View style={styles.milestonesCard}>
-            <Text style={styles.milestonesTitle}>Milestones</Text>
-
-            {milestones.map((m, i) => (
-              <View key={m.pct}>
-                {/* Connecting line (above this milestone, except first) */}
-                {i > 0 && (
-                  <View style={styles.milestoneLineWrap}>
-                    <View
-                      style={[
-                        styles.milestoneLine,
-                        { backgroundColor: milestones[i - 1].reached ? Colors.accent : Colors.divider },
-                      ]}
-                    />
-                  </View>
-                )}
-                <View style={styles.milestoneRow}>
-                  {/* Icon circle */}
+          <>
+            <Text style={styles.milestonesSectionLabel}>MILESTONES</Text>
+            <View style={styles.milestonesCard}>
+              {milestones.map((m, i) => {
+                const isLast = i === milestones.length - 1;
+                return (
                   <View
-                    style={[
-                      styles.milestoneCircle,
-                      { backgroundColor: m.reached ? Colors.accent : Colors.divider },
-                    ]}
+                    key={m.pct}
+                    style={[styles.milestoneRow, isLast && styles.milestoneRowLast]}
                   >
-                    <Text style={styles.milestoneCircleText}>
-                      {m.reached ? '✓' : `${m.pct}%`}
+                    <View style={styles.milestonePctPill}>
+                      <Text
+                        style={[
+                          styles.milestonePctText,
+                          m.reached ? styles.milestonePctTextReached : styles.milestonePctTextLocked,
+                        ]}
+                      >
+                        {m.pct}%
+                      </Text>
+                    </View>
+                    <Text style={styles.milestoneName}>{m.label}</Text>
+                    <Text
+                      style={[
+                        styles.milestoneStatusIcon,
+                        m.reached ? styles.milestoneStatusReached : styles.milestoneStatusLocked,
+                      ]}
+                    >
+                      {m.reached ? (m.pct >= 100 ? '🏆' : '✅') : '🔒'}
                     </Text>
                   </View>
-                  {/* Label */}
-                  <Text
-                    style={[
-                      styles.milestoneLabel,
-                      { color: m.reached ? Colors.textPrimary : Colors.textSecondary },
-                    ]}
-                  >
-                    {m.label}
-                  </Text>
-                  {/* Right indicator */}
-                  <Text style={styles.milestoneRight}>
-                    {m.reached ? '✓' : '🔒'}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+                );
+              })}
+            </View>
+          </>
         )}
 
         {/* ── Goal History ── */}
-        <Text style={styles.sectionHeader}>Past Goals</Text>
+        <Text style={styles.pastGoalsSectionLabel}>PAST GOALS</Text>
 
         {history.length === 0 ? (
           <View style={styles.historyEmpty}>
@@ -564,13 +543,13 @@ export default function GoalTrackerScreen() {
             return (
               <View key={h.id} style={styles.historyCard}>
                 <View style={styles.historyTopRow}>
-                  <View style={[styles.historyBadge, { backgroundColor: hBadge.color }]}>
+                  <View style={[styles.historyBadge, historyBadgeStyle(h.goal_type)]}>
                     <Text style={styles.historyBadgeText}>{hBadge.label}</Text>
                   </View>
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: isCompleted ? Colors.success : Colors.divider },
+                      isCompleted ? styles.statusBadgeCompleted : styles.statusBadgeAbandoned,
                     ]}
                   >
                     <Text style={styles.statusBadgeText}>
@@ -587,7 +566,12 @@ export default function GoalTrackerScreen() {
       </ScrollView>
 
       {/* ── Edit Goal Modal ── */}
-      <Modal visible={showEditModal} transparent animationType="fade">
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="fade"
+        onShow={() => setModalInputFocused(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit Goal Target</Text>
@@ -597,29 +581,33 @@ export default function GoalTrackerScreen() {
 
             {goal?.goal_type === 'strength' && (
               <View style={styles.modalField}>
-                <Text style={styles.modalFieldLabel}>Target 1RM (lbs)</Text>
+                <Text style={styles.modalFieldLabel}>TARGET 1RM (LBS)</Text>
                 <TextInput
-                  style={styles.modalInput}
+                  style={[styles.modalInput, modalInputFocused && styles.modalInputFocused]}
                   value={editTarget}
                   onChangeText={setEditTarget}
                   keyboardType="numeric"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={Colors.textTertiary}
+                  onFocus={() => setModalInputFocused(true)}
+                  onBlur={() => setModalInputFocused(false)}
                 />
                 <Text style={styles.modalFieldHint}>
-                  Target lift: {goal.target_lift ?? '—'}
+                  Target lift: {goal.target_lift ? formatLiftName(goal.target_lift) : '—'}
                 </Text>
               </View>
             )}
 
             {goal?.goal_type === 'fat_loss' && (
               <View style={styles.modalField}>
-                <Text style={styles.modalFieldLabel}>Target weight (lbs)</Text>
+                <Text style={styles.modalFieldLabel}>TARGET WEIGHT (LBS)</Text>
                 <TextInput
-                  style={styles.modalInput}
+                  style={[styles.modalInput, modalInputFocused && styles.modalInputFocused]}
                   value={editTarget}
                   onChangeText={setEditTarget}
                   keyboardType="numeric"
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={Colors.textTertiary}
+                  onFocus={() => setModalInputFocused(true)}
+                  onBlur={() => setModalInputFocused(false)}
                 />
               </View>
             )}
@@ -634,7 +622,10 @@ export default function GoalTrackerScreen() {
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.modalCancel}
-                onPress={() => setShowEditModal(false)}
+                onPress={() => {
+                  setModalInputFocused(false);
+                  setShowEditModal(false);
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -650,6 +641,26 @@ export default function GoalTrackerScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showTooltip} transparent animationType="fade">
+        <View style={styles.tooltipBackdrop}>
+          <View style={styles.tooltipCard}>
+            <Text style={styles.tooltipTitle}>How this works</Text>
+            <Text style={styles.tooltipBody}>
+              Your Plan Projected is Jordan&apos;s estimate based on your goal and program at the start.
+              What&apos;s Actually Happening is calculated from your real workout logs and updates each week as
+              you train.
+            </Text>
+            <TouchableOpacity
+              style={styles.tooltipButton}
+              onPress={() => setShowTooltip(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.tooltipButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -657,168 +668,524 @@ export default function GoalTrackerScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 56,
+    paddingBottom: 40,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  header: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 20 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
   backChevron: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.display, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold, },
+    fontSize: 28,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    paddingRight: 8,
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
 
-  /* Empty goal */
-  emptyCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 16 },
-  emptyEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.display, },
-  emptyTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold,  marginTop: 12 },
+  emptyCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  emptyEmoji: { fontFamily: Fonts.regular, fontSize: FontSizes.display },
+  emptyTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    marginTop: 12,
+  },
   emptySubtext: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
-
-  /* Active goal card */
-  goalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 20, marginBottom: 16 },
-  goalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  goalBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  goalBadgeText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.bold, }, // TODO: map to design token
-  editBtn: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  goalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginTop: 12 },
-
-  /* Progress */
-  progressSection: { marginTop: 16 },
-  progressLabel: {
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontSize: FontSizes.label,
+    marginTop: 4,
+  },
+
+  goalCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  goalTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  goalBadge: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  goalBadgeText: {
     fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textPrimary,
+  },
+  editBtnTouch: { marginLeft: 'auto' },
+  editBtn: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  goalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+    marginTop: 12,
+  },
+
+  progressSection: { marginTop: 0 },
+  progressLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
+    marginTop: 16,
+    marginBottom: 4,
   },
-  progressPct: { color: Colors.textPrimary, fontSize: FontSizes.display, fontFamily: Fonts.bold, },
+  progressPct: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.textPrimary,
+  },
   progressDetails: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   progressHint: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', marginTop: 6 },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: Colors.divider, marginTop: 12, overflow: 'hidden' },
-  progressFill: { height: 8, borderRadius: 4, backgroundColor: Colors.accent },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 6,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.divider,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accent,
+  },
 
-  /* Stats */
-  statsDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 12 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  statItem: { alignItems: 'center' },
-  statValue: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: 20,
+  },
+  statItem: {
+    flex: 1,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    padding: 12,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
+  statValueAccent: { color: Colors.accent },
   statLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2 },
-
-  /* Expectations vs Reality */
-  evrCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
-  evrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  evrTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
-  evrInfoIcon: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.title, },
-  evrSection: { marginTop: 12 },
-  evrSectionLabel: {
+    fontSize: FontSizes.micro,
     color: Colors.textSecondary,
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 6,
+    marginTop: 2,
   },
-  evrQuote: { borderLeftWidth: 3, borderLeftColor: Colors.accent, paddingLeft: 10 },
-  evrQuoteText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', lineHeight: 20 },
-  evrNoData: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic' },
-  evrDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 16 },
-  evrMetricRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  evrMetricIcon: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.title, width: 26 },
-  evrMetricLabel: {
-    fontFamily: Fonts.regular,
-    flex: 1, color: Colors.textPrimary, fontSize: FontSizes.caption, },
-  evrMetricValue: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  textAlign: 'right' },
-  evrPaceValue: { flexDirection: 'row', alignItems: 'baseline' },
-  evrPaceTarget: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  evrBottomNote: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
 
-  /* Milestones */
-  milestonesCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
-  milestonesTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold,  marginBottom: 12 },
-  milestoneRow: { flexDirection: 'row', alignItems: 'center' },
-  milestoneCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  milestoneCircleText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.bold, }, // TODO: map to design token
-  milestoneLabel: {
-    fontFamily: Fonts.regular,
-    flex: 1, fontSize: FontSizes.caption, marginLeft: 12 },
-  milestoneRight: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.success },
-  milestoneLineWrap: { paddingLeft: 13, height: 16 },
-  milestoneLine: { width: 3, height: 16, borderRadius: 1.5 },
-
-  /* History */
-  sectionHeader: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 8,
+  evrHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 32,
     marginBottom: 12,
   },
-  historyEmpty: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 20, alignItems: 'center' },
+  evrHeadingLabel: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  evrInfoIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+  },
+  evrCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+  },
+  evrSubLabelProjected: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  evrQuote: {
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    paddingLeft: 12,
+    marginBottom: 20,
+  },
+  evrQuoteText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  evrNoData: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    marginBottom: 20,
+  },
+  evrSubLabelReality: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  evrMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  evrMetricRowLast: { borderBottomWidth: 0 },
+  evrMetricIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: 18,
+    marginRight: 10,
+  },
+  evrMetricLabel: {
+    flex: 1,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  evrMetricValue: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'right',
+  },
+  evrMetricValueWarning: { color: Colors.warning },
+  evrPaceValue: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 0 },
+  evrPaceTarget: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  evrBottomNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 16,
+  },
+
+  milestonesSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 12,
+  },
+  milestonesCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+  },
+  milestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  milestoneRowLast: { borderBottomWidth: 0 },
+  milestonePctPill: {
+    width: 44,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  milestonePctText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    textAlign: 'center',
+  },
+  milestonePctTextReached: { color: Colors.accent },
+  milestonePctTextLocked: { color: Colors.textTertiary },
+  milestoneName: {
+    flex: 1,
+    marginLeft: 12,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  milestoneStatusIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+  },
+  milestoneStatusReached: { color: Colors.accent },
+  milestoneStatusLocked: { color: Colors.textTertiary },
+
+  pastGoalsSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 12,
+  },
+  historyEmpty: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
   historyEmptyText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
-  historyCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  historyCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 14,
+    marginBottom: Spacing.sm,
+  },
   historyTopRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  historyBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  historyBadgeText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
-  statusBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  statusBadgeText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  historyBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  historyBadgeStrength: { backgroundColor: Colors.warning },
+  historyBadgeHypertrophy: { backgroundColor: '#8B5CF6' },
+  historyBadgeRecomp: { backgroundColor: '#06B6D4' },
+  historyBadgeFatLoss: { backgroundColor: Colors.success },
+  historyBadgeGeneral: { backgroundColor: Colors.accent },
+  historyBadgeText: {
+    color: Colors.textPrimary,
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.semiBold,
+  },
+  statusBadge: { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  statusBadgeCompleted: { backgroundColor: Colors.success },
+  statusBadgeAbandoned: { backgroundColor: Colors.divider },
+  statusBadgeText: {
+    color: Colors.textPrimary,
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.semiBold,
+  },
   historyDesc: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 6 },
+    color: Colors.textSecondary,
+    fontSize: FontSizes.caption,
+    marginTop: 6,
+  },
   historyDate: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 4, opacity: 0.7 },
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    marginTop: 4,
+    opacity: 0.7,
+  },
 
-  /* Edit Modal */
-  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
-  modalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, marginHorizontal: 20, width: '90%' },
-  modalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold, },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    padding: 24,
+    marginHorizontal: 32,
+    alignSelf: 'stretch',
+  },
+  modalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
   modalSubtitle: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4, marginBottom: 20 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    marginBottom: 20,
+  },
   modalField: { marginBottom: 16 },
   modalFieldLabel: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textTransform: 'uppercase', marginBottom: 8 },
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
   modalInput: {
     fontFamily: Fonts.regular,
-    backgroundColor: Colors.divider, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.textPrimary, fontSize: FontSizes.title, },
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.bgPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: 14,
+  },
+  modalInputFocused: { borderColor: Colors.accent },
   modalFieldHint: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 6 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 8,
+  },
   modalAutoText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', paddingVertical: 16 },
-  modalFooter: { flexDirection: 'row', marginTop: 8, gap: 8 },
-  modalCancel: { flex: 1, backgroundColor: Colors.divider, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalCancelText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
-  modalSave: { flex: 1, backgroundColor: Colors.accent, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalSaveText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    marginTop: 24,
+    gap: 12,
+  },
+  modalCancel: {
+    flex: 1,
+    height: 48,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  modalSave: {
+    flex: 1,
+    height: 48,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSaveText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+
+  tooltipBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    padding: 32,
+  },
+  tooltipCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    padding: 24,
+  },
+  tooltipTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  tooltipBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  tooltipButton: {
+    marginTop: 20,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipButtonText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
 });
+
+function historyBadgeStyle(goalType: string) {
+  switch (goalType) {
+    case 'strength':
+      return styles.historyBadgeStrength;
+    case 'hypertrophy':
+      return styles.historyBadgeHypertrophy;
+    case 'recomp':
+      return styles.historyBadgeRecomp;
+    case 'fat_loss':
+      return styles.historyBadgeFatLoss;
+    default:
+      return styles.historyBadgeGeneral;
+  }
+}

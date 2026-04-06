@@ -7,15 +7,18 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BodyMetrics'>;
 type RouteType = RouteProp<RootStackParamList, 'BodyMetrics'>;
+
+type FocusField = 'age' | 'heightFt' | 'heightIn' | 'weight' | 'bodyFat' | null;
 
 interface SexOption {
   id: string;
@@ -31,6 +34,7 @@ const SEX_OPTIONS: SexOption[] = [
 export default function BodyMetricsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const insets = useSafeAreaInsets();
   const {
     goal,
     targetLift,
@@ -56,6 +60,7 @@ export default function BodyMetricsScreen() {
   const [heightIn, setHeightIn] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
+  const [focusedField, setFocusedField] = useState<FocusField>(null);
 
   const canContinue =
     sex !== null &&
@@ -93,32 +98,35 @@ export default function BodyMetricsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Progress bar */}
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
-      </View>
-
-      {/* Header row: back button + step label */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backButton}
+          style={styles.backHit}
           activeOpacity={0.7}
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 5 of 7</Text>
+        <Text style={styles.stepIndicator}>5 of 7</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Section 1 — Biological Sex */}
-        <Text style={styles.heading}>Biological Sex</Text>
-        <Text style={styles.subtitle}>Used to calibrate your fitness metrics.</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>About You</Text>
+          <Text style={styles.screenSubtitle}>
+            We'll use this for accurate calorie and macro targets.
+          </Text>
+        </View>
+
+        <Text style={styles.sectionHeading}>Biological Sex</Text>
+        <Text style={styles.sectionLead}>
+          Used to calibrate your fitness metrics.
+        </Text>
         <View style={styles.cardsContainer}>
           {SEX_OPTIONS.map((opt) => {
             const selected = sex === opt.id;
@@ -126,130 +134,149 @@ export default function BodyMetricsScreen() {
               <TouchableOpacity
                 key={opt.id}
                 activeOpacity={0.7}
-                style={[styles.card, selected && styles.cardSelected]}
+                style={[
+                  styles.sexCard,
+                  selected && styles.sexCardSelected,
+                ]}
                 onPress={() => setSex(opt.id)}
               >
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardLabel}>{opt.label}</Text>
-                </View>
-                <View style={[styles.radio, selected && styles.radioSelected]}>
-                  {selected && <View style={styles.radioDot} />}
-                </View>
+                <Text style={styles.sexCardLabel}>{opt.label}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Section 2 — Age */}
-        <Text style={[styles.heading, styles.sectionGap]}>Age</Text>
-        <Text style={styles.subtitle}>How old are you?</Text>
-        <View style={styles.inputCard}>
-          <TextInput
-            style={styles.input}
-            value={age}
-            onChangeText={setAge}
-            keyboardType="numeric"
-            placeholder="e.g. 28"
-            placeholderTextColor={Colors.textSecondary}
-            maxLength={3}
-            returnKeyType="done"
-          />
-        </View>
+        <Text style={styles.sectionHeading}>Age</Text>
+        <Text style={styles.sectionLead}>How old are you?</Text>
+        <TextInput
+          style={[
+            styles.textInputField,
+            focusedField === 'age' && styles.textInputFocused,
+          ]}
+          value={age}
+          onChangeText={setAge}
+          keyboardType="numeric"
+          placeholder="e.g. 28"
+          placeholderTextColor={Colors.textTertiary}
+          maxLength={3}
+          returnKeyType="done"
+          onFocus={() => setFocusedField('age')}
+          onBlur={() => setFocusedField(null)}
+        />
 
-        {/* Section 3 — Height & Weight */}
-        <Text style={[styles.heading, styles.sectionGap]}>Height & Weight</Text>
-        <Text style={styles.subtitle}>Enter your measurements.</Text>
-        <View style={styles.metricsStack}>
-          {/* Height card */}
-          <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Height</Text>
-            <View style={styles.unitRow}>
-              <TextInput
-                style={styles.heightFixedInput}
-                value={heightFt}
-                onChangeText={setHeightFt}
-                keyboardType="numeric"
-                placeholder="5"
-                placeholderTextColor={Colors.textSecondary}
-                maxLength={1}
-                returnKeyType="done"
-              />
-              <Text style={styles.unitLabel}>ft</Text>
-              <TextInput
-                style={[styles.heightFixedInput, styles.heightInInput]}
-                value={heightIn}
-                onChangeText={setHeightIn}
-                keyboardType="numeric"
-                placeholder="11"
-                placeholderTextColor={Colors.textSecondary}
-                maxLength={2}
-                returnKeyType="done"
-              />
-              <Text style={styles.unitLabel}>in</Text>
-            </View>
-          </View>
-          {/* Weight card */}
-          <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Weight</Text>
-            <View style={styles.unitRow}>
-              <TextInput
-                style={[styles.input, styles.flex1]}
-                value={weightLbs}
-                onChangeText={setWeightLbs}
-                keyboardType="numeric"
-                placeholder="185"
-                placeholderTextColor={Colors.textSecondary}
-                maxLength={4}
-                returnKeyType="done"
-              />
-              <Text style={styles.unitLabel}>lbs</Text>
-            </View>
+        <Text style={styles.sectionHeading}>Height & Weight</Text>
+        <Text style={styles.sectionLead}>Enter your measurements.</Text>
+
+        <View style={styles.metricCard}>
+          <View style={styles.heightRow}>
+            <TextInput
+              style={[
+                styles.textInputField,
+                styles.heightFtInput,
+                focusedField === 'heightFt' && styles.textInputFocused,
+              ]}
+              value={heightFt}
+              onChangeText={setHeightFt}
+              keyboardType="numeric"
+              placeholder="5"
+              placeholderTextColor={Colors.textTertiary}
+              maxLength={1}
+              returnKeyType="done"
+              onFocus={() => setFocusedField('heightFt')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <Text style={styles.unitLabel}>ft</Text>
+            <TextInput
+              style={[
+                styles.textInputField,
+                styles.heightInInput,
+                focusedField === 'heightIn' && styles.textInputFocused,
+              ]}
+              value={heightIn}
+              onChangeText={setHeightIn}
+              keyboardType="numeric"
+              placeholder="11"
+              placeholderTextColor={Colors.textTertiary}
+              maxLength={2}
+              returnKeyType="done"
+              onFocus={() => setFocusedField('heightIn')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <Text style={styles.unitLabel}>in</Text>
           </View>
         </View>
 
-        {/* Section 4 — Body Fat % (Optional) */}
-        <View style={styles.headingRow}>
-          <Text style={[styles.heading, styles.sectionGap]}>Body Fat %</Text>
+        <View style={[styles.metricCard, styles.metricCardStack]}>
+          <View style={styles.weightRow}>
+            <TextInput
+              style={[
+                styles.textInputField,
+                styles.weightInput,
+                focusedField === 'weight' && styles.textInputFocused,
+              ]}
+              value={weightLbs}
+              onChangeText={setWeightLbs}
+              keyboardType="numeric"
+              placeholder="185"
+              placeholderTextColor={Colors.textTertiary}
+              maxLength={4}
+              returnKeyType="done"
+              onFocus={() => setFocusedField('weight')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <Text style={styles.unitLabel}>lbs</Text>
+          </View>
+        </View>
+
+        <View style={styles.bodyFatHeadingRow}>
+          <View style={styles.bodyFatTitleWrap}>
+            <Text style={styles.sectionHeadingLabel}>
+              Body Fat %{' '}
+              <Text style={styles.sectionHeadingOptional}>(optional)</Text>
+            </Text>
+          </View>
           <InfoTooltip
             title="How to estimate body fat"
             content="If you're lean with visible abs: 10–15%. Average build with some muscle definition: 15–20%. Soft build with little definition: 20–30%+. Women add approximately 8–10% to each range. Leave blank and we'll estimate from your other stats."
           />
         </View>
-        <Text style={styles.subtitle}>Optional — estimate is fine.</Text>
-        <View style={styles.inputCard}>
-          <TextInput
-            style={styles.input}
-            value={bodyFatPct}
-            onChangeText={setBodyFatPct}
-            keyboardType="numeric"
-            placeholder="e.g. 18"
-            placeholderTextColor={Colors.textSecondary}
-            maxLength={4}
-            returnKeyType="done"
-          />
-        </View>
-        <Text style={styles.helperText}>Not sure? Leave blank and we'll estimate.</Text>
+        <Text style={styles.sectionLead}>Optional — estimate is fine.</Text>
+        <TextInput
+          style={[
+            styles.textInputField,
+            focusedField === 'bodyFat' && styles.textInputFocused,
+          ]}
+          value={bodyFatPct}
+          onChangeText={setBodyFatPct}
+          keyboardType="numeric"
+          placeholder="e.g. 18"
+          placeholderTextColor={Colors.textTertiary}
+          maxLength={4}
+          returnKeyType="done"
+          onFocus={() => setFocusedField('bodyFat')}
+          onBlur={() => setFocusedField(null)}
+        />
+        <Text style={styles.bodyFatHelper}>
+          Not sure? Leave blank and we'll estimate.
+        </Text>
       </ScrollView>
 
-      {/* Fixed footer */}
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.button, !canContinue && styles.buttonDisabled]}
           onPress={handleContinue}
           disabled={!canContinue}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              !canContinue && styles.buttonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -259,203 +286,195 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
 
-  /* Progress */
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
-  },
-  progressFill: {
-    width: '71.4%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-
-  /* Header */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  backHit: {
+    paddingRight: 8,
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1,
-    color: Colors.textPrimary,
-    marginTop: -2,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
   },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
-  /* Scroll */
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
 
-  /* Sections */
-  heading: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  titleBlock: {
+    marginTop: 56,
   },
-  subtitle: {
+  screenTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 16,
-  },
-  sectionGap: {
-    marginTop: 32,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 32,
   },
 
-  /* Cards (sex section) */
-  cardsContainer: {
-    gap: 10,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  cardSelected: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accentMuted,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  cardLabel: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
-    color: Colors.textPrimary,
-  },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: Colors.textSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: Colors.accent,
-  },
-  radioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.accent,
-  },
-
-  /* Text inputs */
-  inputCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  input: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-    paddingVertical: 12,
-  },
-  inputLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
-    marginTop: 10,
-    marginBottom: -4,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 28,
+    marginBottom: 12,
   },
-
-  /* Height & Weight stacked cards */
-  metricsStack: {
-    gap: 12,
-  },
-  unitRow: {
+  bodyFatHeadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  bodyFatTitleWrap: {
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
+  sectionHeadingLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  sectionHeadingOptional: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 0,
+    textTransform: 'none',
+  },
+  sectionLead: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+
+  cardsContainer: {
+    gap: 0,
+  },
+  sexCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  sexCardSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  sexCardLabel: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+
+  textInputField: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  textInputFocused: {
+    borderColor: Colors.accent,
+  },
+
+  metricCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+  },
+  metricCardStack: {
+    marginTop: Spacing.sm,
+  },
+  heightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  heightFtInput: {
+    width: 52,
+    minWidth: 52,
+  },
+  heightInInput: {
+    width: 56,
+    minWidth: 56,
+  },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  weightInput: {
+    flex: 1,
+    minWidth: 0,
   },
   unitLabel: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    marginLeft: 2,
-  },
-  heightFixedInput: {
-    fontFamily: Fonts.regular,
-    width: 40,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-    paddingVertical: 12,
-  },
-  heightInInput: {
-    marginLeft: 12,
-  },
-  flex1: {
-    flex: 1,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
 
-  /* Helper text */
-  helperText: {
+  bodyFatHelper: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    marginTop: 8,
-    marginLeft: 4,
+    color: Colors.textTertiary,
+    marginTop: Spacing.sm,
   },
 
-  /* Footer */
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
-  },
-  buttonTextDisabled: {
-    color: Colors.textSecondary,
   },
 });

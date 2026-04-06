@@ -10,11 +10,11 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 // ── Label maps ──
 
@@ -84,6 +84,7 @@ interface PlanData {
 
 interface ScreenData {
   email: string;
+  displayName: string;
   subscriptionStatus: string;
   profile: UserProfile;
   goal: GoalData | null;
@@ -92,8 +93,9 @@ interface ScreenData {
 
 // ── Helpers ──
 
-function getInitials(email: string): string {
-  return (email.split('@')[0]?.[0] ?? '').toUpperCase();
+function initialLetter(displayName: string): string {
+  const t = displayName.trim();
+  return (t[0] ?? '?').toUpperCase();
 }
 
 function truncate(str: string, maxLen: number): string {
@@ -106,13 +108,9 @@ function mapped(map: Record<string, string>, key: string | undefined): string {
 
 // ── Sub-components ──
 
-function Divider() {
-  return <View style={styles.divider} />;
-}
-
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, isLast }: { label: string; value: string; isLast?: boolean }) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, isLast && styles.rowLast]}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowValue} numberOfLines={1}>
         {value}
@@ -131,12 +129,9 @@ function SkeletonCard({
   return (
     <Animated.View style={[styles.sectionCard, { opacity: pulseAnim }]}>
       {Array.from({ length: count }).map((_, i) => (
-        <View key={i}>
-          {i > 0 && <View style={styles.divider} />}
-          <View style={styles.row}>
-            <View style={styles.skeletonPill} />
-            <View style={styles.skeletonPillShort} />
-          </View>
+        <View key={i} style={[styles.row, i === count - 1 && styles.rowLast]}>
+          <View style={styles.skeletonPill} />
+          <View style={styles.skeletonPillShort} />
         </View>
       ))}
     </Animated.View>
@@ -206,7 +201,7 @@ export default function ProfileSettingsScreen() {
           .select('goal_type, plan_duration_weeks, target_lift')
           .eq('user_id', uid)
           .eq('status', 'active')
-          .order('id', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
         supabase
@@ -214,7 +209,7 @@ export default function ProfileSettingsScreen() {
           .select('current_week, total_weeks, title')
           .eq('user_id', uid)
           .eq('status', 'active')
-          .order('id', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
         supabase
@@ -234,8 +229,14 @@ export default function ProfileSettingsScreen() {
       const weightLog = weightLogRes.data as { weight_lbs: number; log_date: string } | null;
       setLatestWeightLog(weightLog);
 
+      const meta = user.user_metadata as Record<string, unknown> | undefined;
+      const fromMeta = (k: string) =>
+        typeof meta?.[k] === 'string' ? (meta[k] as string).trim() : '';
+      const displayName = fromMeta('full_name') || fromMeta('name') || user.email || '';
+
       setData({
         email: user.email ?? '',
+        displayName,
         subscriptionStatus: 'free',
         profile: profileRes.data as UserProfile,
         goal: (goalRes.data as GoalData | null) ?? null,
@@ -253,18 +254,31 @@ export default function ProfileSettingsScreen() {
     loadData();
   }, [loadData]);
 
+  const resetToOnboarding = () => {
+    const rootNav = navigation.getParent()?.getParent();
+    rootNav?.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Onboarding' }],
+      }),
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          const rootNav = navigation.getParent()?.getParent() as
-            | NativeStackNavigationProp<RootStackParamList>
-            | undefined;
-          rootNav?.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+        onPress: () => {
+          void (async () => {
+            try {
+              await supabase.auth.signOut();
+              resetToOnboarding();
+            } catch (error) {
+              console.error('Sign out error:', error);
+            }
+          })();
         },
       },
     ]);
@@ -274,7 +288,7 @@ export default function ProfileSettingsScreen() {
 
   if (hasError && !loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
             Couldn't load profile. Pull down to refresh.
@@ -289,18 +303,20 @@ export default function ProfileSettingsScreen() {
 
   const isPro = data?.subscriptionStatus === 'pro';
 
+  const today = new Date().toISOString().split('T')[0];
+  const isToday = latestWeightLog?.log_date === today;
+
   // ── Render ──
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 1. Profile Header ── */}
         {loading ? (
-          <Animated.View style={[styles.profileCard, { opacity: pulseAnim }]}>
+          <Animated.View style={[styles.profileHeaderRow, { opacity: pulseAnim }]}>
             <View style={styles.skeletonAvatar} />
             <View style={styles.skeletonTextBlock}>
               <View style={styles.skeletonLine} />
@@ -309,26 +325,26 @@ export default function ProfileSettingsScreen() {
           </Animated.View>
         ) : (
           <TouchableOpacity
-            style={styles.profileCard}
+            style={styles.profileHeaderRow}
             onPress={() => navigation.navigate('SubscriptionManagement')}
             activeOpacity={0.8}
           >
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {data ? getInitials(data.email) : ''}
+                {data ? initialLetter(data.displayName) : ''}
               </Text>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.profileEmail} numberOfLines={1}>
-                {data?.email}
+              <Text style={styles.profileName} numberOfLines={1}>
+                {data?.displayName}
               </Text>
               <View style={[styles.subBadge, isPro ? styles.subBadgePro : styles.subBadgeFree]}>
-                <Text style={[styles.subBadgeText, !isPro && styles.subBadgeTextFree]}>
+                <Text style={[styles.subBadgeText, isPro ? styles.subBadgeTextPro : styles.subBadgeTextFree]}>
                   {isPro ? 'PRO' : 'FREE'}
                 </Text>
               </View>
             </View>
-            <Text style={styles.chevron}>›</Text>
+            <Text style={styles.profileChevron}>›</Text>
           </TouchableOpacity>
         )}
 
@@ -339,7 +355,6 @@ export default function ProfileSettingsScreen() {
         ) : (
           <View style={styles.sectionCard}>
             <Row label="Goal" value={mapped(GOAL_LABELS, data?.goal?.goal_type)} />
-            <Divider />
             <Row
               label="Current Week"
               value={
@@ -348,10 +363,10 @@ export default function ProfileSettingsScreen() {
                   : '—'
               }
             />
-            <Divider />
             <Row
               label="Active Plan"
               value={data?.plan ? truncate(data.plan.title, 20) : '—'}
+              isLast
             />
           </View>
         )}
@@ -365,31 +380,32 @@ export default function ProfileSettingsScreen() {
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Weight</Text>
               <View style={styles.weightValueGroup}>
-                <Text style={styles.rowValue}>
+                <Text style={styles.weightPrimary}>
                   {latestWeightLog
                     ? `${latestWeightLog.weight_lbs} lbs`
                     : `${data?.profile.weight_lbs ?? '—'} lbs`}
                 </Text>
                 {latestWeightLog ? (
-                  <Text style={styles.weightLogDate}>
-                    {`Logged ${new Date(latestWeightLog.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                  <Text style={styles.weightSecondary}>
+                    {isToday
+                      ? 'Logged today'
+                      : `Logged ${new Date(latestWeightLog.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                   </Text>
                 ) : null}
-                <Text style={styles.weightLogHint}>Log daily from Dashboard</Text>
+                <Text style={isToday ? styles.weightTertiarySuccess : styles.weightTertiary}>
+                  {isToday ? 'Up to date ✓' : 'Log today from Dashboard'}
+                </Text>
               </View>
             </View>
-            <Divider />
             <Row
               label="Height"
               value={`${data?.profile.height_ft ?? '—'}'${data?.profile.height_in ?? '—'}"`}
             />
-            <Divider />
             <Row
               label="Age"
               value={data?.profile.age != null ? String(data.profile.age) : '—'}
             />
-            <Divider />
-            <Row label="Biological Sex" value={mapped(SEX_LABELS, data?.profile.sex)} />
+            <Row label="Biological Sex" value={mapped(SEX_LABELS, data?.profile.sex)} isLast />
           </View>
         )}
 
@@ -404,7 +420,6 @@ export default function ProfileSettingsScreen() {
                 label="Experience"
                 value={mapped(TRAINING_AGE_LABELS, data?.profile.training_age)}
               />
-              <Divider />
               <Row
                 label="Days/Week"
                 value={
@@ -413,7 +428,6 @@ export default function ProfileSettingsScreen() {
                     : '—'
                 }
               />
-              <Divider />
               <Row
                 label="Session Length"
                 value={
@@ -422,10 +436,8 @@ export default function ProfileSettingsScreen() {
                     : '—'
                 }
               />
-              <Divider />
               <Row label="Split" value={mapped(SPLIT_LABELS, data?.profile.preferred_split)} />
-              <Divider />
-              <Row label="Equipment" value={mapped(EQUIPMENT_LABELS, data?.profile.equipment)} />
+              <Row label="Equipment" value={mapped(EQUIPMENT_LABELS, data?.profile.equipment)} isLast />
             </View>
             <Text style={styles.helperText}>
               To change your training setup, start a new plan.
@@ -442,16 +454,15 @@ export default function ProfileSettingsScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Workout Reminders</Text>
-            <Text style={styles.chevronSmall}>›</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
-          <Divider />
           <TouchableOpacity
-            style={styles.row}
+            style={[styles.row, styles.rowLast]}
             onPress={() => Linking.openURL('https://apps.apple.com')}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Rate Adaptive Fitness</Text>
-            <Text style={styles.chevronSmall}>›</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -464,16 +475,15 @@ export default function ProfileSettingsScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Privacy Policy</Text>
-            <Text style={styles.chevronSmall}>›</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
-          <Divider />
           <TouchableOpacity
-            style={styles.row}
+            style={[styles.row, styles.rowLast]}
             onPress={() => Linking.openURL('https://adaptive.fitness/terms')}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Terms of Service</Text>
-            <Text style={styles.chevronSmall}>›</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -486,10 +496,19 @@ export default function ProfileSettingsScreen() {
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
 
+        {__DEV__ ? (
+          <TouchableOpacity
+            style={styles.devButton}
+            onPress={() => resetToOnboarding()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.devButtonText}>🛠 DEV: Restart Onboarding</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* ── 8. Version footer ── */}
         <Text style={styles.versionText}>Adaptive Fitness • v1.0.0</Text>
       </ScrollView>
-
     </SafeAreaView>
   );
 }
@@ -497,135 +516,192 @@ export default function ProfileSettingsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 56,
+    paddingBottom: 40,
+  },
 
-  // ── Profile header card ──
-  profileCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 20,
+  profileHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+    marginBottom: Spacing.xl,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#FFFFFF', fontSize: FontSizes.heading1, fontFamily: Fonts.bold, }, // TODO: map to design token
-  profileInfo: { flex: 1, marginLeft: 14 },
-  profileEmail: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.semiBold, },
+  avatarText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  profileInfo: { flex: 1, marginLeft: 16 },
+  profileName: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
   subBadge: {
     alignSelf: 'flex-start',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 6,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: 4,
+    borderWidth: 1,
   },
-  subBadgePro: { backgroundColor: Colors.accent },
-  subBadgeFree: { backgroundColor: Colors.divider },
-  subBadgeText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.bold, }, // TODO: map to design token
+  subBadgeFree: {
+    backgroundColor: Colors.bgElevated,
+    borderColor: Colors.border,
+  },
+  subBadgePro: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+  },
+  subBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+  },
   subBadgeTextFree: { color: Colors.textSecondary },
-  chevron: {
+  subBadgeTextPro: { color: Colors.accent },
+  profileChevron: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.heading1, marginLeft: 8 },
-
-  // ── Section heading ──
-  sectionHeading: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold, 
-    letterSpacing: 1.2,
-    marginBottom: 8,
-    marginTop: 24,
+    fontSize: 20,
+    color: Colors.textTertiary,
   },
 
-  // ── Section card (rows with dividers) ──
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 28,
+    marginBottom: 8,
+  },
+
   sectionCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     overflow: 'hidden',
+    marginBottom: Spacing.lg,
   },
 
-  // ── Row ──
   row: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
   },
+  rowLast: { borderBottomWidth: 0 },
   rowLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
   rowValue: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
     color: Colors.textPrimary,
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.medium, 
     flexShrink: 1,
     textAlign: 'right',
     marginLeft: 12,
   },
+  rowChevron: {
+    fontFamily: Fonts.regular,
+    fontSize: 18,
+    color: Colors.textTertiary,
+  },
   weightValueGroup: { alignItems: 'flex-end' },
-  weightLogDate: {
+  weightPrimary: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  weightSecondary: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2 },
-  weightLogHint: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, fontStyle: 'italic', marginTop: 2 },
-
-  // ── Divider ──
-  divider: { height: 1, backgroundColor: Colors.divider },
-
-  // ── Helper text ──
-  helperText: {
-    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    fontStyle: 'italic',
-    marginTop: 6,
+    marginTop: 2,
+  },
+  weightTertiary: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+    marginTop: 1,
+  },
+  weightTertiarySuccess: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.success,
+    marginTop: 1,
   },
 
-  // ── App section ──
-  chevronSmall: {
+  helperText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.heading1, },
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 4,
+  },
 
-  // ── Sign Out ──
   signOutBtn: {
     marginTop: 32,
     height: 52,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.dangerMuted,
     borderWidth: 1,
-    borderColor: Colors.dangerMuted,
+    borderColor: 'rgba(239,68,68,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  signOutText: { color: Colors.danger, fontSize: FontSizes.title, fontFamily: Fonts.semiBold, },
+  signOutText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.danger,
+    textAlign: 'center',
+  },
 
-  // ── Version footer ──
+  devButton: {
+    marginTop: 32,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    borderStyle: 'dashed',
+  },
+  devButtonText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
+
   versionText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
     textAlign: 'center',
     marginTop: 16,
-    marginBottom: 8,
   },
 
-  // ── Skeleton ──
   skeletonAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
     backgroundColor: Colors.divider,
   },
-  skeletonTextBlock: { flex: 1, marginLeft: 14, gap: 8 },
+  skeletonTextBlock: { flex: 1, marginLeft: 16, gap: 8 },
   skeletonLine: {
     height: 14,
     borderRadius: 7,

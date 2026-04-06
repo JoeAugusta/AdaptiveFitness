@@ -7,12 +7,13 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Constraints'>;
 type RouteType = RouteProp<RootStackParamList, 'Constraints'>;
@@ -74,9 +75,12 @@ const DEFAULT_EXCLUDED: string[] = [
   'Good Mornings', 'Hip Thrust',
 ];
 
+const WARNING_BORDER = `${Colors.warning}40`;
+
 export default function ConstraintsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const insets = useSafeAreaInsets();
   const {
     goal,
     targetLift,
@@ -173,31 +177,29 @@ export default function ConstraintsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Progress bar */}
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
-      </View>
-
-      {/* Header row */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backButton}
+          style={styles.backHit}
           activeOpacity={0.7}
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 4 of 7</Text>
+        <Text style={styles.stepIndicator}>4 of 7</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Section 1 — Equipment */}
-        <Text style={styles.heading}>Equipment</Text>
-        <Text style={styles.subtitle}>What do you have access to?</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>Equipment</Text>
+          <Text style={styles.screenSubtitle}>
+            What do you have access to?
+          </Text>
+        </View>
 
         <View style={styles.cardsContainer}>
           {EQUIPMENT_OPTIONS.map((opt) => {
@@ -206,32 +208,29 @@ export default function ConstraintsScreen() {
               <TouchableOpacity
                 key={opt.id}
                 activeOpacity={0.7}
-                style={[styles.card, selected && styles.cardSelected]}
+                style={[
+                  styles.equipCard,
+                  selected && styles.equipCardSelected,
+                ]}
                 onPress={() => setEquipment(opt.id)}
               >
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardLabel}>{opt.label}</Text>
-                  {opt.detail && (
-                    <Text style={styles.cardDetail}>{opt.detail}</Text>
-                  )}
-                </View>
-                <View style={[styles.radio, selected && styles.radioSelected]}>
-                  {selected && <View style={styles.radioDot} />}
-                </View>
+                <Text style={styles.equipCardLabel}>{opt.label}</Text>
+                {opt.detail ? (
+                  <Text style={styles.equipCardDetail}>{opt.detail}</Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Section 2 — Lagging Areas */}
-        <View style={styles.headingRow}>
-          <Text style={[styles.heading, styles.sectionGap]}>Lagging Areas</Text>
+        <View style={styles.sectionHeadingRow}>
+          <Text style={styles.sectionHeadingLabel}>Lagging Areas</Text>
           <InfoTooltip
             title="What are lagging areas?"
             content="Lagging areas are muscle groups that are underdeveloped relative to the rest of your physique. Your coach will add extra sets and frequency to these muscles throughout your plan."
           />
         </View>
-        <Text style={styles.subtitle}>
+        <Text style={styles.sectionCaption}>
           Any muscle groups you want to prioritise? (optional)
         </Text>
         <View style={styles.chipRow}>
@@ -254,9 +253,8 @@ export default function ConstraintsScreen() {
           })}
         </View>
 
-        {/* Section 3 — Current Injuries */}
-        <Text style={[styles.heading, styles.sectionGap]}>Current Injuries</Text>
-        <Text style={styles.subtitle}>
+        <Text style={styles.sectionHeading}>Current Injuries</Text>
+        <Text style={styles.sectionCaption}>
           We'll automatically remove movements that could aggravate these.
         </Text>
         <View style={styles.chipRow}>
@@ -279,25 +277,22 @@ export default function ConstraintsScreen() {
           })}
         </View>
         {injuries.length > 0 && (
-          <View style={styles.injuryFeedbackCard}>
-            <Text style={styles.injuryFeedbackText}>
+          <View style={styles.autoExclusionCard}>
+            <Text style={styles.autoExclusionText}>
               {'Based on your injuries, we\'ve avoided: '}
               {[...new Set(injuries.flatMap((i) => INJURY_EXCLUSIONS[i] || []))].join(', ')}
             </Text>
           </View>
         )}
 
-        {/* Section 4 — Exercises to Avoid */}
-        <View style={styles.headingRow}>
-          <Text style={[styles.heading, styles.sectionGap]}>
-            Exercises to Avoid
-          </Text>
+        <View style={styles.sectionHeadingRow}>
+          <Text style={styles.sectionHeadingLabel}>Exercises to Avoid</Text>
           <InfoTooltip
             title="Why exclude exercises?"
             content="Excluded exercises will never appear in your plan — not even as alternatives. Use this for movements that cause pain, that you lack equipment for, or that you simply don't want to do."
           />
         </View>
-        <Text style={styles.subtitle}>
+        <Text style={styles.sectionCaption}>
           Select any exercises you can't or don't want to do (optional)
         </Text>
         <View style={styles.chipRow}>
@@ -307,17 +302,11 @@ export default function ConstraintsScreen() {
               <TouchableOpacity
                 key={exercise}
                 activeOpacity={0.7}
-                style={[
-                  styles.chip,
-                  selected && styles.chipDanger,
-                ]}
+                style={[styles.chip, selected && styles.chipSelected]}
                 onPress={() => toggleExcluded(exercise)}
               >
                 <Text
-                  style={[
-                    styles.chipText,
-                    selected && styles.chipTextDanger,
-                  ]}
+                  style={[styles.chipText, selected && styles.chipTextSelected]}
                 >
                   {exercise}
                 </Text>
@@ -325,7 +314,6 @@ export default function ConstraintsScreen() {
             );
           })}
 
-          {/* Add custom exercise chip */}
           {!showCustomInput && (
             <TouchableOpacity
               activeOpacity={0.7}
@@ -342,7 +330,7 @@ export default function ConstraintsScreen() {
             <TextInput
               style={styles.textInput}
               placeholder="Exercise name"
-              placeholderTextColor={Colors.textSecondary}
+              placeholderTextColor={Colors.textTertiary}
               value={customExercise}
               onChangeText={setCustomExercise}
               onSubmitEditing={addCustomExercise}
@@ -374,25 +362,22 @@ export default function ConstraintsScreen() {
         )}
       </ScrollView>
 
-      {/* Fixed footer */}
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.button, !canContinue && styles.buttonDisabled]}
           onPress={handleContinue}
           disabled={!canContinue}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              !canContinue && styles.buttonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -402,214 +387,193 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
 
-  /* Progress */
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
-  },
-  progressFill: {
-    width: '57.1%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-
-  /* Header */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  backHit: {
+    paddingRight: 8,
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1,
-    color: Colors.textPrimary,
-    marginTop: -2,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
   },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
-  /* Scroll */
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
 
-  /* Sections */
-  heading: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  titleBlock: {
+    marginTop: 56,
   },
-  subtitle: {
+  screenTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 16,
-  },
-  sectionGap: {
-    marginTop: 32,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 32,
   },
 
-  /* Cards (equipment section) */
-  cardsContainer: {
-    gap: 10,
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 28,
+    marginBottom: 4,
   },
-  card: {
+  sectionHeadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 4,
   },
-  cardSelected: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accentMuted,
-  },
-  cardContent: {
+  sectionHeadingLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     flex: 1,
+    marginRight: Spacing.sm,
   },
-  cardLabel: {
+  sectionCaption: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+
+  cardsContainer: {
+    gap: 0,
+  },
+  equipCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  equipCardSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  equipCardLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
-  cardDetail: {
+  equipCardDetail: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: Colors.textSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: Colors.accent,
-  },
-  radioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.accent,
-  },
 
-  /* Chips (weak points + default style) */
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    marginHorizontal: -4,
+    marginBottom: -4,
   },
   chip: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
     backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    margin: 4,
   },
   chipSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
   chipText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.medium, 
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   chipTextSelected: {
-    color: Colors.textPrimary,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
 
-  /* Danger chips (exercises to avoid) */
-  chipDanger: {
-    borderColor: Colors.danger,
-    backgroundColor: Colors.dangerMuted,
-  },
-  chipTextDanger: {
-    color: Colors.danger,
-  },
-
-  /* Add-custom chip */
   chipAdd: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: Colors.divider,
     borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+    borderRadius: Radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    margin: 4,
+    justifyContent: 'center',
   },
   chipAddText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.medium, 
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
-  /* Custom exercise input row */
   customInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 12,
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
   },
   textInput: {
     fontFamily: Fonts.regular,
     flex: 1,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: 12,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
-    borderWidth: 2,
-    borderColor: Colors.accent,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   addBtn: {
     backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: 12,
   },
   addBtnDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   addBtnText: {
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
+    fontFamily: Fonts.semiBold,
     color: Colors.textPrimary,
   },
   cancelBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: Spacing.md,
     paddingVertical: 12,
   },
   cancelBtnText: {
@@ -618,42 +582,41 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  /* Injury feedback card */
-  injuryFeedbackCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 8,
+  autoExclusionCard: {
+    backgroundColor: Colors.warningMuted,
+    borderWidth: 1,
+    borderColor: WARNING_BORDER,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginTop: Spacing.sm,
   },
-  injuryFeedbackText: {
+  autoExclusionText: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    lineHeight: 18,
   },
 
-  /* Footer */
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
-  },
-  buttonTextDisabled: {
-    color: Colors.textSecondary,
   },
 });

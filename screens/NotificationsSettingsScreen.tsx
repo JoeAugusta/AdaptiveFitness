@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 // ── Constants ──
 
@@ -53,7 +53,7 @@ function Divider() {
 
 function SkeletonRows({ pulseAnim }: { pulseAnim: Animated.Value }) {
   return (
-    <Animated.View style={{ opacity: pulseAnim }}>
+    <Animated.View style={[styles.skeletonLoader, { opacity: pulseAnim }]}>
       {[0, 1, 2].map((i) => (
         <View key={i} style={styles.skeletonRow}>
           <View style={styles.skeletonPill} />
@@ -316,53 +316,47 @@ export default function NotificationsSettingsScreen() {
 
   const renderPermissionBanner = () => {
     const isDenied = permissionStatus === 'denied';
+    const isWeb = Platform.OS === 'web';
 
     return (
-      <View style={styles.bannerCard}>
-        <Text style={styles.bannerEmoji}>{isDenied ? '🔕' : '🔔'}</Text>
-        <Text style={styles.bannerTitle}>
-          {isDenied ? 'Notifications Disabled' : 'Enable Notifications'}
-        </Text>
-        <Text style={styles.bannerBody}>
-          {isDenied
-            ? 'To receive workout reminders, enable notifications for Adaptive Fitness in your device Settings.'
-            : 'Get reminders for your scheduled workouts and celebrate milestones as you hit them.'}
-        </Text>
+      <View style={styles.permissionContent}>
+        <View style={styles.bannerCard}>
+          <Text style={styles.bannerEmoji}>{isDenied ? '🔕' : '🔔'}</Text>
+          <Text style={styles.bannerTitle}>
+            {isDenied ? 'Notifications Disabled' : 'Enable Notifications'}
+          </Text>
+          <Text style={styles.bannerBody}>
+            {isDenied
+              ? 'To receive workout reminders, enable notifications for Adaptive Fitness in your device Settings.'
+              : 'Get reminders for your scheduled workouts and celebrate milestones as you hit them.'}
+          </Text>
 
-        {isDenied ? (
-          <>
+          {isDenied ? (
+            <>
+              <TouchableOpacity
+                style={styles.bannerBtn}
+                onPress={() => Linking.openSettings()}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.bannerBtnLabel}>Open Settings</Text>
+              </TouchableOpacity>
+              <Text style={styles.bannerNote}>
+                You can change this at any time in Settings → Adaptive Fitness → Notifications.
+              </Text>
+            </>
+          ) : (
             <TouchableOpacity
-              style={styles.bannerBtn}
-              onPress={() => Linking.openSettings()}
+              style={[styles.bannerBtn, isWeb && styles.bannerBtnWeb]}
+              onPress={!isWeb ? requestPermissions : undefined}
               activeOpacity={0.8}
+              disabled={isWeb}
             >
-              <Text style={styles.bannerBtnText}>Open Settings</Text>
+              <Text style={styles.bannerBtnLabel}>
+                {isWeb ? 'Available on iOS & Android' : 'Enable Notifications'}
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.bannerNote}>
-              You can change this at any time in Settings → Adaptive Fitness → Notifications.
-            </Text>
-          </>
-        ) : (
-          <TouchableOpacity
-            style={[
-              styles.bannerBtn,
-              Platform.OS === 'web' && styles.bannerBtnDisabled,
-            ]}
-            onPress={Platform.OS !== 'web' ? requestPermissions : undefined}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.bannerBtnText,
-                Platform.OS === 'web' && styles.bannerBtnDisabledText,
-              ]}
-            >
-              {Platform.OS === 'web'
-                ? 'Available on iOS & Android'
-                : 'Enable Notifications'}
-            </Text>
-          </TouchableOpacity>
-        )}
+          )}
+        </View>
       </View>
     );
   };
@@ -399,7 +393,7 @@ export default function NotificationsSettingsScreen() {
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
                 <Text style={styles.timeValue}>{formatTime(reminderTime)}</Text>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.rowChevron}>›</Text>
               </View>
             </TouchableOpacity>
           </>
@@ -433,7 +427,7 @@ export default function NotificationsSettingsScreen() {
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
                 <Text style={styles.timeValue}>{formatTime(weighInTime)}</Text>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.rowChevron}>›</Text>
               </View>
             </TouchableOpacity>
           </>
@@ -501,22 +495,27 @@ export default function NotificationsSettingsScreen() {
   // ── Main render ──
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Navigation header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Text style={styles.backChevron}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} pointerEvents="none">
-          Notifications
-        </Text>
-      </View>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.screenInner}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.headerBackSlot}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backChevron}>‹</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} pointerEvents="none">
+            Notifications
+          </Text>
+          <View style={styles.headerBackSlot} />
+        </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
         {loading ? (
           <SkeletonRows pulseAnim={pulseAnim} />
         ) : permissionStatus === 'granted' ? (
@@ -524,7 +523,8 @@ export default function NotificationsSettingsScreen() {
         ) : (
           renderPermissionBanner()
         )}
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       {/* ── Time Picker Modal ── */}
       <Modal
@@ -609,98 +609,111 @@ export default function NotificationsSettingsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
+  screenInner: { flex: 1, paddingHorizontal: Spacing.xl },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 64 },
 
-  // ── Header ──
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
+  headerBackSlot: {
+    width: 44,
+    justifyContent: 'center',
+  },
   backChevron: {
-    fontFamily: Fonts.regular,
-    color: Colors.accent, fontSize: FontSizes.display, },
+    fontSize: 28,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    paddingRight: 8,
+  },
   headerTitle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+    flex: 1,
     textAlign: 'center',
-    color: Colors.textPrimary,
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold, 
+    color: Colors.textPrimary,
   },
 
-  // ── Permission banners ──
+  permissionContent: {
+    marginTop: 48,
+    alignItems: 'center',
+    width: '100%',
+  },
   bannerCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 24,
-    marginHorizontal: 20,
-    marginTop: 24,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 32,
     alignItems: 'center',
+    width: '100%',
   },
   bannerEmoji: {
     fontFamily: Fonts.regular,
-    fontSize: 40, // TODO: map to design token
-    marginBottom: 12,
+    fontSize: 48,
+    marginBottom: 16,
   },
   bannerTitle: {
-    color: Colors.textPrimary,
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold, 
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
   bannerBody: {
     fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
     marginTop: 8,
   },
   bannerBtn: {
-    marginTop: 20,
+    marginTop: 24,
     width: '100%',
     height: 52,
-    borderRadius: 14,
-    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bannerBtnDisabled: { backgroundColor: Colors.divider },
-  bannerBtnText: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.semiBold, }, // TODO: map to design token
-  bannerBtnDisabledText: { color: Colors.textSecondary },
+  bannerBtnWeb: { opacity: 0.55 },
+  bannerBtnLabel: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
   bannerNote: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 10,
   },
 
-  // ── Section headings ──
   sectionHeading: {
-    color: Colors.textSecondary,
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
-    fontFamily: Fonts.bold, 
-    letterSpacing: 1.2,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     marginBottom: 8,
     marginTop: 24,
-    marginHorizontal: 20,
   },
 
-  // ── Preference card ──
   sectionCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     overflow: 'hidden',
-    marginHorizontal: 20,
+    marginBottom: Spacing.md,
   },
   prefRow: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -709,32 +722,45 @@ const styles = StyleSheet.create({
   prefLabelGroup: { flex: 1, marginRight: 12 },
   prefLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.body, },
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
   prefSubLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   timeRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   timeValue: {
     fontFamily: Fonts.regular,
-    color: Colors.accent, fontSize: FontSizes.body, },
-  chevron: {
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
+  rowChevron: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.heading1, },
+    fontSize: 18,
+    color: Colors.textTertiary,
+  },
 
   // ── Divider ──
   divider: { height: 1, backgroundColor: Colors.divider },
 
-  // ── Skeleton ──
+  skeletonLoader: {
+    width: '100%',
+    marginTop: 8,
+  },
   skeletonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 18,
-    marginHorizontal: 20,
-    marginTop: 8,
+    marginBottom: 8,
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   skeletonPill: {
     height: 14,
@@ -752,7 +778,7 @@ const styles = StyleSheet.create({
   // ── Time picker modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)', // TODO: map to design token
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalSheet: {

@@ -24,7 +24,7 @@ import Svg, {
 import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 interface MacroTargets {
   calories: number;
@@ -231,7 +231,7 @@ function WeeklyBarChart({
       <SvgText
         x={width - padR + 8}
         y={targetY + 4}
-        fill={Colors.textSecondary}
+        fill={Colors.textTertiary}
         fontSize={FontSizes.micro}
         fontFamily={Fonts.regular}
       >
@@ -267,7 +267,7 @@ function WeeklyBarChart({
             <SvgText
               x={x + barW / 2}
               y={padT + barMaxH + 16}
-              fill={Colors.textSecondary}
+              fill={Colors.textTertiary}
               fontSize={FontSizes.micro}
               fontFamily={Fonts.regular}
               textAnchor="middle"
@@ -285,7 +285,7 @@ function WeeklyBarChart({
 
 export default function MacroTrackerScreen() {
   const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - 72;
+  const chartWidth = screenWidth - Spacing.xl * 2 - 40;
 
   const [targets, setTargets] = useState<MacroTargets | null>(null);
   const [todayLogs, setTodayLogs] = useState<MacroLogEntry[]>([]);
@@ -674,7 +674,7 @@ export default function MacroTrackerScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.accent} />
         </View>
@@ -683,13 +683,12 @@ export default function MacroTrackerScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Nutrition</Text>
           <Text style={styles.headerSubtitle}>{formatDate(new Date())}</Text>
@@ -711,20 +710,23 @@ export default function MacroTrackerScreen() {
           </View>
         )}
 
-        {/* Section 1 — Calorie Ring */}
-        <View style={[styles.card, styles.calorieCard]}>
+        <View style={styles.calorieCard}>
           <View style={styles.calorieLeft}>
-            <Text style={styles.sectionLabel}>CALORIES</Text>
+            <Text style={styles.calorieSectionLabel}>CALORIES</Text>
             <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
-            <Text style={styles.calorieTarget}>/ {t.calories} kcal</Text>
-            <Text style={[styles.calorieRemaining, { color: remaining >= 0 ? Colors.success : Colors.danger }]}>
+            <Text style={styles.calorieTargetLine}>/ {t.calories} kcal</Text>
+            <Text
+              style={[
+                styles.calorieRemaining,
+                remaining >= 0 ? styles.calorieRemainingUnder : styles.calorieRemainingOver,
+              ]}
+            >
               {remaining >= 0 ? `${remaining} kcal remaining` : `${Math.abs(remaining)} kcal over`}
             </Text>
           </View>
           <CalorieRing pct={calPct} />
         </View>
 
-        {/* Section 2 — Macro Breakdown */}
         <View style={styles.macroRow}>
           {([
             { label: 'PROTEIN', val: todayTotals.protein_g, tgt: t.protein_g, color: Colors.accent },
@@ -734,11 +736,16 @@ export default function MacroTrackerScreen() {
             const pct = m.tgt > 0 ? Math.min(100, (m.val / m.tgt) * 100) : 0;
             return (
               <View key={m.label} style={styles.macroCard}>
-                <Text style={styles.macroLabel}>{m.label}</Text>
+                <Text style={styles.macroSectionLabel}>{m.label}</Text>
                 <Text style={styles.macroValue}>{Math.round(m.val)}g</Text>
-                <Text style={styles.macroTarget}>/ {Math.round(m.tgt)}g</Text>
+                <Text style={styles.macroTargetMicro}>/ {Math.round(m.tgt)}g</Text>
                 <View style={styles.macroBarTrack}>
-                  <View style={[styles.macroBarFill, { width: `${pct}%`, backgroundColor: m.color }]} />
+                  <View
+                    style={[
+                      styles.macroBarFill,
+                      { width: `${pct}%`, backgroundColor: m.color },
+                    ]}
+                  />
                 </View>
               </View>
             );
@@ -747,25 +754,28 @@ export default function MacroTrackerScreen() {
 
         {mealPrefsSet && mealSuggestions.length > 0 && (
           <View style={styles.mealPlanSection}>
-            <Text style={styles.mealPlanHeading}>{"TODAY'S MEAL PLAN"}</Text>
+            <Text style={styles.mealPlanHeading}>{"Today's Meal Plan"}</Text>
             {jordanMealNote ? (
-              <Text style={styles.jordanMealNote}>💬 {jordanMealNote}</Text>
-            ) : null}
-            <Text style={styles.mealPlanSub}>Tap any meal to log it</Text>
+              <View style={styles.jordanCard}>
+                <Text style={styles.jordanAuthor}>JORDAN</Text>
+                <Text style={styles.jordanBody}>{jordanMealNote}</Text>
+                <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
+              </View>
+            ) : (
+              <Text style={styles.jordanTapHintStandalone}>Tap any meal to log it</Text>
+            )}
             {mealSuggestions.map((meal) => (
               <View key={meal.name} style={styles.suggestedMealCard}>
                 <TouchableOpacity
                   onPress={() => handleLogSuggestedMeal(meal)}
                   activeOpacity={0.75}
                 >
-                  <View style={styles.suggestedMealRow1}>
-                    <View style={styles.mealNamePill}>
-                      <Text style={styles.mealNamePillText}>{meal.name}</Text>
-                    </View>
-                    <Text style={styles.suggestedMealTitle} numberOfLines={2}>
-                      {meal.title}
-                    </Text>
+                  <View style={styles.mealTypePill}>
+                    <Text style={styles.mealTypePillText}>{meal.name}</Text>
                   </View>
+                  <Text style={styles.suggestedMealTitle} numberOfLines={2}>
+                    {meal.title}
+                  </Text>
                   <Text style={styles.suggestedMealDesc}>{meal.description}</Text>
                   <View style={styles.suggestedMacroRow}>
                     <View style={styles.sMacroPillNeutral}>
@@ -801,9 +811,8 @@ export default function MacroTrackerScreen() {
           </View>
         )}
 
-        {/* Section 3 — Today's Meals */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Today's Meals</Text>
+        <View style={styles.loggedMealsHeaderRow}>
+          <Text style={styles.loggedMealsHeading}>{"Today's Meals"}</Text>
           <TouchableOpacity
             onPress={() => {
               if (mealPrefsSet) {
@@ -819,34 +828,35 @@ export default function MacroTrackerScreen() {
         </View>
 
         {todayLogs.length === 0 ? (
-          <View style={[styles.card, styles.emptyMeals]}>
+          <View style={[styles.sectionCard, styles.emptyMeals]}>
             <Text style={styles.emptyEmoji}>🍽️</Text>
             <Text style={styles.emptyTitle}>No meals logged yet</Text>
             <Text style={styles.emptySubtitle}>Tap + Add Meal to start tracking</Text>
           </View>
         ) : (
           todayLogs.map((meal) => (
-            <View key={meal.id} style={styles.mealCard}>
-              <View style={styles.mealTopRow}>
-                <Text style={styles.mealName}>{meal.meal_name}</Text>
-                <TouchableOpacity onPress={() => handleDelete(meal.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={styles.trashIcon}>🗑</Text>
-                </TouchableOpacity>
+            <View key={meal.id} style={styles.loggedMealCard}>
+              <View style={styles.loggedMealLeft}>
+                <Text style={styles.loggedMealName}>{meal.meal_name}</Text>
+                <Text style={styles.loggedMealCal}>{meal.calories} kcal</Text>
+                <Text style={styles.loggedMealMacros}>
+                  P: {Math.round(meal.protein_g)}g · C: {Math.round(meal.carbs_g)}g · F:{' '}
+                  {Math.round(meal.fats_g)}g
+                </Text>
               </View>
-              <Text style={styles.mealCal}>{meal.calories} kcal</Text>
-              <View style={styles.macroPillRow}>
-                <View style={styles.macroPill}><Text style={styles.macroPillText}>P: {Math.round(meal.protein_g)}g</Text></View>
-                <View style={styles.macroPill}><Text style={styles.macroPillText}>C: {Math.round(meal.carbs_g)}g</Text></View>
-                <View style={styles.macroPill}><Text style={styles.macroPillText}>F: {Math.round(meal.fats_g)}g</Text></View>
-              </View>
+              <TouchableOpacity
+                onPress={() => handleDelete(meal.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trashIcon}>🗑</Text>
+              </TouchableOpacity>
             </View>
           ))
         )}
 
-        {/* Section 4 — Weekly Adherence */}
-        <View style={[styles.card, { marginTop: 16 }]}>
-          <Text style={styles.cardTitle}>Weekly Overview</Text>
-          <Text style={styles.cardSubtitle}>Calorie target adherence</Text>
+        <Text style={styles.weeklySectionHeading}>Weekly Overview</Text>
+        <Text style={styles.weeklySectionSub}>Calorie target adherence</Text>
+        <View style={styles.weeklyChartCard}>
           <WeeklyBarChart data={weeklyData} target={t.calories} width={chartWidth} />
           <View style={styles.statPillRow}>
             <View style={styles.statPill}>
@@ -915,7 +925,7 @@ export default function MacroTrackerScreen() {
                 {/* Quick options — only when meal prefs not set */}
                 {!mealPrefsSet && (
                   <>
-                    <Text style={[styles.modalSectionLabel, { marginTop: 16 }]}>OR CHOOSE A QUICK OPTION</Text>
+                    <Text style={styles.modalQuickSectionLabel}>OR CHOOSE A QUICK OPTION</Text>
                     <View style={styles.quickGrid}>
                       {QUICK_OPTIONS.map((opt) => (
                         <TouchableOpacity
@@ -1044,92 +1054,228 @@ export default function MacroTrackerScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  header: { marginTop: 20, marginBottom: 20 },
-  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
+  header: { paddingTop: 56 },
+  headerTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
   headerSubtitle: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
 
-  card: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
-  cardTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
-  cardSubtitle: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2, marginBottom: 16 },
+  sectionCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+  },
 
-  /* Calorie Ring */
-  calorieCard: { flexDirection: 'row', alignItems: 'center', padding: 20 },
+  calorieCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginTop: Spacing.xl,
+  },
   calorieLeft: { flex: 1 },
-  sectionLabel: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.label,
+  calorieSectionLabel: {
     fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
-  calorieBig: { color: Colors.textPrimary, fontSize: FontSizes.display, fontFamily: Fonts.bold,  marginTop: 4 },
-  calorieTarget: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  calorieRemaining: { fontSize: FontSizes.caption, marginTop: 6, fontFamily: Fonts.semiBold, },
-
-  /* Macro Breakdown */
-  macroRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  macroCard: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: 12, padding: 12 },
-  macroLabel: {
-    color: Colors.textSecondary,
-    fontSize: FontSizes.label,
+  calorieBig: {
     fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.textPrimary,
+    marginTop: 6,
+  },
+  calorieTargetLine: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  calorieRemaining: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    marginTop: 4,
+  },
+  calorieRemainingUnder: { color: Colors.success },
+  calorieRemainingOver: { color: Colors.danger },
+
+  macroRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  macroCard: {
+    flex: 1,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 14,
+    alignItems: 'center',
+  },
+  macroSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  macroValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginTop: 4,
+  },
+  macroTargetMicro: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  macroBarTrack: {
+    height: 4,
+    alignSelf: 'stretch',
+    width: '100%',
+    borderRadius: Radius.full,
+    backgroundColor: Colors.divider,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  macroBarFill: { height: 4, borderRadius: Radius.full },
+
+  loggedMealsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 32,
+    marginBottom: 12,
+  },
+  loggedMealsHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
-  macroValue: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginTop: 2 },
-  macroTarget: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  macroBarTrack: { height: 4, borderRadius: 2, backgroundColor: Colors.divider, marginTop: 8 },
-  macroBarFill: { height: 4, borderRadius: 2 },
-
-  /* Meals */
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
-  addMealBtn: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.bold, },
+  addMealBtn: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
 
   emptyMeals: { alignItems: 'center', paddingVertical: 20 },
-  emptyEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.display, },
+  emptyEmoji: { fontFamily: Fonts.regular, fontSize: FontSizes.display },
   emptyTitle: {
     fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.body, marginTop: 8 },
+    color: Colors.textPrimary,
+    fontSize: FontSizes.body,
+    marginTop: 8,
+  },
   emptySubtitle: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
+    color: Colors.textSecondary,
+    fontSize: FontSizes.caption,
+    marginTop: 4,
+  },
 
-  mealCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
-  mealTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  mealName: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.bold,  flex: 1 },
+  loggedMealCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  loggedMealLeft: { flex: 1, marginRight: Spacing.sm },
+  loggedMealName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  loggedMealCal: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    marginTop: 2,
+  },
+  loggedMealMacros: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 6,
+  },
   trashIcon: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2, },
-  mealCal: {
-    fontFamily: Fonts.regular,
-    color: Colors.accent, fontSize: FontSizes.caption, marginTop: 4 },
-  macroPillRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  macroPill: { backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
-  macroPillText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, },
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+  },
 
-  /* Weekly stats */
-  statPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.divider, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
+  weeklySectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 4,
+  },
+  weeklySectionSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+  weeklyChartCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+  },
+  statPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
   statDot: { width: 6, height: 6, borderRadius: 3 },
   statPillText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
 
   /* Modal */
   overlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center' },
@@ -1152,6 +1298,15 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     marginBottom: 8,
+  },
+  modalQuickSectionLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginTop: 16,
   },
 
   inputGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -1201,93 +1356,131 @@ const styles = StyleSheet.create({
   },
   mealSetupCtaText: { color: '#FFFFFF', fontSize: FontSizes.body, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
-  /* Jordan meal plan */
-  mealPlanSection: { marginBottom: 8 },
+  mealPlanSection: { marginBottom: Spacing.sm },
   mealPlanHeading: {
-    color: Colors.textSecondary,
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
-    fontFamily: Fonts.bold, 
-    letterSpacing: 1.2,
-    marginBottom: 12,
-  },
-  jordanMealNote: {
-    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    fontStyle: 'italic',
-    marginBottom: 12,
-    lineHeight: 18,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 4,
   },
-  mealPlanSub: {
+  jordanCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  jordanAuthor: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  jordanBody: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 12 },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  jordanTapHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 10,
+  },
+  jordanTapHintStandalone: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.md,
+  },
   suggestedMealCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
-  customiseBtn: { alignSelf: 'flex-end', marginTop: 6 },
-  customiseBtnText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.medium, },
-  suggestedMealRow1: { flexDirection: 'row', alignItems: 'center' },
-  mealNamePill: {
-    backgroundColor: Colors.divider,
-    borderRadius: 6,
-    paddingHorizontal: 8,
+  mealTypePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
     paddingVertical: 3,
-    flexShrink: 0,
   },
-  mealNamePillText: {
+  mealTypePillText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
     color: Colors.textSecondary,
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold, 
   },
   suggestedMealTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
     color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
-    marginLeft: 8,
-    flex: 1,
+    marginTop: 6,
   },
   suggestedMealDesc: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
     marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 20,
   },
   suggestedMacroRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 8,
+    marginTop: 10,
   },
   sMacroPillNeutral: {
-    backgroundColor: Colors.divider,
-    borderRadius: 8,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
-  sMacroPillNeutralText: { color: Colors.textSecondary, fontSize: FontSizes.label, fontFamily: Fonts.semiBold, },
+  sMacroPillNeutralText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+  },
   sMacroPillBlue: {
     backgroundColor: Colors.accent,
-    borderRadius: 8,
+    borderRadius: Radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   sMacroPillAmber: {
     backgroundColor: Colors.warning,
-    borderRadius: 8,
+    borderRadius: Radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   sMacroPillGreen: {
     backgroundColor: Colors.success,
-    borderRadius: 8,
+    borderRadius: Radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
-  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  sMacroPillWhiteText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textPrimary,
+  },
+  customiseBtn: { alignSelf: 'flex-end', marginTop: 10 },
+  customiseBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
 
   generatingRow: {
     flexDirection: 'row',

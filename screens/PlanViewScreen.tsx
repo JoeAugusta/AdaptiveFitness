@@ -12,12 +12,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ExerciseSummary {
   name: string;
@@ -39,8 +37,6 @@ interface PlanWeek {
   weekNumber: number;
   days: PlanDay[];
 }
-
-// ─── Supabase data shape ──────────────────────────────────────────────────────
 
 interface RawExercise {
   id?: string;
@@ -75,14 +71,14 @@ interface LoadedPlan {
   weeks: PlanWeek[];
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
 function WorkoutDayCard({
   day,
   onStartWorkout,
+  isNextWorkout,
 }: {
   day: PlanDay;
   onStartWorkout: (day: PlanDay) => void;
+  isNextWorkout: boolean;
 }) {
   const PREVIEW_COUNT = 3;
   const visibleExercises = day.exercises.slice(0, PREVIEW_COUNT);
@@ -91,50 +87,50 @@ function WorkoutDayCard({
   return (
     <View
       style={[
-        styles.dayCard,
-        { borderLeftColor: day.completed ? Colors.success : Colors.accent },
+        styles.workoutDayCard,
+        isNextWorkout && !day.completed && styles.workoutDayCardNext,
       ]}
     >
-      {/* Top row */}
-      <View style={styles.dayCardTopRow}>
-        <View style={styles.dayPill}>
-          <Text style={styles.dayPillText}>Day {day.dayNumber}</Text>
+      <View style={styles.workoutHeaderRow}>
+        <View style={styles.workoutHeaderLeft}>
+          <View style={styles.dayBadge}>
+            <Text style={styles.dayBadgeText}>Day {day.dayNumber}</Text>
+          </View>
+          <Text style={styles.workoutTitle} numberOfLines={1}>
+            {day.title}
+          </Text>
         </View>
-        <Text style={styles.dayTitle} numberOfLines={1}>
-          {day.title}
-        </Text>
-        {day.completed && <Text style={styles.completedCheck}>✓</Text>}
+        {day.completed ? (
+          <Text style={styles.completedCheck}>✓</Text>
+        ) : null}
       </View>
 
-      {/* Muscle group tags */}
-      {day.muscleGroups.length > 0 && (
+      {day.muscleGroups.length > 0 ? (
         <View style={styles.muscleRow}>
           {day.muscleGroups.map((mg) => (
-            <View key={mg} style={styles.musclePill}>
-              <Text style={styles.musclePillText}>{mg}</Text>
+            <View key={mg} style={styles.muscleChip}>
+              <Text style={styles.muscleChipText}>{mg}</Text>
             </View>
           ))}
         </View>
-      )}
+      ) : null}
 
-      {/* Exercise preview */}
       <View style={styles.exerciseList}>
         {visibleExercises.map((ex) => (
           <Text key={ex.name} style={styles.exerciseRow} numberOfLines={1}>
-            {ex.sets}×{ex.reps}{'  '}{ex.name}
+            {ex.sets}×{ex.reps} {ex.name}
           </Text>
         ))}
-        {extraCount > 0 && (
+        {extraCount > 0 ? (
           <Text style={styles.moreExercises}>+{extraCount} more</Text>
-        )}
+        ) : null}
       </View>
 
-      {/* CTA */}
       {day.completed ? (
-        <View style={styles.doneTag}>
-          <Text style={styles.doneTagText}>Done ✓</Text>
+        <View style={styles.donePill}>
+          <Text style={styles.donePillText}>Done ✓</Text>
         </View>
-      ) : (
+      ) : isNextWorkout ? (
         <TouchableOpacity
           style={styles.startButton}
           activeOpacity={0.8}
@@ -142,7 +138,7 @@ function WorkoutDayCard({
         >
           <Text style={styles.startButtonText}>Start Workout →</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -150,9 +146,9 @@ function WorkoutDayCard({
 function RestDayCard({ day }: { day: PlanDay }) {
   return (
     <View style={styles.restCard}>
-      <View style={styles.dayCardTopRow}>
-        <View style={styles.dayPill}>
-          <Text style={styles.dayPillText}>Day {day.dayNumber}</Text>
+      <View style={styles.restHeaderRow}>
+        <View style={styles.dayBadgeRest}>
+          <Text style={styles.dayBadgeRestText}>Day {day.dayNumber}</Text>
         </View>
         <Text style={styles.restTitle}>Rest Day</Text>
       </View>
@@ -163,15 +159,13 @@ function RestDayCard({ day }: { day: PlanDay }) {
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
-
 export default function PlanViewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const planId = route.params?.planId ?? '';
 
   const [planData, setPlanData] = useState<LoadedPlan | null>(null);
-  const [completedSet, setCompletedSet] = useState<Set<string>>(new Set());
+  const [, setCompletedSet] = useState<Set<string>>(new Set());
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -184,7 +178,6 @@ export default function PlanViewScreen() {
       const userId = session?.user?.id;
       if (!userId || !planId) throw new Error('No session or planId');
 
-      // Fetch plan row and workout logs in parallel
       const [planResult, logsResult] = await Promise.all([
         supabase
           .from('plans')
@@ -202,7 +195,6 @@ export default function PlanViewScreen() {
       const plan = planResult.data;
       const planJson = plan.plan_json ?? {};
 
-      // Build completed lookup: "weekNumber-dayNumber"
       const logSet = new Set<string>(
         (logsResult.data ?? []).map(
           (l: { week_number: number; day_number: number }) =>
@@ -210,7 +202,6 @@ export default function PlanViewScreen() {
         ),
       );
 
-      // Map raw weeks into typed PlanWeek[]
       const rawWeeks: RawWeek[] = planJson.weeks ?? [];
       const mappedWeeks: PlanWeek[] = rawWeeks.map((rw) => ({
         weekNumber: rw.weekNumber,
@@ -247,7 +238,9 @@ export default function PlanViewScreen() {
     }
   }, [planId]);
 
-  useEffect(() => { loadPlanData(); }, [loadPlanData]);
+  useEffect(() => {
+    loadPlanData();
+  }, [loadPlanData]);
 
   const handleStartWorkout = (day: PlanDay) => {
     navigation.navigate('ActiveWorkout', {
@@ -258,17 +251,23 @@ export default function PlanViewScreen() {
     });
   };
 
-  // ── Loading ──
+  const headerRow = (
+    <View style={styles.header}>
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={styles.backHit}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.backChevron}>‹</Text>
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>My Plan</Text>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
-            <Text style={styles.backArrow}>{'‹'}</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Plan</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        {headerRow}
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.accent} />
         </View>
@@ -276,20 +275,17 @@ export default function PlanViewScreen() {
     );
   }
 
-  // ── Error ──
   if (error || !planData) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
-            <Text style={styles.backArrow}>{'‹'}</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Plan</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        {headerRow}
         <View style={styles.center}>
-          <Text style={styles.errorText}>Couldn't load plan</Text>
-          <TouchableOpacity onPress={loadPlanData} style={styles.retryButton} activeOpacity={0.7}>
+          <Text style={styles.errorText}>Couldn&apos;t load plan</Text>
+          <TouchableOpacity
+            onPress={loadPlanData}
+            style={styles.retryButton}
+            activeOpacity={0.7}
+          >
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -297,31 +293,25 @@ export default function PlanViewScreen() {
     );
   }
 
-  const allWeekNumbers = Array.from({ length: planData.totalWeeks }, (_, i) => i + 1);
+  const allWeekNumbers = Array.from(
+    { length: planData.totalWeeks },
+    (_, i) => i + 1,
+  );
   const weekData = planData.weeks.find((w) => w.weekNumber === selectedWeek);
+  const nextWorkoutDayNumber =
+    weekData?.days.find((d) => d.type === 'workout' && !d.completed)
+      ?.dayNumber ?? null;
 
   return (
     <View style={styles.container}>
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.backArrow}>{'‹'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Plan</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      {headerRow}
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Plan summary card ── */}
-        <View style={styles.summaryCard}>
+        <View style={styles.planInfoCard}>
           <Text style={styles.planTitle} numberOfLines={2}>
             {planData.title}
           </Text>
@@ -339,48 +329,61 @@ export default function PlanViewScreen() {
           </View>
         </View>
 
-        {/* ── Week tab strip ── */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.tabStrip}
-          contentContainerStyle={styles.tabStripContent}
+          style={styles.weekSelector}
+          contentContainerStyle={styles.weekSelectorContent}
         >
           {allWeekNumbers.map((wn) => {
             const isSelected = wn === selectedWeek;
-            const isCurrent = wn === planData.currentWeek;
-            const hasLogs = [...completedSet].some((k) => k.startsWith(`${wn}-`));
+            const isLocked = wn > planData.currentWeek;
+            const isCompletedWeek = wn < planData.currentWeek;
+
+            const tabStyles = [
+              styles.weekTabCircle,
+              isSelected && styles.weekTabSelected,
+              !isSelected && isCompletedWeek && styles.weekTabCompleted,
+              !isSelected && isLocked && styles.weekTabLocked,
+            ];
+
+            const textStyles = [
+              styles.weekTabLabel,
+              isSelected && styles.weekTabLabelSelected,
+              !isSelected && isCompletedWeek && styles.weekTabLabelCompleted,
+              !isSelected && isLocked && styles.weekTabLabelLocked,
+            ];
+
+            const dotStyle =
+              isLocked
+                ? styles.weekDotLocked
+                : isCompletedWeek
+                  ? styles.weekDotCompleted
+                  : styles.weekDotActive;
+
             return (
               <TouchableOpacity
                 key={wn}
                 activeOpacity={0.7}
-                style={[styles.weekTab, isSelected && styles.weekTabSelected]}
+                style={styles.weekTabColumn}
                 onPress={() => setSelectedWeek(wn)}
               >
-                <Text
-                  style={[
-                    styles.weekTabText,
-                    isSelected && styles.weekTabTextSelected,
-                  ]}
-                >
-                  W{wn}
-                </Text>
-                {/* Dot for current week (when not selected) or past weeks with logs */}
-                {!isSelected && (isCurrent || hasLogs) && (
-                  <View style={[styles.currentDot, hasLogs && !isCurrent && styles.completedDot]} />
-                )}
+                <View style={tabStyles}>
+                  <Text style={textStyles}>W{wn}</Text>
+                  <View style={[styles.weekStatusDot, dotStyle]} />
+                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {/* ── Day cards / locked state ── */}
         {weekData ? (
           weekData.days.map((day) =>
             day.type === 'workout' ? (
               <WorkoutDayCard
                 key={day.dayNumber}
                 day={day}
+                isNextWorkout={day.dayNumber === nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
               />
             ) : (
@@ -388,240 +391,368 @@ export default function PlanViewScreen() {
             ),
           )
         ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🔒</Text>
-            <Text style={styles.emptyTitle}>Week {selectedWeek} Locked</Text>
-            <Text style={styles.emptySubtitle}>
+          <View style={styles.lockedWeekState}>
+            <Text style={styles.lockedEmoji}>🔒</Text>
+            <Text style={styles.lockedTitle}>Week {selectedWeek} Locked</Text>
+            <Text style={styles.lockedSubtitle}>
               Complete Week {planData.currentWeek} to unlock
             </Text>
           </View>
         )}
 
-        {/* Exercise Library link */}
         <TouchableOpacity
           style={styles.libraryLink}
           activeOpacity={0.7}
           onPress={() => navigation.navigate('ExerciseLibrary')}
         >
-          <Text style={styles.libraryLinkText}>Browse Exercise Library →</Text>
+          <Text style={styles.libraryLinkText}>
+            Browse Exercise Library →
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.lg,
+  },
   errorText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.body, },
-  retryButton: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
-  retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  retryButton: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: 10,
+  },
+  retryText: {
+    color: Colors.textPrimary,
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+  },
 
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: Spacing.xl,
     paddingTop: 56,
-    paddingBottom: 12,
+    paddingBottom: Spacing.md,
     backgroundColor: Colors.bgPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.bgCard,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  backHit: {
+    marginRight: 12,
+  },
+  backChevron: {
+    fontSize: 28,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+  },
+  headerTitle: {
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+
+  scrollView: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  scrollContent: {
+    paddingBottom: 48,
+  },
+
+  planInfoCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  planTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginBottom: 10,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  weekPill: {
+    backgroundColor: Colors.accent,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+  },
+  weekPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  daysPill: {
+    backgroundColor: Colors.bgElevated,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+  },
+  daysPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
+  },
+
+  weekSelector: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+  },
+  weekSelectorContent: {
+    gap: Spacing.sm,
+    alignItems: 'flex-start',
+  },
+  weekTabColumn: {
+    alignItems: 'center',
+  },
+  weekTabCircle: {
+    position: 'relative',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1, color: Colors.textPrimary, marginTop: -2 },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
-    color: Colors.textPrimary,
-  },
-  headerSpacer: { width: 32 },
-
-  /* Scroll */
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-
-  /* Summary card */
-  summaryCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-  },
-  planTitle: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
-    color: Colors.textPrimary,
-    marginBottom: 10,
-  },
-  pillRow: { flexDirection: 'row', gap: 8 },
-  weekPill: {
+  weekTabSelected: {
     backgroundColor: Colors.accent,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
   },
-  weekPillText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
-  daysPill: {
-    backgroundColor: Colors.divider,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+  weekTabCompleted: {
+    borderWidth: 1,
+    borderColor: Colors.success,
   },
-  daysPillText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
-
-  /* Week tabs */
-  tabStrip: { marginBottom: 16 },
-  tabStripContent: { gap: 8, paddingRight: 4 },
-  weekTab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
+  weekTabLocked: {
+    opacity: 0.4,
   },
-  weekTabSelected: { backgroundColor: Colors.accent },
-  weekTabText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: Colors.textSecondary },
-  weekTabTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
-  currentDot: {
+  weekTabLabel: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+  },
+  weekTabLabelSelected: {
+    color: Colors.textPrimary,
+  },
+  weekTabLabelCompleted: {
+    color: Colors.success,
+  },
+  weekTabLabelLocked: {
+    color: Colors.textTertiary,
+  },
+  weekStatusDot: {
+    position: 'absolute',
+    bottom: 6,
     width: 4,
     height: 4,
     borderRadius: 2,
+  },
+  weekDotActive: {
     backgroundColor: Colors.accent,
-    marginTop: 3,
   },
-  completedDot: { backgroundColor: Colors.success },
+  weekDotCompleted: {
+    backgroundColor: Colors.success,
+  },
+  weekDotLocked: {
+    backgroundColor: Colors.divider,
+  },
 
-  /* Workout day card */
-  dayCard: {
+  workoutDayCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 3,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
-  dayCardTopRow: {
+  workoutDayCardNext: {
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  workoutHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
   },
-  dayPill: {
-    backgroundColor: Colors.divider,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  dayPillText: { fontSize: FontSizes.label, color: Colors.textSecondary, fontFamily: Fonts.semiBold, },
-  dayTitle: {
+  workoutHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     flex: 1,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
+    marginRight: Spacing.sm,
+  },
+  dayBadge: {
+    backgroundColor: Colors.bgElevated,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: Radius.sm,
+  },
+  dayBadgeText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+  },
+  workoutTitle: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  completedCheck: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.success,
+  },
+  muscleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: Spacing.md,
+  },
+  muscleChip: {
+    backgroundColor: Colors.accentMuted,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  muscleChipText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.medium,
+    color: Colors.accent,
+  },
+  exerciseList: {
+    marginBottom: Spacing.md,
+  },
+  exerciseRow: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 2,
+  },
+  moreExercises: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  donePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.successMuted,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+  },
+  donePillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.success,
+  },
+  startButton: {
+    height: 46,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButtonText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
-  completedCheck: { fontSize: FontSizes.title, color: Colors.success, fontFamily: Fonts.bold, },
 
-  /* Muscle tags */
-  muscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  musclePill: {
-    backgroundColor: Colors.accentMuted,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  musclePillText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.label, color: Colors.accent },
-
-  /* Exercise list */
-  exerciseList: { gap: 4, marginBottom: 14 },
-  exerciseRow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 18 },
-  moreExercises: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-
-  /* Start button */
-  startButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  startButtonText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
-
-  /* Done tag */
-  doneTag: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.accentMuted,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  doneTagText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: Colors.success },
-
-  /* Rest day card */
   restCard: {
-    backgroundColor: 'rgba(30,41,59,0.6)', // TODO: map to design token
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    opacity: 0.6,
+  },
+  restHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  dayBadgeRest: {
+    backgroundColor: Colors.bgElevated,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+  },
+  dayBadgeRestText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
   },
   restTitle: {
-    flex: 1,
     fontSize: FontSizes.body,
-    fontFamily: Fonts.medium, 
+    fontFamily: Fonts.medium,
     color: Colors.textSecondary,
   },
   restSubtitle: {
-    fontFamily: Fonts.regular,
+    marginTop: Spacing.xs,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    opacity: 0.7,
-    marginTop: 4,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
   },
 
-  /* Empty state */
-  emptyState: {
+  lockedWeekState: {
     alignItems: 'center',
-    paddingVertical: 60,
-    gap: 8,
+    paddingVertical: 80,
+    marginHorizontal: Spacing.xl,
   },
-  emptyIcon: {
-    fontFamily: Fonts.regular,
-    fontSize: 40, // TODO: map to design token
-    marginBottom: 4,
+  lockedEmoji: {
+    fontSize: 48,
+    marginBottom: Spacing.lg,
   },
-  emptyTitle: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textPrimary },
-  emptySubtitle: {
+  lockedTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  lockedSubtitle: {
+    fontSize: FontSizes.body,
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
 
-  libraryLink: { alignItems: 'center', paddingVertical: 16 },
+  libraryLink: {
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.sm,
+    alignItems: 'center',
+  },
   libraryLinkText: {
-    fontFamily: Fonts.regular,
-    color: Colors.accent, fontSize: FontSizes.caption, },
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium,
+    color: Colors.accent,
+    textAlign: 'center',
+  },
 });

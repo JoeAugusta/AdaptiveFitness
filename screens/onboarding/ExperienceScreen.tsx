@@ -5,13 +5,15 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
-import InfoTooltip from '../../components/InfoTooltip';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -50,9 +52,14 @@ const SPLIT_OPTIONS: Option[] = [
   { id: 'custom', label: 'Custom' },
 ];
 
+const SPLIT_INFO_TITLE = "What's a training split?";
+const SPLIT_INFO_BODY =
+  'A training split defines how you divide muscle groups across your weekly sessions. Push/Pull/Legs is the most popular for intermediate lifters. Upper/Lower suits those training 4 days. Full Body works best for 3 days/week.';
+
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const insets = useSafeAreaInsets();
   const {
     goal,
     targetLift,
@@ -68,6 +75,7 @@ export default function ExperienceScreen() {
   const [daysPerWeek, setDaysPerWeek] = useState<string | null>(null);
   const [sessionLength, setSessionLength] = useState<string | null>(null);
   const [split, setSplit] = useState<string | null>(null);
+  const [splitInfoVisible, setSplitInfoVisible] = useState(false);
 
   const allSelected = experience && daysPerWeek && sessionLength && split;
 
@@ -90,31 +98,30 @@ export default function ExperienceScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Progress bar */}
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
-      </View>
-
-      {/* Header row: back button + step label */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backButton}
+          style={styles.backHit}
           activeOpacity={0.7}
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 3 of 7</Text>
+        <Text style={styles.stepIndicator}>3 of 7</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Section 1 — Training Experience */}
-        <Text style={styles.heading}>Training Experience</Text>
-        <Text style={styles.subtitle}>How long have you been training?</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>Training Experience</Text>
+          <Text style={styles.screenSubtitle}>
+            How long have you been training?
+          </Text>
+        </View>
+
         <View style={styles.cardsContainer}>
           {EXPERIENCE_OPTIONS.map((opt) => {
             const selected = experience === opt.id;
@@ -122,26 +129,22 @@ export default function ExperienceScreen() {
               <TouchableOpacity
                 key={opt.id}
                 activeOpacity={0.7}
-                style={[styles.card, selected && styles.cardSelected]}
+                style={[styles.expCard, selected && styles.expCardSelected]}
                 onPress={() => setExperience(opt.id)}
               >
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardLabel}>{opt.label}</Text>
-                  {opt.detail && (
-                    <Text style={styles.cardDetail}>{opt.detail}</Text>
-                  )}
-                </View>
-                <View style={[styles.radio, selected && styles.radioSelected]}>
-                  {selected && <View style={styles.radioDot} />}
-                </View>
+                <Text style={styles.expCardLabel}>{opt.label}</Text>
+                {opt.detail ? (
+                  <Text style={styles.expCardDetail}>{opt.detail}</Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Section 2 — Days per week */}
-        <Text style={[styles.heading, styles.sectionGap]}>Days per week</Text>
-        <Text style={styles.subtitle}>How many days can you train?</Text>
+        <Text style={styles.sectionHeading}>Days per week</Text>
+        <Text style={styles.sectionSubtitle}>
+          How many days can you train?
+        </Text>
         <View style={styles.chipRow}>
           {DAYS_OPTIONS.map((opt) => {
             const selected = daysPerWeek === opt.id;
@@ -162,9 +165,10 @@ export default function ExperienceScreen() {
           })}
         </View>
 
-        {/* Section 3 — Session length */}
-        <Text style={[styles.heading, styles.sectionGap]}>Session length</Text>
-        <Text style={styles.subtitle}>How long is a typical session?</Text>
+        <Text style={styles.sectionHeading}>Session length</Text>
+        <Text style={styles.sectionSubtitle}>
+          How long is a typical session?
+        </Text>
         <View style={styles.chipRow}>
           {DURATION_OPTIONS.map((opt) => {
             const selected = sessionLength === opt.id;
@@ -185,15 +189,17 @@ export default function ExperienceScreen() {
           })}
         </View>
 
-        {/* Section 4 — Training Split */}
-        <View style={styles.headingRow}>
-          <Text style={[styles.heading, styles.sectionGap]}>Training Split</Text>
-          <InfoTooltip
-            title="What's a training split?"
-            content="A training split defines how you divide muscle groups across your weekly sessions. Push/Pull/Legs is the most popular for intermediate lifters. Upper/Lower suits those training 4 days. Full Body works best for 3 days/week."
-          />
+        <View style={styles.splitHeadingRow}>
+          <Text style={styles.sectionHeadingLabel}>Training Split</Text>
+          <TouchableOpacity
+            onPress={() => setSplitInfoVisible(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.splitInfoIcon}>ⓘ</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.subtitle}>
+        <Text style={styles.sectionSubtitle}>
           How do you prefer to structure your training?
         </Text>
         <View style={styles.chipRow}>
@@ -220,25 +226,50 @@ export default function ExperienceScreen() {
         </Text>
       </ScrollView>
 
-      {/* Fixed footer */}
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.button, !allSelected && styles.buttonDisabled]}
           onPress={handleContinue}
           disabled={!allSelected}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              !allSelected && styles.buttonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </View>
+
+      <Modal
+        visible={splitInfoVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSplitInfoVisible(false)}
+      >
+        <View style={styles.modalRoot}>
+          <TouchableWithoutFeedback
+            onPress={() => setSplitInfoVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.modalCard} pointerEvents="box-none">
+            <Text style={styles.modalTitle}>{SPLIT_INFO_TITLE}</Text>
+            <Text style={styles.modalBody}>{SPLIT_INFO_BODY}</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.modalButton}
+              onPress={() => setSplitInfoVisible(false)}
+            >
+              <Text style={styles.modalButtonLabel}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -248,182 +279,213 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
 
-  /* Progress */
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
-  },
-  progressFill: {
-    width: '42.8%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-
-  /* Header */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  backHit: {
+    paddingRight: 8,
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1,
-    color: Colors.textPrimary,
-    marginTop: -2,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
   },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
-  /* Scroll */
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
 
-  /* Sections */
-  heading: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  titleBlock: {
+    marginTop: 56,
   },
-  subtitle: {
+  screenTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 16,
-  },
-  sectionGap: {
-    marginTop: 32,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 32,
   },
 
-  /* Cards (experience section) */
-  cardsContainer: {
-    gap: 10,
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 28,
+    marginBottom: 12,
   },
-  card: {
+  sectionHeadingLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
+  splitHeadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  splitInfoIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  sectionSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+    marginTop: 0,
+  },
+
+  cardsContainer: {
+    gap: Spacing.sm,
+  },
+  expCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
   },
-  cardSelected: {
-    borderColor: Colors.accent,
+  expCardSelected: {
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
-  cardContent: {
-    flex: 1,
-  },
-  cardLabel: {
+  expCardLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
-  cardDetail: {
+  expCardDetail: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: Colors.textSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: Colors.accent,
-  },
-  radioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.accent,
-  },
 
-  /* Chips (days + session length) */
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: Spacing.sm,
   },
   chip: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
     backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 10,
   },
   chipSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
   chipText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.medium, 
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   chipTextSelected: {
-    color: Colors.textPrimary,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
+
   splitHint: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginTop: 10,
+    marginTop: Spacing.sm,
   },
 
-  /* Footer */
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
-  buttonTextDisabled: {
+
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  modalCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    padding: Spacing.xxl,
+  },
+  modalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
+  modalBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
+    lineHeight: 22,
+    marginTop: 12,
+  },
+  modalButton: {
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  modalButtonLabel: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 });

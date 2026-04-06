@@ -13,45 +13,51 @@ export default function SplashScreen() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    async function checkSession() {
+    let cancelled = false;
+
+    const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (!session) {
-          navigation.replace('Onboarding');
-          return;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        if (cancelled) return;
+
+        if (session) {
+          navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
+        } else {
+          navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
         }
-
-        const { data: plan } = await supabase
-          .from('plans')
-          .select('id')
-          .eq('user_id', session.user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        navigation.replace(plan ? 'Dashboard' : 'Onboarding');
       } catch {
-        navigation.replace('Onboarding');
+        if (!cancelled) {
+          navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+        }
       } finally {
-        setChecking(false);
+        if (!cancelled) {
+          setChecking(false);
+        }
       }
-    }
+    };
 
-    checkSession();
+    void checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigation]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>AdaptiveFitness</Text>
-      {checking && (
+      {checking ? (
         <ActivityIndicator
           color={Colors.accent}
           size="small"
           style={styles.spinner}
         />
-      )}
+      ) : null}
     </View>
   );
 }
@@ -65,7 +71,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.accent,
     letterSpacing: 0.5,
   },

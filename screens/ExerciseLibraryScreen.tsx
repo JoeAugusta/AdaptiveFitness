@@ -16,13 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
-
-const DIFF_COLORS: Record<string, string> = {
-  beginner: Colors.success,
-  intermediate: Colors.warning,
-  advanced: Colors.danger,
-};
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>;
 
@@ -253,7 +247,7 @@ export default function ExerciseLibraryScreen() {
     ({ item: ex }: { item: Exercise }) => {
       const isFav = favourites.includes(ex.id);
       const isAvoided = excluded.includes(ex.name);
-      const diffColor = DIFF_COLORS[ex.difficulty] ?? Colors.textSecondary;
+      const level = levelPillStyles(ex.difficulty);
 
       return (
         <View style={styles.exCard}>
@@ -268,11 +262,13 @@ export default function ExerciseLibraryScreen() {
               </Text>
             )}
             <View style={styles.metaRow}>
-              <Text style={styles.equipText}>
-                {EQUIP_EMOJIS[ex.equipment] ?? ''} {ex.equipment}
-              </Text>
-              <View style={[styles.diffPill, { backgroundColor: diffColor + '22', borderColor: diffColor }]}>
-                <Text style={[styles.diffText, { color: diffColor }]}>{ex.difficulty}</Text>
+              <View style={styles.equipPill}>
+                <Text style={styles.equipPillText}>
+                  {EQUIP_EMOJIS[ex.equipment] ?? ''} {ex.equipment}
+                </Text>
+              </View>
+              <View style={level.pill}>
+                <Text style={level.text}>{ex.difficulty}</Text>
               </View>
             </View>
           </View>
@@ -297,22 +293,22 @@ export default function ExerciseLibraryScreen() {
   const emptyComponent = useMemo(() => {
     if (activeTab === 'favourites' && filtered.length === 0) {
       return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Tap ❤️ on any exercise to save it here</Text>
+        <View style={styles.emptyStateTab}>
+          <Text style={styles.emptyTextTab}>Tap ❤️ on any exercise to save it here</Text>
         </View>
       );
     }
     if (activeTab === 'avoided' && filtered.length === 0) {
       return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No exercises marked as avoided</Text>
+        <View style={styles.emptyStateTab}>
+          <Text style={styles.emptyTextTab}>No exercises marked as avoided</Text>
         </View>
       );
     }
     if (filtered.length === 0) {
       return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No exercises match your search</Text>
+        <View style={styles.emptyStateSearch}>
+          <Text style={styles.emptyTextSearch}>No exercises match your search</Text>
           <TouchableOpacity onPress={clearFilters} style={styles.clearBtn}>
             <Text style={styles.clearBtnText}>Clear filters</Text>
           </TouchableOpacity>
@@ -324,7 +320,7 @@ export default function ExerciseLibraryScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.accent} />
         </View>
@@ -333,100 +329,99 @@ export default function ExerciseLibraryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Static controls — plain View, no flex, no justifyContent */}
-      <View style={{ backgroundColor: Colors.bgPrimary, paddingTop: 0 }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={styles.backChevron}>‹</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Exercise Library</Text>
-          <Text style={styles.headerCount}>{filtered.length} exercises</Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.screenInner}>
+        <View style={styles.controlsShell}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Text style={styles.backChevron}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Exercise Library</Text>
+            <Text style={styles.headerCount}>{filtered.length} exercises</Text>
+          </View>
+
+          <View style={styles.searchRow}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search exercises..."
+              placeholderTextColor={Colors.textTertiary}
+            />
+            {searchQuery.length > 0 ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.clearX}>×</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipScrollContent}
+          >
+            {MUSCLE_GROUPS.map((mg) => (
+              <TouchableOpacity
+                key={`m-${mg}`}
+                style={[styles.chip, selectedMuscle === mg && styles.chipActive]}
+                onPress={() => setSelectedMuscle(mg)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.chipText, selectedMuscle === mg && styles.chipTextActive]}>{mg}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipScrollContent}
+          >
+            {EQUIPMENT_OPTIONS.map((eq) => (
+              <TouchableOpacity
+                key={`e-${eq}`}
+                style={[styles.chip, selectedEquipment === eq && styles.chipActive]}
+                onPress={() => setSelectedEquipment(eq)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.chipText, selectedEquipment === eq && styles.chipTextActive]}>{eq}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.tabRow}>
+            {TABS.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={styles.tab}
+                  onPress={() => setActiveTab(tab.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+                  {active ? <View style={styles.tabUnderline} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchRow}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search exercises..."
-            placeholderTextColor={Colors.textSecondary}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.clearX}>×</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Muscle group chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 6, marginBottom: 2 }}
-          contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 16, gap: 6 }}
-        >
-          {MUSCLE_GROUPS.map((mg) => (
-            <TouchableOpacity
-              key={`m-${mg}`}
-              style={[styles.chip, selectedMuscle === mg && styles.chipActive]}
-              onPress={() => setSelectedMuscle(mg)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.chipText, selectedMuscle === mg && styles.chipTextActive]}>{mg}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Equipment chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 6, marginBottom: 2 }}
-          contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 16, gap: 6 }}
-        >
-          {EQUIPMENT_OPTIONS.map((eq) => (
-            <TouchableOpacity
-              key={`e-${eq}`}
-              style={[styles.chip, selectedEquipment === eq && styles.chipActive]}
-              onPress={() => setSelectedEquipment(eq)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.chipText, selectedEquipment === eq && styles.chipTextActive]}>{eq}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Tabs */}
-        <View style={styles.tabRow}>
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab.id}
-              style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-              onPress={() => setActiveTab(tab.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tab.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <FlatList
+          data={filtered}
+          renderItem={renderExercise}
+          keyExtractor={keyExtractor}
+          style={styles.flatList}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={emptyComponent}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+        />
       </View>
-
-      {/* List — flex: 1 so it fills all remaining space */}
-      <FlatList
-        data={filtered}
-        renderItem={renderExercise}
-        keyExtractor={keyExtractor}
-        style={styles.flatList}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={emptyComponent}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={15}
-        maxToRenderPerBatch={10}
-      />
     </SafeAreaView>
   );
 }
@@ -434,66 +429,259 @@ export default function ExerciseLibraryScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  screenInner: { flex: 1, paddingHorizontal: Spacing.xl },
+  controlsShell: { backgroundColor: Colors.bgPrimary },
 
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
   backChevron: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.display, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  flex: 1 },
+    fontSize: 28,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    paddingRight: 8,
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
   headerCount: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
 
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: 12, marginHorizontal: 20, marginTop: 4, marginBottom: 8, paddingHorizontal: 14, height: 44 },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
   searchIcon: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, marginRight: 8 },
+    color: Colors.textTertiary,
+    marginRight: 8,
+  },
   searchInput: {
+    flex: 1,
     fontFamily: Fonts.regular,
-    flex: 1, color: Colors.textPrimary, fontSize: FontSizes.body, },
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
   clearX: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.heading1, lineHeight: 24, paddingLeft: 8 },
+    color: Colors.textSecondary,
+    fontSize: FontSizes.heading1,
+    lineHeight: 24,
+    paddingLeft: 8,
+  },
+
+  chipScroll: { marginBottom: Spacing.sm },
+  chipScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  chipActive: {
+    backgroundColor: Colors.accent,
+    borderWidth: 0,
+  },
+  chipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  chipTextActive: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+
+  tabRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+    marginBottom: Spacing.md,
+  },
+  tab: {
+    position: 'relative',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginRight: 24,
+  },
+  tabUnderline: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: Colors.accent,
+  },
+  tabText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  tabTextActive: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
 
   flatList: { flex: 1 },
-  chip: { backgroundColor: Colors.divider, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-  chipActive: { backgroundColor: Colors.accent },
-  chipText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
+  listContent: { paddingBottom: 40 },
 
-  tabRow: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 8, marginBottom: 0, gap: 16 },
-  tab: { paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: Colors.accent },
-  tabText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
-  tabTextActive: { color: Colors.textPrimary },
-
-  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
-
-  exCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row' },
+  exCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 16,
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
   exLeft: { flex: 1 },
-  exRight: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingLeft: 12 },
-  exName: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.bold, },
-  primaryPill: { backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
-  primaryPillText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  exRight: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+    marginLeft: 12,
+  },
+  exName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  primaryPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 6,
+  },
+  primaryPillText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+  },
   secondaryText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
-  equipText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  diffPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1 },
-  diffText: { fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  equipPill: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  equipPillText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+  },
+  levelPillBeginner: {
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  levelTextBeginner: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.success,
+  },
+  levelPillIntermediate: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  levelTextIntermediate: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+  },
+  levelPillAdvanced: {
+    backgroundColor: Colors.dangerMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  levelTextAdvanced: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.danger,
+  },
   iconBtn: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2, },
+    fontSize: 20,
+  },
 
-  emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: {
+  emptyStateTab: {
+    alignItems: 'center',
+    marginTop: 48,
+  },
+  emptyTextTab: {
+    textAlign: 'center',
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  emptyStateSearch: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyTextSearch: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
   clearBtn: { marginTop: 12 },
-  clearBtnText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
+  clearBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
 });
+
+function levelPillStyles(difficulty: Exercise['difficulty']) {
+  switch (difficulty) {
+    case 'beginner':
+      return { pill: styles.levelPillBeginner, text: styles.levelTextBeginner };
+    case 'advanced':
+      return { pill: styles.levelPillAdvanced, text: styles.levelTextAdvanced };
+    default:
+      return { pill: styles.levelPillIntermediate, text: styles.levelTextIntermediate };
+  }
+}

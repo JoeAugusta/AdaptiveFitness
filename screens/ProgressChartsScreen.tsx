@@ -14,7 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 interface StrengthDataPoint {
   week: number;
@@ -26,9 +26,10 @@ interface WeightLogPoint {
   weight_lbs: number;
 }
 
-const formatChartDate = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+/** Compact x-axis ticks for bodyweight chart (reduces overlap vs "Mar 23"). */
+const formatWeightAxisTickDate = (dateStr: string): string => {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
 interface ConsistencyDay {
@@ -172,7 +173,7 @@ function WeightLineChart({
   if (data.length < 2) return null;
 
   const padL = 44;
-  const padR = 20;
+  const padR = 20 + 48;
   const padT = 24;
   const padB = 28;
   const cw = width - padL - padR;
@@ -188,14 +189,19 @@ function WeightLineChart({
 
   const points = data.map((d, i) => ({ x: toX(i), y: toY(d.weight_lbs) }));
 
-  // Max 7 evenly-spaced X axis labels
-  const labelStep = data.length <= 7 ? 1 : Math.floor((data.length - 1) / 6);
+  // Few x-axis labels to avoid overlap (~6 max including last day)
+  const maxXLabels = 6;
   const labelIndices: number[] = [];
-  for (let i = 0; i < data.length; i += labelStep) {
-    labelIndices.push(i);
-  }
-  if (labelIndices[labelIndices.length - 1] !== data.length - 1) {
-    labelIndices.push(data.length - 1);
+  if (data.length <= maxXLabels) {
+    for (let i = 0; i < data.length; i++) labelIndices.push(i);
+  } else {
+    const labelStep = Math.max(1, Math.ceil((data.length - 1) / (maxXLabels - 1)));
+    for (let i = 0; i < data.length; i += labelStep) {
+      labelIndices.push(i);
+    }
+    if (labelIndices[labelIndices.length - 1] !== data.length - 1) {
+      labelIndices.push(data.length - 1);
+    }
   }
 
   // 4 Y-axis grid lines
@@ -204,6 +210,9 @@ function WeightLineChart({
 
   const lastPt = points[points.length - 1];
   const lastWeight = data[data.length - 1].weight_lbs;
+  const calloutTooCloseToRight = lastPt.x > width - 60;
+  const calloutX = calloutTooCloseToRight ? width - 60 : lastPt.x;
+  const calloutAnchor = calloutTooCloseToRight ? ('end' as const) : ('middle' as const);
 
   return (
     <Svg width={width} height={height}>
@@ -217,7 +226,7 @@ function WeightLineChart({
             <SvgText
               x={padL - 6}
               y={y + 4}
-              fill={Colors.textSecondary}
+              fill={Colors.textTertiary}
               fontSize={FontSizes.micro}
               fontFamily={Fonts.regular}
               textAnchor="end"
@@ -237,12 +246,12 @@ function WeightLineChart({
           key={`xw-${idx}`}
           x={points[idx].x}
           y={height - 6}
-          fill={Colors.textSecondary}
+          fill={Colors.textTertiary}
           fontSize={FontSizes.micro}
           fontFamily={Fonts.regular}
           textAnchor="middle"
         >
-          {formatChartDate(data[idx].log_date)}
+          {formatWeightAxisTickDate(data[idx].log_date)}
         </SvgText>
       ))}
 
@@ -272,12 +281,12 @@ function WeightLineChart({
 
       {/* Most recent weight callout */}
       <SvgText
-        x={lastPt.x}
+        x={calloutX}
         y={lastPt.y - 10}
         fill={Colors.textPrimary}
-        fontSize={FontSizes.caption}
-        fontFamily={Fonts.semiBold}
-        textAnchor="middle"
+        fontSize={FontSizes.body}
+        fontFamily={Fonts.bold}
+        textAnchor={calloutAnchor}
       >
         {`${lastWeight} lbs`}
       </SvgText>
@@ -290,7 +299,7 @@ function WeightLineChart({
 export default function ProgressChartsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - 72; // card padding + scroll padding
+  const chartWidth = screenWidth - Spacing.xl * 2 - 40;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -372,7 +381,7 @@ export default function ProgressChartsScreen() {
 
   // ── Process data ──
 
-  const { strengthMap, topExercises, volumeWeekData, volumeGroups, consistencyDays, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
+  const { strengthMap, topExercises, volumeWeekData, consistencyDays, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
     const sMap: Record<string, Map<number, number>> = {};
     const volMap = new Map<number, Map<string, number>>();
     const exerciseVolume: Record<string, number> = {};
@@ -481,8 +490,8 @@ export default function ProgressChartsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.center}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={[styles.center, styles.statePadded]}>
           <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
@@ -491,11 +500,13 @@ export default function ProgressChartsScreen() {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Progress</Text>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.statePadded}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Progress</Text>
+          </View>
         </View>
-        <View style={styles.center}>
+        <View style={[styles.center, styles.statePadded]}>
           <TouchableOpacity style={styles.errorCard} onPress={loadProgressData} activeOpacity={0.7}>
             <Text style={styles.errorText}>Couldn't load your progress data. Tap to retry.</Text>
           </TouchableOpacity>
@@ -507,102 +518,123 @@ export default function ProgressChartsScreen() {
   const hasData = logs.length > 0;
   const trainedDaysCount = consistencyDays.filter((d) => d.trained).length;
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Progress</Text>
           <Text style={styles.headerSubtitle}>Track your performance over time</Text>
         </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate('GoalTracker')} style={styles.goalLink} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('GoalTracker')}
+          style={styles.goalLink}
+          activeOpacity={0.7}
+        >
           <Text style={styles.goalLinkText}>My Goal →</Text>
         </TouchableOpacity>
 
         {!hasData ? (
-          <View style={styles.card}>
+          <View style={styles.sectionCard}>
             <Text style={styles.placeholderText}>
               Complete your first workout to see progress charts.
             </Text>
           </View>
         ) : (
           <>
-            {/* ── Quick Stats ── */}
             <View style={styles.quickStatsRow}>
-              <View style={styles.miniCard}>
-                <Text style={styles.miniValue}>{totalWorkouts}</Text>
-                <Text style={styles.miniLabel}>Workouts</Text>
+              <View style={styles.statCard}>
+                <Text
+                  style={[
+                    styles.statValue,
+                    totalWorkouts > 0 && styles.statValueAccent,
+                  ]}
+                >
+                  {totalWorkouts}
+                </Text>
+                <Text style={styles.statLabel}>Workouts</Text>
               </View>
-              <View style={styles.miniCard}>
-                <Text style={styles.miniValue}>{currentStreak}</Text>
-                <Text style={styles.miniLabel}>Day streak</Text>
+              <View style={styles.statCard}>
+                <Text
+                  style={[
+                    styles.statValue,
+                    currentStreak > 0 && styles.statValueAccent,
+                  ]}
+                >
+                  {currentStreak}
+                </Text>
+                <Text style={styles.statLabel}>Day streak</Text>
               </View>
-              <View style={styles.miniCard}>
-                <Text style={styles.miniValue}>
+              <View style={styles.statCard}>
+                <Text
+                  style={[
+                    styles.statValue,
+                    bestWeek != null && styles.statValueAccent,
+                  ]}
+                >
                   {bestWeek ? `W${bestWeek.week}` : '—'}
                 </Text>
-                <Text style={styles.miniLabel}>Best week</Text>
+                <Text style={styles.statLabel}>Best week</Text>
               </View>
             </View>
 
-            {/* ── Strength Progression ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Strength Progression</Text>
-              <Text style={styles.cardSubtitle}>Estimated 1RM over time</Text>
-
+            <Text style={styles.sectionHeading}>Strength Progression</Text>
+            <Text style={styles.sectionSubLabel}>Estimated 1RM over time</Text>
+            <View style={styles.sectionCard}>
               {topExercises.length > 0 ? (
                 <>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.chipScroll}
-                    contentContainerStyle={styles.chipRow}
-                  >
+                  <View style={styles.liftChipRow}>
                     {topExercises.map((name) => {
                       const active = name === activeExercise;
                       return (
                         <TouchableOpacity
                           key={name}
-                          style={[styles.chip, active && styles.chipActive]}
+                          style={[styles.liftChip, active && styles.liftChipSelected]}
                           onPress={() => setSelectedExercise(name)}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          <Text
+                            style={[
+                              styles.liftChipText,
+                              active && styles.liftChipTextSelected,
+                            ]}
+                          >
                             {name}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
-                  </ScrollView>
+                  </View>
 
                   {strengthData.length > 0 ? (
                     <>
                       <LineChart data={strengthData} width={chartWidth} height={200} />
-                      {strengthData.length === 1 && (
-                        <Text style={styles.hintText}>
+                      {strengthData.length === 1 ? (
+                        <Text style={styles.chartHintText}>
                           Keep training to see your progression curve
                         </Text>
-                      )}
+                      ) : null}
                     </>
                   ) : (
-                    <Text style={styles.placeholderText}>
+                    <Text style={styles.placeholderTextMuted}>
                       No data for this exercise yet.
                     </Text>
                   )}
                 </>
               ) : (
-                <Text style={styles.placeholderText}>
+                <Text style={styles.placeholderTextMuted}>
                   Log your first workout to see strength progression.
                 </Text>
               )}
             </View>
 
-            {/* ── Weekly Volume ── */}
             {(() => {
               const volumeWeeks = Array.from(volumeWeekData.keys()).sort((a, b) => a - b);
               const activeVolWeek = selectedVolumeWeek ?? volumeWeeks[volumeWeeks.length - 1] ?? null;
@@ -614,76 +646,89 @@ export default function ProgressChartsScreen() {
               const totalSets = muscleRows.reduce((sum, [, s]) => sum + s, 0);
 
               return (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Weekly Volume</Text>
-                  <Text style={styles.cardSubtitle}>Total sets this week by muscle group</Text>
-
-                  {volumeWeeks.length === 0 ? (
-                    <Text style={styles.placeholderText}>
-                      Log workouts to see weekly volume breakdown.
-                    </Text>
-                  ) : (
-                    <>
-                      {/* Week selector chips */}
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={styles.chipScroll}
-                        contentContainerStyle={styles.chipRow}
-                      >
-                        {volumeWeeks.map((wk) => {
-                          const active = wk === activeVolWeek;
-                          return (
-                            <TouchableOpacity
-                              key={wk}
-                              style={[styles.chip, active && styles.chipActive]}
-                              onPress={() => setSelectedVolumeWeek(wk)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                                W{wk}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-
-                      {/* Muscle group bar list */}
-                      {muscleRows.length > 0 ? (
-                        <>
-                          {muscleRows.map(([mg, sets]) => {
-                            const color = MUSCLE_COLORS[mg.toLowerCase()] ?? Colors.divider;
-                            const pct = sets / maxSets;
+                <>
+                  <Text style={styles.sectionHeading}>Weekly Volume</Text>
+                  <Text style={styles.sectionSubLabel}>
+                    Total sets this week by muscle group
+                  </Text>
+                  <View style={styles.sectionCard}>
+                    {volumeWeeks.length === 0 ? (
+                      <Text style={styles.placeholderTextMuted}>
+                        Log workouts to see weekly volume breakdown.
+                      </Text>
+                    ) : (
+                      <>
+                        <View style={styles.weekPillRow}>
+                          {volumeWeeks.map((wk) => {
+                            const active = wk === activeVolWeek;
                             return (
-                              <View key={mg} style={styles.volRow}>
-                                <View style={styles.volRowHeader}>
-                                  <Text style={styles.volMuscle}>{mg}</Text>
-                                  <Text style={styles.volSets}>{sets} sets</Text>
-                                </View>
-                                <View style={styles.volBarBg}>
-                                  <View style={[styles.volBarFill, { width: `${pct * 100}%` as any, backgroundColor: color }]} />
-                                </View>
-                              </View>
+                              <TouchableOpacity
+                                key={wk}
+                                style={[
+                                  styles.weekPill,
+                                  active && styles.weekPillSelected,
+                                ]}
+                                onPress={() => setSelectedVolumeWeek(wk)}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.weekPillText,
+                                    active && styles.weekPillTextSelected,
+                                  ]}
+                                >
+                                  W{wk}
+                                </Text>
+                              </TouchableOpacity>
                             );
                           })}
-                          <View style={styles.volDivider} />
-                          <Text style={styles.volSummary}>
-                            Week {activeVolWeek} · {totalSets} total sets across {muscleRows.length} muscle groups
+                        </View>
+
+                        {muscleRows.length > 0 ? (
+                          <>
+                            {muscleRows.map(([mg, sets]) => {
+                              const color = MUSCLE_COLORS[mg.toLowerCase()] ?? Colors.divider;
+                              const pct = sets / maxSets;
+                              return (
+                                <View key={mg} style={styles.volRow}>
+                                  <View style={styles.volRowHeader}>
+                                    <Text style={styles.volMuscle}>{mg}</Text>
+                                    <Text style={styles.volSets}>{sets} sets</Text>
+                                  </View>
+                                  <View style={styles.volBarBg}>
+                                    <View
+                                      style={[
+                                        styles.volBarFill,
+                                        {
+                                          width: `${pct * 100}%` as `${number}%`,
+                                          backgroundColor: color,
+                                        },
+                                      ]}
+                                    />
+                                  </View>
+                                </View>
+                              );
+                            })}
+                            <Text style={styles.volSummary}>
+                              Week {activeVolWeek} · {totalSets} total sets across{' '}
+                              {muscleRows.length} muscle groups
+                            </Text>
+                          </>
+                        ) : (
+                          <Text style={styles.placeholderTextMuted}>
+                            No sets logged for this week.
                           </Text>
-                        </>
-                      ) : (
-                        <Text style={styles.placeholderText}>No sets logged for this week.</Text>
-                      )}
-                    </>
-                  )}
-                </View>
+                        )}
+                      </>
+                    )}
+                  </View>
+                </>
               );
             })()}
 
-            {/* ── Bodyweight Trend ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Bodyweight Trend</Text>
-              <Text style={styles.cardSubtitle}>Last 30 days</Text>
+            <Text style={styles.sectionHeading}>Bodyweight Trend</Text>
+            <Text style={styles.sectionSubLabel}>Last 30 days</Text>
+            <View style={[styles.sectionCard, styles.bodyweightSectionCard]}>
               {weightData.length < 2 ? (
                 <Text style={styles.weightChartEmpty}>
                   Log your weight daily on the Dashboard to track your trend here.
@@ -693,39 +738,44 @@ export default function ProgressChartsScreen() {
               )}
             </View>
 
-            {/* ── Consistency Heatmap ── */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Consistency</Text>
-              <Text style={styles.cardSubtitle}>Your training days over the last 10 weeks</Text>
-
+            <Text style={styles.sectionHeading}>Consistency</Text>
+            <Text style={styles.sectionSubLabel}>
+              Your training days over the last 10 weeks
+            </Text>
+            <View style={styles.sectionCard}>
               <View style={styles.heatmapContainer}>
-                {/* Day labels */}
                 <View style={styles.heatmapDayLabels}>
                   {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-                    <Text key={i} style={styles.heatmapDayLabel}>{d}</Text>
+                    <Text key={i} style={styles.heatmapDayLabel}>
+                      {d}
+                    </Text>
                   ))}
                 </View>
-                {/* Grid */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View>
-                    {/* Week number labels */}
                     <View style={styles.heatmapWeekLabels}>
                       {Array.from({ length: 10 }, (_, i) => (
-                        <Text key={i} style={styles.heatmapWeekLabel}>{i + 1}</Text>
+                        <Text key={i} style={styles.heatmapWeekLabel}>
+                          {i + 1}
+                        </Text>
                       ))}
                     </View>
-                    {/* Cells: 7 rows × 10 columns */}
                     {Array.from({ length: 7 }, (_, row) => (
                       <View key={row} style={styles.heatmapRow}>
                         {Array.from({ length: 10 }, (_, col) => {
                           const idx = col * 7 + row;
                           const day = consistencyDays[idx];
+                          const isToday = day?.dateStr === todayStr;
                           return (
                             <View
                               key={col}
                               style={[
                                 styles.heatmapCell,
-                                { backgroundColor: day?.trained ? Colors.accent : Colors.divider },
+                                isToday
+                                  ? styles.heatmapCellToday
+                                  : day?.trained
+                                    ? styles.heatmapCellTrained
+                                    : styles.heatmapCellEmpty,
                               ]}
                             />
                           );
@@ -748,126 +798,310 @@ export default function ProgressChartsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 56,
+    paddingBottom: 40,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  statePadded: {
+    paddingTop: 56,
+    paddingHorizontal: Spacing.xl,
+  },
 
-  header: { marginTop: 20, marginBottom: 24 },
-  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
+  header: {
+    marginBottom: 0,
+  },
+  headerTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
   headerSubtitle: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
-  goalLink: { marginBottom: 16 },
-  goalLinkText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.bold, },
-
-  card: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
-  cardTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
-  cardSubtitle: {
+  goalLink: {
+    marginTop: 8,
+    marginBottom: 0,
+    alignSelf: 'flex-start',
+  },
+  goalLinkText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 4,
+  },
+  sectionSubLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 12 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+  sectionCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+  },
+  bodyweightSectionCard: {
+    overflow: 'visible',
+  },
 
   placeholderText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
     textAlign: 'center',
     paddingVertical: 24,
   },
-  placeholderCenter: { alignItems: 'center', paddingVertical: 20 },
-  placeholderEmoji: {
+  placeholderTextMuted: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.display, marginBottom: 12 },
-  placeholderTitleText: {
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  chartHintText: {
     fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.body, textAlign: 'center' },
-  placeholderSubText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', marginTop: 8 },
-
-  hintText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', marginTop: 8 },
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 12,
+  },
   weightChartEmpty: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
     textAlign: 'center',
-    padding: 20,
+    paddingVertical: 20,
   },
 
   errorCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderLeftWidth: 4,
     borderLeftColor: Colors.danger,
-    padding: 16,
+    padding: Spacing.lg,
   },
   errorText: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
 
-  /* Quick Stats */
-  quickStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  miniCard: {
+  quickStatsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  statCard: {
     flex: 1,
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
     alignItems: 'center',
   },
-  miniValue: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
-  miniLabel: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2, textAlign: 'center' },
-
-  /* Chips */
-  chipScroll: { marginBottom: 12 },
-  chipRow: { gap: 8 },
-  chip: {
-    backgroundColor: Colors.divider,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+  statValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
   },
-  chipActive: { backgroundColor: Colors.accent },
-  chipText: {
+  statValueAccent: {
+    color: Colors.accent,
+  },
+  statLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
 
-  /* Volume list */
-  volRow: { marginBottom: 10 },
-  volRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  liftChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  liftChip: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  liftChipSelected: {
+    backgroundColor: Colors.accent,
+    borderWidth: 0,
+  },
+  liftChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  liftChipTextSelected: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+
+  weekPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  weekPill: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  weekPillSelected: {
+    backgroundColor: Colors.accent,
+    borderWidth: 0,
+  },
+  weekPillText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
+  weekPillTextSelected: {
+    color: Colors.textPrimary,
+  },
+
+  volRow: {
+    marginBottom: Spacing.sm,
+  },
+  volRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   volMuscle: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.caption, flex: 1 },
+    flex: 1,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
   volSets: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, },
-  volBarBg: { height: 6, borderRadius: 3, backgroundColor: Colors.divider, overflow: 'hidden' },
-  volBarFill: { height: 6, borderRadius: 3 },
-  volDivider: { height: 1, backgroundColor: Colors.divider, marginVertical: 12 },
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginLeft: 8,
+  },
+  volBarBg: {
+    height: 6,
+    backgroundColor: Colors.divider,
+    borderRadius: Radius.full,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  volBarFill: {
+    height: 6,
+    borderRadius: Radius.full,
+  },
   volSummary: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
 
-  /* Heatmap */
-  heatmapContainer: { flexDirection: 'row', marginTop: 12 },
-  heatmapDayLabels: { justifyContent: 'flex-start', marginRight: 6, paddingTop: 18 },
+  heatmapContainer: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  heatmapDayLabels: {
+    justifyContent: 'flex-start',
+    marginRight: Spacing.xs,
+    paddingTop: 22,
+  },
   heatmapDayLabel: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.micro, height: 32, lineHeight: 32, textAlign: 'right' },
-  heatmapWeekLabels: { flexDirection: 'row' },
+    width: 16,
+    height: 28,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'right',
+    lineHeight: 28,
+  },
+  heatmapWeekLabels: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
   heatmapWeekLabel: {
+    width: 32,
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary, fontSize: FontSizes.micro, width: 32, textAlign: 'center', height: 18, lineHeight: 18 },
-  heatmapRow: { flexDirection: 'row' },
-  heatmapCell: { width: 28, height: 28, borderRadius: 4, margin: 2 },
-  heatmapStat: { color: Colors.textPrimary, fontSize: FontSizes.caption, fontFamily: Fonts.bold,  textAlign: 'center', marginTop: 12 },
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    height: 18,
+    lineHeight: 18,
+  },
+  heatmapRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  heatmapCell: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    margin: 2,
+  },
+  heatmapCellEmpty: {
+    backgroundColor: Colors.bgElevated,
+  },
+  heatmapCellTrained: {
+    backgroundColor: Colors.accent,
+  },
+  heatmapCellToday: {
+    borderWidth: 1.5,
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentMuted,
+  },
+  heatmapStat: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginTop: 20,
+  },
 });

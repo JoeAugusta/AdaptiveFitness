@@ -6,10 +6,11 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 interface Goal {
   id: string;
@@ -31,6 +32,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 export default function OnboardingScreen() {
   const navigation = useNavigation<NavProp>();
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const handleContinue = () => {
     if (!selectedGoal) return;
@@ -38,20 +40,22 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.stepHeader}>
+        <Text style={styles.stepIndicator}>1 of 7</Text>
       </View>
-      <Text style={styles.stepLabel}>Step 1 of 7</Text>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heading}>What's your main goal?</Text>
-        <Text style={styles.subtitle}>
-          We'll build your personalized plan around this
-        </Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.heading}>{"What's your main goal?"}</Text>
+          <Text style={styles.subtitle}>
+            {"We'll build your personalized plan around this"}
+          </Text>
+        </View>
 
         <View style={styles.cardsContainer}>
           {GOALS.map((goal) => {
@@ -77,24 +81,25 @@ export default function OnboardingScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
-          style={[styles.button, !selectedGoal && styles.buttonDisabled]}
+          style={[
+            styles.button,
+            !selectedGoal && styles.buttonDisabled,
+          ]}
           onPress={handleContinue}
           disabled={!selectedGoal}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              !selectedGoal && styles.buttonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -103,100 +108,98 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bgPrimary,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
+  stepHeader: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    alignItems: 'flex-end',
   },
-  progressFill: {
-    width: '14.3%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    marginTop: 10,
-    marginLeft: 24,
+    color: Colors.textTertiary,
   },
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
+  },
+  titleBlock: {
+    marginTop: 56,
   },
   heading: {
-    fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
-    marginBottom: 8,
+    lineHeight: 32,
   },
   subtitle: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.title,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 32,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xxxl,
   },
   cardsContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
+    gap: 0,
   },
   card: {
+    height: 72,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    marginBottom: Spacing.sm,
   },
   cardSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
   emoji: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.display,
-    marginRight: 14,
+    fontSize: 28,
+    marginRight: Spacing.lg,
   },
   cardText: {
     flex: 1,
   },
   cardTitle: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
-    marginBottom: 2,
   },
   cardSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
+    marginTop: 2,
   },
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
-  },
-  buttonTextDisabled: {
-    color: Colors.textSecondary,
   },
 });

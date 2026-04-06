@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import {
   View,
   Text,
@@ -7,12 +8,12 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
-import InfoTooltip from '../../components/InfoTooltip';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GoalDetails'>;
 type RouteType = RouteProp<RootStackParamList, 'GoalDetails'>;
@@ -147,6 +148,7 @@ function StrengthContent({
   const [secondaryLiftError, setSecondaryLiftError] = useState(false);
   const [planDuration, setPlanDuration] = useState('12w');
   const [durationManuallySet, setDurationManuallySet] = useState(false);
+  const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(null);
 
   const canContinue = !!targetLift && current1RM.trim() !== '' && target1RM.trim() !== '';
 
@@ -197,7 +199,7 @@ function StrengthContent({
         })
       }
     >
-      <Text style={styles.heading}>Which lift?</Text>
+      <Text style={styles.sectionHeadingFirst}>Which lift?</Text>
       <View style={styles.cardsContainer}>
         {LIFT_OPTIONS.map((opt) => {
           const selected = targetLift === opt.id;
@@ -225,33 +227,43 @@ function StrengthContent({
         })}
       </View>
 
-      <Text style={[styles.heading, styles.sectionGap]}>Current & Target 1RM</Text>
-      <View style={styles.inputCard}>
+      <Text style={styles.sectionHeading}>Current & Target 1RM</Text>
+      <View style={styles.inputFieldBlock}>
         <Text style={styles.inputLabel}>Current 1RM (lbs)</Text>
         <TextInput
-          style={styles.textInput}
+          style={[
+            styles.textInputField,
+            focusedField === 'current' && styles.textInputFocused,
+          ]}
           placeholder="e.g. 225"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={current1RM}
           onChangeText={setCurrent1RM}
+          onFocus={() => setFocusedField('current')}
+          onBlur={() => setFocusedField(null)}
         />
       </View>
-      <View style={[styles.inputCard, { marginTop: 10 }]}>
+      <View style={[styles.inputFieldBlock, styles.inputFieldStack]}>
         <Text style={styles.inputLabel}>Target 1RM (lbs)</Text>
         <TextInput
-          style={styles.textInput}
+          style={[
+            styles.textInputField,
+            focusedField === 'target' && styles.textInputFocused,
+          ]}
           placeholder="e.g. 275"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={target1RM}
           onChangeText={setTarget1RM}
+          onFocus={() => setFocusedField('target')}
+          onBlur={() => setFocusedField(null)}
         />
       </View>
 
       {feasibility && (
         <View style={styles.infoCard}>
-          <Text style={styles.infoText}>
+          <Text style={styles.infoCardBody}>
             {feasibility.message}
             <Text style={styles.infoHighlight}>{feasibility.weeks}</Text>
             {feasibility.suffix}
@@ -259,7 +271,7 @@ function StrengthContent({
         </View>
       )}
 
-      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         Based on your goal, we recommend:
       </Text>
@@ -270,13 +282,23 @@ function StrengthContent({
             <TouchableOpacity
               key={opt.id}
               activeOpacity={0.7}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                styles.chipDuration,
+                selected && styles.chipSelected,
+              ]}
               onPress={() => {
                 setDurationManuallySet(true);
                 setPlanDuration(opt.id);
               }}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  styles.chipTextCentered,
+                  selected && styles.chipTextSelected,
+                ]}
+              >
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -284,14 +306,14 @@ function StrengthContent({
         })}
       </View>
       {STRENGTH_EXPECTATIONS[planDuration] && (
-        <View style={styles.expectationCard}>
-          <Text style={styles.expectationText}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
             {STRENGTH_EXPECTATIONS[planDuration]}
           </Text>
         </View>
       )}
 
-      <Text style={[styles.heading, styles.sectionGap]}>
+      <Text style={styles.sectionHeading}>
         Secondary Lift (Optional)
       </Text>
       <Text style={styles.sectionSubtitle}>
@@ -361,7 +383,7 @@ function HypertrophyContent({
               style={[
                 styles.chip,
                 selected && styles.chipSelected,
-                maxed && { opacity: 0.4 },
+                maxed && styles.chipMaxed,
               ]}
               onPress={() => toggleMuscle(muscle)}
               disabled={maxed}
@@ -381,7 +403,7 @@ function HypertrophyContent({
         </Text>
       )}
 
-      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         How many weeks do you want to commit to?
       </Text>
@@ -392,10 +414,20 @@ function HypertrophyContent({
             <TouchableOpacity
               key={opt.id}
               activeOpacity={0.7}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                styles.chipDuration,
+                selected && styles.chipSelected,
+              ]}
               onPress={() => setPlanDuration(opt.id)}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  styles.chipTextCentered,
+                  selected && styles.chipTextSelected,
+                ]}
+              >
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -403,8 +435,8 @@ function HypertrophyContent({
         })}
       </View>
       {HYPERTROPHY_EXPECTATIONS[planDuration] && (
-        <View style={styles.expectationCard}>
-          <Text style={styles.expectationText}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
             {HYPERTROPHY_EXPECTATIONS[planDuration]}
           </Text>
         </View>
@@ -421,6 +453,9 @@ function FatLossContent({
   const [currentWeightLbs, setCurrentWeightLbs] = useState('');
   const [targetWeightLbs, setTargetWeightLbs] = useState('');
   const [targetDate, setTargetDate] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(
+    null,
+  );
 
   const canContinue =
     currentWeightLbs.trim() !== '' &&
@@ -441,7 +476,7 @@ function FatLossContent({
     if (weeklyRate <= 1) {
       return {
         message: `~${weeklyRate.toFixed(1)} lbs/week — this is a safe, sustainable rate. Great choice.`,
-        color: '#10B981', // TODO: map to design token
+        color: Colors.success,
       };
     }
     if (weeklyRate <= 1.5) {
@@ -470,31 +505,41 @@ function FatLossContent({
         })
       }
     >
-      <View style={styles.inputCard}>
+      <View style={styles.inputFieldBlock}>
         <Text style={styles.inputLabel}>Current Weight (lbs)</Text>
         <TextInput
-          style={styles.textInput}
+          style={[
+            styles.textInputField,
+            focusedField === 'current' && styles.textInputFocused,
+          ]}
           placeholder="e.g. 185"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentWeightLbs}
           onChangeText={setCurrentWeightLbs}
+          onFocus={() => setFocusedField('current')}
+          onBlur={() => setFocusedField(null)}
         />
       </View>
 
-      <View style={[styles.inputCard, { marginTop: 10 }]}>
+      <View style={[styles.inputFieldBlock, styles.inputFieldStack]}>
         <Text style={styles.inputLabel}>Target Weight (lbs)</Text>
         <TextInput
-          style={styles.textInput}
+          style={[
+            styles.textInputField,
+            focusedField === 'target' && styles.textInputFocused,
+          ]}
           placeholder="e.g. 160"
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={targetWeightLbs}
           onChangeText={setTargetWeightLbs}
+          onFocus={() => setFocusedField('target')}
+          onBlur={() => setFocusedField(null)}
         />
       </View>
 
-      <Text style={[styles.heading, styles.sectionGap]}>
+      <Text style={styles.sectionHeading}>
         Timeline & Plan Duration
       </Text>
       <View style={styles.chipRow}>
@@ -504,11 +549,19 @@ function FatLossContent({
             <TouchableOpacity
               key={opt.id}
               activeOpacity={0.7}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                styles.chipDuration,
+                selected && styles.chipSelected,
+              ]}
               onPress={() => setTargetDate(opt.id)}
             >
               <Text
-                style={[styles.chipText, selected && styles.chipTextSelected]}
+                style={[
+                  styles.chipText,
+                  styles.chipTextCentered,
+                  selected && styles.chipTextSelected,
+                ]}
               >
                 {opt.label}
               </Text>
@@ -519,14 +572,14 @@ function FatLossContent({
 
       {rateCheck && (
         <View style={styles.infoCard}>
-          <Text style={[styles.infoText, { color: rateCheck.color }]}>
+          <Text style={[styles.infoCardBody, { color: rateCheck.color }]}>
             {rateCheck.message}
           </Text>
         </View>
       )}
       {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
-        <View style={styles.expectationCard}>
-          <Text style={styles.expectationText}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
             {FAT_LOSS_EXPECTATIONS[targetDate]}
           </Text>
         </View>
@@ -551,7 +604,7 @@ function RecompContent({
       buttonLabel="Continue"
       onContinue={() => onContinue({ recompFocus, planDuration })}
     >
-      <Text style={styles.heading}>What's your main focus?</Text>
+      <Text style={styles.sectionHeadingFirst}>What's your main focus?</Text>
       <Text style={styles.sectionSubtitle}>
         We'll adjust your plan balance accordingly.
       </Text>
@@ -577,7 +630,7 @@ function RecompContent({
         })}
       </View>
 
-      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         How many weeks do you want to commit to?
       </Text>
@@ -588,10 +641,20 @@ function RecompContent({
             <TouchableOpacity
               key={opt.id}
               activeOpacity={0.7}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                styles.chipDuration,
+                selected && styles.chipSelected,
+              ]}
               onPress={() => setPlanDuration(opt.id)}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  styles.chipTextCentered,
+                  selected && styles.chipTextSelected,
+                ]}
+              >
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -599,8 +662,8 @@ function RecompContent({
         })}
       </View>
       {RECOMP_EXPECTATIONS[planDuration] && (
-        <View style={styles.expectationCard}>
-          <Text style={styles.expectationText}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
             {RECOMP_EXPECTATIONS[planDuration]}
           </Text>
         </View>
@@ -625,15 +688,15 @@ function GeneralContent({
       buttonLabel="Let's Build My Plan"
       onContinue={() => onContinue({ generalFocus, planDuration })}
     >
-      <View style={styles.generalInfoCard}>
-        <Text style={styles.generalInfoText}>
+      <View style={styles.infoCard}>
+        <Text style={styles.infoCardBody}>
           Your plan will cover strength, conditioning, and mobility in a
           balanced weekly structure. Perfect for building a sustainable fitness
           habit.
         </Text>
       </View>
 
-      <Text style={[styles.heading, styles.sectionGap]}>
+      <Text style={styles.sectionHeading}>
         What does fitness mean to you right now?
       </Text>
       <Text style={styles.sectionSubtitle}>
@@ -661,7 +724,7 @@ function GeneralContent({
         })}
       </View>
 
-      <Text style={[styles.heading, styles.sectionGap]}>Plan Duration</Text>
+      <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         How many weeks do you want to commit to?
       </Text>
@@ -672,10 +735,20 @@ function GeneralContent({
             <TouchableOpacity
               key={opt.id}
               activeOpacity={0.7}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                styles.chipDuration,
+                selected && styles.chipSelected,
+              ]}
               onPress={() => setPlanDuration(opt.id)}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  styles.chipTextCentered,
+                  selected && styles.chipTextSelected,
+                ]}
+              >
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -683,8 +756,8 @@ function GeneralContent({
         })}
       </View>
       {GENERAL_EXPECTATIONS[planDuration] && (
-        <View style={styles.expectationCard}>
-          <Text style={styles.expectationText}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
             {GENERAL_EXPECTATIONS[planDuration]}
           </Text>
         </View>
@@ -706,54 +779,52 @@ function ScreenShell({
   canContinue: boolean;
   buttonLabel: string;
   onContinue: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const navigation = useNavigation<NavProp>();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      <View style={styles.progressBar}>
-        <View style={styles.progressFill} />
-      </View>
-
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={styles.backButton}
+          style={styles.backHit}
           activeOpacity={0.7}
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepLabel}>Step 2 of 7</Text>
+        <Text style={styles.stepIndicator}>2 of 7</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>{title}</Text>
+          <Text style={styles.screenSubtitle}>{subtitle}</Text>
+        </View>
         {children}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Spacing.xxxl + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.button, !canContinue && styles.buttonDisabled]}
           onPress={onContinue}
           disabled={!canContinue}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              !canContinue && styles.buttonTextDisabled,
-            ]}
-          >
-            {buttonLabel}
-          </Text>
+          <Text style={styles.buttonText}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -787,86 +858,75 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
 
-  /* Progress */
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.bgCard,
-    borderRadius: 2,
-    marginHorizontal: 24,
-    marginTop: 60,
-  },
-  progressFill: {
-    width: '28.5%',
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
-
-  /* Header */
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
   },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  backHit: {
+    paddingRight: 8,
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1,
-    color: Colors.textPrimary,
-    marginTop: -2,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
   },
-  stepLabel: {
+  stepIndicator: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
-  /* Scroll */
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 24,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 120,
   },
 
-  /* Title / subtitle */
-  title: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  titleBlock: {
+    marginTop: 56,
   },
-  subtitle: {
+  screenTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 24,
+    marginTop: 8,
+    marginBottom: 32,
   },
 
-  /* Section headings */
-  heading: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  sectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    marginTop: 28,
   },
-  sectionGap: {
-    marginTop: 24,
+  sectionHeadingFirst: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    marginTop: 0,
   },
   sectionSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 12,
-    marginTop: 4,
+    marginTop: 0,
   },
   errorText: {
     fontFamily: Fonts.regular,
@@ -875,29 +935,29 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  /* Cards */
   cardsContainer: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   cardSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
   cardContent: {
     flex: 1,
   },
   cardLabel: {
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
+    fontFamily: Fonts.semiBold,
     color: Colors.textPrimary,
   },
   cardDetail: {
@@ -925,136 +985,116 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
 
-  /* Chips */
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: Spacing.sm,
   },
   chip: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
     backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipDuration: {
+    minWidth: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  chipMaxed: {
+    opacity: 0.4,
   },
   chipText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.medium, 
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
+  chipTextCentered: {
+    textAlign: 'center',
+  },
   chipTextSelected: {
-    color: Colors.textPrimary,
+    color: Colors.accent,
   },
   chipHint: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginTop: 10,
+    marginTop: Spacing.sm,
   },
 
-  /* Input cards */
-  inputCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
+  inputFieldBlock: {
+    marginBottom: 0,
+  },
+  inputFieldStack: {
+    marginTop: Spacing.md,
   },
   inputLabel: {
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontFamily: Fonts.medium, 
-    marginBottom: 8,
+    fontFamily: Fonts.medium,
+    marginBottom: Spacing.sm,
   },
-  textInput: {
+  textInputField: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: 14,
     fontFamily: Fonts.regular,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: FontSizes.title,
+    fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
-  inputHelper: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    marginTop: 8,
+  textInputFocused: {
+    borderColor: Colors.accent,
   },
 
-  /* Expectation card */
-  expectationCard: {
-    backgroundColor: '#0F2027', // TODO: map to design token
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#1E3A4A', // TODO: map to design token
-  },
-  expectationText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    lineHeight: 19,
-  },
-
-  /* Info card */
   infoCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginTop: Spacing.md,
   },
-  infoText: {
+  infoCardBody: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    lineHeight: 19,
-  },
-  infoHighlight: {
-    color: Colors.accent,
-    fontFamily: Fonts.bold, 
-  },
-
-  /* General fitness info */
-  generalInfoCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 12,
-    padding: 16,
-  },
-  generalInfoText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     lineHeight: 22,
   },
+  infoHighlight: {
+    color: Colors.accent,
+    fontFamily: Fonts.bold,
+  },
 
-  /* Footer */
   footer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 12,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
     backgroundColor: Colors.bgPrimary,
   },
   button: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: Colors.divider,
+    opacity: 0.4,
   },
   buttonText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
-  },
-  buttonTextDisabled: {
-    color: Colors.textSecondary,
   },
 });

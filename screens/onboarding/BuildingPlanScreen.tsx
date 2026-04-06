@@ -10,7 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -312,30 +312,51 @@ export default function BuildingPlanScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Pulsing circle */}
-      <View style={styles.outerCircle}>
-        <Animated.View style={[styles.innerCircle, { opacity: pulseAnim }]} />
-      </View>
+      <Animated.View
+        style={[styles.outerRing, { opacity: pulseAnim }]}
+      >
+        <View style={styles.innerFill} />
+      </Animated.View>
 
-      {/* Title + cycling subtitle */}
-      <View style={styles.middleSection}>
-        <Text style={styles.title}>Building Your Plan</Text>
-        <Animated.Text style={[styles.subtitle, { opacity: subtitleOpacity }]}>
-          {displayedMessage}
-        </Animated.Text>
-      </View>
+      <Text style={styles.title}>Building Your Plan</Text>
+      <Animated.Text style={[styles.subtitle, { opacity: subtitleOpacity }]}>
+        {displayedMessage}
+      </Animated.Text>
 
-      {/* Sequential step rows */}
-      <View style={styles.stepsSection}>
-        {STEPS.map((step, i) => (
-          <Animated.View
-            key={step}
-            style={[styles.stepRow, { opacity: stepAnims[i] }]}
-          >
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={styles.stepText}>{step}</Text>
-          </Animated.View>
-        ))}
+      <View style={styles.checklist}>
+        {STEPS.map((step, i) => {
+          const inv = stepAnims[i].interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0],
+          });
+          return (
+            <View key={step}>
+              <View style={styles.stepRow}>
+                <View style={styles.checkSlot}>
+                  <Animated.Text style={[styles.pendingGlyph, { opacity: inv }]}>
+                    ·
+                  </Animated.Text>
+                  <Animated.Text
+                    style={[styles.checkGlyph, { opacity: stepAnims[i] }]}
+                  >
+                    ✓
+                  </Animated.Text>
+                </View>
+                <View style={styles.stepTextWrap}>
+                  <Animated.Text style={[styles.stepTextPending, { opacity: inv }]}>
+                    {step}
+                  </Animated.Text>
+                  <Animated.Text
+                    style={[styles.stepTextDone, { opacity: stepAnims[i] }]}
+                  >
+                    {step}
+                  </Animated.Text>
+                </View>
+              </View>
+              {i < STEPS.length - 1 ? <View style={styles.rowDivider} /> : null}
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -345,59 +366,93 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
   },
-  outerCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+  outerRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: Colors.bgCard,
+    borderWidth: 2,
+    borderColor: Colors.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  innerCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  innerFill: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: Colors.accent,
   },
-  middleSection: {
-    marginTop: 40,
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
   title: {
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     textAlign: 'center',
+    marginTop: 32,
   },
   subtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
-  stepsSection: {
-    marginTop: 60,
-    alignItems: 'flex-start',
+  checklist: {
+    marginTop: 40,
+    alignSelf: 'stretch',
+    paddingHorizontal: 16,
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingVertical: 10,
   },
-  checkmark: {
-    fontFamily: Fonts.regular,
-    color: '#10B981', // TODO: map to design token
-    fontSize: FontSizes.title,
-    marginRight: 10,
+  checkSlot: {
+    width: 24,
+    minHeight: 22,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  stepText: {
+  pendingGlyph: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+    position: 'absolute',
+  },
+  checkGlyph: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.success,
+    position: 'absolute',
+  },
+  stepTextWrap: {
+    flex: 1,
+    position: 'relative',
+    minHeight: 22,
+    justifyContent: 'center',
+  },
+  stepTextPending: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  stepTextDone: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
   },
 });

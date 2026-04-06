@@ -36,7 +36,14 @@
           "color": "#3B82F6",
           "sounds": []
         }
-      ]
-    ]
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5ce920f1-92df-4e16-af50-30659cf55aeb"
+      }
+    },
+    "owner": "joeaugusta"
   }
 }

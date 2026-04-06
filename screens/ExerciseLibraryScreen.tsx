@@ -16,18 +16,13 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
+import { Colors } from '../constants/design';
 
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-
-const GREEN = '#22C55E';
-const AMBER = '#F59E0B';
-const RED = '#EF4444';
+const DIFF_COLORS: Record<string, string> = {
+  beginner: Colors.success,
+  intermediate: Colors.warning,
+  advanced: Colors.danger,
+};
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>;
 
@@ -146,7 +141,6 @@ const EXERCISES: Exercise[] = [
 const MUSCLE_GROUPS = ['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps', 'Forearms'];
 const EQUIPMENT_OPTIONS = ['All', 'Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell', 'Band'];
 
-const DIFF_COLORS: Record<string, string> = { beginner: GREEN, intermediate: AMBER, advanced: RED };
 const EQUIP_EMOJIS: Record<string, string> = {
   barbell: '🏋️', dumbbell: '💪', machine: '⚙️', cable: '🔗',
   bodyweight: '🤸', kettlebell: '🔔', band: '🟡',
@@ -259,7 +253,7 @@ export default function ExerciseLibraryScreen() {
     ({ item: ex }: { item: Exercise }) => {
       const isFav = favourites.includes(ex.id);
       const isAvoided = excluded.includes(ex.name);
-      const diffColor = DIFF_COLORS[ex.difficulty] ?? TEXT_SECONDARY;
+      const diffColor = DIFF_COLORS[ex.difficulty] ?? Colors.textSecondary;
 
       return (
         <View style={styles.exCard}>
@@ -332,7 +326,7 @@ export default function ExerciseLibraryScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -341,7 +335,7 @@ export default function ExerciseLibraryScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       {/* Static controls — plain View, no flex, no justifyContent */}
-      <View style={{ backgroundColor: BG_DARK, paddingTop: 0 }}>
+      <View style={{ backgroundColor: Colors.bgPrimary, paddingTop: 0 }}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -359,7 +353,7 @@ export default function ExerciseLibraryScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search exercises..."
-            placeholderTextColor={TEXT_SECONDARY}
+            placeholderTextColor={Colors.textSecondary}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -438,48 +432,48 @@ export default function ExerciseLibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  backChevron: { color: TEXT_PRIMARY, fontSize: 32, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '700', flex: 1 },
-  headerCount: { color: TEXT_SECONDARY, fontSize: 13 },
+  backChevron: { color: Colors.textPrimary, fontSize: 32, lineHeight: 36, paddingRight: 8 },
+  headerTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700', flex: 1 },
+  headerCount: { color: Colors.textSecondary, fontSize: 13 },
 
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD_BG, borderRadius: 12, marginHorizontal: 20, marginTop: 4, marginBottom: 8, paddingHorizontal: 14, height: 44 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: 12, marginHorizontal: 20, marginTop: 4, marginBottom: 8, paddingHorizontal: 14, height: 44 },
   searchIcon: { fontSize: 14, marginRight: 8 },
-  searchInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15 },
-  clearX: { color: TEXT_SECONDARY, fontSize: 22, lineHeight: 24, paddingLeft: 8 },
+  searchInput: { flex: 1, color: Colors.textPrimary, fontSize: 15 },
+  clearX: { color: Colors.textSecondary, fontSize: 22, lineHeight: 24, paddingLeft: 8 },
 
   flatList: { flex: 1 },
-  chip: { backgroundColor: DISABLED_BG, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-  chipActive: { backgroundColor: ACCENT_BLUE },
-  chipText: { color: TEXT_SECONDARY, fontSize: 12 },
-  chipTextActive: { color: '#FFFFFF' },
+  chip: { backgroundColor: Colors.divider, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+  chipActive: { backgroundColor: Colors.accent },
+  chipText: { color: Colors.textSecondary, fontSize: 12 },
+  chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   tabRow: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 8, marginBottom: 0, gap: 16 },
   tab: { paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: ACCENT_BLUE },
-  tabText: { color: TEXT_SECONDARY, fontSize: 14, fontWeight: '600' },
-  tabTextActive: { color: TEXT_PRIMARY },
+  tabActive: { borderBottomColor: Colors.accent },
+  tabText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  tabTextActive: { color: Colors.textPrimary },
 
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-  exCard: { backgroundColor: CARD_BG, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row' },
+  exCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row' },
   exLeft: { flex: 1 },
   exRight: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingLeft: 12 },
-  exName: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '700' },
-  primaryPill: { backgroundColor: ACCENT_BLUE, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
-  primaryPillText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
-  secondaryText: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 4 },
+  exName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700' },
+  primaryPill: { backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
+  primaryPillText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
+  secondaryText: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
   metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
-  equipText: { color: TEXT_SECONDARY, fontSize: 12 },
+  equipText: { color: Colors.textSecondary, fontSize: 12 },
   diffPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1 },
   diffText: { fontSize: 10, fontWeight: '600' },
   iconBtn: { fontSize: 18 },
 
   emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { color: TEXT_SECONDARY, fontSize: 14, textAlign: 'center' },
+  emptyText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
   clearBtn: { marginTop: 12 },
-  clearBtnText: { color: ACCENT_BLUE, fontSize: 14, fontWeight: '600' },
+  clearBtnText: { color: Colors.accent, fontSize: 14, fontWeight: '600' },
 });

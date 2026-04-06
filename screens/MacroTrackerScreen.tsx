@@ -24,23 +24,7 @@ import Svg, {
 import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const DIVIDER_COLOR = '#2D3F55';
-
-const GREEN = '#22C55E';
-const RED = '#EF4444';
-const AMBER = '#F59E0B';
-
-const PROTEIN_COLOR = '#3B82F6';
-const CARBS_COLOR = '#F59E0B';
-const FATS_COLOR = '#22C55E';
+import { Colors } from '../constants/design';
 
 interface MacroTargets {
   calories: number;
@@ -182,11 +166,11 @@ function CalorieRing({ pct }: { pct: number }) {
     <Svg width={size} height={size}>
       <SvgCircle
         cx={size / 2} cy={size / 2} r={r}
-        stroke={DISABLED_BG} strokeWidth={stroke} fill="none"
+        stroke={Colors.divider} strokeWidth={stroke} fill="none"
       />
       <SvgCircle
         cx={size / 2} cy={size / 2} r={r}
-        stroke={ACCENT_BLUE} strokeWidth={stroke} fill="none"
+        stroke={Colors.accent} strokeWidth={stroke} fill="none"
         strokeDasharray={`${circ}`}
         strokeDashoffset={offset}
         strokeLinecap="round"
@@ -194,7 +178,7 @@ function CalorieRing({ pct }: { pct: number }) {
       />
       <SvgText
         x={size / 2} y={size / 2 + 5}
-        fill={TEXT_PRIMARY} fontSize={14} fontWeight="bold"
+        fill={Colors.textPrimary} fontSize={14} fontWeight="bold"
         textAnchor="middle"
       >
         {Math.round(clamped)}%
@@ -242,9 +226,9 @@ function WeeklyBarChart({
       {/* Target dashed line */}
       <SvgLine
         x1={padL} y1={targetY} x2={width - padR + 4} y2={targetY}
-        stroke={TEXT_SECONDARY} strokeWidth={1} strokeDasharray="4 4"
+        stroke={Colors.textSecondary} strokeWidth={1} strokeDasharray="4 4"
       />
-      <SvgText x={width - padR + 8} y={targetY + 4} fill={TEXT_SECONDARY} fontSize={10}>
+      <SvgText x={width - padR + 8} y={targetY + 4} fill={Colors.textSecondary} fontSize={10}>
         {target}
       </SvgText>
 
@@ -256,10 +240,10 @@ function WeeklyBarChart({
 
         const pct = target > 0 ? d.calories / target : 0;
         let color: string;
-        if (d.calories === 0) color = DISABLED_BG;
-        else if (pct >= 0.9) color = GREEN;
-        else if (pct >= 0.7) color = AMBER;
-        else color = RED;
+        if (d.calories === 0) color = Colors.divider;
+        else if (pct >= 0.9) color = Colors.success;
+        else if (pct >= 0.7) color = Colors.warning;
+        else color = Colors.danger;
 
         const dayDate = new Date(d.date + 'T12:00:00');
         const dayLabel = DAY_LABELS[dayDate.getDay() === 0 ? 6 : dayDate.getDay() - 1];
@@ -268,15 +252,15 @@ function WeeklyBarChart({
           <G key={d.date}>
             <Rect
               x={x} y={y} width={barW} height={barH}
-              fill={isToday ? ACCENT_BLUE : color}
+              fill={isToday ? Colors.accent : color}
               rx={3}
             />
             {isToday && d.calories > 0 && (
-              <SvgCircle cx={x + barW / 2} cy={y - 6} r={3} fill={ACCENT_BLUE} />
+              <SvgCircle cx={x + barW / 2} cy={y - 6} r={3} fill={Colors.accent} />
             )}
             <SvgText
               x={x + barW / 2} y={padT + barMaxH + 16}
-              fill={TEXT_SECONDARY} fontSize={10} textAnchor="middle"
+              fill={Colors.textSecondary} fontSize={10} textAnchor="middle"
             >
               {dayLabel}
             </SvgText>
@@ -682,7 +666,7 @@ export default function MacroTrackerScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -723,7 +707,7 @@ export default function MacroTrackerScreen() {
             <Text style={styles.sectionLabel}>CALORIES</Text>
             <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
             <Text style={styles.calorieTarget}>/ {t.calories} kcal</Text>
-            <Text style={[styles.calorieRemaining, { color: remaining >= 0 ? GREEN : RED }]}>
+            <Text style={[styles.calorieRemaining, { color: remaining >= 0 ? Colors.success : Colors.danger }]}>
               {remaining >= 0 ? `${remaining} kcal remaining` : `${Math.abs(remaining)} kcal over`}
             </Text>
           </View>
@@ -733,9 +717,9 @@ export default function MacroTrackerScreen() {
         {/* Section 2 — Macro Breakdown */}
         <View style={styles.macroRow}>
           {([
-            { label: 'PROTEIN', val: todayTotals.protein_g, tgt: t.protein_g, color: PROTEIN_COLOR },
-            { label: 'CARBS', val: todayTotals.carbs_g, tgt: t.carbs_g, color: CARBS_COLOR },
-            { label: 'FATS', val: todayTotals.fats_g, tgt: t.fats_g, color: FATS_COLOR },
+            { label: 'PROTEIN', val: todayTotals.protein_g, tgt: t.protein_g, color: Colors.accent },
+            { label: 'CARBS', val: todayTotals.carbs_g, tgt: t.carbs_g, color: Colors.warning },
+            { label: 'FATS', val: todayTotals.fats_g, tgt: t.fats_g, color: Colors.success },
           ] as const).map((m) => {
             const pct = m.tgt > 0 ? Math.min(100, (m.val / m.tgt) * 100) : 0;
             return (
@@ -802,7 +786,7 @@ export default function MacroTrackerScreen() {
 
         {mealPrefsSet && mealSuggestions.length === 0 && (
           <View style={styles.generatingRow}>
-            <ActivityIndicator size="small" color={ACCENT_BLUE} />
+            <ActivityIndicator size="small" color={Colors.accent} />
             <Text style={styles.generatingText}>Generating your meal plan...</Text>
           </View>
         )}
@@ -856,15 +840,15 @@ export default function MacroTrackerScreen() {
           <WeeklyBarChart data={weeklyData} target={t.calories} width={chartWidth} />
           <View style={styles.statPillRow}>
             <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: GREEN }]} />
+              <View style={[styles.statDot, { backgroundColor: Colors.success }]} />
               <Text style={styles.statPillText}>{weeklyStats.daysOnTarget} days on target</Text>
             </View>
             <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: ACCENT_BLUE }]} />
+              <View style={[styles.statDot, { backgroundColor: Colors.accent }]} />
               <Text style={styles.statPillText}>{weeklyStats.bestStreak} day best streak</Text>
             </View>
             <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: AMBER }]} />
+              <View style={[styles.statDot, { backgroundColor: Colors.warning }]} />
               <Text style={styles.statPillText}>{weeklyStats.avgAdherence}% avg</Text>
             </View>
           </View>
@@ -911,7 +895,7 @@ export default function MacroTrackerScreen() {
                         value={inp.value}
                         onChangeText={inp.setter}
                         keyboardType="numeric"
-                        placeholderTextColor={TEXT_SECONDARY}
+                        placeholderTextColor={Colors.textSecondary}
                         placeholder="0"
                       />
                     </View>
@@ -1024,7 +1008,7 @@ export default function MacroTrackerScreen() {
               activeOpacity={0.85}
             >
               {savingPrefs ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
               ) : (
                 <Text style={styles.prefsSaveBtnText}>Save & Generate Meals</Text>
               )}
@@ -1048,162 +1032,162 @@ export default function MacroTrackerScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { marginTop: 20, marginBottom: 20 },
-  headerTitle: { color: TEXT_PRIMARY, fontSize: 24, fontWeight: '700' },
-  headerSubtitle: { color: TEXT_SECONDARY, fontSize: 14, marginTop: 2 },
+  headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700' },
+  headerSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
 
-  card: { backgroundColor: CARD_BG, borderRadius: 16, padding: 16, marginBottom: 16 },
-  cardTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
-  cardSubtitle: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 2, marginBottom: 16 },
+  card: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
+  cardTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  cardSubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 16 },
 
   /* Calorie Ring */
   calorieCard: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   calorieLeft: { flex: 1 },
-  sectionLabel: { color: TEXT_SECONDARY, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
-  calorieBig: { color: TEXT_PRIMARY, fontSize: 36, fontWeight: '700', marginTop: 4 },
-  calorieTarget: { color: TEXT_SECONDARY, fontSize: 14 },
+  sectionLabel: { color: Colors.textSecondary, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
+  calorieBig: { color: Colors.textPrimary, fontSize: 36, fontWeight: '700', marginTop: 4 },
+  calorieTarget: { color: Colors.textSecondary, fontSize: 14 },
   calorieRemaining: { fontSize: 13, marginTop: 6, fontWeight: '600' },
 
   /* Macro Breakdown */
   macroRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  macroCard: { flex: 1, backgroundColor: CARD_BG, borderRadius: 12, padding: 12 },
-  macroLabel: { color: TEXT_SECONDARY, fontSize: 11, textTransform: 'uppercase' },
-  macroValue: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '700', marginTop: 2 },
-  macroTarget: { color: TEXT_SECONDARY, fontSize: 12 },
-  macroBarTrack: { height: 4, borderRadius: 2, backgroundColor: DISABLED_BG, marginTop: 8 },
+  macroCard: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: 12, padding: 12 },
+  macroLabel: { color: Colors.textSecondary, fontSize: 11, textTransform: 'uppercase' },
+  macroValue: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700', marginTop: 2 },
+  macroTarget: { color: Colors.textSecondary, fontSize: 12 },
+  macroBarTrack: { height: 4, borderRadius: 2, backgroundColor: Colors.divider, marginTop: 8 },
   macroBarFill: { height: 4, borderRadius: 2 },
 
   /* Meals */
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
-  addMealBtn: { color: ACCENT_BLUE, fontSize: 14, fontWeight: '700' },
+  sectionTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  addMealBtn: { color: Colors.accent, fontSize: 14, fontWeight: '700' },
 
   emptyMeals: { alignItems: 'center', paddingVertical: 20 },
   emptyEmoji: { fontSize: 28 },
-  emptyTitle: { color: TEXT_PRIMARY, fontSize: 15, marginTop: 8 },
-  emptySubtitle: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 4 },
+  emptyTitle: { color: Colors.textPrimary, fontSize: 15, marginTop: 8 },
+  emptySubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 4 },
 
-  mealCard: { backgroundColor: CARD_BG, borderRadius: 12, padding: 14, marginBottom: 8 },
+  mealCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
   mealTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  mealName: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '700', flex: 1 },
+  mealName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700', flex: 1 },
   trashIcon: { fontSize: 18 },
-  mealCal: { color: ACCENT_BLUE, fontSize: 13, marginTop: 4 },
+  mealCal: { color: Colors.accent, fontSize: 13, marginTop: 4 },
   macroPillRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  macroPill: { backgroundColor: DISABLED_BG, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
-  macroPillText: { color: TEXT_SECONDARY, fontSize: 11 },
+  macroPill: { backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
+  macroPillText: { color: Colors.textSecondary, fontSize: 11 },
 
   /* Weekly stats */
   statPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: DISABLED_BG, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
+  statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.divider, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
   statDot: { width: 6, height: 6, borderRadius: 3 },
-  statPillText: { color: TEXT_SECONDARY, fontSize: 12 },
+  statPillText: { color: Colors.textSecondary, fontSize: 12 },
 
   /* Modal */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center' },
+  overlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center' },
   modalScroll: { flexGrow: 1, justifyContent: 'center' },
-  modalCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 24, marginHorizontal: 20 },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '700', marginBottom: 16 },
+  modalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, marginHorizontal: 20 },
+  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 16 },
 
   mealTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
-  mealTypeChip: { backgroundColor: DISABLED_BG, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
-  mealTypeChipActive: { backgroundColor: ACCENT_BLUE },
-  mealTypeText: { color: TEXT_SECONDARY, fontSize: 13 },
-  mealTypeTextActive: { color: '#FFFFFF' },
+  mealTypeChip: { backgroundColor: Colors.divider, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
+  mealTypeChipActive: { backgroundColor: Colors.accent },
+  mealTypeText: { color: Colors.textSecondary, fontSize: 13 },
+  mealTypeTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
-  modalSectionLabel: { color: TEXT_SECONDARY, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  modalSectionLabel: { color: Colors.textSecondary, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
 
   inputGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   inputWrapper: { width: '47%' },
-  inputLabel: { color: TEXT_SECONDARY, fontSize: 12, marginBottom: 4 },
-  input: { backgroundColor: DISABLED_BG, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, color: TEXT_PRIMARY, fontSize: 15 },
+  inputLabel: { color: Colors.textSecondary, fontSize: 12, marginBottom: 4 },
+  input: { backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, color: Colors.textPrimary, fontSize: 15 },
 
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  quickCard: { width: '47%', backgroundColor: DISABLED_BG, borderRadius: 8, padding: 10 },
-  quickName: { color: TEXT_PRIMARY, fontSize: 13, fontWeight: '700' },
-  quickMacros: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 4 },
+  quickCard: { width: '47%', backgroundColor: Colors.divider, borderRadius: 8, padding: 10 },
+  quickName: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  quickMacros: { color: Colors.textSecondary, fontSize: 11, marginTop: 4 },
 
   modalFooter: { flexDirection: 'row', marginTop: 20, gap: 8 },
-  cancelBtn: { flex: 1, backgroundColor: DISABLED_BG, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  cancelBtnText: { color: TEXT_SECONDARY, fontSize: 15, fontWeight: '600' },
-  logBtn: { flex: 1, backgroundColor: ACCENT_BLUE, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  logBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  cancelBtn: { flex: 1, backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  cancelBtnText: { color: Colors.textSecondary, fontSize: 15, fontWeight: '600' },
+  logBtn: { flex: 1, backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  logBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
 
   /* Meal prefs setup card */
   mealSetupCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
   },
-  mealSetupTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
+  mealSetupTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
   mealSetupBody: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     marginTop: 6,
     lineHeight: 20,
   },
   mealSetupCta: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     height: 46,
     borderRadius: 12,
     marginTop: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mealSetupCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  mealSetupCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
 
   /* Jordan meal plan */
   mealPlanSection: { marginBottom: 8 },
   mealPlanHeading: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginBottom: 12,
   },
   jordanMealNote: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     fontStyle: 'italic',
     marginBottom: 12,
     lineHeight: 18,
   },
-  mealPlanSub: { color: TEXT_SECONDARY, fontSize: 13, marginBottom: 12 },
+  mealPlanSub: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
   suggestedMealCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 10,
   },
   customiseBtn: { alignSelf: 'flex-end', marginTop: 6 },
-  customiseBtnText: { color: ACCENT_BLUE, fontSize: 13, fontWeight: '500' },
+  customiseBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '500' },
   suggestedMealRow1: { flexDirection: 'row', alignItems: 'center' },
   mealNamePill: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
     flexShrink: 0,
   },
   mealNamePillText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },
   suggestedMealTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     marginLeft: 8,
     flex: 1,
   },
   suggestedMealDesc: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     marginTop: 4,
     lineHeight: 18,
@@ -1215,31 +1199,31 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   sMacroPillNeutral: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  sMacroPillNeutralText: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '600' },
+  sMacroPillNeutralText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
   sMacroPillBlue: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   sMacroPillAmber: {
-    backgroundColor: AMBER,
+    backgroundColor: Colors.warning,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   sMacroPillGreen: {
-    backgroundColor: GREEN,
+    backgroundColor: Colors.success,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
 
   generatingRow: {
     flexDirection: 'row',
@@ -1248,10 +1232,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 8,
   },
-  generatingText: { color: TEXT_SECONDARY, fontSize: 14 },
+  generatingText: { color: Colors.textSecondary, fontSize: 14 },
 
   /* Prefs modal */
-  prefsModalSafe: { flex: 1, backgroundColor: BG_DARK },
+  prefsModalSafe: { flex: 1, backgroundColor: Colors.bgPrimary },
   prefsHeader: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -1259,51 +1243,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  prefsClose: { color: TEXT_SECONDARY, fontSize: 22, width: 44 },
+  prefsClose: { color: Colors.textSecondary, fontSize: 22, width: 44 },
   prefsHeaderTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
   prefsScroll: { flex: 1 },
   prefsScrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   prefsSectionLabel: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginBottom: 12,
   },
   prefsSectionSpacer: { marginTop: 24 },
-  prefsAllergiesHint: { color: TEXT_SECONDARY, fontSize: 13, marginBottom: 12 },
+  prefsAllergiesHint: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
   dietGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   dietCard: {
     width: '47%',
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1.5,
     borderColor: 'transparent',
   },
   dietCardSelected: {
-    backgroundColor: CARD_SELECTED_BG,
-    borderColor: ACCENT_BLUE,
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accent,
   },
-  dietCardLabel: { color: TEXT_PRIMARY, fontSize: 14, fontWeight: '500', textAlign: 'center' },
+  dietCardLabel: { color: Colors.textPrimary, fontSize: 14, fontWeight: '500', textAlign: 'center' },
   allergyChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   allergyChip: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  allergyChipSelected: { backgroundColor: ACCENT_BLUE },
-  allergyChipText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
-  allergyChipTextSelected: { color: '#FFFFFF' },
+  allergyChipSelected: { backgroundColor: Colors.accent },
+  allergyChipText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '500' },
+  allergyChipTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
   prefsFooter: {
     paddingHorizontal: 20,
     marginBottom: 32,
@@ -1312,9 +1296,9 @@ const styles = StyleSheet.create({
   prefsSaveBtn: {
     height: 54,
     borderRadius: 16,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prefsSaveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  prefsSaveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
 });

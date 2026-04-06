@@ -17,16 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-// ── Design tokens ──
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const DIVIDER_COLOR = '#2D3F55';
+import { Colors } from '../constants/design';
 
 // ── Constants ──
 
@@ -389,8 +380,8 @@ export default function NotificationsSettingsScreen() {
           <Switch
             value={workoutRemindersEnabled}
             onValueChange={toggleWorkoutReminders}
-            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF" /* TODO: map to design token */
           />
         </View>
 
@@ -423,8 +414,8 @@ export default function NotificationsSettingsScreen() {
           <Switch
             value={weighInReminderEnabled}
             onValueChange={toggleWeighInReminder}
-            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF" /* TODO: map to design token */
           />
         </View>
 
@@ -463,8 +454,8 @@ export default function NotificationsSettingsScreen() {
               setPrAlertsEnabled(v);
               schedulePreferencesSave({ prAlerts: v });
             }}
-            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF" /* TODO: map to design token */
           />
         </View>
         <Divider />
@@ -479,8 +470,8 @@ export default function NotificationsSettingsScreen() {
               setWeeklySummaryEnabled(v);
               schedulePreferencesSave({ weeklySummary: v });
             }}
-            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF" /* TODO: map to design token */
           />
         </View>
       </View>
@@ -499,8 +490,8 @@ export default function NotificationsSettingsScreen() {
               setStreakProtectionEnabled(v);
               schedulePreferencesSave({ streakProtection: v });
             }}
-            trackColor={{ false: DISABLED_BG, true: ACCENT_BLUE }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF" /* TODO: map to design token */
           />
         </View>
       </View>
@@ -552,7 +543,7 @@ export default function NotificationsSettingsScreen() {
               onChange={(_event, date) => {
                 if (date) setPendingTime(date);
               }}
-              textColor={TEXT_PRIMARY}
+              textColor={Colors.textPrimary}
             />
             <View style={styles.modalBtns}>
               <TouchableOpacity
@@ -591,7 +582,7 @@ export default function NotificationsSettingsScreen() {
               onChange={(_event, date) => {
                 if (date) setPendingWeighInTime(date);
               }}
-              textColor={TEXT_PRIMARY}
+              textColor={Colors.textPrimary}
             />
             <View style={styles.modalBtns}>
               <TouchableOpacity
@@ -617,7 +608,7 @@ export default function NotificationsSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 64 },
 
@@ -629,20 +620,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  backChevron: { color: ACCENT_BLUE, fontSize: 28 },
+  backChevron: { color: Colors.accent, fontSize: 28 },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
 
   // ── Permission banners ──
   bannerCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 24,
     marginHorizontal: 20,
@@ -651,13 +642,13 @@ const styles = StyleSheet.create({
   },
   bannerEmoji: { fontSize: 40, marginBottom: 12 },
   bannerTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
   bannerBody: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
@@ -668,15 +659,15 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 52,
     borderRadius: 14,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bannerBtnDisabled: { backgroundColor: DISABLED_BG },
-  bannerBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  bannerBtnDisabledText: { color: TEXT_SECONDARY },
+  bannerBtnDisabled: { backgroundColor: Colors.divider },
+  bannerBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' }, // TODO: map to design token
+  bannerBtnDisabledText: { color: Colors.textSecondary },
   bannerNote: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
     marginTop: 10,
@@ -684,7 +675,7 @@ const styles = StyleSheet.create({
 
   // ── Section headings ──
   sectionHeading: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -695,7 +686,7 @@ const styles = StyleSheet.create({
 
   // ── Preference card ──
   sectionCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     overflow: 'hidden',
     marginHorizontal: 20,
@@ -708,14 +699,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   prefLabelGroup: { flex: 1, marginRight: 12 },
-  prefLabel: { color: TEXT_PRIMARY, fontSize: 15 },
-  prefSubLabel: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 2 },
+  prefLabel: { color: Colors.textPrimary, fontSize: 15 },
+  prefSubLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   timeRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timeValue: { color: ACCENT_BLUE, fontSize: 15 },
-  chevron: { color: TEXT_SECONDARY, fontSize: 22 },
+  timeValue: { color: Colors.accent, fontSize: 15 },
+  chevron: { color: Colors.textSecondary, fontSize: 22 },
 
   // ── Divider ──
-  divider: { height: 1, backgroundColor: DIVIDER_COLOR },
+  divider: { height: 1, backgroundColor: Colors.divider },
 
   // ── Skeleton ──
   skeletonRow: {
@@ -726,53 +717,53 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     marginHorizontal: 20,
     marginTop: 8,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
   },
   skeletonPill: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '45%',
   },
   skeletonPillShort: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '20%',
   },
 
   // ── Time picker modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)', // TODO: map to design token
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 24,
   },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 8 },
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 16 },
   modalCancelBtn: {
     flex: 1,
     height: 50,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
+    borderColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCancelText: { color: TEXT_PRIMARY, fontSize: 15 },
+  modalCancelText: { color: Colors.textPrimary, fontSize: 15 },
   modalConfirmBtn: {
     flex: 1,
     height: 50,
     borderRadius: 12,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalConfirmText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  modalConfirmText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
 });

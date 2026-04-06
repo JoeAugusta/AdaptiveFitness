@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import type { RootStackParamList } from './types';
+import { Colors } from '../constants/design';
 
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -25,11 +26,6 @@ import SubscriptionManagementScreen from '../screens/SubscriptionManagementScree
 import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
-
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const BORDER_COLOR = '#2D3F55';
-const TEXT_SECONDARY = '#94A3B8';
 
 // ── Nested stack navigators (untyped — screen files own their nav prop types) ──
 
@@ -118,13 +114,13 @@ function MainTabs() {
         return {
           headerShown: false,
           tabBarStyle: {
-            backgroundColor: CARD_BG,
-            borderTopColor: BORDER_COLOR,
+            backgroundColor: Colors.bgCard,
+            borderTopColor: Colors.divider,
             borderTopWidth: 1,
             height: 60,
           },
-          tabBarActiveTintColor: ACCENT_BLUE,
-          tabBarInactiveTintColor: TEXT_SECONDARY,
+          tabBarActiveTintColor: Colors.accent,
+          tabBarInactiveTintColor: Colors.textSecondary,
           tabBarLabelStyle: { fontSize: 11 },
           tabBarLabel: TAB_LABELS[name] ?? name,
           tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
@@ -160,7 +156,7 @@ export default function RootNavigator() {
     <Root.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: '#0F172A' },
+        contentStyle: { backgroundColor: Colors.bgPrimary },
       }}
     >
       {/* ── Onboarding ── */}

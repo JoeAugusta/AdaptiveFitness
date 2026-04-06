@@ -16,16 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-
-const DIVIDER_COLOR = '#2D3F55';
+import { Colors } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -362,7 +353,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -504,7 +495,7 @@ export default function HomeScreen() {
               disabled={isGenerating}
             >
               {isGenerating ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
               ) : (
                 <Text style={styles.generateCTAButtonText}>
                   Generate Week {(planData?.currentWeek ?? 0) + 1}
@@ -737,7 +728,7 @@ export default function HomeScreen() {
               keyboardType="numeric"
               value={weightInput}
               onChangeText={setWeightInput}
-              placeholderTextColor={TEXT_SECONDARY}
+              placeholderTextColor={Colors.textSecondary}
             />
             <Text style={styles.weightModalUnit}>lbs</Text>
             <View style={styles.weightModalBtns}>
@@ -755,7 +746,7 @@ export default function HomeScreen() {
                 activeOpacity={0.8}
               >
                 {weightSaving ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
                 ) : (
                   <Text style={styles.weightModalSaveText}>Save</Text>
                 )}
@@ -771,11 +762,11 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   scroll: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -797,30 +788,30 @@ const styles = StyleSheet.create({
   },
   greetingTop: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   greetingName: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   profileButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileInitial: {
     fontSize: 16,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
 
   /* ── Today's Workout Card ── */
   workoutCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     paddingLeft: 24,
@@ -832,7 +823,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 4,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderTopLeftRadius: 16,
     borderBottomLeftRadius: 16,
   },
@@ -844,24 +835,24 @@ const styles = StyleSheet.create({
   workoutLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   dayBadge: {
-    backgroundColor: CARD_SELECTED_BG,
+    backgroundColor: Colors.accentMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
   },
   dayBadgeText: {
     fontSize: 12,
-    color: ACCENT_BLUE,
+    color: Colors.accent,
   },
   workoutName: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginTop: 6,
   },
   chipRow: {
@@ -870,7 +861,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   muscleChip: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
@@ -878,11 +869,11 @@ const styles = StyleSheet.create({
   },
   muscleChipText: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   divider: {
     height: 1,
-    backgroundColor: DIVIDER_COLOR,
+    backgroundColor: Colors.divider,
     marginTop: 16,
     marginBottom: 16,
   },
@@ -897,22 +888,22 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   statLabel: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   ctaButton: {
     marginTop: 16,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
   ctaText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontWeight: '700',
     fontSize: 15,
   },
@@ -922,12 +913,12 @@ const styles = StyleSheet.create({
   },
   viewPlanText: {
     fontSize: 13,
-    color: ACCENT_BLUE,
+    color: Colors.accent,
   },
 
   /* ── Rest Day Card ── */
   generateCTACard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     marginHorizontal: 20,
@@ -942,17 +933,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   generateCTATitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 17,
     fontWeight: '700',
   },
   generateCTASubtitle: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     marginTop: 6,
   },
   generateCTAButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 14,
     height: 50,
     marginTop: 16,
@@ -960,13 +951,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   generateCTAButtonText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 16,
     fontWeight: '600',
   },
 
   restCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',
@@ -974,19 +965,19 @@ const styles = StyleSheet.create({
   restTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   restSubtitle: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 16,
     textAlign: 'center',
   },
 
   /* ── Week Progress Card ── */
   weekCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
@@ -998,23 +989,23 @@ const styles = StyleSheet.create({
   },
   weekLabel: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textTransform: 'uppercase',
   },
   weekSessions: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   progressTrack: {
     marginTop: 10,
     height: 6,
     borderRadius: 3,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
   },
   progressFill: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
   },
   dotsRow: {
     flexDirection: 'row',
@@ -1025,21 +1016,21 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayDotComplete: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
   },
   dayDotCurrent: {
-    backgroundColor: CARD_SELECTED_BG,
+    backgroundColor: Colors.accentMuted,
     borderWidth: 1.5,
-    borderColor: ACCENT_BLUE,
+    borderColor: Colors.accent,
   },
   dotCheckmark: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
   },
 
   /* ── Quick Stats Row ── */
@@ -1050,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   quickStatCard: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 14,
     alignItems: 'center',
@@ -1061,12 +1052,12 @@ const styles = StyleSheet.create({
   quickStatValue: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginTop: 4,
   },
   quickStatLabel: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
   },
@@ -1078,12 +1069,12 @@ const styles = StyleSheet.create({
   },
   volUnit: {
     fontSize: 10,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* ── Coach Message Card ── */
   coachCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
@@ -1103,22 +1094,22 @@ const styles = StyleSheet.create({
   coachTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginLeft: 8,
   },
   weekPill: {
-    backgroundColor: CARD_SELECTED_BG,
+    backgroundColor: Colors.accentMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
   },
   weekPillText: {
     fontSize: 11,
-    color: ACCENT_BLUE,
+    color: Colors.accent,
   },
   coachMessage: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     lineHeight: 22,
   },
   coachFooterRow: {
@@ -1129,34 +1120,34 @@ const styles = StyleSheet.create({
   },
   coachLink: {
     fontSize: 13,
-    color: ACCENT_BLUE,
+    color: Colors.accent,
   },
   coachUpdated: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* ── Next Week Ready Banner ── */
   nextWeekBanner: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderLeftWidth: 4,
-    borderLeftColor: '#22C55E',
+    borderLeftColor: Colors.success,
     borderRadius: 12,
     padding: 16,
     marginTop: 16,
   },
   nextWeekBannerTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
   nextWeekBannerSubtitle: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     marginTop: 4,
   },
   nextWeekBannerButton: {
-    backgroundColor: '#22C55E',
+    backgroundColor: Colors.success,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1164,14 +1155,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   nextWeekBannerButtonText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 14,
     fontWeight: '700',
   },
 
   /* ── Weight Log Card ── */
   weightLogCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
@@ -1189,72 +1180,72 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   weightLogCheck: {
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontSize: 15,
     fontWeight: '700',
   },
   weightLogTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '600',
   },
   weightLogSub: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     marginTop: 2,
   },
   weightLogBtn: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   weightLogBtnText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 14,
     fontWeight: '600',
   },
   weightEditBtn: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
   },
 
   /* ── Weight Log Modal ── */
   weightModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)', // TODO: map to design token
     justifyContent: 'flex-end',
   },
   weightModalSheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 24,
   },
   weightModalTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 8,
   },
   weightModalTip: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     marginBottom: 20,
   },
   weightModalInput: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
+    borderColor: Colors.divider,
     borderRadius: 12,
     padding: 14,
     fontSize: 32,
     fontWeight: '700',
     textAlign: 'center',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   weightModalUnit: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
     marginTop: 6,
@@ -1270,24 +1261,24 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
+    borderColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weightModalCancelText: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
   },
   weightModalSaveBtn: {
     flex: 1,
     height: 50,
     borderRadius: 12,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weightModalSaveText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 15,
     fontWeight: '600',
   },

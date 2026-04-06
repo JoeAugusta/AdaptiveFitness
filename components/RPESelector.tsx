@@ -7,13 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const BG_DARK = '#0F172A';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
+import { Colors } from '../constants/design';
 
 const RPE_LABELS: Record<number, string> = {
   1: 'Very Easy',
@@ -132,9 +126,9 @@ export default function RPESelector({
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
   sheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 24,
@@ -152,12 +146,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 20,
   },
   grid: { gap: 10, marginBottom: 24 },
@@ -165,7 +159,7 @@ const styles = StyleSheet.create({
   rpeButton: {
     flex: 1,
     aspectRatio: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -173,25 +167,25 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   rpeButtonSelected: {
-    borderColor: ACCENT_BLUE,
-    backgroundColor: 'rgba(59,130,246,0.12)',
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
   },
-  rpeNumber: { fontSize: 20, fontWeight: '700', color: TEXT_SECONDARY },
-  rpeNumberSelected: { color: ACCENT_BLUE },
+  rpeNumber: { fontSize: 20, fontWeight: '700', color: Colors.textSecondary },
+  rpeNumberSelected: { color: Colors.accent },
   rpeLabel: {
     fontSize: 9,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
   },
-  rpeLabelSelected: { color: TEXT_PRIMARY },
+  rpeLabelSelected: { color: Colors.textPrimary },
   confirmButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  confirmDisabled: { backgroundColor: DISABLED_BG },
-  confirmText: { fontSize: 17, fontWeight: '600', color: TEXT_PRIMARY },
-  confirmTextDisabled: { color: TEXT_SECONDARY },
+  confirmDisabled: { backgroundColor: Colors.divider },
+  confirmText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
+  confirmTextDisabled: { color: Colors.textSecondary },
 });

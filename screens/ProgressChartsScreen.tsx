@@ -14,14 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const GRID_COLOR = '#2D3F55';
+import { Colors } from '../constants/design';
 
 interface StrengthDataPoint {
   week: number;
@@ -44,18 +37,18 @@ interface ConsistencyDay {
 }
 
 const MUSCLE_COLORS: Record<string, string> = {
-  'chest':        '#3B82F6',
-  'back':         '#22C55E',
-  'quadriceps':   '#F59E0B',
-  'quads':        '#F59E0B',
-  'shoulders':    '#8B5CF6',
-  'hamstrings':   '#EC4899',
-  'glutes':       '#F97316',
-  'biceps':       '#06B6D4',
-  'triceps':      '#84CC16',
-  'calves':       '#A78BFA',
-  'core':         '#FB923C',
-  'other':        '#334155',
+  'chest':        Colors.accent,
+  'back':         Colors.success,
+  'quadriceps':   Colors.warning,
+  'quads':        Colors.warning,
+  'shoulders':    '#8B5CF6', // TODO: map to design token
+  'hamstrings':   '#EC4899', // TODO: map to design token
+  'glutes':       Colors.accent,
+  'biceps':       '#06B6D4', // TODO: map to design token
+  'triceps':      '#84CC16', // TODO: map to design token
+  'calves':       '#A78BFA', // TODO: map to design token
+  'core':         '#FB923C', // TODO: map to design token
+  'other':        Colors.divider,
 };
 
 // ── SVG Line Chart ──
@@ -104,8 +97,8 @@ function LineChart({
         const y = toY(val);
         return (
           <G key={`y-${i}`}>
-            <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={GRID_COLOR} strokeWidth={1} />
-            <SvgText x={padL - 6} y={y + 4} fill={TEXT_SECONDARY} fontSize={10} textAnchor="end">
+            <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={Colors.divider} strokeWidth={1} />
+            <SvgText x={padL - 6} y={y + 4} fill={Colors.textSecondary} fontSize={10} textAnchor="end">
               {Math.round(val)}
             </SvgText>
           </G>
@@ -113,12 +106,12 @@ function LineChart({
       })}
       {/* X axis labels */}
       {data.map((d) => (
-        <SvgText key={`x-${d.week}`} x={toX(d.week)} y={height - 6} fill={TEXT_SECONDARY} fontSize={10} textAnchor="middle">
+        <SvgText key={`x-${d.week}`} x={toX(d.week)} y={height - 6} fill={Colors.textSecondary} fontSize={10} textAnchor="middle">
           W{d.week}
         </SvgText>
       ))}
       {/* Line */}
-      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={GRID_COLOR} strokeWidth={1} />
+      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={Colors.divider} strokeWidth={1} />
       {points.length > 1 ? (
         <G>
           {/* eslint-disable-next-line react-native/no-raw-text */}
@@ -133,7 +126,7 @@ function LineChart({
                   y1={points[i - 1].y}
                   x2={points[i].x}
                   y2={points[i].y}
-                  stroke={ACCENT_BLUE}
+                  stroke={Colors.accent}
                   strokeWidth={2.5}
                 />
               );
@@ -144,7 +137,7 @@ function LineChart({
       ) : null}
       {/* Dots */}
       {points.map((p, i) => (
-        <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={ACCENT_BLUE} />
+        <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
       ))}
     </Svg>
   );
@@ -205,8 +198,8 @@ function WeightLineChart({
         const y = toY(val);
         return (
           <G key={`yw-${i}`}>
-            <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={GRID_COLOR} strokeWidth={1} />
-            <SvgText x={padL - 6} y={y + 4} fill={TEXT_SECONDARY} fontSize={10} textAnchor="end">
+            <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={Colors.divider} strokeWidth={1} />
+            <SvgText x={padL - 6} y={y + 4} fill={Colors.textSecondary} fontSize={10} textAnchor="end">
               {Math.round(val)}
             </SvgText>
           </G>
@@ -214,7 +207,7 @@ function WeightLineChart({
       })}
 
       {/* X axis baseline */}
-      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={GRID_COLOR} strokeWidth={1} />
+      <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={Colors.divider} strokeWidth={1} />
 
       {/* X axis date labels */}
       {labelIndices.map((idx) => (
@@ -222,7 +215,7 @@ function WeightLineChart({
           key={`xw-${idx}`}
           x={points[idx].x}
           y={height - 6}
-          fill={TEXT_SECONDARY}
+          fill={Colors.textSecondary}
           fontSize={10}
           textAnchor="middle"
         >
@@ -241,7 +234,7 @@ function WeightLineChart({
               y1={points[i - 1].y}
               x2={points[i].x}
               y2={points[i].y}
-              stroke={ACCENT_BLUE}
+              stroke={Colors.accent}
               strokeWidth={2}
             />,
           );
@@ -251,14 +244,14 @@ function WeightLineChart({
 
       {/* Data point dots */}
       {points.map((p, i) => (
-        <Circle key={`wdot-${i}`} cx={p.x} cy={p.y} r={4} fill={ACCENT_BLUE} />
+        <Circle key={`wdot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
       ))}
 
       {/* Most recent weight callout */}
       <SvgText
         x={lastPt.x}
         y={lastPt.y - 10}
-        fill={TEXT_PRIMARY}
+        fill={Colors.textPrimary}
         fontSize={13}
         fontWeight="600"
         textAnchor="middle"
@@ -467,7 +460,7 @@ export default function ProgressChartsScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -636,7 +629,7 @@ export default function ProgressChartsScreen() {
                       {muscleRows.length > 0 ? (
                         <>
                           {muscleRows.map(([mg, sets]) => {
-                            const color = MUSCLE_COLORS[mg.toLowerCase()] ?? DISABLED_BG;
+                            const color = MUSCLE_COLORS[mg.toLowerCase()] ?? Colors.divider;
                             const pct = sets / maxSets;
                             return (
                               <View key={mg} style={styles.volRow}>
@@ -709,7 +702,7 @@ export default function ProgressChartsScreen() {
                               key={col}
                               style={[
                                 styles.heatmapCell,
-                                { backgroundColor: day?.trained ? ACCENT_BLUE : DISABLED_BG },
+                                { backgroundColor: day?.trained ? Colors.accent : Colors.divider },
                               ]}
                             />
                           );
@@ -732,96 +725,96 @@ export default function ProgressChartsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
 
   header: { marginTop: 20, marginBottom: 24 },
-  headerTitle: { color: TEXT_PRIMARY, fontSize: 24, fontWeight: '700' },
-  headerSubtitle: { color: TEXT_SECONDARY, fontSize: 14, marginTop: 2 },
+  headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700' },
+  headerSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
   goalLink: { marginBottom: 16 },
-  goalLinkText: { color: ACCENT_BLUE, fontSize: 14, fontWeight: '700' },
+  goalLinkText: { color: Colors.accent, fontSize: 14, fontWeight: '700' },
 
   card: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
   },
-  cardTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
-  cardSubtitle: { color: TEXT_SECONDARY, fontSize: 13, marginBottom: 12 },
+  cardTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  cardSubtitle: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
 
   placeholderText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     paddingVertical: 24,
   },
   placeholderCenter: { alignItems: 'center', paddingVertical: 20 },
   placeholderEmoji: { fontSize: 32, marginBottom: 12 },
-  placeholderTitleText: { color: TEXT_PRIMARY, fontSize: 15, textAlign: 'center' },
-  placeholderSubText: { color: TEXT_SECONDARY, fontSize: 13, textAlign: 'center', marginTop: 8 },
+  placeholderTitleText: { color: Colors.textPrimary, fontSize: 15, textAlign: 'center' },
+  placeholderSubText: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 8 },
 
-  hintText: { color: TEXT_SECONDARY, fontSize: 12, textAlign: 'center', marginTop: 8 },
+  hintText: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 8 },
   weightChartEmpty: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     padding: 20,
   },
 
   errorCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+    borderLeftColor: Colors.danger,
     padding: 16,
   },
-  errorText: { color: TEXT_SECONDARY, fontSize: 14 },
+  errorText: { color: Colors.textSecondary, fontSize: 14 },
 
   /* Quick Stats */
   quickStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   miniCard: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
   },
-  miniValue: { color: TEXT_PRIMARY, fontSize: 22, fontWeight: '700' },
-  miniLabel: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 2, textAlign: 'center' },
+  miniValue: { color: Colors.textPrimary, fontSize: 22, fontWeight: '700' },
+  miniLabel: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'center' },
 
   /* Chips */
   chipScroll: { marginBottom: 12 },
   chipRow: { gap: 8 },
   chip: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
-  chipActive: { backgroundColor: ACCENT_BLUE },
-  chipText: { color: TEXT_SECONDARY, fontSize: 12 },
-  chipTextActive: { color: '#FFFFFF' },
+  chipActive: { backgroundColor: Colors.accent },
+  chipText: { color: Colors.textSecondary, fontSize: 12 },
+  chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   /* Volume list */
   volRow: { marginBottom: 10 },
   volRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  volMuscle: { color: TEXT_PRIMARY, fontSize: 14, flex: 1 },
-  volSets: { color: TEXT_SECONDARY, fontSize: 13 },
-  volBarBg: { height: 6, borderRadius: 3, backgroundColor: DISABLED_BG, overflow: 'hidden' },
+  volMuscle: { color: Colors.textPrimary, fontSize: 14, flex: 1 },
+  volSets: { color: Colors.textSecondary, fontSize: 13 },
+  volBarBg: { height: 6, borderRadius: 3, backgroundColor: Colors.divider, overflow: 'hidden' },
   volBarFill: { height: 6, borderRadius: 3 },
-  volDivider: { height: 1, backgroundColor: DISABLED_BG, marginVertical: 12 },
-  volSummary: { color: TEXT_SECONDARY, fontSize: 13, textAlign: 'center' },
+  volDivider: { height: 1, backgroundColor: Colors.divider, marginVertical: 12 },
+  volSummary: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center' },
 
   /* Heatmap */
   heatmapContainer: { flexDirection: 'row', marginTop: 12 },
   heatmapDayLabels: { justifyContent: 'flex-start', marginRight: 6, paddingTop: 18 },
-  heatmapDayLabel: { color: TEXT_SECONDARY, fontSize: 10, height: 32, lineHeight: 32, textAlign: 'right' },
+  heatmapDayLabel: { color: Colors.textSecondary, fontSize: 10, height: 32, lineHeight: 32, textAlign: 'right' },
   heatmapWeekLabels: { flexDirection: 'row' },
-  heatmapWeekLabel: { color: TEXT_SECONDARY, fontSize: 10, width: 32, textAlign: 'center', height: 18, lineHeight: 18 },
+  heatmapWeekLabel: { color: Colors.textSecondary, fontSize: 10, width: 32, textAlign: 'center', height: 18, lineHeight: 18 },
   heatmapRow: { flexDirection: 'row' },
   heatmapCell: { width: 28, height: 28, borderRadius: 4, margin: 2 },
-  heatmapStat: { color: TEXT_PRIMARY, fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 12 },
+  heatmapStat: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 12 },
 });

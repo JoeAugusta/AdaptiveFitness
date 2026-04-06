@@ -17,17 +17,11 @@ import InfoTooltip from '../../components/InfoTooltip';
 import Purchases from 'react-native-purchases';
 import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
 import { supabase } from '../../Lib/supabase';
+import { Colors } from '../../constants/design';
 
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-
-const COLOR_PROTEIN = ACCENT_BLUE;
-const COLOR_CARBS = '#F59E0B';
-const COLOR_FATS = '#10B981';
+const COLOR_PROTEIN = Colors.accent;
+const COLOR_CARBS = Colors.warning;
+const COLOR_FATS = '#10B981'; // TODO: map to design token
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanPreview'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanPreview'>;
@@ -446,7 +440,7 @@ export default function PlanPreviewScreen() {
           {Platform.OS === 'web' ? (
             <Text style={styles.ctaText}>Continue (Dev Mode)</Text>
           ) : isPurchasing ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
           ) : isLoadingOfferings ? (
             <Text style={styles.ctaText}>Loading...</Text>
           ) : offeringsError ? (
@@ -473,7 +467,7 @@ export default function PlanPreviewScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
 
   /* Header */
@@ -487,13 +481,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backArrow: {
     fontSize: 22,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginTop: -2,
   },
 
@@ -508,18 +502,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: '800',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 24,
   },
 
   /* Summary card */
   summaryCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 8,
@@ -535,13 +529,13 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 2,
   },
   statValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
 
   /* Section headings */
@@ -555,18 +549,18 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 14,
   },
 
   /* Day cards */
   dayCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
@@ -574,7 +568,7 @@ const styles = StyleSheet.create({
   dayLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     letterSpacing: 1,
     marginBottom: 4,
     textTransform: 'uppercase',
@@ -582,7 +576,7 @@ const styles = StyleSheet.create({
   workoutName: {
     fontSize: 15,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   tagRow: {
@@ -591,19 +585,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tag: {
-    backgroundColor: CARD_SELECTED_BG,
+    backgroundColor: Colors.accentMuted,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   tagText: {
     fontSize: 11,
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontWeight: '500',
   },
   moreDays: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -619,12 +613,12 @@ const styles = StyleSheet.create({
   caloriesNumber: {
     fontSize: 32,
     fontWeight: '800',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     lineHeight: 36,
   },
   caloriesUnit: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginBottom: 2,
   },
@@ -636,7 +630,7 @@ const styles = StyleSheet.create({
   },
   macroCard: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     paddingVertical: 18,
     alignItems: 'center',
@@ -652,14 +646,14 @@ const styles = StyleSheet.create({
   },
   macroUnit: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginLeft: 2,
     marginBottom: 2,
   },
   macroLabel: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 4,
   },
 
@@ -669,9 +663,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopWidth: 1,
-    borderTopColor: '#2D3748',
+    borderTopColor: '#2D3748', // TODO: map to design token
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 40,
@@ -692,7 +686,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bestValueBadge: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -701,13 +695,13 @@ const styles = StyleSheet.create({
   },
   bestValueText: {
     fontSize: 10,
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   planCard: {
     width: '100%',
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
@@ -718,28 +712,28 @@ const styles = StyleSheet.create({
     minHeight: 90,
   },
   planCardSelected: {
-    borderColor: ACCENT_BLUE,
-    backgroundColor: CARD_SELECTED_BG,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
   },
   planName: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 2,
   },
   planPrice: {
     fontSize: 20,
     fontWeight: '800',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   planSub: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
 
   /* CTA */
   ctaButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -750,17 +744,17 @@ const styles = StyleSheet.create({
   ctaText: {
     fontSize: 16,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   finePrint: {
     fontSize: 11,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
   },
   restoreLink: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
   },

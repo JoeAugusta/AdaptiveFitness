@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -17,16 +18,7 @@ import {
   type IngredientCategory,
   type MealSlot,
 } from '../constants/ingredientLibrary';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const DIVIDER_COLOR = '#2D3F55';
-const AMBER = '#F59E0B';
-const GREEN = '#22C55E';
+import { Colors } from '../constants/design';
 
 export type BuiltMeal = {
   slot: MealSlot;
@@ -109,7 +101,7 @@ export default function MealBuilderModal({
   const calRatio = targetCalories > 0 ? totals.calories / targetCalories : 0;
   const progressPct = Math.min(100, calRatio * 100);
 
-  let progressFillStyle = styles.progressFillBlue;
+  let progressFillStyle: ViewStyle = styles.progressFillBlue;
   if (calRatio > 1.1) {
     progressFillStyle = styles.progressFillAmber;
   } else if (calRatio >= 0.9) {
@@ -304,7 +296,7 @@ export default function MealBuilderModal({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   headerRow: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -313,28 +305,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerClose: { color: TEXT_SECONDARY, fontSize: 22, width: 44 },
+  headerClose: { color: Colors.textSecondary, fontSize: 22, width: 44 },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
-  headerLogText: { color: ACCENT_BLUE, fontSize: 15, fontWeight: '600' },
-  headerLogTextDisabled: { color: TEXT_SECONDARY },
+  headerLogText: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
+  headerLogTextDisabled: { color: Colors.textSecondary },
 
   targetBarCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 12,
     marginHorizontal: 20,
     marginBottom: 12,
   },
   targetLabel: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
@@ -343,61 +335,61 @@ const styles = StyleSheet.create({
   yoursLabel: { marginTop: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pillNeutral: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  pillNeutralText: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '600' },
+  pillNeutralText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
   pillBlue: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   pillAmber: {
-    backgroundColor: AMBER,
+    backgroundColor: Colors.warning,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   pillGreen: {
-    backgroundColor: GREEN,
+    backgroundColor: Colors.success,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  pillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  pillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
 
   progressTrack: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     marginTop: 10,
     overflow: 'hidden',
   },
   progressFillBase: { height: 6, borderRadius: 3 },
-  progressFillBlue: { backgroundColor: ACCENT_BLUE },
-  progressFillAmber: { backgroundColor: AMBER },
-  progressFillGreen: { backgroundColor: GREEN },
+  progressFillBlue: { backgroundColor: Colors.accent },
+  progressFillAmber: { backgroundColor: Colors.warning },
+  progressFillGreen: { backgroundColor: Colors.success },
 
   tabScroll: { marginBottom: 8, maxHeight: 44 },
   tabScrollContent: { paddingHorizontal: 20, gap: 8, flexDirection: 'row', alignItems: 'center' },
   tabPill: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  tabPillActive: { backgroundColor: ACCENT_BLUE },
-  tabPillText: { color: TEXT_SECONDARY, fontSize: 14, fontWeight: '600' },
-  tabPillTextActive: { color: '#FFFFFF' },
+  tabPillActive: { backgroundColor: Colors.accent },
+  tabPillText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  tabPillTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: 20, paddingBottom: 8 },
   listFooterSpacer: { height: 100 },
   ingredientRow: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     marginBottom: 8,
     borderRadius: 12,
     padding: 14,
@@ -405,43 +397,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ingredientLeft: { flex: 1 },
-  ingredientName: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '600' },
-  ingredientPortion: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 2 },
+  ingredientName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  ingredientPortion: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   ingredientMacroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   miniPillNeutral: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  miniPillText: { color: TEXT_SECONDARY, fontSize: 11 },
+  miniPillText: { color: Colors.textSecondary, fontSize: 11 },
   miniPillBlue: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   miniPillAmber: {
-    backgroundColor: AMBER,
+    backgroundColor: Colors.warning,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   miniPillGreen: {
-    backgroundColor: GREEN,
+    backgroundColor: Colors.success,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  miniPillWhite: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  miniPillWhite: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
 
   addBtn: {
     width: 32,
     height: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: DIVIDER_COLOR,
-    backgroundColor: CARD_BG,
+    borderColor: Colors.divider,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -449,31 +441,31 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusMark: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '600' },
-  checkMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  plusMark: { color: Colors.textPrimary, fontSize: 18, fontWeight: '600' },
+  checkMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
 
   summaryBar: {
     borderTopWidth: 1,
-    borderTopColor: DIVIDER_COLOR,
+    borderTopColor: Colors.divider,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   chipScroll: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   selectedChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
     gap: 6,
     maxWidth: 200,
   },
-  selectedChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', flexShrink: 1 },
-  chipRemove: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  selectedChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', flexShrink: 1 }, // TODO: map to design token
+  chipRemove: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
 });

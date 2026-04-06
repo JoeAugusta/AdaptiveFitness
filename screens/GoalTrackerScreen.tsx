@@ -16,13 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
+import { Colors } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -65,11 +59,11 @@ interface Milestone {
 }
 
 const GOAL_BADGE: Record<string, { color: string; label: string }> = {
-  strength:    { color: '#F59E0B', label: 'Strength' },
-  hypertrophy: { color: '#8B5CF6', label: 'Hypertrophy' },
-  recomp:      { color: '#06B6D4', label: 'Recomposition' },
-  fat_loss:    { color: '#22C55E', label: 'Fat Loss' },
-  general:     { color: ACCENT_BLUE, label: 'General Fitness' },
+  strength:    { color: Colors.warning, label: 'Strength' },
+  hypertrophy: { color: '#8B5CF6', label: 'Hypertrophy' }, // TODO: map to design token
+  recomp:      { color: '#06B6D4', label: 'Recomposition' }, // TODO: map to design token
+  fat_loss:    { color: Colors.success, label: 'Fat Loss' },
+  general:     { color: Colors.accent, label: 'General Fitness' },
 };
 
 const MILESTONE_DEFS = [
@@ -287,7 +281,7 @@ export default function GoalTrackerScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -454,11 +448,11 @@ export default function GoalTrackerScreen() {
               </Text>
               <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
               {!hasVolumeData ? (
-                <Text style={[styles.evrMetricValue, { color: TEXT_SECONDARY }]}>Not enough data yet</Text>
+                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>Not enough data yet</Text>
               ) : volumeChangePct === 0 ? (
-                <Text style={[styles.evrMetricValue, { color: TEXT_SECONDARY }]}>No change vs Week 1</Text>
+                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>No change vs Week 1</Text>
               ) : (
-                <Text style={[styles.evrMetricValue, { color: volumeChangePct > 0 ? '#22C55E' : '#EF4444' }]}>
+                <Text style={[styles.evrMetricValue, { color: volumeChangePct > 0 ? Colors.success : Colors.danger }]}>
                   {volumeChangePct > 0 ? '+' : ''}{Math.round(volumeChangePct)}% vs Week 1
                 </Text>
               )}
@@ -469,10 +463,10 @@ export default function GoalTrackerScreen() {
               <Text style={styles.evrMetricIcon}>🎯</Text>
               <Text style={styles.evrMetricLabel}>Training Consistency</Text>
               {currentWeek <= 1 ? (
-                <Text style={[styles.evrMetricValue, { color: TEXT_SECONDARY }]}>Just getting started</Text>
+                <Text style={[styles.evrMetricValue, { color: Colors.textSecondary }]}>Just getting started</Text>
               ) : (
                 <Text style={[styles.evrMetricValue, {
-                  color: consistencyRate >= 0.8 ? '#22C55E' : consistencyRate >= 0.6 ? '#F59E0B' : '#EF4444',
+                  color: consistencyRate >= 0.8 ? Colors.success : consistencyRate >= 0.6 ? Colors.warning : Colors.danger,
                 }]}>
                   {Math.round(consistencyRate * 100)}% of weeks trained
                 </Text>
@@ -486,10 +480,10 @@ export default function GoalTrackerScreen() {
               <View style={styles.evrPaceValue}>
                 <Text style={[styles.evrMetricValue, {
                   color: avgSessionsPerWeek >= daysPerWeek * 0.8
-                    ? '#22C55E'
+                    ? Colors.success
                     : avgSessionsPerWeek >= daysPerWeek * 0.6
-                    ? '#F59E0B'
-                    : '#EF4444',
+                    ? Colors.warning
+                    : Colors.danger,
                 }]}>
                   {currentWeek <= 1 ? '—' : `${avgSessionsPerWeek.toFixed(1)} avg`}
                 </Text>
@@ -518,7 +512,7 @@ export default function GoalTrackerScreen() {
                     <View
                       style={[
                         styles.milestoneLine,
-                        { backgroundColor: milestones[i - 1].reached ? ACCENT_BLUE : DISABLED_BG },
+                        { backgroundColor: milestones[i - 1].reached ? Colors.accent : Colors.divider },
                       ]}
                     />
                   </View>
@@ -528,7 +522,7 @@ export default function GoalTrackerScreen() {
                   <View
                     style={[
                       styles.milestoneCircle,
-                      { backgroundColor: m.reached ? ACCENT_BLUE : DISABLED_BG },
+                      { backgroundColor: m.reached ? Colors.accent : Colors.divider },
                     ]}
                   >
                     <Text style={styles.milestoneCircleText}>
@@ -539,7 +533,7 @@ export default function GoalTrackerScreen() {
                   <Text
                     style={[
                       styles.milestoneLabel,
-                      { color: m.reached ? TEXT_PRIMARY : TEXT_SECONDARY },
+                      { color: m.reached ? Colors.textPrimary : Colors.textSecondary },
                     ]}
                   >
                     {m.label}
@@ -576,7 +570,7 @@ export default function GoalTrackerScreen() {
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: isCompleted ? '#22C55E' : DISABLED_BG },
+                      { backgroundColor: isCompleted ? Colors.success : Colors.divider },
                     ]}
                   >
                     <Text style={styles.statusBadgeText}>
@@ -609,7 +603,7 @@ export default function GoalTrackerScreen() {
                   value={editTarget}
                   onChangeText={setEditTarget}
                   keyboardType="numeric"
-                  placeholderTextColor={TEXT_SECONDARY}
+                  placeholderTextColor={Colors.textSecondary}
                 />
                 <Text style={styles.modalFieldHint}>
                   Target lift: {goal.target_lift ?? '—'}
@@ -625,7 +619,7 @@ export default function GoalTrackerScreen() {
                   value={editTarget}
                   onChangeText={setEditTarget}
                   keyboardType="numeric"
-                  placeholderTextColor={TEXT_SECONDARY}
+                  placeholderTextColor={Colors.textSecondary}
                 />
               </View>
             )}
@@ -661,101 +655,101 @@ export default function GoalTrackerScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 20 },
-  backChevron: { color: TEXT_PRIMARY, fontSize: 32, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '700' },
+  backChevron: { color: Colors.textPrimary, fontSize: 32, lineHeight: 36, paddingRight: 8 },
+  headerTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
 
   /* Empty goal */
-  emptyCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 16 },
+  emptyCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 16 },
   emptyEmoji: { fontSize: 32 },
-  emptyTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700', marginTop: 12 },
-  emptySubtext: { color: TEXT_SECONDARY, fontSize: 14, marginTop: 4 },
+  emptyTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700', marginTop: 12 },
+  emptySubtext: { color: Colors.textSecondary, fontSize: 14, marginTop: 4 },
 
   /* Active goal card */
-  goalCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 20, marginBottom: 16 },
+  goalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 20, marginBottom: 16 },
   goalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   goalBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  goalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  editBtn: { color: TEXT_SECONDARY, fontSize: 13 },
-  goalTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '700', marginTop: 12 },
+  goalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, // TODO: map to design token
+  editBtn: { color: Colors.textSecondary, fontSize: 13 },
+  goalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 12 },
 
   /* Progress */
   progressSection: { marginTop: 16 },
-  progressLabel: { color: TEXT_SECONDARY, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  progressPct: { color: TEXT_PRIMARY, fontSize: 32, fontWeight: '700' },
-  progressDetails: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 2 },
-  progressHint: { color: TEXT_SECONDARY, fontSize: 12, fontStyle: 'italic', marginTop: 6 },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: DISABLED_BG, marginTop: 12, overflow: 'hidden' },
-  progressFill: { height: 8, borderRadius: 4, backgroundColor: ACCENT_BLUE },
+  progressLabel: { color: Colors.textSecondary, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  progressPct: { color: Colors.textPrimary, fontSize: 32, fontWeight: '700' },
+  progressDetails: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
+  progressHint: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 6 },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: Colors.divider, marginTop: 12, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: Colors.accent },
 
   /* Stats */
-  statsDivider: { height: 1, backgroundColor: DISABLED_BG, marginTop: 16, marginBottom: 12 },
+  statsDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 12 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
   statItem: { alignItems: 'center' },
-  statValue: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
-  statLabel: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 2 },
+  statValue: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  statLabel: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
 
   /* Expectations vs Reality */
-  evrCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 16, marginBottom: 16 },
+  evrCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
   evrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  evrTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700' },
-  evrInfoIcon: { color: TEXT_SECONDARY, fontSize: 16 },
+  evrTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  evrInfoIcon: { color: Colors.textSecondary, fontSize: 16 },
   evrSection: { marginTop: 12 },
-  evrSectionLabel: { color: TEXT_SECONDARY, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
-  evrQuote: { borderLeftWidth: 3, borderLeftColor: ACCENT_BLUE, paddingLeft: 10 },
-  evrQuoteText: { color: TEXT_SECONDARY, fontSize: 13, fontStyle: 'italic', lineHeight: 20 },
-  evrNoData: { color: TEXT_SECONDARY, fontSize: 13, fontStyle: 'italic' },
-  evrDivider: { height: 1, backgroundColor: DISABLED_BG, marginTop: 16, marginBottom: 16 },
+  evrSectionLabel: { color: Colors.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  evrQuote: { borderLeftWidth: 3, borderLeftColor: Colors.accent, paddingLeft: 10 },
+  evrQuoteText: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic', lineHeight: 20 },
+  evrNoData: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic' },
+  evrDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 16 },
   evrMetricRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   evrMetricIcon: { fontSize: 16, width: 26 },
-  evrMetricLabel: { flex: 1, color: TEXT_PRIMARY, fontSize: 14 },
+  evrMetricLabel: { flex: 1, color: Colors.textPrimary, fontSize: 14 },
   evrMetricValue: { fontSize: 13, fontWeight: '600', textAlign: 'right' },
   evrPaceValue: { flexDirection: 'row', alignItems: 'baseline' },
-  evrPaceTarget: { color: TEXT_SECONDARY, fontSize: 12 },
-  evrBottomNote: { color: TEXT_SECONDARY, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
+  evrPaceTarget: { color: Colors.textSecondary, fontSize: 12 },
+  evrBottomNote: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
 
   /* Milestones */
-  milestonesCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 16, marginBottom: 16 },
-  milestonesTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  milestonesCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
+  milestonesTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 12 },
   milestoneRow: { flexDirection: 'row', alignItems: 'center' },
   milestoneCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  milestoneCircleText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  milestoneCircleText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' }, // TODO: map to design token
   milestoneLabel: { flex: 1, fontSize: 14, marginLeft: 12 },
-  milestoneRight: { fontSize: 14, color: '#22C55E' },
+  milestoneRight: { fontSize: 14, color: Colors.success },
   milestoneLineWrap: { paddingLeft: 13, height: 16 },
   milestoneLine: { width: 3, height: 16, borderRadius: 1.5 },
 
   /* History */
-  sectionHeader: { color: TEXT_SECONDARY, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 12 },
-  historyEmpty: { backgroundColor: CARD_BG, borderRadius: 12, padding: 20, alignItems: 'center' },
-  historyEmptyText: { color: TEXT_SECONDARY, fontSize: 14, textAlign: 'center' },
-  historyCard: { backgroundColor: CARD_BG, borderRadius: 12, padding: 14, marginBottom: 8 },
+  sectionHeader: { color: Colors.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 12 },
+  historyEmpty: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 20, alignItems: 'center' },
+  historyEmptyText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
+  historyCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
   historyTopRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   historyBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  historyBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
+  historyBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
   statusBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  statusBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
-  historyDesc: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 6 },
-  historyDate: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 4, opacity: 0.7 },
+  statusBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
+  historyDesc: { color: Colors.textSecondary, fontSize: 13, marginTop: 6 },
+  historyDate: { color: Colors.textSecondary, fontSize: 11, marginTop: 4, opacity: 0.7 },
 
   /* Edit Modal */
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { backgroundColor: CARD_BG, borderRadius: 16, padding: 24, marginHorizontal: 20, width: '90%' },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 18, fontWeight: '700' },
-  modalSubtitle: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 4, marginBottom: 20 },
+  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
+  modalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, marginHorizontal: 20, width: '90%' },
+  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700' },
+  modalSubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 4, marginBottom: 20 },
   modalField: { marginBottom: 16 },
-  modalFieldLabel: { color: TEXT_SECONDARY, fontSize: 12, textTransform: 'uppercase', marginBottom: 8 },
-  modalInput: { backgroundColor: DISABLED_BG, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: TEXT_PRIMARY, fontSize: 16 },
-  modalFieldHint: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 6 },
-  modalAutoText: { color: TEXT_SECONDARY, fontSize: 14, textAlign: 'center', paddingVertical: 16 },
+  modalFieldLabel: { color: Colors.textSecondary, fontSize: 12, textTransform: 'uppercase', marginBottom: 8 },
+  modalInput: { backgroundColor: Colors.divider, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.textPrimary, fontSize: 16 },
+  modalFieldHint: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
+  modalAutoText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center', paddingVertical: 16 },
   modalFooter: { flexDirection: 'row', marginTop: 8, gap: 8 },
-  modalCancel: { flex: 1, backgroundColor: DISABLED_BG, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalCancelText: { color: TEXT_SECONDARY, fontSize: 14, fontWeight: '600' },
-  modalSave: { flex: 1, backgroundColor: ACCENT_BLUE, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalSaveText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  modalCancel: { flex: 1, backgroundColor: Colors.divider, borderRadius: 8, padding: 12, alignItems: 'center' },
+  modalCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  modalSave: { flex: 1, backgroundColor: Colors.accent, borderRadius: 8, padding: 12, alignItems: 'center' },
+  modalSaveText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
 });

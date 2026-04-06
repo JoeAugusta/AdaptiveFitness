@@ -12,16 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const DANGER_RED = '#EF4444';
-const DANGER_BG = 'rgba(239,68,68,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
+import { Colors } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Constraints'>;
 type RouteType = RouteProp<RootStackParamList, 'Constraints'>;
@@ -351,7 +342,7 @@ export default function ConstraintsScreen() {
             <TextInput
               style={styles.textInput}
               placeholder="Exercise name"
-              placeholderTextColor={TEXT_SECONDARY}
+              placeholderTextColor={Colors.textSecondary}
               value={customExercise}
               onChangeText={setCustomExercise}
               onSubmitEditing={addCustomExercise}
@@ -408,13 +399,13 @@ export default function ConstraintsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
 
   /* Progress */
   progressBar: {
     height: 4,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 2,
     marginHorizontal: 24,
     marginTop: 60,
@@ -422,7 +413,7 @@ const styles = StyleSheet.create({
   progressFill: {
     width: '57.1%',
     height: '100%',
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 2,
   },
 
@@ -437,19 +428,19 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   backArrow: {
     fontSize: 22,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* Scroll */
@@ -463,12 +454,12 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 16,
   },
   sectionGap: {
@@ -486,15 +477,15 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   cardSelected: {
-    borderColor: ACCENT_BLUE,
-    backgroundColor: CARD_SELECTED_BG,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
   },
   cardContent: {
     flex: 1,
@@ -502,11 +493,11 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   cardDetail: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   radio: {
@@ -514,18 +505,18 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: TEXT_SECONDARY,
+    borderColor: Colors.textSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   radioSelected: {
-    borderColor: ACCENT_BLUE,
+    borderColor: Colors.accent,
   },
   radioDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
   },
 
   /* Chips (weak points + default style) */
@@ -538,30 +529,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   chipSelected: {
-    borderColor: ACCENT_BLUE,
-    backgroundColor: CARD_SELECTED_BG,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
   },
   chipText: {
     fontSize: 15,
     fontWeight: '500',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   chipTextSelected: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
 
   /* Danger chips (exercises to avoid) */
   chipDanger: {
-    borderColor: DANGER_RED,
-    backgroundColor: DANGER_BG,
+    borderColor: Colors.danger,
+    backgroundColor: Colors.dangerMuted,
   },
   chipTextDanger: {
-    color: DANGER_RED,
+    color: Colors.danger,
   },
 
   /* Add-custom chip */
@@ -569,15 +560,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderWidth: 2,
-    borderColor: DISABLED_BG,
+    borderColor: Colors.divider,
     borderStyle: 'dashed',
   },
   chipAddText: {
     fontSize: 15,
     fontWeight: '500',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* Custom exercise input row */
@@ -589,28 +580,28 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     borderWidth: 2,
-    borderColor: ACCENT_BLUE,
+    borderColor: Colors.accent,
   },
   addBtn: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   addBtnDisabled: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
   },
   addBtnText: {
     fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   cancelBtn: {
     paddingHorizontal: 12,
@@ -618,19 +609,19 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* Injury feedback card */
   injuryFeedbackCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 12,
     marginTop: 8,
   },
   injuryFeedbackText: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     lineHeight: 18,
   },
 
@@ -639,23 +630,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
     paddingTop: 12,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   button: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
   },
   buttonText: {
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   buttonTextDisabled: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 });

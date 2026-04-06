@@ -7,12 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-
-const BG_DARK = '#0F172A';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const ACCENT_BLUE = '#3B82F6';
+import { Colors } from '../constants/design';
 
 export interface InfoTooltipProps {
   content: string;
@@ -67,17 +62,17 @@ export default function InfoTooltip({ content, title }: InfoTooltipProps) {
 const styles = StyleSheet.create({
   icon: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.accent,
     marginLeft: 6,
   },
 
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)', // TODO: map to design token
   },
 
   sheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 24,
@@ -88,7 +83,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -97,22 +92,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
 
   content: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     lineHeight: 22,
     marginBottom: 20,
   },
 
   closeButton: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.divider,
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -120,7 +115,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
 });

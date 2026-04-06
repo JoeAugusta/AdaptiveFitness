@@ -20,14 +20,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, Exercise } from '../components/ExerciseCard';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
+import { Colors } from '../constants/design';
 
 const REST_DURATION = 90;
 
@@ -438,8 +431,8 @@ export default function ActiveWorkoutScreen() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#3B82F6" />
+      <View style={{ flex: 1, backgroundColor: Colors.bgPrimary, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.accent} />
       </View>
     );
   }
@@ -569,7 +562,7 @@ export default function ActiveWorkoutScreen() {
           <TextInput
             style={styles.notesInput}
             placeholder="Any notes for your coach? (optional)"
-            placeholderTextColor={TEXT_SECONDARY}
+            placeholderTextColor={Colors.textSecondary}
             value={sessionNotes}
             onChangeText={setSessionNotes}
             multiline
@@ -602,7 +595,7 @@ export default function ActiveWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_DARK },
+  container: { flex: 1, backgroundColor: Colors.bgPrimary },
 
   /* Header */
   header: {
@@ -611,31 +604,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 56,
     paddingBottom: 12,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: Colors.bgCard,
   },
   backButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: { fontSize: 22, color: TEXT_PRIMARY, marginTop: -2 },
+  backArrow: { fontSize: 22, color: Colors.textPrimary, marginTop: -2 },
   workoutTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     textAlign: 'center',
     marginHorizontal: 12,
   },
   timerText: {
     fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -649,12 +642,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 36,
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: Colors.divider,
   },
   restRow: {
     flexDirection: 'row',
@@ -663,37 +656,37 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  restLabel: { fontSize: 14, color: TEXT_SECONDARY },
+  restLabel: { fontSize: 14, color: Colors.textSecondary },
   restTimer: {
     fontSize: 32,
     fontWeight: '700',
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontVariant: ['tabular-nums'],
   },
   skipRestText: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 12,
   },
   progressTrack: {
     height: 4,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 2,
   },
   finishButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  finishButtonText: { fontSize: 17, fontWeight: '600', color: TEXT_PRIMARY },
+  finishButtonText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
 
   /* Toast */
   toast: {
@@ -701,18 +694,18 @@ const styles = StyleSheet.create({
     bottom: 100,
     left: 24,
     right: 24,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  toastText: { fontSize: 14, color: TEXT_PRIMARY },
+  toastText: { fontSize: 14, color: Colors.textPrimary },
 
   /* Fatigue sheet */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
   fatigueSheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 24,
@@ -722,7 +715,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -730,12 +723,12 @@ const styles = StyleSheet.create({
   fatigueTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   fatigueSubtitle: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 20,
   },
   emojiRow: {
@@ -749,34 +742,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   emojiCardSelected: {
-    borderColor: ACCENT_BLUE,
-    backgroundColor: CARD_SELECTED_BG,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
   },
   emoji: { fontSize: 28, marginBottom: 4 },
-  emojiLabel: { fontSize: 10, color: TEXT_SECONDARY, textAlign: 'center' },
-  emojiLabelSelected: { color: TEXT_PRIMARY },
+  emojiLabel: { fontSize: 10, color: Colors.textSecondary, textAlign: 'center' },
+  emojiLabelSelected: { color: Colors.textPrimary },
   notesInput: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     minHeight: 80,
     textAlignVertical: 'top',
     marginBottom: 20,
   },
   saveButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  saveButtonDisabled: { backgroundColor: DISABLED_BG },
-  saveButtonText: { fontSize: 17, fontWeight: '600', color: TEXT_PRIMARY },
-  saveButtonTextDisabled: { color: TEXT_SECONDARY },
+  saveButtonDisabled: { backgroundColor: Colors.divider },
+  saveButtonText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
+  saveButtonTextDisabled: { color: Colors.textSecondary },
 });

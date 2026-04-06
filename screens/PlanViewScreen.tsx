@@ -12,15 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const GREEN = '#22C55E';
+import { Colors } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
@@ -100,7 +92,7 @@ function WorkoutDayCard({
     <View
       style={[
         styles.dayCard,
-        { borderLeftColor: day.completed ? GREEN : ACCENT_BLUE },
+        { borderLeftColor: day.completed ? Colors.success : Colors.accent },
       ]}
     >
       {/* Top row */}
@@ -278,7 +270,7 @@ export default function PlanViewScreen() {
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT_BLUE} />
+          <ActivityIndicator size="large" color={Colors.accent} />
         </View>
       </View>
     );
@@ -421,11 +413,11 @@ export default function PlanViewScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_DARK },
+  container: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  errorText: { color: TEXT_SECONDARY, fontSize: 15 },
-  retryButton: { backgroundColor: ACCENT_BLUE, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  errorText: { color: Colors.textSecondary, fontSize: 15 },
+  retryButton: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
 
   /* Header */
   header: {
@@ -434,25 +426,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 56,
     paddingBottom: 12,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: CARD_BG,
+    borderBottomColor: Colors.bgCard,
   },
   backButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: { fontSize: 22, color: TEXT_PRIMARY, marginTop: -2 },
+  backArrow: { fontSize: 22, color: Colors.textPrimary, marginTop: -2 },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   headerSpacer: { width: 32 },
 
@@ -462,7 +454,7 @@ const styles = StyleSheet.create({
 
   /* Summary card */
   summaryCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
@@ -470,24 +462,24 @@ const styles = StyleSheet.create({
   planTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 10,
   },
   pillRow: { flexDirection: 'row', gap: 8 },
   weekPill: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  weekPillText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
+  weekPillText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
   daysPill: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  daysPillText: { fontSize: 12, color: TEXT_SECONDARY },
+  daysPillText: { fontSize: 12, color: Colors.textSecondary },
 
   /* Week tabs */
   tabStrip: { marginBottom: 16 },
@@ -496,24 +488,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
   },
-  weekTabSelected: { backgroundColor: ACCENT_BLUE },
-  weekTabText: { fontSize: 13, fontWeight: '600', color: TEXT_SECONDARY },
-  weekTabTextSelected: { color: '#FFFFFF' },
+  weekTabSelected: { backgroundColor: Colors.accent },
+  weekTabText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  weekTabTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
   currentDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     marginTop: 3,
   },
-  completedDot: { backgroundColor: GREEN },
+  completedDot: { backgroundColor: Colors.success },
 
   /* Workout day card */
   dayCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
@@ -526,36 +518,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dayPill: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  dayPillText: { fontSize: 11, color: TEXT_SECONDARY, fontWeight: '600' },
+  dayPillText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600' },
   dayTitle: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
-  completedCheck: { fontSize: 16, color: GREEN, fontWeight: '700' },
+  completedCheck: { fontSize: 16, color: Colors.success, fontWeight: '700' },
 
   /* Muscle tags */
   muscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   musclePill: {
-    backgroundColor: 'rgba(59,130,246,0.12)',
+    backgroundColor: Colors.accentMuted,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  musclePillText: { fontSize: 11, color: ACCENT_BLUE },
+  musclePillText: { fontSize: 11, color: Colors.accent },
 
   /* Exercise list */
   exerciseList: { gap: 4, marginBottom: 14 },
-  exerciseRow: { fontSize: 13, color: TEXT_SECONDARY, lineHeight: 18 },
+  exerciseRow: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
   moreExercises: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontStyle: 'italic',
     marginTop: 2,
   },
@@ -563,26 +555,26 @@ const styles = StyleSheet.create({
   /* Start button */
   startButton: {
     alignSelf: 'flex-start',
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  startButtonText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  startButtonText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
 
   /* Done tag */
   doneTag: {
     alignSelf: 'flex-start',
-    backgroundColor: CARD_SELECTED_BG,
+    backgroundColor: Colors.accentMuted,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  doneTagText: { fontSize: 13, fontWeight: '600', color: GREEN },
+  doneTagText: { fontSize: 13, fontWeight: '600', color: Colors.success },
 
   /* Rest day card */
   restCard: {
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(30,41,59,0.6)', // TODO: map to design token
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
@@ -591,11 +583,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   restSubtitle: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     opacity: 0.7,
     marginTop: 4,
   },
@@ -607,9 +599,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyIcon: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY },
-  emptySubtitle: { fontSize: 14, color: TEXT_SECONDARY },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
+  emptySubtitle: { fontSize: 14, color: Colors.textSecondary },
 
   libraryLink: { alignItems: 'center', paddingVertical: 16 },
-  libraryLinkText: { color: ACCENT_BLUE, fontSize: 14 },
+  libraryLinkText: { color: Colors.accent, fontSize: 14 },
 });

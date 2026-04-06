@@ -11,16 +11,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
+import { Colors } from '../../constants/design';
 
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-
-const COLOR_PROTEIN = ACCENT_BLUE;
-const COLOR_CARBS = '#F59E0B';
-const COLOR_FATS = '#10B981';
+const COLOR_PROTEIN = Colors.accent;
+const COLOR_CARBS = Colors.warning;
+const COLOR_FATS = '#10B981'; // TODO: map to design token
 
 const MIN_CALORIES = 1200;
 const MAX_CALORIES = 5000;
@@ -298,13 +293,13 @@ export default function MacroSetupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
 
   /* Progress */
   progressBar: {
     height: 4,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 2,
     marginHorizontal: 24,
     marginTop: 60,
@@ -312,7 +307,7 @@ const styles = StyleSheet.create({
   progressFill: {
     width: '85.7%',
     height: '100%',
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 2,
   },
 
@@ -327,19 +322,19 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   backArrow: {
     fontSize: 22,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* Scroll */
@@ -353,18 +348,18 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 24,
   },
 
   /* Calorie card */
   calorieCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
@@ -372,7 +367,7 @@ const styles = StyleSheet.create({
   },
   calorieLabel: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginBottom: 8,
     textTransform: 'uppercase',
@@ -386,12 +381,12 @@ const styles = StyleSheet.create({
   calorieNumber: {
     fontSize: 48,
     fontWeight: '800',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     lineHeight: 52,
   },
   calorieUnit: {
     fontSize: 18,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginLeft: 6,
     marginBottom: 6,
@@ -405,9 +400,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#273449',
+    backgroundColor: '#273449', // TODO: map to design token
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.divider,
   },
   adjustButtonDisabled: {
     opacity: 0.35,
@@ -415,14 +410,14 @@ const styles = StyleSheet.create({
   adjustButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
   adjustButtonTextDisabled: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   goalNote: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
   headingRow: {
     flexDirection: 'row',
@@ -435,7 +430,7 @@ const styles = StyleSheet.create({
   },
   macroTooltipLabel: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
   },
 
   /* Macro row */
@@ -446,7 +441,7 @@ const styles = StyleSheet.create({
   },
   macroCard: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     paddingVertical: 18,
     alignItems: 'center',
@@ -462,26 +457,26 @@ const styles = StyleSheet.create({
   },
   macroUnit: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginLeft: 2,
     marginBottom: 2,
   },
   macroLabel: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginTop: 4,
   },
 
   /* Info note */
   infoCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 14,
   },
   infoText: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     lineHeight: 19,
   },
 
@@ -490,10 +485,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
     paddingTop: 12,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   button: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -501,6 +496,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
   },
 });

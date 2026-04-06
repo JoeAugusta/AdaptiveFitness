@@ -12,13 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
+import { Colors } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -398,7 +392,7 @@ export default function WorkoutCompleteScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_DARK },
+  container: { flex: 1, backgroundColor: Colors.bgPrimary },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 72,
@@ -411,24 +405,24 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    shadowColor: ACCENT_BLUE,
+    shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
     shadowRadius: 12,
     elevation: 8,
   },
-  checkmark: { fontSize: 38, color: '#FFFFFF', fontWeight: '700' },
+  checkmark: { fontSize: 38, color: '#FFFFFF', fontWeight: '700' }, // TODO: map to design token
   heroTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 6,
   },
-  heroSubtitle: { fontSize: 15, color: TEXT_SECONDARY },
+  heroSubtitle: { fontSize: 15, color: Colors.textSecondary },
 
   /* Stats grid */
   statsGrid: {
@@ -439,29 +433,29 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '47%',
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   statCardPr: {
-    backgroundColor: CARD_SELECTED_BG,
-    borderColor: ACCENT_BLUE,
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accent,
   },
   statIcon: { fontSize: 20, marginBottom: 8 },
   statValue: {
     fontSize: 26,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
-  statValuePr: { color: ACCENT_BLUE },
-  statLabel: { fontSize: 12, color: TEXT_SECONDARY },
+  statValuePr: { color: Colors.accent },
+  statLabel: { fontSize: 12, color: Colors.textSecondary },
 
   /* Shared card */
   card: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
@@ -469,7 +463,7 @@ const styles = StyleSheet.create({
   cardSectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     letterSpacing: 1,
     marginBottom: 10,
   },
@@ -482,8 +476,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   fatigueEmoji: { fontSize: 32 },
-  fatigueLabel: { fontSize: 20, fontWeight: '700', color: TEXT_PRIMARY },
-  fatigueTip: { fontSize: 14, color: TEXT_SECONDARY, lineHeight: 20 },
+  fatigueLabel: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
+  fatigueTip: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
 
   /* Coach */
   coachHeader: {
@@ -493,10 +487,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   coachEmoji: { fontSize: 14 },
-  coachNote: { fontSize: 15, color: TEXT_SECONDARY, lineHeight: 22 },
+  coachNote: { fontSize: 15, color: Colors.textSecondary, lineHeight: 22 },
   skeleton: {
     height: 16,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 8,
     width: '100%',
   },
@@ -508,51 +502,51 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 40,
     borderTopWidth: 1,
-    borderTopColor: '#1E293B',
+    borderTopColor: Colors.bgCard,
     gap: 10,
   },
   primaryButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  primaryButtonText: { fontSize: 17, fontWeight: '600', color: '#FFFFFF' },
+  primaryButtonText: { fontSize: 17, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
   secondaryButton: {
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: ACCENT_BLUE,
+    borderColor: Colors.accent,
   },
-  secondaryButtonText: { fontSize: 17, fontWeight: '600', color: ACCENT_BLUE },
+  secondaryButtonText: { fontSize: 17, fontWeight: '600', color: Colors.accent },
 
   /* Week complete summary banner */
   summaryBanner: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderLeftWidth: 4,
-    borderLeftColor: ACCENT_BLUE,
+    borderLeftColor: Colors.accent,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
   summaryBannerTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
   summaryBannerSubtitle: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     marginTop: 4,
   },
   summaryBannerButton: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -560,28 +554,28 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   summaryBannerButtonText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 14,
     fontWeight: '700',
   },
 
   /* Macro adjustment card */
   macroCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderLeftWidth: 4,
-    borderLeftColor: ACCENT_BLUE,
+    borderLeftColor: Colors.accent,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
   macroCardTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 6,
   },
   macroCardBody: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },

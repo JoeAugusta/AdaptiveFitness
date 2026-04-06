@@ -14,14 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const COACH_CARD_BG = '#243044';
+import { Colors } from '../constants/design';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -47,9 +40,9 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'WeeklyCoachSummary
 type RouteType = RouteProp<RootStackParamList, 'WeeklyCoachSummary'>;
 
 const RATING_CONFIG: Record<PerformanceRating, { bg: string; label: string }> = {
-  'strong': { bg: '#22C55E', label: 'Strong Week' },
-  'on-track': { bg: ACCENT_BLUE, label: 'On Track' },
-  'tough-week': { bg: '#F59E0B', label: 'Tough Week' },
+  'strong': { bg: Colors.success, label: 'Strong Week' },
+  'on-track': { bg: Colors.accent, label: 'On Track' },
+  'tough-week': { bg: Colors.warning, label: 'Tough Week' },
 };
 
 function RatingBadge({ rating }: { rating: PerformanceRating }) {
@@ -237,7 +230,7 @@ export default function WeeklyCoachSummaryScreen() {
         {/* Loading State */}
         {loading && (
           <Animated.View style={[styles.card, styles.loadingCard, { opacity: pulseAnim }]}>
-            <ActivityIndicator color={ACCENT_BLUE} style={{ marginBottom: 12 }} />
+            <ActivityIndicator color={Colors.accent} style={{ marginBottom: 12 }} />
             <Text style={styles.loadingText}>Your coach is reviewing your week...</Text>
             <Text style={styles.loadingSubtext}>This takes a few seconds</Text>
           </Animated.View>
@@ -314,7 +307,7 @@ export default function WeeklyCoachSummaryScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
   },
   scroll: {
     flex: 1,
@@ -329,7 +322,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backChevron: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 32,
     lineHeight: 36,
     paddingRight: 8,
@@ -338,23 +331,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 22,
     fontWeight: '700',
   },
   headerSubtitle: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     marginTop: 2,
   },
   card: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
   headline: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 8,
@@ -366,18 +359,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgeText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // TODO: map to design token
     fontSize: 12,
     fontWeight: '700',
   },
   bodyText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 12,
   },
   cardTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 8,
@@ -390,23 +383,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   checkIcon: {
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontSize: 16,
     fontWeight: '700',
     marginRight: 8,
     lineHeight: 20,
   },
   highlightText: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 14,
     lineHeight: 20,
     flex: 1,
   },
   coachCard: {
-    backgroundColor: COACH_CARD_BG,
+    backgroundColor: '#243044', // TODO: map to design token
   },
   coachNote: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
     fontStyle: 'italic',
     textAlign: 'center',
@@ -417,29 +410,29 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
   },
   loadingText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 15,
     fontStyle: 'italic',
   },
   loadingSubtext: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     marginTop: 6,
   },
   errorCard: {
     borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+    borderLeftColor: Colors.danger,
   },
   retryButton: {
     marginTop: 8,
   },
   retryText: {
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontSize: 15,
     fontWeight: '600',
   },
   sectionHeader: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -448,7 +441,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     paddingVertical: 4,
@@ -459,12 +452,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   historyWeekLabel: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
   chevronIcon: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 18,
     marginLeft: 'auto',
     transform: [{ rotate: '90deg' }],
@@ -473,14 +466,14 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   historyHeadline: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     marginTop: 4,
   },
 
   // ── Week in progress ──
   inProgressCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     marginHorizontal: 20,
@@ -493,13 +486,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   inProgressTitle: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
   },
   inProgressBody: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
@@ -508,7 +501,7 @@ const styles = StyleSheet.create({
 
   // ── Previous weeks list ──
   prevWeekRow: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -518,12 +511,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   prevWeekLabel: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '600',
   },
   prevWeekChevron: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 18,
   },
 });

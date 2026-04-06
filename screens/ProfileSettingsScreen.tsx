@@ -14,18 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-// ── Design tokens ──
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const DIVIDER_COLOR = '#2D3F55';
+import { Colors } from '../constants/design';
 
 // ── Label maps ──
 
@@ -506,13 +495,13 @@ export default function ProfileSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
 
   // ── Profile header card ──
   profileCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 20,
     flexDirection: 'row',
@@ -523,13 +512,13 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
+  avatarText: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' }, // TODO: map to design token
   profileInfo: { flex: 1, marginLeft: 14 },
-  profileEmail: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '600' },
+  profileEmail: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
   subBadge: {
     alignSelf: 'flex-start',
     borderRadius: 6,
@@ -537,15 +526,15 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     marginTop: 6,
   },
-  subBadgePro: { backgroundColor: ACCENT_BLUE },
-  subBadgeFree: { backgroundColor: DISABLED_BG },
-  subBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  subBadgeTextFree: { color: TEXT_SECONDARY },
-  chevron: { color: TEXT_SECONDARY, fontSize: 22, marginLeft: 8 },
+  subBadgePro: { backgroundColor: Colors.accent },
+  subBadgeFree: { backgroundColor: Colors.divider },
+  subBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, // TODO: map to design token
+  subBadgeTextFree: { color: Colors.textSecondary },
+  chevron: { color: Colors.textSecondary, fontSize: 22, marginLeft: 8 },
 
   // ── Section heading ──
   sectionHeading: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -555,7 +544,7 @@ const styles = StyleSheet.create({
 
   // ── Section card (rows with dividers) ──
   sectionCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -568,9 +557,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  rowLabel: { color: TEXT_SECONDARY, fontSize: 14 },
+  rowLabel: { color: Colors.textSecondary, fontSize: 14 },
   rowValue: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 14,
     fontWeight: '500',
     flexShrink: 1,
@@ -578,39 +567,39 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   weightValueGroup: { alignItems: 'flex-end' },
-  weightLogDate: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 2 },
-  weightLogHint: { color: TEXT_SECONDARY, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  weightLogDate: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
+  weightLogHint: { color: Colors.textSecondary, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
 
   // ── Divider ──
-  divider: { height: 1, backgroundColor: DIVIDER_COLOR },
+  divider: { height: 1, backgroundColor: Colors.divider },
 
   // ── Helper text ──
   helperText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontStyle: 'italic',
     marginTop: 6,
   },
 
   // ── App section ──
-  chevronSmall: { color: TEXT_SECONDARY, fontSize: 22 },
+  chevronSmall: { color: Colors.textSecondary, fontSize: 22 },
 
   // ── Sign Out ──
   signOutBtn: {
     marginTop: 32,
     height: 52,
     borderRadius: 14,
-    backgroundColor: 'rgba(239,68,68,0.12)',
+    backgroundColor: Colors.dangerMuted,
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
+    borderColor: Colors.dangerMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  signOutText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
+  signOutText: { color: Colors.danger, fontSize: 16, fontWeight: '600' },
 
   // ── Version footer ──
   versionText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
     marginTop: 16,
@@ -622,31 +611,31 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
   },
   skeletonTextBlock: { flex: 1, marginLeft: 14, gap: 8 },
   skeletonLine: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '60%',
   },
   skeletonLineShort: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '30%',
   },
   skeletonPill: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '35%',
   },
   skeletonPillShort: {
     height: 14,
     borderRadius: 7,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     width: '25%',
   },
 
@@ -658,17 +647,17 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 15,
     textAlign: 'center',
     marginBottom: 16,
   },
   retryBtn: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
 
 });

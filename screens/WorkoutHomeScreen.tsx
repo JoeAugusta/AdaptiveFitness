@@ -4,11 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
+import { Colors } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -64,15 +60,15 @@ export default function WorkoutHomeScreen() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={ACCENT_BLUE} />
+      <ActivityIndicator size="large" color={Colors.accent} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_DARK, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  message: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '600' },
-  sub: { color: TEXT_SECONDARY, fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
-  button: { backgroundColor: ACCENT_BLUE, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 8 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: Colors.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  message: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
+  sub: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
+  button: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 8 },
+  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
 });

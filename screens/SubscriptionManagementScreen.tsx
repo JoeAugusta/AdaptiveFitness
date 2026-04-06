@@ -18,18 +18,7 @@ import Purchases, {
   PurchasesPackage,
 } from 'react-native-purchases';
 import { supabase } from '../Lib/supabase';
-
-// ── Design tokens ──
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const DISABLED_BG = '#334155';
-const DIVIDER_COLOR = '#2D3F55';
+import { Colors } from '../constants/design';
 
 // ── Date helper ──
 
@@ -482,7 +471,7 @@ export default function SubscriptionManagementScreen() {
                   >
                     <Text style={styles.manageRowLabel}>Restore Purchases</Text>
                     {isRestoring ? (
-                      <ActivityIndicator size="small" color={ACCENT_BLUE} />
+                      <ActivityIndicator size="small" color={Colors.accent} />
                     ) : (
                       <Text style={styles.manageChevron}>›</Text>
                     )}
@@ -504,7 +493,7 @@ export default function SubscriptionManagementScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_DARK },
+  safe: { flex: 1, backgroundColor: Colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 64 },
 
@@ -516,13 +505,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  backChevron: { color: ACCENT_BLUE, fontSize: 28 },
+  backChevron: { color: Colors.accent, fontSize: 28 },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -535,22 +524,22 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 15,
     textAlign: 'center',
     marginBottom: 16,
   },
   retryBtn: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
 
   // ── Status card ──
   statusCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     padding: 24,
     marginHorizontal: 20,
@@ -563,36 +552,36 @@ const styles = StyleSheet.create({
   },
   statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusEmoji: { fontSize: 22 },
-  statusTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: '700' },
+  statusTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
   activeIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   activeDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#22C55E',
+    backgroundColor: Colors.success,
   },
-  activeText: { color: '#22C55E', fontSize: 13 },
+  activeText: { color: Colors.success, fontSize: 13 },
   statusDescription: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,
   },
-  renewalText: { color: TEXT_SECONDARY, fontSize: 13, marginTop: 12 },
-  cancelledExpiry: { color: '#F59E0B', fontSize: 13, marginTop: 12 },
-  cancelledNote: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 4 },
-  memberSince: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 4 },
+  renewalText: { color: Colors.textSecondary, fontSize: 13, marginTop: 12 },
+  cancelledExpiry: { color: Colors.warning, fontSize: 13, marginTop: 12 },
+  cancelledNote: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
+  memberSince: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
   freePill: {
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  freePillText: { color: TEXT_SECONDARY, fontSize: 11, fontWeight: '700' },
+  freePillText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
 
   // ── Comparison card ──
   compCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     marginHorizontal: 20,
     marginTop: 16,
@@ -604,7 +593,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: '50%',
     width: 1,
-    backgroundColor: DIVIDER_COLOR,
+    backgroundColor: Colors.divider,
   },
   compColumns: { flexDirection: 'row' },
   compCol: { flex: 1, paddingHorizontal: 16, paddingVertical: 20 },
@@ -616,7 +605,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   compColHeaderText: {
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'center',
@@ -624,7 +613,7 @@ const styles = StyleSheet.create({
   proUnderline: {
     width: 24,
     height: 2,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     marginTop: 4,
   },
   compRow: {
@@ -635,20 +624,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   compRowProSide: { justifyContent: 'center' },
-  compRowBanded: { backgroundColor: 'rgba(255,255,255,0.02)' },
+  compRowBanded: { backgroundColor: 'rgba(255,255,255,0.02)' }, // TODO: map to design token
   compFeatureText: {
     flex: 1,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 13,
     paddingRight: 4,
   },
   compCheckmark: {
-    color: ACCENT_BLUE,
+    color: Colors.accent,
     fontSize: 14,
     fontWeight: '700',
   },
   compDashText: {
-    color: DISABLED_BG,
+    color: Colors.divider,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -657,67 +646,67 @@ const styles = StyleSheet.create({
   upgradeSection: { marginHorizontal: 20, marginTop: 20 },
 
   pricingCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 18,
     borderWidth: 1.5,
-    borderColor: DIVIDER_COLOR,
+    borderColor: Colors.divider,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  pricingCardAnnualDefault: { borderColor: ACCENT_BLUE },
-  pricingCardActive: { borderColor: ACCENT_BLUE },
+  pricingCardAnnualDefault: { borderColor: Colors.accent },
+  pricingCardActive: { borderColor: Colors.accent },
   pricingInfo: { flex: 1 },
-  pricingTitle: { color: TEXT_PRIMARY, fontSize: 16, fontWeight: '600' },
-  pricingSubtitle: { color: TEXT_SECONDARY, fontSize: 14, marginTop: 2 },
+  pricingTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
+  pricingSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
   annualTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bestValueBadge: {
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     borderRadius: 4,
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
-  bestValueText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  bestValueText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' }, // TODO: map to design token
 
   radio: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: DIVIDER_COLOR,
+    borderColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioActive: { borderColor: ACCENT_BLUE },
+  radioActive: { borderColor: Colors.accent },
   radioFill: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
   },
 
   ctaBtn: {
     marginTop: 4,
     height: 56,
     borderRadius: 16,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' }, // TODO: map to design token
   ctaBtnDisabled: {
     marginTop: 4,
     height: 56,
     borderRadius: 16,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaBtnDisabledText: { color: TEXT_SECONDARY, fontSize: 16, fontWeight: '600' },
+  ctaBtnDisabledText: { color: Colors.textSecondary, fontSize: 16, fontWeight: '600' },
   ctaDisclaimer: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 10,
@@ -726,7 +715,7 @@ const styles = StyleSheet.create({
   // ── Manage section (Pro) ──
   manageSection: { marginHorizontal: 20, marginTop: 20 },
   manageCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -737,15 +726,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  manageRowLabel: { color: TEXT_PRIMARY, fontSize: 15 },
-  manageChevron: { color: TEXT_SECONDARY, fontSize: 22 },
-  manageDivider: { height: 1, backgroundColor: DIVIDER_COLOR },
+  manageRowLabel: { color: Colors.textPrimary, fontSize: 15 },
+  manageChevron: { color: Colors.textSecondary, fontSize: 22 },
+  manageDivider: { height: 1, backgroundColor: Colors.divider },
 
   // ── Footer note ──
   footerNote: {
     marginHorizontal: 20,
     marginTop: 24,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
@@ -754,7 +743,7 @@ const styles = StyleSheet.create({
   // ── Skeleton ──
   skeletonStatus: {
     height: 110,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 16,
     marginHorizontal: 20,
     marginTop: 24,
@@ -762,7 +751,7 @@ const styles = StyleSheet.create({
   },
   skeletonTable: {
     height: 340,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 16,
     marginHorizontal: 20,
     marginTop: 16,
@@ -770,7 +759,7 @@ const styles = StyleSheet.create({
   },
   skeletonBtn: {
     height: 56,
-    backgroundColor: DISABLED_BG,
+    backgroundColor: Colors.divider,
     borderRadius: 16,
     marginHorizontal: 20,
     marginTop: 20,

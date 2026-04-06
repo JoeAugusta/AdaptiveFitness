@@ -10,13 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
-const CHECK_GREEN = '#10B981';
+import { Colors } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -350,7 +344,7 @@ export default function BuildingPlanScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -358,7 +352,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -366,7 +360,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: ACCENT_BLUE,
+    backgroundColor: Colors.accent,
   },
   middleSection: {
     marginTop: 40,
@@ -376,12 +370,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
   },
@@ -395,12 +389,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   checkmark: {
-    color: CHECK_GREEN,
+    color: '#10B981', // TODO: map to design token
     fontSize: 16,
     marginRight: 10,
   },
   stepText: {
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     fontSize: 14,
   },
 });

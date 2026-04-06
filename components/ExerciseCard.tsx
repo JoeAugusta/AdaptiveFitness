@@ -10,13 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import RPESelector from './RPESelector';
-
-const BG_DARK = '#0F172A';
-const ACCENT_BLUE = '#3B82F6';
-const CARD_BG = '#1E293B';
-const CARD_SELECTED_BG = 'rgba(59,130,246,0.12)';
-const TEXT_PRIMARY = '#F8FAFC';
-const TEXT_SECONDARY = '#94A3B8';
+import { Colors } from '../constants/design';
 
 export interface SetTarget {
   setNumber: number;
@@ -151,7 +145,7 @@ export default function ExerciseCard({
           onPress={() => setShowCoachingSheet(true)}
         >
           {coachingLoading ? (
-            <ActivityIndicator size="small" color={ACCENT_BLUE} />
+            <ActivityIndicator size="small" color={Colors.accent} />
           ) : (
             <Text style={styles.infoIcon}>ⓘ</Text>
           )}
@@ -241,7 +235,7 @@ export default function ExerciseCard({
                       updateInput(set.setNumber, 'weight', v)
                     }
                     placeholder="0"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor="#475569" // TODO: map to design token
                     selectTextOnFocus
                   />
                 </View>
@@ -252,7 +246,7 @@ export default function ExerciseCard({
                     value={input.reps}
                     onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
                     placeholder="0"
-                    placeholderTextColor="#475569"
+                    placeholderTextColor="#475569" // TODO: map to design token
                     selectTextOnFocus
                   />
                 </View>
@@ -321,7 +315,7 @@ export default function ExerciseCard({
           {coachingLoading ? (
             <ActivityIndicator
               size="small"
-              color={ACCENT_BLUE}
+              color={Colors.accent}
               style={{ marginVertical: 20 }}
             />
           ) : coachingNote ? (
@@ -378,7 +372,7 @@ export default function ExerciseCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
@@ -400,32 +394,32 @@ const styles = StyleSheet.create({
   exerciseName: {
     fontSize: 17,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     flexShrink: 1,
   },
   muscleTag: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  muscleTagText: { fontSize: 12, color: TEXT_SECONDARY },
-  infoIcon: { fontSize: 18, color: TEXT_SECONDARY },
+  muscleTagText: { fontSize: 12, color: Colors.textSecondary },
+  infoIcon: { fontSize: 18, color: Colors.textSecondary },
 
   /* Coaching preview */
   coachingPreview: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
   },
   skeletonBlock: {
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 4,
     height: 14,
     width: '80%',
   },
-  coachingText: { fontSize: 13, color: TEXT_SECONDARY, lineHeight: 18 },
+  coachingText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
 
   /* Table */
   tableHeader: {
@@ -433,13 +427,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: Colors.divider,
     marginBottom: 4,
   },
   colHeaderText: {
     fontSize: 11,
     fontWeight: '600',
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     textAlign: 'center',
   },
   colSet: { width: 28, alignItems: 'center' },
@@ -455,42 +449,42 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
-  tableRowLogged: { backgroundColor: CARD_SELECTED_BG },
+  tableRowLogged: { backgroundColor: Colors.accentMuted },
 
-  cellText: { fontSize: 14, color: TEXT_PRIMARY, textAlign: 'center' },
-  cellTextSecondary: { fontSize: 12, color: TEXT_SECONDARY },
+  cellText: { fontSize: 14, color: Colors.textPrimary, textAlign: 'center' },
+  cellTextSecondary: { fontSize: 12, color: Colors.textSecondary },
 
   inputCell: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 4,
     fontSize: 14,
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     textAlign: 'center',
     width: '92%',
     minHeight: 32,
   },
   rpeTappable: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 6,
     paddingVertical: 4,
     minHeight: 32,
     justifyContent: 'center',
   },
-  rpeCellText: { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center' },
-  checkIcon: { fontSize: 18, color: '#334155' },
-  checkIconEnabled: { color: ACCENT_BLUE },
-  checkSolid: { fontSize: 18, color: ACCENT_BLUE, fontWeight: '700' },
+  rpeCellText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  checkIcon: { fontSize: 18, color: Colors.divider },
+  checkIconEnabled: { color: Colors.accent },
+  checkSolid: { fontSize: 18, color: Colors.accent, fontWeight: '700' },
 
   /* Swap */
   swapButton: { marginTop: 12, alignSelf: 'flex-start' },
-  swapButtonText: { fontSize: 14, color: TEXT_SECONDARY },
+  swapButtonText: { fontSize: 14, color: Colors.textSecondary },
 
   /* Shared modal styles */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
   bottomSheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 24,
@@ -500,7 +494,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.divider,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -508,34 +502,34 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   sheetSubtitle: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     marginBottom: 16,
   },
   sheetContent: {
     fontSize: 15,
-    color: TEXT_SECONDARY,
+    color: Colors.textSecondary,
     lineHeight: 22,
     marginBottom: 20,
   },
   sheetCloseButton: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.divider,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  sheetCloseText: { fontSize: 15, fontWeight: '600', color: TEXT_PRIMARY },
+  sheetCloseText: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
   swapOption: {
-    backgroundColor: BG_DARK,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
   },
-  swapOptionText: { fontSize: 15, color: TEXT_PRIMARY },
+  swapOptionText: { fontSize: 15, color: Colors.textPrimary },
 });

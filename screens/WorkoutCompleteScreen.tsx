@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -269,40 +269,10 @@ export default function WorkoutCompleteScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Week Complete Banner (appears once Edge Function resolves) ── */}
-        {showSummaryBanner && (
-          <View style={styles.summaryBanner}>
-            <Text style={styles.summaryBannerTitle}>Week {weekNumber} Complete 🎉</Text>
-            <Text style={styles.summaryBannerSubtitle}>
-              Your weekly coach review is ready.
-            </Text>
-            {nextWeekReady && (
-              <Text style={styles.summaryBannerSubtitle}>
-                Week {weekNumber + 1} is ready — head to your Dashboard.
-              </Text>
-            )}
-            <TouchableOpacity
-              style={styles.summaryBannerButton}
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('WeeklyCoachSummary', { planId, weekNumber })}
-            >
-              <Text style={styles.summaryBannerButtonText}>View Weekly Summary</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── Macro Adjustment Card ── */}
-        {macroAdjustment && (
-          <View style={styles.macroCard}>
-            <Text style={styles.macroCardTitle}>Macros Updated 📊</Text>
-            <Text style={styles.macroCardBody}>{macroAdjustment}</Text>
-          </View>
-        )}
-
-        {/* ── Section 1: Hero ── */}
         <View style={styles.heroSection}>
           <Animated.View
             style={[styles.checkCircle, { transform: [{ scale: checkScale }] }]}
@@ -315,7 +285,6 @@ export default function WorkoutCompleteScreen() {
           </Text>
         </View>
 
-        {/* ── Section 2: Stats 2×2 grid ── */}
         <View style={styles.statsGrid}>
           {stats.map((stat, i) => {
             const isPrCard = stat.isPr && prsHit > 0;
@@ -338,9 +307,51 @@ export default function WorkoutCompleteScreen() {
           })}
         </View>
 
-        {/* ── Section 3: Fatigue Summary ── */}
-        <View style={styles.card}>
-          <Text style={styles.cardSectionLabel}>RECOVERY STATUS</Text>
+        {showSummaryBanner && (
+          <View style={styles.summaryBanner}>
+            <View style={styles.summaryBannerTitleRow}>
+              <Text style={styles.summaryBannerEmoji}>🎉</Text>
+              <Text style={styles.summaryBannerTitle}>
+                Week {weekNumber} Complete!
+              </Text>
+            </View>
+            <Text style={styles.summaryBannerSubtitle}>
+              Your weekly coach review is ready.
+            </Text>
+            {nextWeekReady ? (
+              <Text style={styles.summaryBannerSubtitleSuccess}>
+                Week {weekNumber + 1} is ready — head to your Dashboard.
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.summaryBannerButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.navigate('WeeklyCoachSummary', {
+                  planId,
+                  weekNumber,
+                })
+              }
+            >
+              <Text style={styles.summaryBannerButtonText}>
+                View Weekly Summary
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {macroAdjustment ? (
+          <View style={styles.macroCard}>
+            <View style={styles.macroCardTitleRow}>
+              <Text style={styles.macroCardEmoji}>📊</Text>
+              <Text style={styles.macroCardTitle}>Macros Updated</Text>
+            </View>
+            <Text style={styles.macroCardBody}>{macroAdjustment}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.recoveryCard}>
+          <Text style={styles.recoverySectionLabel}>RECOVERY STATUS</Text>
           <View style={styles.fatigueRow}>
             <Text style={styles.fatigueEmoji}>{fatigue.emoji}</Text>
             <Text style={styles.fatigueLabel}>{fatigue.label}</Text>
@@ -348,22 +359,30 @@ export default function WorkoutCompleteScreen() {
           <Text style={styles.fatigueTip}>{fatigue.tip}</Text>
         </View>
 
-        {/* ── Section 4: Coach's Note ── */}
-        <View style={styles.card}>
+        <View style={styles.coachCard}>
           <View style={styles.coachHeader}>
-            <Text style={styles.coachEmoji}>🤖</Text>
-            <Text style={styles.cardSectionLabel}>YOUR COACH</Text>
+            <Text style={styles.coachBrand}>JORDAN</Text>
           </View>
           {coachLoading ? (
-            <Animated.View
-              style={[styles.skeleton, { opacity: skeletonOpacity }]}
-            />
+            <View>
+              <Animated.View
+                style={[
+                  styles.coachSkeletonLine,
+                  { opacity: skeletonOpacity },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  styles.coachSkeletonLineShort,
+                  { opacity: skeletonOpacity },
+                ]}
+              />
+            </View>
           ) : (
             <Text style={styles.coachNote}>{coachNoteDisplay}</Text>
           )}
         </View>
 
-        {/* Bottom padding so content isn't hidden behind the fixed footer */}
         <View style={styles.footerSpacer} />
       </ScrollView>
 
@@ -392,15 +411,23 @@ export default function WorkoutCompleteScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  scrollView: {
+    backgroundColor: Colors.bgPrimary,
+  },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.xl,
     paddingTop: 72,
-    paddingBottom: 24,
+    paddingBottom: 160,
   },
 
-  /* Hero */
-  heroSection: { alignItems: 'center', marginBottom: 32 },
+  heroSection: {
+    alignItems: 'center',
+    marginBottom: Spacing.xxxl,
+  },
   checkCircle: {
     width: 80,
     height: 80,
@@ -408,69 +435,77 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
     shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
-    shadowRadius: 12,
+    shadowRadius: 16,
     elevation: 8,
   },
   checkmark: {
-    fontSize: 38, // TODO: map to design token
-    color: '#FFFFFF',
+    fontSize: 38,
+    color: Colors.textPrimary,
     fontFamily: Fonts.bold,
   },
   heroTitle: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
     marginBottom: 6,
   },
   heroSubtitle: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.body, color: Colors.textSecondary },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
 
-  /* Stats grid */
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
   statCard: {
     width: '47%',
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   statCardPr: {
     backgroundColor: Colors.accentMuted,
-    borderColor: Colors.accent,
+    borderColor: Colors.accentBorder,
   },
   statIcon: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2, marginBottom: 8 },
-  statValue: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginBottom: 4,
+    fontSize: 24,
+    marginBottom: Spacing.sm,
   },
-  statValuePr: { color: Colors.accent },
+  statValue: {
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  statValuePr: {
+    color: Colors.accent,
+  },
   statLabel: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
-
-  /* Shared card */
-  card: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
   },
-  cardSectionLabel: {
+
+  recoveryCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  recoverySectionLabel: {
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
@@ -478,8 +513,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 10,
   },
-
-  /* Fatigue */
   fatigueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -488,116 +521,184 @@ const styles = StyleSheet.create({
   },
   fatigueEmoji: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.display, },
-  fatigueLabel: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textPrimary },
+    fontSize: 32,
+  },
+  fatigueLabel: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
   fatigueTip: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 20 },
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
 
-  /* Coach */
+  coachCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    marginBottom: Spacing.lg,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+  },
   coachHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 10,
   },
-  coachEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, },
+  coachBrand: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
   coachNote: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.body, color: Colors.textSecondary, lineHeight: 22 },
-  skeleton: {
-    height: 16,
-    backgroundColor: Colors.divider,
-    borderRadius: 8,
-    width: '100%',
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  coachSkeletonLine: {
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.bgElevated,
+    width: '90%',
+    alignSelf: 'flex-start',
+  },
+  coachSkeletonLineShort: {
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.bgElevated,
+    width: '70%',
+    marginTop: Spacing.sm,
+    alignSelf: 'flex-start',
   },
 
-  /* Footer */
-  footerSpacer: { height: 120 },
+  footerSpacer: {
+    height: 120,
+  },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: Colors.bgPrimary,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
     paddingBottom: 40,
     borderTopWidth: 1,
-    borderTopColor: Colors.bgCard,
+    borderTopColor: Colors.divider,
     gap: 10,
   },
   primaryButton: {
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  primaryButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
+  primaryButtonText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
   secondaryButton: {
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: 'center',
+    height: 52,
+    borderRadius: Radius.lg,
     borderWidth: 1.5,
     borderColor: Colors.accent,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  secondaryButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.accent },
+  secondaryButtonText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+  },
 
-  /* Week complete summary banner */
   summaryBanner: {
+    marginBottom: Spacing.lg,
     backgroundColor: Colors.bgCard,
-    borderLeftWidth: 4,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderLeftWidth: 3,
     borderLeftColor: Colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  },
+  summaryBannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  summaryBannerEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 20,
   },
   summaryBannerTitle: {
-    color: Colors.textPrimary,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    flex: 1,
   },
   summaryBannerSubtitle: {
     fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginTop: 4,
+    marginTop: 6,
+  },
+  summaryBannerSubtitleSuccess: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.success,
+    marginTop: 6,
   },
   summaryBannerButton: {
+    marginTop: 14,
+    height: 46,
+    borderRadius: Radius.md,
     backgroundColor: Colors.accent,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 12,
     alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryBannerButtonText: {
-    color: '#FFFFFF', // TODO: map to design token
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
   },
 
-  /* Macro adjustment card */
   macroCard: {
+    marginBottom: Spacing.lg,
     backgroundColor: Colors.bgCard,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.warning,
+  },
+  macroCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  macroCardEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 20,
   },
   macroCardTitle: {
-    color: Colors.textPrimary,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
-    marginBottom: 6,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    flex: 1,
   },
   macroCardBody: {
     fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    lineHeight: 20,
+    lineHeight: 22,
+    marginTop: Spacing.sm,
   },
 });

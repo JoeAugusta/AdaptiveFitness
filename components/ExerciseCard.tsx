@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import RPESelector from './RPESelector';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 export interface SetTarget {
   setNumber: number;
@@ -392,8 +392,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   exerciseName: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     flexShrink: 1,
   },
@@ -403,8 +403,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  muscleTagText: { fontSize: 12, color: Colors.textSecondary },
-  infoIcon: { fontSize: 18, color: Colors.textSecondary },
+  muscleTagText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
+  infoIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2, color: Colors.textSecondary },
 
   /* Coaching preview */
   coachingPreview: {
@@ -419,7 +423,9 @@ const styles = StyleSheet.create({
     height: 14,
     width: '80%',
   },
-  coachingText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+  coachingText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 18 },
 
   /* Table */
   tableHeader: {
@@ -431,8 +437,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   colHeaderText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textSecondary,
     textAlign: 'center',
   },
@@ -451,15 +457,20 @@ const styles = StyleSheet.create({
   },
   tableRowLogged: { backgroundColor: Colors.accentMuted },
 
-  cellText: { fontSize: 14, color: Colors.textPrimary, textAlign: 'center' },
-  cellTextSecondary: { fontSize: 12, color: Colors.textSecondary },
+  cellText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textPrimary, textAlign: 'center' },
+  cellTextSecondary: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
 
   inputCell: {
+    fontFamily: Fonts.regular,
     backgroundColor: Colors.bgPrimary,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 4,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     color: Colors.textPrimary,
     textAlign: 'center',
     width: '92%',
@@ -472,14 +483,20 @@ const styles = StyleSheet.create({
     minHeight: 32,
     justifyContent: 'center',
   },
-  rpeCellText: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
-  checkIcon: { fontSize: 18, color: Colors.divider },
+  rpeCellText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary, textAlign: 'center' },
+  checkIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2, color: Colors.divider },
   checkIconEnabled: { color: Colors.accent },
-  checkSolid: { fontSize: 18, color: Colors.accent, fontWeight: '700' },
+  checkSolid: { fontSize: FontSizes.heading2, color: Colors.accent, fontFamily: Fonts.bold, },
 
   /* Swap */
   swapButton: { marginTop: 12, alignSelf: 'flex-start' },
-  swapButtonText: { fontSize: 14, color: Colors.textSecondary },
+  swapButtonText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
 
   /* Shared modal styles */
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
@@ -500,18 +517,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sheetTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   sheetSubtitle: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 16,
   },
   sheetContent: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     lineHeight: 22,
     marginBottom: 20,
@@ -524,12 +543,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  sheetCloseText: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
+  sheetCloseText: { fontSize: FontSizes.body, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
   swapOption: {
     backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
   },
-  swapOptionText: { fontSize: 15, color: Colors.textPrimary },
+  swapOptionText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body, color: Colors.textPrimary },
 });

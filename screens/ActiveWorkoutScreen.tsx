@@ -20,7 +20,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, Exercise } from '../components/ExerciseCard';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 const REST_DURATION = 90;
 
@@ -616,18 +616,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: { fontSize: 22, color: Colors.textPrimary, marginTop: -2 },
+  backArrow: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1, color: Colors.textPrimary, marginTop: -2 },
   workoutTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     textAlign: 'center',
     marginHorizontal: 12,
   },
   timerText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
@@ -656,15 +658,18 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  restLabel: { fontSize: 14, color: Colors.textSecondary },
+  restLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
   restTimer: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     color: Colors.accent,
     fontVariant: ['tabular-nums'],
   },
   skipRestText: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginBottom: 12,
@@ -686,7 +691,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
-  finishButtonText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
+  finishButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
 
   /* Toast */
   toast: {
@@ -700,7 +705,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  toastText: { fontSize: 14, color: Colors.textPrimary },
+  toastText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textPrimary },
 
   /* Fatigue sheet */
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
@@ -721,13 +728,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   fatigueTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   fatigueSubtitle: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 20,
   },
@@ -750,14 +758,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
   },
-  emoji: { fontSize: 28, marginBottom: 4 },
-  emojiLabel: { fontSize: 10, color: Colors.textSecondary, textAlign: 'center' },
+  emoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display, marginBottom: 4 },
+  emojiLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro, color: Colors.textSecondary, textAlign: 'center' },
   emojiLabelSelected: { color: Colors.textPrimary },
   notesInput: {
+    fontFamily: Fonts.regular,
     backgroundColor: Colors.bgPrimary,
     borderRadius: 12,
     padding: 14,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     color: Colors.textPrimary,
     minHeight: 80,
     textAlignVertical: 'top',
@@ -770,6 +783,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButtonDisabled: { backgroundColor: Colors.divider },
-  saveButtonText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
+  saveButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
   saveButtonTextDisabled: { color: Colors.textSecondary },
 });

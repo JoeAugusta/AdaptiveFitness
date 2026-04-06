@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 // ── Constants ──
 
@@ -620,15 +620,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  backChevron: { color: Colors.accent, fontSize: 28 },
+  backChevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent, fontSize: FontSizes.display, },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
   },
 
   // ── Permission banners ──
@@ -640,16 +642,21 @@ const styles = StyleSheet.create({
     marginTop: 24,
     alignItems: 'center',
   },
-  bannerEmoji: { fontSize: 40, marginBottom: 12 },
+  bannerEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 40, // TODO: map to design token
+    marginBottom: 12,
+  },
   bannerTitle: {
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
     textAlign: 'center',
   },
   bannerBody: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 8,
@@ -664,11 +671,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bannerBtnDisabled: { backgroundColor: Colors.divider },
-  bannerBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' }, // TODO: map to design token
+  bannerBtnText: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.semiBold, }, // TODO: map to design token
   bannerBtnDisabledText: { color: Colors.textSecondary },
   bannerNote: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     marginTop: 10,
   },
@@ -676,8 +684,8 @@ const styles = StyleSheet.create({
   // ── Section headings ──
   sectionHeading: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold, 
     letterSpacing: 1.2,
     marginBottom: 8,
     marginTop: 24,
@@ -699,11 +707,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   prefLabelGroup: { flex: 1, marginRight: 12 },
-  prefLabel: { color: Colors.textPrimary, fontSize: 15 },
-  prefSubLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  prefLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.body, },
+  prefSubLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
   timeRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timeValue: { color: Colors.accent, fontSize: 15 },
-  chevron: { color: Colors.textSecondary, fontSize: 22 },
+  timeValue: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent, fontSize: FontSizes.body, },
+  chevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, },
 
   // ── Divider ──
   divider: { height: 1, backgroundColor: Colors.divider },
@@ -745,7 +761,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 24,
   },
-  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  modalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginBottom: 8 },
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 16 },
   modalCancelBtn: {
     flex: 1,
@@ -756,7 +772,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCancelText: { color: Colors.textPrimary, fontSize: 15 },
+  modalCancelText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.body, },
   modalConfirmBtn: {
     flex: 1,
     height: 50,
@@ -765,5 +783,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalConfirmText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
+  modalConfirmText: { color: '#FFFFFF', fontSize: FontSizes.body, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 });

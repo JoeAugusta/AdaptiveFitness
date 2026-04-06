@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Constraints'>;
 type RouteType = RouteProp<RootStackParamList, 'Constraints'>;
@@ -434,12 +434,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   backArrow: {
-    fontSize: 22,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
@@ -452,13 +454,14 @@ const styles = StyleSheet.create({
 
   /* Sections */
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 16,
   },
@@ -491,12 +494,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardLabel: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   cardDetail: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -538,8 +542,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   chipText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium, 
     color: Colors.textSecondary,
   },
   chipTextSelected: {
@@ -566,8 +570,8 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   chipAddText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium, 
     color: Colors.textSecondary,
   },
 
@@ -579,12 +583,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   textInput: {
+    fontFamily: Fonts.regular,
     flex: 1,
     backgroundColor: Colors.bgCard,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     color: Colors.textPrimary,
     borderWidth: 2,
     borderColor: Colors.accent,
@@ -599,8 +604,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   addBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   cancelBtn: {
@@ -608,7 +613,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   cancelBtnText: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
   },
 
@@ -620,7 +626,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   injuryFeedbackText: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 18,
   },
@@ -642,8 +649,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   buttonTextDisabled: {

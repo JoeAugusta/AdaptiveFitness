@@ -9,7 +9,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 interface Goal {
   id: string;
@@ -117,7 +117,8 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   stepLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 10,
     marginLeft: 24,
@@ -128,13 +129,14 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   heading: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.title,
     color: Colors.textSecondary,
     marginBottom: 32,
   },
@@ -156,20 +158,22 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   emoji: {
-    fontSize: 28,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display,
     marginRight: 14,
   },
   cardText: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     marginBottom: 2,
   },
   cardSubtitle: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   footer: {
@@ -188,8 +192,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   buttonTextDisabled: {

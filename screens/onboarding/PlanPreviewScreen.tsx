@@ -17,7 +17,7 @@ import InfoTooltip from '../../components/InfoTooltip';
 import Purchases from 'react-native-purchases';
 import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
 import { supabase } from '../../Lib/supabase';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
@@ -486,7 +486,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backArrow: {
-    fontSize: 22,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     marginTop: -2,
   },
@@ -500,13 +501,14 @@ const styles = StyleSheet.create({
 
   /* Title */
   title: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 6,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 24,
   },
@@ -528,13 +530,14 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   statLabel: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 2,
   },
   statValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
 
@@ -547,13 +550,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   sectionSubtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 14,
   },
@@ -566,16 +570,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dayLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textSecondary,
     letterSpacing: 1,
     marginBottom: 4,
     textTransform: 'uppercase',
   },
   workoutName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 8,
   },
@@ -591,12 +595,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   tagText: {
-    fontSize: 11,
+    fontSize: FontSizes.label,
     color: Colors.accent,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
   },
   moreDays: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 4,
@@ -611,15 +616,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   caloriesNumber: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     lineHeight: 36,
   },
   caloriesUnit: {
-    fontSize: 16,
+    fontSize: FontSizes.title,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginBottom: 2,
   },
 
@@ -640,19 +645,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   macroNumber: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     lineHeight: 32,
   },
   macroUnit: {
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginLeft: 2,
     marginBottom: 2,
   },
   macroLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 4,
   },
@@ -694,9 +700,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bestValueText: {
-    fontSize: 10,
+    fontSize: FontSizes.micro,
     color: '#FFFFFF', // TODO: map to design token
-    fontWeight: '700',
+    fontFamily: Fonts.bold, 
     letterSpacing: 0.5,
   },
   planCard: {
@@ -716,17 +722,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   planName: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 2,
   },
   planPrice: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
   },
   planSub: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -742,18 +750,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   ctaText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
   },
   finePrint: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
   },
   restoreLink: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,

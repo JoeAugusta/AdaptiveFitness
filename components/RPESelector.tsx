@@ -7,7 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 const RPE_LABELS: Record<number, string> = {
   1: 'Very Easy',
@@ -144,13 +144,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 20,
   },
@@ -170,10 +171,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
   },
-  rpeNumber: { fontSize: 20, fontWeight: '700', color: Colors.textSecondary },
+  rpeNumber: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textSecondary },
   rpeNumberSelected: { color: Colors.accent },
   rpeLabel: {
-    fontSize: 9,
+    fontFamily: Fonts.regular,
+    fontSize: 9, // TODO: map to design token
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
@@ -186,6 +188,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmDisabled: { backgroundColor: Colors.divider },
-  confirmText: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
+  confirmText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
   confirmTextDisabled: { color: Colors.textSecondary },
 });

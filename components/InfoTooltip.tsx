@@ -7,7 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 export interface InfoTooltipProps {
   content: string;
@@ -61,7 +61,8 @@ export default function InfoTooltip({ content, title }: InfoTooltipProps) {
 
 const styles = StyleSheet.create({
   icon: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
     marginLeft: 6,
   },
@@ -90,14 +91,15 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 8,
   },
 
   content: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     lineHeight: 22,
     marginBottom: 20,
@@ -113,8 +115,8 @@ const styles = StyleSheet.create({
   },
 
   closeButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     textAlign: 'center',
   },

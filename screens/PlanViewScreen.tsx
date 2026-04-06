@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
@@ -415,9 +415,11 @@ export default function PlanViewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  errorText: { color: Colors.textSecondary, fontSize: 15 },
+  errorText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.body, },
   retryButton: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   /* Header */
   header: {
@@ -438,12 +440,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backArrow: { fontSize: 22, color: Colors.textPrimary, marginTop: -2 },
+  backArrow: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1, color: Colors.textPrimary, marginTop: -2 },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   headerSpacer: { width: 32 },
@@ -460,8 +464,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   planTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
     marginBottom: 10,
   },
@@ -472,14 +476,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  weekPillText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
+  weekPillText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
   daysPill: {
     backgroundColor: Colors.divider,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  daysPillText: { fontSize: 12, color: Colors.textSecondary },
+  daysPillText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
 
   /* Week tabs */
   tabStrip: { marginBottom: 16 },
@@ -492,7 +498,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   weekTabSelected: { backgroundColor: Colors.accent },
-  weekTabText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  weekTabText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: Colors.textSecondary },
   weekTabTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
   currentDot: {
     width: 4,
@@ -523,14 +529,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  dayPillText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600' },
+  dayPillText: { fontSize: FontSizes.label, color: Colors.textSecondary, fontFamily: Fonts.semiBold, },
   dayTitle: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
-  completedCheck: { fontSize: 16, color: Colors.success, fontWeight: '700' },
+  completedCheck: { fontSize: FontSizes.title, color: Colors.success, fontFamily: Fonts.bold, },
 
   /* Muscle tags */
   muscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
@@ -540,13 +546,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  musclePillText: { fontSize: 11, color: Colors.accent },
+  musclePillText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label, color: Colors.accent },
 
   /* Exercise list */
   exerciseList: { gap: 4, marginBottom: 14 },
-  exerciseRow: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+  exerciseRow: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 18 },
   moreExercises: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     fontStyle: 'italic',
     marginTop: 2,
@@ -560,7 +571,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  startButtonText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
+  startButtonText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
 
   /* Done tag */
   doneTag: {
@@ -570,7 +581,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  doneTagText: { fontSize: 13, fontWeight: '600', color: Colors.success },
+  doneTagText: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  color: Colors.success },
 
   /* Rest day card */
   restCard: {
@@ -581,12 +592,13 @@ const styles = StyleSheet.create({
   },
   restTitle: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium, 
     color: Colors.textSecondary,
   },
   restSubtitle: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     opacity: 0.7,
     marginTop: 4,
@@ -598,10 +610,18 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     gap: 8,
   },
-  emptyIcon: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
-  emptySubtitle: { fontSize: 14, color: Colors.textSecondary },
+  emptyIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: 40, // TODO: map to design token
+    marginBottom: 4,
+  },
+  emptyTitle: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textPrimary },
+  emptySubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
 
   libraryLink: { alignItems: 'center', paddingVertical: 16 },
-  libraryLinkText: { color: Colors.accent, fontSize: 14 },
+  libraryLinkText: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent, fontSize: FontSizes.caption, },
 });

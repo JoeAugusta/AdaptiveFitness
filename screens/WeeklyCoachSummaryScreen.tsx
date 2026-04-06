@@ -14,7 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -322,8 +322,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backChevron: {
+    fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    fontSize: 32,
+    fontSize: FontSizes.display,
     lineHeight: 36,
     paddingRight: 8,
   },
@@ -332,12 +333,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: Colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
   },
   headerSubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     marginTop: 2,
   },
   card: {
@@ -348,8 +350,8 @@ const styles = StyleSheet.create({
   },
   headline: {
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
     marginBottom: 8,
   },
   badge: {
@@ -360,19 +362,20 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
   },
   bodyText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     lineHeight: 20,
     marginTop: 12,
   },
   cardTitle: {
     color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     marginBottom: 8,
   },
   highlightsList: {
@@ -384,14 +387,15 @@ const styles = StyleSheet.create({
   },
   checkIcon: {
     color: Colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     marginRight: 8,
     lineHeight: 20,
   },
   highlightText: {
+    fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     lineHeight: 20,
     flex: 1,
   },
@@ -399,8 +403,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#243044', // TODO: map to design token
   },
   coachNote: {
+    fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     fontStyle: 'italic',
     textAlign: 'center',
     lineHeight: 22,
@@ -410,13 +415,15 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
   },
   loadingText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     fontStyle: 'italic',
   },
   loadingSubtext: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     marginTop: 6,
   },
   errorCard: {
@@ -428,21 +435,22 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: Colors.accent,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
   },
   sectionHeader: {
     color: Colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold, 
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginTop: 24,
     marginBottom: 12,
   },
   emptyText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     paddingVertical: 4,
   },
@@ -453,12 +461,13 @@ const styles = StyleSheet.create({
   },
   historyWeekLabel: {
     color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
   },
   chevronIcon: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 18,
+    fontSize: FontSizes.heading2,
     marginLeft: 'auto',
     transform: [{ rotate: '90deg' }],
   },
@@ -466,8 +475,9 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   historyHeadline: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     marginTop: 4,
   },
 
@@ -481,19 +491,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inProgressEmoji: {
-    fontSize: 32,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display,
     textAlign: 'center',
     marginBottom: 8,
   },
   inProgressTitle: {
     color: Colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     textAlign: 'center',
   },
   inProgressBody: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 6,
@@ -512,11 +524,12 @@ const styles = StyleSheet.create({
   },
   prevWeekLabel: {
     color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
   },
   prevWeekChevron: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 18,
+    fontSize: FontSizes.heading2,
   },
 });

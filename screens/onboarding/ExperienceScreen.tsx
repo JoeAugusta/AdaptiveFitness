@@ -11,7 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -280,12 +280,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   backArrow: {
-    fontSize: 22,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
@@ -298,13 +300,14 @@ const styles = StyleSheet.create({
 
   /* Sections */
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 16,
   },
@@ -337,12 +340,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardLabel: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   cardDetail: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -384,15 +388,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   chipText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium, 
     color: Colors.textSecondary,
   },
   chipTextSelected: {
     color: Colors.textPrimary,
   },
   splitHint: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 10,
   },
@@ -414,8 +419,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   buttonTextDisabled: {

@@ -18,7 +18,7 @@ import {
   type IngredientCategory,
   type MealSlot,
 } from '../constants/ingredientLibrary';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 export type BuiltMeal = {
   slot: MealSlot;
@@ -305,17 +305,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerClose: { color: Colors.textSecondary, fontSize: 22, width: 44 },
+  headerClose: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, width: 44 },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
   },
-  headerLogText: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
+  headerLogText: { color: Colors.accent, fontSize: FontSizes.body, fontFamily: Fonts.semiBold, },
   headerLogTextDisabled: { color: Colors.textSecondary },
 
   targetBarCard: {
@@ -327,9 +329,9 @@ const styles = StyleSheet.create({
   },
   targetLabel: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
     marginBottom: 8,
   },
   yoursLabel: { marginTop: 10 },
@@ -340,7 +342,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  pillNeutralText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
+  pillNeutralText: { color: Colors.textSecondary, fontSize: FontSizes.label, fontFamily: Fonts.semiBold, },
   pillBlue: {
     backgroundColor: Colors.accent,
     borderRadius: 8,
@@ -359,7 +361,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  pillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
+  pillWhiteText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   progressTrack: {
     height: 6,
@@ -382,7 +384,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   tabPillActive: { backgroundColor: Colors.accent },
-  tabPillText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  tabPillText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
   tabPillTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   listWrap: { flex: 1 },
@@ -397,8 +399,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ingredientLeft: { flex: 1 },
-  ingredientName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
-  ingredientPortion: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  ingredientName: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.semiBold, },
+  ingredientPortion: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
   ingredientMacroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   miniPillNeutral: {
     backgroundColor: Colors.divider,
@@ -406,7 +410,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  miniPillText: { color: Colors.textSecondary, fontSize: 11 },
+  miniPillText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, },
   miniPillBlue: {
     backgroundColor: Colors.accent,
     borderRadius: 6,
@@ -425,7 +431,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  miniPillWhite: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
+  miniPillWhite: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   addBtn: {
     width: 32,
@@ -445,8 +451,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusMark: { color: Colors.textPrimary, fontSize: 18, fontWeight: '600' },
-  checkMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
+  plusMark: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.semiBold, },
+  checkMark: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.bold, }, // TODO: map to design token
 
   summaryBar: {
     borderTopWidth: 1,
@@ -466,6 +472,6 @@ const styles = StyleSheet.create({
     gap: 6,
     maxWidth: 200,
   },
-  selectedChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', flexShrink: 1 }, // TODO: map to design token
-  chipRemove: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
+  selectedChipText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  flexShrink: 1 }, // TODO: map to design token
+  chipRemove: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.bold, }, // TODO: map to design token
 });

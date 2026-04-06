@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 // ── Label maps ──
 
@@ -516,9 +516,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' }, // TODO: map to design token
+  avatarText: { color: '#FFFFFF', fontSize: FontSizes.heading1, fontFamily: Fonts.bold, }, // TODO: map to design token
   profileInfo: { flex: 1, marginLeft: 14 },
-  profileEmail: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  profileEmail: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.semiBold, },
   subBadge: {
     alignSelf: 'flex-start',
     borderRadius: 6,
@@ -528,15 +528,17 @@ const styles = StyleSheet.create({
   },
   subBadgePro: { backgroundColor: Colors.accent },
   subBadgeFree: { backgroundColor: Colors.divider },
-  subBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, // TODO: map to design token
+  subBadgeText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.bold, }, // TODO: map to design token
   subBadgeTextFree: { color: Colors.textSecondary },
-  chevron: { color: Colors.textSecondary, fontSize: 22, marginLeft: 8 },
+  chevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, marginLeft: 8 },
 
   // ── Section heading ──
   sectionHeading: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold, 
     letterSpacing: 1.2,
     marginBottom: 8,
     marginTop: 24,
@@ -557,32 +559,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  rowLabel: { color: Colors.textSecondary, fontSize: 14 },
+  rowLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   rowValue: {
     color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium, 
     flexShrink: 1,
     textAlign: 'right',
     marginLeft: 12,
   },
   weightValueGroup: { alignItems: 'flex-end' },
-  weightLogDate: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
-  weightLogHint: { color: Colors.textSecondary, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  weightLogDate: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2 },
+  weightLogHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, fontStyle: 'italic', marginTop: 2 },
 
   // ── Divider ──
   divider: { height: 1, backgroundColor: Colors.divider },
 
   // ── Helper text ──
   helperText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: FontSizes.caption,
     fontStyle: 'italic',
     marginTop: 6,
   },
 
   // ── App section ──
-  chevronSmall: { color: Colors.textSecondary, fontSize: 22 },
+  chevronSmall: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, },
 
   // ── Sign Out ──
   signOutBtn: {
@@ -595,12 +606,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  signOutText: { color: Colors.danger, fontSize: 16, fontWeight: '600' },
+  signOutText: { color: Colors.danger, fontSize: FontSizes.title, fontFamily: Fonts.semiBold, },
 
   // ── Version footer ──
   versionText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 8,
@@ -647,8 +659,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -658,6 +671,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
 });

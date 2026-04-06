@@ -2,7 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import type { RootStackParamList } from './types';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -121,7 +121,7 @@ function MainTabs() {
           },
           tabBarActiveTintColor: Colors.accent,
           tabBarInactiveTintColor: Colors.textSecondary,
-          tabBarLabelStyle: { fontSize: 11 },
+          tabBarLabelStyle: { fontSize: FontSizes.label, fontFamily: Fonts.regular },
           tabBarLabel: TAB_LABELS[name] ?? name,
           tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
             <Ionicons name={focused ? icons[0] : icons[1]} size={size} color={color} />

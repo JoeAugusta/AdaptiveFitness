@@ -18,7 +18,7 @@ import Purchases, {
   PurchasesPackage,
 } from 'react-native-purchases';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 // ── Date helper ──
 
@@ -505,15 +505,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  backChevron: { color: Colors.accent, fontSize: 28 },
+  backChevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent, fontSize: FontSizes.display, },
   headerTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
   },
 
   // ── Error state ──
@@ -524,8 +526,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 15,
+    fontSize: FontSizes.body,
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -535,7 +538,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
-  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
+  retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   // ── Status card ──
   statusCard: {
@@ -551,8 +554,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statusEmoji: { fontSize: 22 },
-  statusTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
+  statusEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1, },
+  statusTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold, },
   activeIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   activeDot: {
     width: 8,
@@ -560,24 +565,35 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.success,
   },
-  activeText: { color: Colors.success, fontSize: 13 },
+  activeText: {
+    fontFamily: Fonts.regular,
+    color: Colors.success, fontSize: FontSizes.caption, },
   statusDescription: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     lineHeight: 20,
     marginTop: 8,
   },
-  renewalText: { color: Colors.textSecondary, fontSize: 13, marginTop: 12 },
-  cancelledExpiry: { color: Colors.warning, fontSize: 13, marginTop: 12 },
-  cancelledNote: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
-  memberSince: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
+  renewalText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 12 },
+  cancelledExpiry: {
+    fontFamily: Fonts.regular,
+    color: Colors.warning, fontSize: FontSizes.caption, marginTop: 12 },
+  cancelledNote: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
+  memberSince: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
   freePill: {
     backgroundColor: Colors.divider,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  freePillText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  freePillText: { color: Colors.textSecondary, fontSize: FontSizes.label, fontFamily: Fonts.bold, },
 
   // ── Comparison card ──
   compCard: {
@@ -606,8 +622,8 @@ const styles = StyleSheet.create({
   },
   compColHeaderText: {
     color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.bold, 
     textAlign: 'center',
   },
   proUnderline: {
@@ -626,20 +642,21 @@ const styles = StyleSheet.create({
   compRowProSide: { justifyContent: 'center' },
   compRowBanded: { backgroundColor: 'rgba(255,255,255,0.02)' }, // TODO: map to design token
   compFeatureText: {
+    fontFamily: Fonts.regular,
     flex: 1,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     paddingRight: 4,
   },
   compCheckmark: {
     color: Colors.accent,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
   },
   compDashText: {
     color: Colors.divider,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
   },
 
   // ── Upgrade section ──
@@ -659,8 +676,10 @@ const styles = StyleSheet.create({
   pricingCardAnnualDefault: { borderColor: Colors.accent },
   pricingCardActive: { borderColor: Colors.accent },
   pricingInfo: { flex: 1 },
-  pricingTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
-  pricingSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
+  pricingTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.semiBold, },
+  pricingSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
   annualTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bestValueBadge: {
     backgroundColor: Colors.accent,
@@ -668,7 +687,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
-  bestValueText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' }, // TODO: map to design token
+  bestValueText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.bold, }, // TODO: map to design token
 
   radio: {
     width: 20,
@@ -695,7 +714,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' }, // TODO: map to design token
+  ctaBtnText: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.bold, }, // TODO: map to design token
   ctaBtnDisabled: {
     marginTop: 4,
     height: 56,
@@ -704,10 +723,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaBtnDisabledText: { color: Colors.textSecondary, fontSize: 16, fontWeight: '600' },
+  ctaBtnDisabledText: { color: Colors.textSecondary, fontSize: FontSizes.title, fontFamily: Fonts.semiBold, },
   ctaDisclaimer: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 11,
+    fontSize: FontSizes.label,
     textAlign: 'center',
     marginTop: 10,
   },
@@ -726,16 +746,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  manageRowLabel: { color: Colors.textPrimary, fontSize: 15 },
-  manageChevron: { color: Colors.textSecondary, fontSize: 22 },
+  manageRowLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.body, },
+  manageChevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, },
   manageDivider: { height: 1, backgroundColor: Colors.divider },
 
   // ── Footer note ──
   footerNote: {
+    fontFamily: Fonts.regular,
     marginHorizontal: 20,
     marginTop: 24,
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     lineHeight: 18,
   },

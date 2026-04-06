@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -787,12 +787,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   greetingTop: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   greetingName: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
   },
   profileButton: {
@@ -804,8 +805,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileInitial: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
   },
 
@@ -833,10 +834,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   workoutLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
     color: Colors.accent,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
   dayBadge: {
@@ -846,12 +847,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   dayBadgeText: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
   },
   workoutName: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginTop: 6,
   },
@@ -868,7 +870,8 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   muscleChipText: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
   },
   divider: {
@@ -886,12 +889,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statValue: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
   },
   statLabel: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -904,15 +908,16 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontWeight: '700',
-    fontSize: 15,
+    fontFamily: Fonts.bold, 
+    fontSize: FontSizes.body,
   },
   viewPlanLink: {
     alignItems: 'center',
     marginTop: 10,
   },
   viewPlanText: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
   },
 
@@ -930,16 +935,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   generateCTACheckmark: {
-    fontSize: 20,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2,
   },
   generateCTATitle: {
     color: Colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
   },
   generateCTASubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     marginTop: 6,
   },
   generateCTAButton: {
@@ -952,8 +959,8 @@ const styles = StyleSheet.create({
   },
   generateCTAButtonText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
   },
 
   restCard: {
@@ -963,13 +970,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   restTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 8,
   },
   restSubtitle: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginBottom: 16,
     textAlign: 'center',
@@ -988,12 +996,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   weekLabel: {
-    fontSize: 12,
     color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
   weekSessions: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   progressTrack: {
@@ -1029,7 +1040,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
   },
   dotCheckmark: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: '#FFFFFF', // TODO: map to design token
   },
 
@@ -1047,16 +1059,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   quickStatEmoji: {
-    fontSize: 20,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2,
   },
   quickStatValue: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginTop: 4,
   },
   quickStatLabel: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
@@ -1068,7 +1082,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   volUnit: {
-    fontSize: 10,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
     color: Colors.textSecondary,
   },
 
@@ -1089,11 +1104,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   coachEmoji: {
-    fontSize: 18,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2,
   },
   coachTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginLeft: 8,
   },
@@ -1104,11 +1120,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   weekPillText: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.accent,
   },
   coachMessage: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 22,
   },
@@ -1119,11 +1137,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   coachLink: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
   },
   coachUpdated: {
-    fontSize: 11,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
   },
 
@@ -1138,12 +1158,13 @@ const styles = StyleSheet.create({
   },
   nextWeekBannerTitle: {
     color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
   },
   nextWeekBannerSubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     marginTop: 4,
   },
   nextWeekBannerButton: {
@@ -1156,8 +1177,8 @@ const styles = StyleSheet.create({
   },
   nextWeekBannerButtonText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
   },
 
   /* ── Weight Log Card ── */
@@ -1181,17 +1202,18 @@ const styles = StyleSheet.create({
   },
   weightLogCheck: {
     color: Colors.accent,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.bold, 
   },
   weightLogTitle: {
     color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
   },
   weightLogSub: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     marginTop: 2,
   },
   weightLogBtn: {
@@ -1202,12 +1224,13 @@ const styles = StyleSheet.create({
   },
   weightLogBtnText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold, 
   },
   weightEditBtn: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
   },
 
   /* ── Weight Log Modal ── */
@@ -1224,13 +1247,14 @@ const styles = StyleSheet.create({
   },
   weightModalTitle: {
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
     marginBottom: 8,
   },
   weightModalTip: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     marginBottom: 20,
   },
   weightModalInput: {
@@ -1239,14 +1263,15 @@ const styles = StyleSheet.create({
     borderColor: Colors.divider,
     borderRadius: 12,
     padding: 14,
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     textAlign: 'center',
     color: Colors.textPrimary,
   },
   weightModalUnit: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 16,
+    fontSize: FontSizes.title,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 4,
@@ -1266,8 +1291,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   weightModalCancelText: {
+    fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    fontSize: 15,
+    fontSize: FontSizes.body,
   },
   weightModalSaveBtn: {
     flex: 1,
@@ -1279,7 +1305,7 @@ const styles = StyleSheet.create({
   },
   weightModalSaveText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
   },
 });

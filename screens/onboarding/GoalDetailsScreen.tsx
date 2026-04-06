@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GoalDetails'>;
 type RouteType = RouteProp<RootStackParamList, 'GoalDetails'>;
@@ -819,12 +819,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   backArrow: {
-    fontSize: 22,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
@@ -837,21 +839,22 @@ const styles = StyleSheet.create({
 
   /* Title / subtitle */
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 24,
   },
 
   /* Section headings */
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
@@ -859,13 +862,15 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   sectionSubtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 12,
     marginTop: 4,
   },
   errorText: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.danger,
     marginTop: 6,
   },
@@ -891,12 +896,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardLabel: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   cardDetail: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -938,15 +944,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
   },
   chipText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium, 
     color: Colors.textSecondary,
   },
   chipTextSelected: {
     color: Colors.textPrimary,
   },
   chipHint: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 10,
   },
@@ -958,21 +965,23 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginBottom: 8,
   },
   textInput: {
+    fontFamily: Fonts.regular,
     backgroundColor: Colors.bgPrimary,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
+    fontSize: FontSizes.title,
     color: Colors.textPrimary,
   },
   inputHelper: {
-    fontSize: 12,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 8,
   },
@@ -987,7 +996,8 @@ const styles = StyleSheet.create({
     borderColor: '#1E3A4A', // TODO: map to design token
   },
   expectationText: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 19,
   },
@@ -1000,13 +1010,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   infoText: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 19,
   },
   infoHighlight: {
     color: Colors.accent,
-    fontWeight: '700',
+    fontFamily: Fonts.bold, 
   },
 
   /* General fitness info */
@@ -1016,7 +1027,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   generalInfoText: {
-    fontSize: 14,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 22,
   },
@@ -1038,8 +1050,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   buttonTextDisabled: {

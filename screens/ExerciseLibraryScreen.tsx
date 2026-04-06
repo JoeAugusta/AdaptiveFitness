@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 const DIFF_COLORS: Record<string, string> = {
   beginner: Colors.success,
@@ -436,25 +436,37 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  backChevron: { color: Colors.textPrimary, fontSize: 32, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700', flex: 1 },
-  headerCount: { color: Colors.textSecondary, fontSize: 13 },
+  backChevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.display, lineHeight: 36, paddingRight: 8 },
+  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  flex: 1 },
+  headerCount: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
 
   searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: 12, marginHorizontal: 20, marginTop: 4, marginBottom: 8, paddingHorizontal: 14, height: 44 },
-  searchIcon: { fontSize: 14, marginRight: 8 },
-  searchInput: { flex: 1, color: Colors.textPrimary, fontSize: 15 },
-  clearX: { color: Colors.textSecondary, fontSize: 22, lineHeight: 24, paddingLeft: 8 },
+  searchIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, marginRight: 8 },
+  searchInput: {
+    fontFamily: Fonts.regular,
+    flex: 1, color: Colors.textPrimary, fontSize: FontSizes.body, },
+  clearX: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, lineHeight: 24, paddingLeft: 8 },
 
   flatList: { flex: 1 },
   chip: { backgroundColor: Colors.divider, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
   chipActive: { backgroundColor: Colors.accent },
-  chipText: { color: Colors.textSecondary, fontSize: 12 },
+  chipText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   tabRow: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 8, marginBottom: 0, gap: 16 },
   tab: { paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: Colors.accent },
-  tabText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  tabText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
   tabTextActive: { color: Colors.textPrimary },
 
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
@@ -462,18 +474,26 @@ const styles = StyleSheet.create({
   exCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row' },
   exLeft: { flex: 1 },
   exRight: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingLeft: 12 },
-  exName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700' },
+  exName: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.bold, },
   primaryPill: { backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
-  primaryPillText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
-  secondaryText: { color: Colors.textSecondary, fontSize: 12, marginTop: 4 },
+  primaryPillText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  secondaryText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
   metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
-  equipText: { color: Colors.textSecondary, fontSize: 12 },
+  equipText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   diffPill: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1 },
-  diffText: { fontSize: 10, fontWeight: '600' },
-  iconBtn: { fontSize: 18 },
+  diffText: { fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, },
+  iconBtn: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2, },
 
   emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
+  emptyText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
   clearBtn: { marginTop: 12 },
-  clearBtnText: { color: Colors.accent, fontSize: 14, fontWeight: '600' },
+  clearBtnText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
 });

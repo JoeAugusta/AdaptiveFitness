@@ -11,7 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
@@ -328,12 +328,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   backArrow: {
-    fontSize: 22,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     marginTop: -2,
   },
   stepLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
@@ -346,13 +348,14 @@ const styles = StyleSheet.create({
 
   /* Heading */
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     marginBottom: 24,
   },
@@ -366,9 +369,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   calorieLabel: {
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -379,15 +382,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   calorieNumber: {
-    fontSize: 48,
-    fontWeight: '800',
+    fontSize: 48, // TODO: map to design token
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     lineHeight: 52,
   },
   calorieUnit: {
-    fontSize: 18,
+    fontSize: FontSizes.heading2,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginLeft: 6,
     marginBottom: 6,
   },
@@ -408,15 +411,16 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   adjustButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
   adjustButtonTextDisabled: {
     color: Colors.textSecondary,
   },
   goalNote: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   headingRow: {
@@ -429,7 +433,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   macroTooltipLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
@@ -451,19 +456,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   macroNumber: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     lineHeight: 32,
   },
   macroUnit: {
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.medium, 
     marginLeft: 2,
     marginBottom: 2,
   },
   macroLabel: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 4,
   },
@@ -475,7 +481,8 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   infoText: {
-    fontSize: 13,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     lineHeight: 19,
   },
@@ -494,8 +501,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold, 
     color: Colors.textPrimary,
   },
 });

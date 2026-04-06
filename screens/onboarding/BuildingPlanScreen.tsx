@@ -10,7 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
-import { Colors } from '../../constants/design';
+import { Colors, Fonts, FontSizes } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -368,13 +368,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
@@ -389,12 +390,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   checkmark: {
+    fontFamily: Fonts.regular,
     color: '#10B981', // TODO: map to design token
-    fontSize: 16,
+    fontSize: FontSizes.title,
     marginRight: 10,
   },
   stepText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
   },
 });

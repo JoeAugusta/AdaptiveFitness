@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -67,8 +67,10 @@ export default function WorkoutHomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  message: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
-  sub: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
+  message: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.semiBold, },
+  sub: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', paddingHorizontal: 40 },
   button: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 8 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
+  buttonText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 });

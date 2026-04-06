@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -661,29 +661,47 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 20 },
-  backChevron: { color: Colors.textPrimary, fontSize: 32, lineHeight: 36, paddingRight: 8 },
-  headerTitle: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700' },
+  backChevron: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.display, lineHeight: 36, paddingRight: 8 },
+  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold, },
 
   /* Empty goal */
   emptyCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 16 },
-  emptyEmoji: { fontSize: 32 },
-  emptyTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700', marginTop: 12 },
-  emptySubtext: { color: Colors.textSecondary, fontSize: 14, marginTop: 4 },
+  emptyEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display, },
+  emptyTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold,  marginTop: 12 },
+  emptySubtext: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
 
   /* Active goal card */
   goalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 20, marginBottom: 16 },
   goalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   goalBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  goalBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, // TODO: map to design token
-  editBtn: { color: Colors.textSecondary, fontSize: 13 },
-  goalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 12 },
+  goalBadgeText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.bold, }, // TODO: map to design token
+  editBtn: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+  goalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginTop: 12 },
 
   /* Progress */
   progressSection: { marginTop: 16 },
-  progressLabel: { color: Colors.textSecondary, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  progressPct: { color: Colors.textPrimary, fontSize: 32, fontWeight: '700' },
-  progressDetails: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
-  progressHint: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 6 },
+  progressLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  progressPct: { color: Colors.textPrimary, fontSize: FontSizes.display, fontFamily: Fonts.bold, },
+  progressDetails: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
+  progressHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', marginTop: 6 },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: Colors.divider, marginTop: 12, overflow: 'hidden' },
   progressFill: { height: 8, borderRadius: 4, backgroundColor: Colors.accent },
 
@@ -691,65 +709,116 @@ const styles = StyleSheet.create({
   statsDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 12 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
   statItem: { alignItems: 'center' },
-  statValue: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  statLabel: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
+  statValue: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  statLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2 },
 
   /* Expectations vs Reality */
   evrCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
   evrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  evrTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  evrInfoIcon: { color: Colors.textSecondary, fontSize: 16 },
+  evrTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  evrInfoIcon: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.title, },
   evrSection: { marginTop: 12 },
-  evrSectionLabel: { color: Colors.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  evrSectionLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
   evrQuote: { borderLeftWidth: 3, borderLeftColor: Colors.accent, paddingLeft: 10 },
-  evrQuoteText: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic', lineHeight: 20 },
-  evrNoData: { color: Colors.textSecondary, fontSize: 13, fontStyle: 'italic' },
+  evrQuoteText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', lineHeight: 20 },
+  evrNoData: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic' },
   evrDivider: { height: 1, backgroundColor: Colors.divider, marginTop: 16, marginBottom: 16 },
   evrMetricRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  evrMetricIcon: { fontSize: 16, width: 26 },
-  evrMetricLabel: { flex: 1, color: Colors.textPrimary, fontSize: 14 },
-  evrMetricValue: { fontSize: 13, fontWeight: '600', textAlign: 'right' },
+  evrMetricIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.title, width: 26 },
+  evrMetricLabel: {
+    fontFamily: Fonts.regular,
+    flex: 1, color: Colors.textPrimary, fontSize: FontSizes.caption, },
+  evrMetricValue: { fontSize: FontSizes.caption, fontFamily: Fonts.semiBold,  textAlign: 'right' },
   evrPaceValue: { flexDirection: 'row', alignItems: 'baseline' },
-  evrPaceTarget: { color: Colors.textSecondary, fontSize: 12 },
-  evrBottomNote: { color: Colors.textSecondary, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
+  evrPaceTarget: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+  evrBottomNote: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
 
   /* Milestones */
   milestonesCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
-  milestonesTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  milestonesTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold,  marginBottom: 12 },
   milestoneRow: { flexDirection: 'row', alignItems: 'center' },
   milestoneCircle: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  milestoneCircleText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' }, // TODO: map to design token
-  milestoneLabel: { flex: 1, fontSize: 14, marginLeft: 12 },
-  milestoneRight: { fontSize: 14, color: Colors.success },
+  milestoneCircleText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.bold, }, // TODO: map to design token
+  milestoneLabel: {
+    fontFamily: Fonts.regular,
+    flex: 1, fontSize: FontSizes.caption, marginLeft: 12 },
+  milestoneRight: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.success },
   milestoneLineWrap: { paddingLeft: 13, height: 16 },
   milestoneLine: { width: 3, height: 16, borderRadius: 1.5 },
 
   /* History */
-  sectionHeader: { color: Colors.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1, marginTop: 8, marginBottom: 12 },
+  sectionHeader: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 8,
+    marginBottom: 12,
+  },
   historyEmpty: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 20, alignItems: 'center' },
-  historyEmptyText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
+  historyEmptyText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
   historyCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
   historyTopRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   historyBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  historyBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
+  historyBadgeText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
   statusBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  statusBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' }, // TODO: map to design token
-  historyDesc: { color: Colors.textSecondary, fontSize: 13, marginTop: 6 },
-  historyDate: { color: Colors.textSecondary, fontSize: 11, marginTop: 4, opacity: 0.7 },
+  statusBadgeText: { color: '#FFFFFF', fontSize: FontSizes.micro, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  historyDesc: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 6 },
+  historyDate: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 4, opacity: 0.7 },
 
   /* Edit Modal */
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center' },
   modalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, marginHorizontal: 20, width: '90%' },
-  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700' },
-  modalSubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 4, marginBottom: 20 },
+  modalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold, },
+  modalSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4, marginBottom: 20 },
   modalField: { marginBottom: 16 },
-  modalFieldLabel: { color: Colors.textSecondary, fontSize: 12, textTransform: 'uppercase', marginBottom: 8 },
-  modalInput: { backgroundColor: Colors.divider, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.textPrimary, fontSize: 16 },
-  modalFieldHint: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
-  modalAutoText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center', paddingVertical: 16 },
+  modalFieldLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textTransform: 'uppercase', marginBottom: 8 },
+  modalInput: {
+    fontFamily: Fonts.regular,
+    backgroundColor: Colors.divider, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.textPrimary, fontSize: FontSizes.title, },
+  modalFieldHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 6 },
+  modalAutoText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', paddingVertical: 16 },
   modalFooter: { flexDirection: 'row', marginTop: 8, gap: 8 },
   modalCancel: { flex: 1, backgroundColor: Colors.divider, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalCancelText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  modalCancelText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, },
   modalSave: { flex: 1, backgroundColor: Colors.accent, borderRadius: 8, padding: 12, alignItems: 'center' },
-  modalSaveText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' }, // TODO: map to design token
+  modalSaveText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 });

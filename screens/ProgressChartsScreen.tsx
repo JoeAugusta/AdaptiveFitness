@@ -14,7 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 interface StrengthDataPoint {
   week: number;
@@ -98,7 +98,14 @@ function LineChart({
         return (
           <G key={`y-${i}`}>
             <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={Colors.divider} strokeWidth={1} />
-            <SvgText x={padL - 6} y={y + 4} fill={Colors.textSecondary} fontSize={10} textAnchor="end">
+            <SvgText
+              x={padL - 6}
+              y={y + 4}
+              fill={Colors.textSecondary}
+              fontSize={FontSizes.micro}
+              fontFamily={Fonts.regular}
+              textAnchor="end"
+            >
               {Math.round(val)}
             </SvgText>
           </G>
@@ -106,7 +113,15 @@ function LineChart({
       })}
       {/* X axis labels */}
       {data.map((d) => (
-        <SvgText key={`x-${d.week}`} x={toX(d.week)} y={height - 6} fill={Colors.textSecondary} fontSize={10} textAnchor="middle">
+        <SvgText
+          key={`x-${d.week}`}
+          x={toX(d.week)}
+          y={height - 6}
+          fill={Colors.textSecondary}
+          fontSize={FontSizes.micro}
+          fontFamily={Fonts.regular}
+          textAnchor="middle"
+        >
           W{d.week}
         </SvgText>
       ))}
@@ -199,7 +214,14 @@ function WeightLineChart({
         return (
           <G key={`yw-${i}`}>
             <SvgLine x1={padL} y1={y} x2={width - padR} y2={y} stroke={Colors.divider} strokeWidth={1} />
-            <SvgText x={padL - 6} y={y + 4} fill={Colors.textSecondary} fontSize={10} textAnchor="end">
+            <SvgText
+              x={padL - 6}
+              y={y + 4}
+              fill={Colors.textSecondary}
+              fontSize={FontSizes.micro}
+              fontFamily={Fonts.regular}
+              textAnchor="end"
+            >
               {Math.round(val)}
             </SvgText>
           </G>
@@ -216,7 +238,8 @@ function WeightLineChart({
           x={points[idx].x}
           y={height - 6}
           fill={Colors.textSecondary}
-          fontSize={10}
+          fontSize={FontSizes.micro}
+          fontFamily={Fonts.regular}
           textAnchor="middle"
         >
           {formatChartDate(data[idx].log_date)}
@@ -252,8 +275,8 @@ function WeightLineChart({
         x={lastPt.x}
         y={lastPt.y - 10}
         fill={Colors.textPrimary}
-        fontSize={13}
-        fontWeight="600"
+        fontSize={FontSizes.caption}
+        fontFamily={Fonts.semiBold}
         textAnchor="middle"
       >
         {`${lastWeight} lbs`}
@@ -731,10 +754,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
 
   header: { marginTop: 20, marginBottom: 24 },
-  headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700' },
-  headerSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
+  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
+  headerSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
   goalLink: { marginBottom: 16 },
-  goalLinkText: { color: Colors.accent, fontSize: 14, fontWeight: '700' },
+  goalLinkText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.bold, },
 
   card: {
     backgroundColor: Colors.bgCard,
@@ -742,24 +767,36 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
-  cardTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  cardSubtitle: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
+  cardTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  cardSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 12 },
 
   placeholderText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     paddingVertical: 24,
   },
   placeholderCenter: { alignItems: 'center', paddingVertical: 20 },
-  placeholderEmoji: { fontSize: 32, marginBottom: 12 },
-  placeholderTitleText: { color: Colors.textPrimary, fontSize: 15, textAlign: 'center' },
-  placeholderSubText: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 8 },
+  placeholderEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display, marginBottom: 12 },
+  placeholderTitleText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.body, textAlign: 'center' },
+  placeholderSubText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', marginTop: 8 },
 
-  hintText: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 8 },
+  hintText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center', marginTop: 8 },
   weightChartEmpty: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     textAlign: 'center',
     padding: 20,
   },
@@ -771,7 +808,9 @@ const styles = StyleSheet.create({
     borderLeftColor: Colors.danger,
     padding: 16,
   },
-  errorText: { color: Colors.textSecondary, fontSize: 14 },
+  errorText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
 
   /* Quick Stats */
   quickStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
@@ -782,8 +821,10 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
   },
-  miniValue: { color: Colors.textPrimary, fontSize: 22, fontWeight: '700' },
-  miniLabel: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'center' },
+  miniValue: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
+  miniLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 2, textAlign: 'center' },
 
   /* Chips */
   chipScroll: { marginBottom: 12 },
@@ -795,26 +836,38 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   chipActive: { backgroundColor: Colors.accent },
-  chipText: { color: Colors.textSecondary, fontSize: 12 },
+  chipText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   chipTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
   /* Volume list */
   volRow: { marginBottom: 10 },
   volRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  volMuscle: { color: Colors.textPrimary, fontSize: 14, flex: 1 },
-  volSets: { color: Colors.textSecondary, fontSize: 13 },
+  volMuscle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.caption, flex: 1 },
+  volSets: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   volBarBg: { height: 6, borderRadius: 3, backgroundColor: Colors.divider, overflow: 'hidden' },
   volBarFill: { height: 6, borderRadius: 3 },
   volDivider: { height: 1, backgroundColor: Colors.divider, marginVertical: 12 },
-  volSummary: { color: Colors.textSecondary, fontSize: 13, textAlign: 'center' },
+  volSummary: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, textAlign: 'center' },
 
   /* Heatmap */
   heatmapContainer: { flexDirection: 'row', marginTop: 12 },
   heatmapDayLabels: { justifyContent: 'flex-start', marginRight: 6, paddingTop: 18 },
-  heatmapDayLabel: { color: Colors.textSecondary, fontSize: 10, height: 32, lineHeight: 32, textAlign: 'right' },
+  heatmapDayLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.micro, height: 32, lineHeight: 32, textAlign: 'right' },
   heatmapWeekLabels: { flexDirection: 'row' },
-  heatmapWeekLabel: { color: Colors.textSecondary, fontSize: 10, width: 32, textAlign: 'center', height: 18, lineHeight: 18 },
+  heatmapWeekLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.micro, width: 32, textAlign: 'center', height: 18, lineHeight: 18 },
   heatmapRow: { flexDirection: 'row' },
   heatmapCell: { width: 28, height: 28, borderRadius: 4, margin: 2 },
-  heatmapStat: { color: Colors.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 12 },
+  heatmapStat: { color: Colors.textPrimary, fontSize: FontSizes.caption, fontFamily: Fonts.bold,  textAlign: 'center', marginTop: 12 },
 });

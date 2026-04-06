@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -415,14 +415,20 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  checkmark: { fontSize: 38, color: '#FFFFFF', fontWeight: '700' }, // TODO: map to design token
+  checkmark: {
+    fontSize: 38, // TODO: map to design token
+    color: '#FFFFFF',
+    fontFamily: Fonts.bold,
+  },
   heroTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 6,
   },
-  heroSubtitle: { fontSize: 15, color: Colors.textSecondary },
+  heroSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body, color: Colors.textSecondary },
 
   /* Stats grid */
   statsGrid: {
@@ -443,15 +449,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accent,
   },
-  statIcon: { fontSize: 20, marginBottom: 8 },
+  statIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2, marginBottom: 8 },
   statValue: {
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold, 
     color: Colors.textPrimary,
     marginBottom: 4,
   },
   statValuePr: { color: Colors.accent },
-  statLabel: { fontSize: 12, color: Colors.textSecondary },
+  statLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary },
 
   /* Shared card */
   card: {
@@ -461,10 +471,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cardSectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
     color: Colors.textSecondary,
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     marginBottom: 10,
   },
 
@@ -475,9 +486,13 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
   },
-  fatigueEmoji: { fontSize: 32 },
-  fatigueLabel: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
-  fatigueTip: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+  fatigueEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display, },
+  fatigueLabel: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textPrimary },
+  fatigueTip: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 20 },
 
   /* Coach */
   coachHeader: {
@@ -486,8 +501,12 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 10,
   },
-  coachEmoji: { fontSize: 14 },
-  coachNote: { fontSize: 15, color: Colors.textSecondary, lineHeight: 22 },
+  coachEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption, },
+  coachNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body, color: Colors.textSecondary, lineHeight: 22 },
   skeleton: {
     height: 16,
     backgroundColor: Colors.divider,
@@ -516,7 +535,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
-  primaryButtonText: { fontSize: 17, fontWeight: '600', color: '#FFFFFF' }, // TODO: map to design token
+  primaryButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: '#FFFFFF' }, // TODO: map to design token
   secondaryButton: {
     borderRadius: 12,
     paddingVertical: 15,
@@ -524,7 +543,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.accent,
   },
-  secondaryButtonText: { fontSize: 17, fontWeight: '600', color: Colors.accent },
+  secondaryButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.accent },
 
   /* Week complete summary banner */
   summaryBanner: {
@@ -537,12 +556,13 @@ const styles = StyleSheet.create({
   },
   summaryBannerTitle: {
     color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
   },
   summaryBannerSubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     marginTop: 4,
   },
   summaryBannerButton: {
@@ -555,8 +575,8 @@ const styles = StyleSheet.create({
   },
   summaryBannerButtonText: {
     color: '#FFFFFF', // TODO: map to design token
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold, 
   },
 
   /* Macro adjustment card */
@@ -570,13 +590,14 @@ const styles = StyleSheet.create({
   },
   macroCardTitle: {
     color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold, 
     marginBottom: 6,
   },
   macroCardBody: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     lineHeight: 20,
   },
 });

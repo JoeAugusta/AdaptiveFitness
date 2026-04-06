@@ -24,7 +24,7 @@ import Svg, {
 import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
-import { Colors } from '../constants/design';
+import { Colors, Fonts, FontSizes } from '../constants/design';
 
 interface MacroTargets {
   calories: number;
@@ -178,7 +178,7 @@ function CalorieRing({ pct }: { pct: number }) {
       />
       <SvgText
         x={size / 2} y={size / 2 + 5}
-        fill={Colors.textPrimary} fontSize={14} fontWeight="bold"
+        fill={Colors.textPrimary} fontSize={FontSizes.caption} fontFamily={Fonts.bold}
         textAnchor="middle"
       >
         {Math.round(clamped)}%
@@ -228,7 +228,13 @@ function WeeklyBarChart({
         x1={padL} y1={targetY} x2={width - padR + 4} y2={targetY}
         stroke={Colors.textSecondary} strokeWidth={1} strokeDasharray="4 4"
       />
-      <SvgText x={width - padR + 8} y={targetY + 4} fill={Colors.textSecondary} fontSize={10}>
+      <SvgText
+        x={width - padR + 8}
+        y={targetY + 4}
+        fill={Colors.textSecondary}
+        fontSize={FontSizes.micro}
+        fontFamily={Fonts.regular}
+      >
         {target}
       </SvgText>
 
@@ -259,8 +265,12 @@ function WeeklyBarChart({
               <SvgCircle cx={x + barW / 2} cy={y - 6} r={3} fill={Colors.accent} />
             )}
             <SvgText
-              x={x + barW / 2} y={padT + barMaxH + 16}
-              fill={Colors.textSecondary} fontSize={10} textAnchor="middle"
+              x={x + barW / 2}
+              y={padT + barMaxH + 16}
+              fill={Colors.textSecondary}
+              fontSize={FontSizes.micro}
+              fontFamily={Fonts.regular}
+              textAnchor="middle"
             >
               {dayLabel}
             </SvgText>
@@ -1038,84 +1048,133 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: { marginTop: 20, marginBottom: 20 },
-  headerTitle: { color: Colors.textPrimary, fontSize: 24, fontWeight: '700' },
-  headerSubtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: 2 },
+  headerTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading1, fontFamily: Fonts.bold, },
+  headerSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2 },
 
   card: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 16, marginBottom: 16 },
-  cardTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  cardSubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 16 },
+  cardTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  cardSubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 2, marginBottom: 16 },
 
   /* Calorie Ring */
   calorieCard: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   calorieLeft: { flex: 1 },
-  sectionLabel: { color: Colors.textSecondary, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
-  calorieBig: { color: Colors.textPrimary, fontSize: 36, fontWeight: '700', marginTop: 4 },
-  calorieTarget: { color: Colors.textSecondary, fontSize: 14 },
-  calorieRemaining: { fontSize: 13, marginTop: 6, fontWeight: '600' },
+  sectionLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  calorieBig: { color: Colors.textPrimary, fontSize: FontSizes.display, fontFamily: Fonts.bold,  marginTop: 4 },
+  calorieTarget: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
+  calorieRemaining: { fontSize: FontSizes.caption, marginTop: 6, fontFamily: Fonts.semiBold, },
 
   /* Macro Breakdown */
   macroRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   macroCard: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: 12, padding: 12 },
-  macroLabel: { color: Colors.textSecondary, fontSize: 11, textTransform: 'uppercase' },
-  macroValue: { color: Colors.textPrimary, fontSize: 20, fontWeight: '700', marginTop: 2 },
-  macroTarget: { color: Colors.textSecondary, fontSize: 12 },
+  macroLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  macroValue: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginTop: 2 },
+  macroTarget: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   macroBarTrack: { height: 4, borderRadius: 2, backgroundColor: Colors.divider, marginTop: 8 },
   macroBarFill: { height: 4, borderRadius: 2 },
 
   /* Meals */
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
-  addMealBtn: { color: Colors.accent, fontSize: 14, fontWeight: '700' },
+  sectionTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
+  addMealBtn: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.bold, },
 
   emptyMeals: { alignItems: 'center', paddingVertical: 20 },
-  emptyEmoji: { fontSize: 28 },
-  emptyTitle: { color: Colors.textPrimary, fontSize: 15, marginTop: 8 },
-  emptySubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 4 },
+  emptyEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.display, },
+  emptyTitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary, fontSize: FontSizes.body, marginTop: 8 },
+  emptySubtitle: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginTop: 4 },
 
   mealCard: { backgroundColor: Colors.bgCard, borderRadius: 12, padding: 14, marginBottom: 8 },
   mealTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  mealName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '700', flex: 1 },
-  trashIcon: { fontSize: 18 },
-  mealCal: { color: Colors.accent, fontSize: 13, marginTop: 4 },
+  mealName: { color: Colors.textPrimary, fontSize: FontSizes.body, fontFamily: Fonts.bold,  flex: 1 },
+  trashIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.heading2, },
+  mealCal: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent, fontSize: FontSizes.caption, marginTop: 4 },
   macroPillRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
   macroPill: { backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
-  macroPillText: { color: Colors.textSecondary, fontSize: 11 },
+  macroPillText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, },
 
   /* Weekly stats */
   statPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   statPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.divider, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
   statDot: { width: 6, height: 6, borderRadius: 3 },
-  statPillText: { color: Colors.textSecondary, fontSize: 12 },
+  statPillText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
 
   /* Modal */
   overlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center' },
   modalScroll: { flexGrow: 1, justifyContent: 'center' },
   modalCard: { backgroundColor: Colors.bgCard, borderRadius: 16, padding: 24, marginHorizontal: 20 },
-  modalTitle: { color: Colors.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 16 },
+  modalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginBottom: 16 },
 
   mealTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   mealTypeChip: { backgroundColor: Colors.divider, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
   mealTypeChipActive: { backgroundColor: Colors.accent },
-  mealTypeText: { color: Colors.textSecondary, fontSize: 13 },
+  mealTypeText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
   mealTypeTextActive: { color: '#FFFFFF' }, // TODO: map to design token
 
-  modalSectionLabel: { color: Colors.textSecondary, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  modalSectionLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
 
   inputGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   inputWrapper: { width: '47%' },
-  inputLabel: { color: Colors.textSecondary, fontSize: 12, marginBottom: 4 },
-  input: { backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, color: Colors.textPrimary, fontSize: 15 },
+  inputLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 4 },
+  input: {
+    fontFamily: Fonts.regular,
+    backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, color: Colors.textPrimary, fontSize: FontSizes.body, },
 
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   quickCard: { width: '47%', backgroundColor: Colors.divider, borderRadius: 8, padding: 10 },
-  quickName: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
-  quickMacros: { color: Colors.textSecondary, fontSize: 11, marginTop: 4 },
+  quickName: { color: Colors.textPrimary, fontSize: FontSizes.caption, fontFamily: Fonts.bold, },
+  quickMacros: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.label, marginTop: 4 },
 
   modalFooter: { flexDirection: 'row', marginTop: 20, gap: 8 },
   cancelBtn: { flex: 1, backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  cancelBtnText: { color: Colors.textSecondary, fontSize: 15, fontWeight: '600' },
+  cancelBtnText: { color: Colors.textSecondary, fontSize: FontSizes.body, fontFamily: Fonts.semiBold, },
   logBtn: { flex: 1, backgroundColor: Colors.accent, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  logBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
+  logBtnText: { color: '#FFFFFF', fontSize: FontSizes.body, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   /* Meal prefs setup card */
   mealSetupCard: {
@@ -1124,10 +1183,11 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
   },
-  mealSetupTitle: { color: Colors.textPrimary, fontSize: 16, fontWeight: '700' },
+  mealSetupTitle: { color: Colors.textPrimary, fontSize: FontSizes.title, fontFamily: Fonts.bold, },
   mealSetupBody: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 14,
+    fontSize: FontSizes.caption,
     marginTop: 6,
     lineHeight: 20,
   },
@@ -1139,25 +1199,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mealSetupCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' }, // TODO: map to design token
+  mealSetupCtaText: { color: '#FFFFFF', fontSize: FontSizes.body, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   /* Jordan meal plan */
   mealPlanSection: { marginBottom: 8 },
   mealPlanHeading: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold, 
     letterSpacing: 1.2,
     marginBottom: 12,
   },
   jordanMealNote: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     fontStyle: 'italic',
     marginBottom: 12,
     lineHeight: 18,
   },
-  mealPlanSub: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
+  mealPlanSub: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 12 },
   suggestedMealCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: 14,
@@ -1165,7 +1228,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   customiseBtn: { alignSelf: 'flex-end', marginTop: 6 },
-  customiseBtnText: { color: Colors.accent, fontSize: 13, fontWeight: '500' },
+  customiseBtnText: { color: Colors.accent, fontSize: FontSizes.caption, fontFamily: Fonts.medium, },
   suggestedMealRow1: { flexDirection: 'row', alignItems: 'center' },
   mealNamePill: {
     backgroundColor: Colors.divider,
@@ -1176,19 +1239,20 @@ const styles = StyleSheet.create({
   },
   mealNamePillText: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold, 
   },
   suggestedMealTitle: {
     color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold, 
     marginLeft: 8,
     flex: 1,
   },
   suggestedMealDesc: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: 13,
+    fontSize: FontSizes.caption,
     marginTop: 4,
     lineHeight: 18,
   },
@@ -1204,7 +1268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  sMacroPillNeutralText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
+  sMacroPillNeutralText: { color: Colors.textSecondary, fontSize: FontSizes.label, fontFamily: Fonts.semiBold, },
   sMacroPillBlue: {
     backgroundColor: Colors.accent,
     borderRadius: 8,
@@ -1223,7 +1287,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' }, // TODO: map to design token
+  sMacroPillWhiteText: { color: '#FFFFFF', fontSize: FontSizes.label, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   generatingRow: {
     flexDirection: 'row',
@@ -1232,7 +1296,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingVertical: 8,
   },
-  generatingText: { color: Colors.textSecondary, fontSize: 14 },
+  generatingText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, },
 
   /* Prefs modal */
   prefsModalSafe: { flex: 1, backgroundColor: Colors.bgPrimary },
@@ -1243,27 +1309,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  prefsClose: { color: Colors.textSecondary, fontSize: 22, width: 44 },
+  prefsClose: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.heading1, width: 44 },
   prefsHeaderTitle: {
     position: 'absolute',
     left: 0,
     right: 0,
     textAlign: 'center',
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold, 
   },
   prefsScroll: { flex: 1 },
   prefsScrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   prefsSectionLabel: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold, 
     letterSpacing: 1.2,
     marginBottom: 12,
   },
   prefsSectionSpacer: { marginTop: 24 },
-  prefsAllergiesHint: { color: Colors.textSecondary, fontSize: 13, marginBottom: 12 },
+  prefsAllergiesHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 12 },
   dietGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   dietCard: {
     width: '47%',
@@ -1277,7 +1347,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accent,
   },
-  dietCardLabel: { color: Colors.textPrimary, fontSize: 14, fontWeight: '500', textAlign: 'center' },
+  dietCardLabel: { color: Colors.textPrimary, fontSize: FontSizes.caption, fontFamily: Fonts.medium,  textAlign: 'center' },
   allergyChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   allergyChip: {
     backgroundColor: Colors.bgCard,
@@ -1286,7 +1356,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   allergyChipSelected: { backgroundColor: Colors.accent },
-  allergyChipText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '500' },
+  allergyChipText: { color: Colors.textSecondary, fontSize: FontSizes.caption, fontFamily: Fonts.medium, },
   allergyChipTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
   prefsFooter: {
     paddingHorizontal: 20,
@@ -1300,5 +1370,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prefsSaveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }, // TODO: map to design token
+  prefsSaveBtnText: { color: '#FFFFFF', fontSize: FontSizes.title, fontFamily: Fonts.bold, }, // TODO: map to design token
 });

@@ -7,7 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 const RPE_LABELS: Record<number, string> = {
   1: 'Very Easy',
@@ -21,6 +21,25 @@ const RPE_LABELS: Record<number, string> = {
   9: 'Very Hard',
   10: 'Max',
 };
+
+function rpeSelectedStyles(rpe: number) {
+  if (rpe >= 1 && rpe <= 4) {
+    return {
+      btn: styles.rpeBtnTierLow,
+      num: styles.rpeNumTierLow,
+    };
+  }
+  if (rpe >= 5 && rpe <= 7) {
+    return {
+      btn: styles.rpeBtnTierMid,
+      num: styles.rpeNumTierMid,
+    };
+  }
+  return {
+    btn: styles.rpeBtnTierHigh,
+    num: styles.rpeNumTierHigh,
+  };
+}
 
 interface RPESelectorProps {
   visible: boolean;
@@ -69,32 +88,26 @@ export default function RPESelector({
             <View key={rowIdx} style={styles.gridRow}>
               {row.map((rpe) => {
                 const isSelected = selected === rpe;
+                const tier = isSelected ? rpeSelectedStyles(rpe) : null;
                 return (
                   <TouchableOpacity
                     key={rpe}
                     activeOpacity={0.7}
                     style={[
                       styles.rpeButton,
-                      isSelected && styles.rpeButtonSelected,
+                      isSelected && tier?.btn,
                     ]}
                     onPress={() => setSelected(rpe)}
                   >
                     <Text
                       style={[
                         styles.rpeNumber,
-                        isSelected && styles.rpeNumberSelected,
+                        isSelected && tier?.num,
                       ]}
                     >
                       {rpe}
                     </Text>
-                    <Text
-                      style={[
-                        styles.rpeLabel,
-                        isSelected && styles.rpeLabelSelected,
-                      ]}
-                    >
-                      {RPE_LABELS[rpe]}
-                    </Text>
+                    <Text style={styles.rpeLabel}>{RPE_LABELS[rpe]}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -126,68 +139,103 @@ export default function RPESelector({
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
+  overlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+  },
   sheet: {
-    backgroundColor: Colors.bgCard,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 40,
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xxl,
   },
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#334155',
     borderRadius: 2,
+    backgroundColor: Colors.divider,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.xl,
   },
   title: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    marginBottom: 4,
   },
   subtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginBottom: 20,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
   },
-  grid: { gap: 10, marginBottom: 24 },
-  gridRow: { flexDirection: 'row', gap: 10 },
+  grid: {
+    gap: Spacing.sm,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
   rpeButton: {
     flex: 1,
-    aspectRatio: 1,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 12,
+    height: 56,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
-  rpeButtonSelected: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accentMuted,
+  rpeBtnTierLow: {
+    backgroundColor: Colors.successMuted,
+    borderColor: Colors.success,
   },
-  rpeNumber: { fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  color: Colors.textSecondary },
-  rpeNumberSelected: { color: Colors.accent },
+  rpeBtnTierMid: {
+    backgroundColor: Colors.warningMuted,
+    borderColor: Colors.warning,
+  },
+  rpeBtnTierHigh: {
+    backgroundColor: Colors.dangerMuted,
+    borderColor: Colors.danger,
+  },
+  rpeNumber: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  rpeNumTierLow: {
+    color: Colors.success,
+  },
+  rpeNumTierMid: {
+    color: Colors.warning,
+  },
+  rpeNumTierHigh: {
+    color: Colors.danger,
+  },
   rpeLabel: {
     fontFamily: Fonts.regular,
-    fontSize: 9, // TODO: map to design token
+    fontSize: 9,
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
   },
-  rpeLabelSelected: { color: Colors.textPrimary },
   confirmButton: {
+    marginTop: Spacing.xl,
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  confirmDisabled: { backgroundColor: Colors.divider },
-  confirmText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
-  confirmTextDisabled: { color: Colors.textSecondary },
+  confirmDisabled: {
+    backgroundColor: Colors.divider,
+  },
+  confirmText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
+  confirmTextDisabled: {
+    color: Colors.textSecondary,
+  },
 });

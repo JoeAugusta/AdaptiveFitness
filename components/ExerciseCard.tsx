@@ -7,10 +7,9 @@ import {
   TextInput,
   Modal,
   TouchableWithoutFeedback,
-  ActivityIndicator,
 } from 'react-native';
 import RPESelector from './RPESelector';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 export interface SetTarget {
   setNumber: number;
@@ -34,6 +33,12 @@ export interface LoggedSet {
   reps: number;
   rpe: number | null;
   swapped: boolean;
+}
+
+function rpeValueColor(rpe: number) {
+  if (rpe >= 1 && rpe <= 4) return Colors.success;
+  if (rpe >= 5 && rpe <= 7) return Colors.warning;
+  return Colors.danger;
 }
 
 interface ExerciseCardProps {
@@ -69,6 +74,7 @@ export default function ExerciseCard({
   const [rpeModalSet, setRpeModalSet] = useState<number | null>(null);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
   const [showSwapSheet, setShowSwapSheet] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const getDefaultInput = (setNumber: number) => {
     const lastLogged =
@@ -127,9 +133,17 @@ export default function ExerciseCard({
     onLogSet(exercise.id, setNumber, weight, reps, input.rpe);
   };
 
+  const firstTarget = exercise.sets[0];
+  const targetSummary =
+    firstTarget != null
+      ? `${exercise.sets.length} sets × ${firstTarget.targetReps} reps @ ${firstTarget.targetWeight} lbs`
+      : '';
+
+  const showCoachingBlock =
+    loggedSets.length > 0 && (coachingNote != null || coachingLoading);
+
   return (
     <View style={styles.card}>
-      {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
           <Text style={styles.exerciseName} numberOfLines={1}>
@@ -144,50 +158,12 @@ export default function ExerciseCard({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => setShowCoachingSheet(true)}
         >
-          {coachingLoading ? (
-            <ActivityIndicator size="small" color={Colors.accent} />
-          ) : (
-            <Text style={styles.infoIcon}>ⓘ</Text>
-          )}
+          <Text style={styles.infoIcon}>ⓘ</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Coaching note inline preview */}
-      {(coachingNote || coachingLoading) && (
-        <View style={styles.coachingPreview}>
-          {coachingLoading ? (
-            <View style={styles.skeletonBlock} />
-          ) : (
-            <Text style={styles.coachingText} numberOfLines={2}>
-              {coachingNote}
-            </Text>
-          )}
-        </View>
-      )}
+      <Text style={styles.targetLine}>{targetSummary}</Text>
 
-      {/* Sets table header */}
-      <View style={styles.tableHeader}>
-        <View style={styles.colSet}>
-          <Text style={styles.colHeaderText}>SET</Text>
-        </View>
-        <View style={styles.colTarget}>
-          <Text style={styles.colHeaderText}>TARGET</Text>
-        </View>
-        <View style={styles.colWeight}>
-          <Text style={styles.colHeaderText}>WEIGHT</Text>
-        </View>
-        <View style={styles.colReps}>
-          <Text style={styles.colHeaderText}>REPS</Text>
-        </View>
-        <View style={styles.colRpe}>
-          <Text style={styles.colHeaderText}>RPE</Text>
-        </View>
-        <View style={styles.colCheck}>
-          <Text style={styles.colHeaderText}>✓</Text>
-        </View>
-      </View>
-
-      {/* Sets rows */}
       {exercise.sets.map((set) => {
         const logged = isSetLogged(set.setNumber);
         const loggedData = getLoggedSet(set.setNumber);
@@ -196,83 +172,94 @@ export default function ExerciseCard({
         return (
           <View
             key={set.setNumber}
-            style={[styles.tableRow, logged && styles.tableRowLogged]}
+            style={[styles.setRow, logged && styles.setRowLogged]}
           >
-            <View style={styles.colSet}>
-              <Text style={styles.cellText}>{set.setNumber}</Text>
-            </View>
-            <View style={styles.colTarget}>
-              <Text style={styles.cellTextSecondary} numberOfLines={1}>
-                {set.targetReps} @ {set.targetWeight}
-              </Text>
+            <View style={styles.setBadge}>
+              <Text style={styles.setBadgeText}>{set.setNumber}</Text>
             </View>
 
-            {logged ? (
+            {logged && loggedData ? (
               <>
-                <View style={styles.colWeight}>
-                  <Text style={styles.cellText}>{loggedData!.weightLbs}</Text>
+                <Text style={styles.loggedWeight}>{loggedData.weightLbs}</Text>
+                <Text style={styles.timesSep}>×</Text>
+                <Text style={styles.loggedReps}>{loggedData.reps}</Text>
+                <View style={styles.rpeBadge}>
+                  {loggedData.rpe != null ? (
+                    <Text
+                      style={[
+                        styles.rpeBadgeValue,
+                        { color: rpeValueColor(loggedData.rpe) },
+                      ]}
+                    >
+                      {loggedData.rpe}
+                    </Text>
+                  ) : (
+                    <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
+                  )}
                 </View>
-                <View style={styles.colReps}>
-                  <Text style={styles.cellText}>{loggedData!.reps}</Text>
-                </View>
-                <View style={styles.colRpe}>
-                  <Text style={styles.cellText}>
-                    {loggedData!.rpe ?? '—'}
-                  </Text>
-                </View>
-                <View style={styles.colCheck}>
-                  <Text style={styles.checkSolid}>✓</Text>
+                <View style={styles.completionCircleDone}>
+                  <Text style={styles.completionCheck}>✓</Text>
                 </View>
               </>
             ) : (
               <>
-                <View style={styles.colWeight}>
-                  <TextInput
-                    style={styles.inputCell}
-                    keyboardType="numeric"
-                    value={input.weight}
-                    onChangeText={(v) =>
-                      updateInput(set.setNumber, 'weight', v)
-                    }
-                    placeholder="0"
-                    placeholderTextColor="#475569" // TODO: map to design token
-                    selectTextOnFocus
-                  />
-                </View>
-                <View style={styles.colReps}>
-                  <TextInput
-                    style={styles.inputCell}
-                    keyboardType="numeric"
-                    value={input.reps}
-                    onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
-                    placeholder="0"
-                    placeholderTextColor="#475569" // TODO: map to design token
-                    selectTextOnFocus
-                  />
-                </View>
+                <TextInput
+                  style={[
+                    styles.setInputWeight,
+                    focusedField === `w-${set.setNumber}` && styles.inputFocused,
+                  ]}
+                  keyboardType="numeric"
+                  value={input.weight}
+                  onChangeText={(v) => updateInput(set.setNumber, 'weight', v)}
+                  placeholder="0"
+                  placeholderTextColor={Colors.textTertiary}
+                  selectTextOnFocus
+                  onFocus={() => setFocusedField(`w-${set.setNumber}`)}
+                  onBlur={() => setFocusedField(null)}
+                />
+                <Text style={styles.timesSep}>×</Text>
+                <TextInput
+                  style={[
+                    styles.setInputReps,
+                    focusedField === `r-${set.setNumber}` && styles.inputFocused,
+                  ]}
+                  keyboardType="numeric"
+                  value={input.reps}
+                  onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
+                  placeholder="0"
+                  placeholderTextColor={Colors.textTertiary}
+                  selectTextOnFocus
+                  onFocus={() => setFocusedField(`r-${set.setNumber}`)}
+                  onBlur={() => setFocusedField(null)}
+                />
                 <TouchableOpacity
-                  style={[styles.colRpe, styles.rpeTappable]}
+                  style={styles.rpeBadge}
                   activeOpacity={0.7}
                   onPress={() => setRpeModalSet(set.setNumber)}
                 >
-                  <Text style={styles.rpeCellText}>
-                    {input.rpe ?? '—'}
-                  </Text>
+                  {input.rpe != null ? (
+                    <Text
+                      style={[
+                        styles.rpeBadgeValue,
+                        { color: rpeValueColor(input.rpe) },
+                      ]}
+                    >
+                      {input.rpe}
+                    </Text>
+                  ) : (
+                    <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.colCheck}
+                  style={[
+                    styles.completionCircle,
+                    canLogSet(set.setNumber) && styles.completionCircleReady,
+                  ]}
                   activeOpacity={0.7}
                   onPress={() => handleLogSet(set.setNumber)}
                   disabled={!canLogSet(set.setNumber)}
                 >
-                  <Text
-                    style={[
-                      styles.checkIcon,
-                      canLogSet(set.setNumber) && styles.checkIconEnabled,
-                    ]}
-                  >
-                    ✓
-                  </Text>
+                  <View />
                 </TouchableOpacity>
               </>
             )}
@@ -280,7 +267,17 @@ export default function ExerciseCard({
         );
       })}
 
-      {/* Swap exercise */}
+      {showCoachingBlock ? (
+        <View style={styles.coachingNoteBox}>
+          <Text style={styles.coachingJordan}>JORDAN</Text>
+          {coachingLoading ? (
+            <View style={styles.coachingSkeleton} />
+          ) : (
+            <Text style={styles.coachingNoteText}>{coachingNote}</Text>
+          )}
+        </View>
+      ) : null}
+
       <TouchableOpacity
         style={styles.swapButton}
         activeOpacity={0.7}
@@ -289,17 +286,19 @@ export default function ExerciseCard({
         <Text style={styles.swapButtonText}>Swap Exercise →</Text>
       </TouchableOpacity>
 
-      {/* RPE Selector */}
       <RPESelector
         visible={rpeModalSet !== null}
         onClose={() => setRpeModalSet(null)}
         onConfirm={(rpe) => {
           if (rpeModalSet !== null) setRpeForSet(rpeModalSet, rpe);
         }}
-        initialValue={rpeModalSet !== null ? (inputValues[rpeModalSet]?.rpe ?? null) : null}
+        initialValue={
+          rpeModalSet !== null
+            ? (inputValues[rpeModalSet]?.rpe ?? null)
+            : null
+        }
       />
 
-      {/* Coaching note sheet */}
       <Modal
         visible={showCoachingSheet}
         animationType="slide"
@@ -309,33 +308,28 @@ export default function ExerciseCard({
         <TouchableWithoutFeedback onPress={() => setShowCoachingSheet(false)}>
           <View style={styles.overlay} />
         </TouchableWithoutFeedback>
-        <View style={styles.bottomSheet}>
-          <View style={styles.dragHandle} />
-          <Text style={styles.sheetTitle}>Coach's Note</Text>
+        <View style={styles.coachSheet}>
+          <View style={styles.sheetDragHandle} />
+          <Text style={styles.coachSheetBrand}>JORDAN</Text>
           {coachingLoading ? (
-            <ActivityIndicator
-              size="small"
-              color={Colors.accent}
-              style={{ marginVertical: 20 }}
-            />
+            <View style={styles.coachingSkeletonWide} />
           ) : coachingNote ? (
-            <Text style={styles.sheetContent}>{coachingNote}</Text>
+            <Text style={styles.coachSheetBody}>{coachingNote}</Text>
           ) : (
-            <Text style={styles.sheetContent}>
+            <Text style={styles.coachSheetBody}>
               Complete a set to receive coaching feedback.
             </Text>
           )}
           <TouchableOpacity
             activeOpacity={0.8}
-            style={styles.sheetCloseButton}
+            style={styles.coachSheetBtn}
             onPress={() => setShowCoachingSheet(false)}
           >
-            <Text style={styles.sheetCloseText}>Got it</Text>
+            <Text style={styles.coachSheetBtnText}>Got it</Text>
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* Swap exercise sheet */}
       <Modal
         visible={showSwapSheet}
         animationType="slide"
@@ -345,10 +339,10 @@ export default function ExerciseCard({
         <TouchableWithoutFeedback onPress={() => setShowSwapSheet(false)}>
           <View style={styles.overlay} />
         </TouchableWithoutFeedback>
-        <View style={styles.bottomSheet}>
-          <View style={styles.dragHandle} />
-          <Text style={styles.sheetTitle}>Swap Exercise</Text>
-          <Text style={styles.sheetSubtitle}>
+        <View style={styles.swapSheet}>
+          <View style={styles.sheetDragHandle} />
+          <Text style={styles.swapSheetTitle}>Swap Exercise</Text>
+          <Text style={styles.swapSheetSubtitle}>
             Choose an alternative for {displayName}
           </Text>
           {exercise.alternatives.map((alt) => (
@@ -373,184 +367,293 @@ export default function ExerciseCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
-
-  /* Header */
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing.xs,
   },
   cardHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 8,
+    marginRight: Spacing.sm,
   },
   exerciseName: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
     flexShrink: 1,
   },
   muscleTag: {
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 8,
-    paddingHorizontal: 8,
+    marginLeft: Spacing.sm,
+    backgroundColor: Colors.bgElevated,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
+    borderRadius: Radius.full,
   },
   muscleTagText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+  },
   infoIcon: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2, color: Colors.textSecondary },
-
-  /* Coaching preview */
-  coachingPreview: {
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-  },
-  skeletonBlock: {
-    backgroundColor: Colors.divider,
-    borderRadius: 4,
-    height: 14,
-    width: '80%',
-  },
-  coachingText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary, lineHeight: 18 },
-
-  /* Table */
-  tableHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-    marginBottom: 4,
-  },
-  colHeaderText: {
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.semiBold, 
+    fontSize: 18,
     color: Colors.textSecondary,
-    textAlign: 'center',
   },
-  colSet: { width: 28, alignItems: 'center' },
-  colTarget: { flex: 1, paddingLeft: 4 },
-  colWeight: { width: 62, alignItems: 'center' },
-  colReps: { width: 44, alignItems: 'center' },
-  colRpe: { width: 40, alignItems: 'center' },
-  colCheck: { width: 34, alignItems: 'center' },
-
-  tableRow: {
+  targetLine: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.lg,
+  },
+  setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
+    gap: 4,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
   },
-  tableRowLogged: { backgroundColor: Colors.accentMuted },
-
-  cellText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textPrimary, textAlign: 'center' },
-  cellTextSecondary: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
-
-  inputCell: {
-    fontFamily: Fonts.regular,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    fontSize: FontSizes.caption,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    width: '92%',
-    minHeight: 32,
+  setRowLogged: {
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 0,
   },
-  rpeTappable: {
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 6,
-    paddingVertical: 4,
-    minHeight: 32,
+  setBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  rpeCellText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary, textAlign: 'center' },
-  checkIcon: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2, color: Colors.divider },
-  checkIconEnabled: { color: Colors.accent },
-  checkSolid: { fontSize: FontSizes.heading2, color: Colors.accent, fontFamily: Fonts.bold, },
-
-  /* Swap */
-  swapButton: { marginTop: 12, alignSelf: 'flex-start' },
-  swapButtonText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
-
-  /* Shared modal styles */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
-  bottomSheet: {
-    backgroundColor: Colors.bgCard,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 40,
+  setBadgeText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
   },
-  dragHandle: {
+  setInputWeight: {
+    width: 90,
+    height: 44,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    textAlign: 'center',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  setInputReps: {
+    width: 72,
+    height: 44,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    textAlign: 'center',
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  inputFocused: {
+    borderColor: Colors.accent,
+  },
+  timesSep: {
+    width: 20,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  loggedWeight: {
+    width: 90,
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  loggedReps: {
+    width: 72,
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  rpeBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rpeBadgeValue: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+  },
+  rpeBadgePlaceholder: {
+    fontSize: 9,
+    fontFamily: Fonts.bold,
+    color: Colors.textTertiary,
+  },
+  completionCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completionCircleReady: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentMuted,
+  },
+  completionCircleDone: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completionCheck: {
+    fontSize: 16,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  coachingNoteBox: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+  },
+  coachingJordan: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  coachingNoteText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  coachingSkeleton: {
+    height: 12,
+    width: '80%',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  swapButton: {
+    marginTop: Spacing.md,
+    alignSelf: 'flex-start',
+  },
+  swapButtonText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+  },
+  sheetDragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: Colors.divider,
     borderRadius: 2,
+    backgroundColor: Colors.divider,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.xl,
   },
-  sheetTitle: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+  coachSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xxl,
+  },
+  coachSheetBrand: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  coachSheetBody: {
+    marginTop: Spacing.md,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
     color: Colors.textPrimary,
-    marginBottom: 4,
+    lineHeight: 22,
   },
-  sheetSubtitle: {
+  coachingSkeletonWide: {
+    marginTop: Spacing.md,
+    height: 12,
+    width: '80%',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  coachSheetBtn: {
+    marginTop: Spacing.xl,
+    height: 52,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachSheetBtnText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
+  swapSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.xxl,
+    paddingBottom: 40,
+  },
+  swapSheetTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  swapSheetSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
-  sheetContent: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  sheetCloseButton: {
+  swapOption: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.divider,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  sheetCloseText: { fontSize: FontSizes.body, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
-  swapOption: {
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
   },
   swapOptionText: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.body, color: Colors.textPrimary },
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
 });

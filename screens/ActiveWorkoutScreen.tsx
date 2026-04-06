@@ -11,7 +11,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  type DimensionValue,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -20,7 +22,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, Exercise } from '../components/ExerciseCard';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 const REST_DURATION = 90;
 
@@ -108,7 +110,6 @@ export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const params = route.params;
-  const workoutTitle = params.workoutTitle ?? workout?.title ?? 'Workout';
   const sessionStartedAt = useRef(new Date()).current;
 
   // Workout data
@@ -429,82 +430,96 @@ export default function ActiveWorkoutScreen() {
     });
   };
 
+  const displayWorkoutTitle =
+    workout?.title ?? params.workoutTitle ?? 'Workout';
+
+  const restProgressWidth: DimensionValue =
+    `${Math.max(0, Math.min(100, (restSeconds / REST_DURATION) * 100))}%`;
+
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.bgPrimary, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.loadingInner}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Sticky header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.backArrow}>{'‹'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.workoutTitle} numberOfLines={1}>
-          {workoutTitle}
-        </Text>
-        <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
-      </View>
-
-      {/* Body */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {(workout?.exercises ?? []).map((exercise) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
-            swappedName={exerciseSwaps[exercise.id] ?? null}
-            coachingNote={coachingNotes[exercise.id] ?? null}
-            coachingLoading={coachingLoading[exercise.id] ?? false}
-            onLogSet={handleLogSet}
-            onSwapExercise={handleSwapExercise}
-          />
-        ))}
-      </ScrollView>
-
-      {/* Bottom bar */}
-      {allSetsLogged ? (
-        <View style={styles.bottomBar}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.container}>
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.finishButton}
-            activeOpacity={0.8}
-            onPress={() => setShowFatigueSheet(true)}
+            onPress={handleBack}
+            style={styles.backButton}
+            activeOpacity={0.7}
           >
-            <Text style={styles.finishButtonText}>Finish Workout</Text>
+            <Text style={styles.backArrow}>{'‹'}</Text>
           </TouchableOpacity>
+          <Text style={styles.workoutTitleCenter} numberOfLines={1}>
+            {displayWorkoutTitle}
+          </Text>
+          <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
         </View>
-      ) : isRestActive ? (
-        <View style={styles.bottomBar}>
-          <View style={styles.restRow}>
-            <Text style={styles.restLabel}>Rest</Text>
-            <Text style={styles.restTimer}>{formatTime(restSeconds)}</Text>
-          </View>
-          <TouchableOpacity onPress={skipRest} activeOpacity={0.7}>
-            <Text style={styles.skipRestText}>Skip Rest</Text>
-          </TouchableOpacity>
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${(restSeconds / REST_DURATION) * 100}%` },
-              ]}
-            />
-          </View>
+
+        <View style={styles.bodyWrap}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {(workout?.exercises ?? []).map((exercise) => (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={exercise}
+                loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
+                swappedName={exerciseSwaps[exercise.id] ?? null}
+                coachingNote={coachingNotes[exercise.id] ?? null}
+                coachingLoading={coachingLoading[exercise.id] ?? false}
+                onLogSet={handleLogSet}
+                onSwapExercise={handleSwapExercise}
+              />
+            ))}
+          </ScrollView>
+
+          {isRestActive && !allSetsLogged ? (
+            <View style={styles.restTimerFixed} pointerEvents="box-none">
+            <View style={styles.restBannerRow}>
+              <View>
+                <Text style={styles.restBannerLabel}>REST</Text>
+                <Text style={styles.restBannerCountdown}>
+                  {formatTime(restSeconds)}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={skipRest} activeOpacity={0.7}>
+                <Text style={styles.restBannerSkip}>Skip →</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.restBannerTrack}>
+              <View
+                style={[
+                  styles.restBannerFill,
+                  { width: restProgressWidth },
+                ]}
+              />
+            </View>
+            </View>
+          ) : null}
         </View>
-      ) : null}
+
+        {allSetsLogged ? (
+          <View style={styles.bottomBar}>
+            <TouchableOpacity
+              style={styles.finishButton}
+              activeOpacity={0.8}
+              onPress={() => setShowFatigueSheet(true)}
+            >
+              <Text style={styles.finishButtonText}>Finish Workout</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
       {/* Toast */}
       {toastMessage && (
@@ -546,14 +561,7 @@ export default function ActiveWorkoutScreen() {
                   onPress={() => setFatigueRating(opt.rating)}
                 >
                   <Text style={styles.emoji}>{opt.emoji}</Text>
-                  <Text
-                    style={[
-                      styles.emojiLabel,
-                      isSelected && styles.emojiLabelSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
+                  <Text style={styles.emojiLabel}>{opt.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -562,7 +570,7 @@ export default function ActiveWorkoutScreen() {
           <TextInput
             style={styles.notesInput}
             placeholder="Any notes for your coach? (optional)"
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={Colors.textTertiary}
             value={sessionNotes}
             onChangeText={setSessionNotes}
             multiline
@@ -590,199 +598,262 @@ export default function ActiveWorkoutScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  loadingInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.bgPrimary,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  bodyWrap: {
+    flex: 1,
+  },
 
-  /* Header */
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 56,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
     paddingBottom: 12,
     backgroundColor: Colors.bgPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.bgCard,
+    borderBottomColor: Colors.divider,
   },
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
+    zIndex: 2,
+    paddingVertical: Spacing.xs,
+    paddingRight: Spacing.md,
     justifyContent: 'center',
   },
   backArrow: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading1, color: Colors.textPrimary, marginTop: -2 },
-  workoutTitle: {
-    flex: 1,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
-    color: Colors.textPrimary,
+    fontFamily: Fonts.bold,
+    fontSize: 28,
+    color: Colors.accent,
+  },
+  workoutTitleCenter: {
+    position: 'absolute',
+    left: 48,
+    right: 72,
+    top: Spacing.sm,
+    bottom: 12,
     textAlign: 'center',
-    marginHorizontal: 12,
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    pointerEvents: 'none',
   },
   timerText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
-    color: Colors.textPrimary,
+    zIndex: 2,
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
     fontVariant: ['tabular-nums'],
+    minWidth: 56,
+    textAlign: 'right',
   },
 
-  /* Scroll */
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 140 },
+  scrollView: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: 160,
+  },
 
-  /* Bottom bar */
+  restTimerFixed: {
+    position: 'absolute',
+    bottom: 16,
+    left: 20,
+    right: 20,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    zIndex: 100,
+  },
+  restBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  restBannerLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  restBannerCountdown: {
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    fontVariant: ['tabular-nums'],
+  },
+  restBannerSkip: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
+  },
+  restBannerTrack: {
+    marginTop: Spacing.md,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.divider,
+    overflow: 'hidden',
+  },
+  restBannerFill: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.accent,
+  },
+
   bottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: Colors.bgCard,
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.lg,
     paddingBottom: 36,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
   },
-  restRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  restLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textSecondary },
-  restTimer: {
-    fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
-    color: Colors.accent,
-    fontVariant: ['tabular-nums'],
-  },
-  skipRestText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 2,
-  },
   finishButton: {
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
+    borderRadius: Radius.lg,
+    height: 56,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  finishButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
+  finishButtonText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
 
-  /* Toast */
   toast: {
     position: 'absolute',
     bottom: 100,
-    left: 24,
-    right: 24,
+    left: Spacing.xxl,
+    right: Spacing.xxl,
     backgroundColor: Colors.divider,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     alignItems: 'center',
   },
   toastText: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption, color: Colors.textPrimary },
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
 
-  /* Fatigue sheet */
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }, // TODO: map to design token
+  overlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+  },
   fatigueSheet: {
-    backgroundColor: Colors.bgCard,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 40,
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xxl,
   },
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: Colors.divider,
     borderRadius: 2,
+    backgroundColor: Colors.divider,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.xl,
   },
   fatigueTitle: {
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    marginBottom: 4,
   },
   fatigueSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginBottom: 20,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
   },
   emojiRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 20,
+    gap: Spacing.sm,
   },
   emojiCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: Colors.bgPrimary,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    paddingVertical: 14,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   emojiCardSelected: {
-    borderColor: Colors.accent,
     backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
   },
   emoji: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.display, marginBottom: 4 },
+    fontSize: 28,
+  },
   emojiLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro, color: Colors.textSecondary, textAlign: 'center' },
-  emojiLabelSelected: { color: Colors.textPrimary },
+    fontSize: 9,
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   notesInput: {
     fontFamily: Fonts.regular,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: 12,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
     padding: 14,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     minHeight: 80,
     textAlignVertical: 'top',
-    marginBottom: 20,
+    marginTop: Spacing.lg,
   },
   saveButton: {
+    marginTop: Spacing.lg,
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  saveButtonDisabled: { backgroundColor: Colors.divider },
-  saveButtonText: { fontSize: FontSizes.title, fontFamily: Fonts.semiBold,  color: Colors.textPrimary },
-  saveButtonTextDisabled: { color: Colors.textSecondary },
+  saveButtonDisabled: {
+    backgroundColor: Colors.divider,
+  },
+  saveButtonText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
+  saveButtonTextDisabled: {
+    color: Colors.textSecondary,
+  },
 });

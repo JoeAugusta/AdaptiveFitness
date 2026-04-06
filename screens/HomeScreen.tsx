@@ -10,13 +10,21 @@ import {
   Alert,
   Modal,
   TextInput,
+  type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import {
+  Colors,
+  Fonts,
+  FontSizes,
+  Spacing,
+  Radius,
+  CommonStyles,
+} from '../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -67,7 +75,7 @@ export default function HomeScreen() {
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
@@ -100,9 +108,7 @@ export default function HomeScreen() {
         return;
       }
       uidRef.current = userId;
-
-      const rawName = session.user.email?.split('@')[0] ?? '';
-      setUserName(rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : '');
+      setUserEmail(session.user.email ?? '');
 
       // Load today's weight log
       const todayDate = new Date().toISOString().split('T')[0];
@@ -372,11 +378,30 @@ export default function HomeScreen() {
   const exerciseCount = today?.exercises?.length ?? 0;
   const totalSets = today?.exercises?.reduce((sum, ex) => sum + ex.sets, 0) ?? 0;
   const estMins = totalSets > 0 ? Math.round(totalSets * 2.5) : 45;
-  const profileInitial = userName.charAt(0).toUpperCase() || 'U';
-  const progressPct = daysPerWeek > 0
-    ? `${Math.round((completedSessions / daysPerWeek) * 100)}%`
-    : '0%';
+  const displayName = userEmail
+    ? userEmail.split('@')[0].charAt(0).toUpperCase() +
+      userEmail.split('@')[0].slice(1)
+    : '';
+  const profileInitial = displayName
+    ? displayName.charAt(0).toUpperCase()
+    : 'U';
+  const completionRatio =
+    daysPerWeek > 0 ? Math.min(1, completedSessions / daysPerWeek) : 0;
+  const progressFillWidth: DimensionValue =
+    `${Math.round(completionRatio * 100)}%`;
 
+  const streakDisplay = statsLoading ? '—' : String(currentStreak);
+  const sessionsDisplay = statsLoading ? '—' : String(totalSessions);
+  let volumeDisplay: string;
+  if (statsLoading) {
+    volumeDisplay = '—';
+  } else if (weeklyVolume === 0) {
+    volumeDisplay = '—';
+  } else if (weeklyVolume >= 1000) {
+    volumeDisplay = `${Math.round((weeklyVolume / 1000) * 10) / 10}k`;
+  } else {
+    volumeDisplay = String(weeklyVolume);
+  }
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
@@ -388,21 +413,19 @@ export default function HomeScreen() {
         {/* ── 1. Header ── */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greetingTop}>{timeGreeting}</Text>
-            {userName ? <Text style={styles.greetingName}>{userName}</Text> : null}
+            <Text style={styles.greetingTime}>{timeGreeting}</Text>
+            {displayName ? (
+              <Text style={styles.greetingName}>{displayName}</Text>
+            ) : null}
           </View>
           <View style={styles.profileButton}>
             <Text style={styles.profileInitial}>{profileInitial}</Text>
           </View>
         </View>
 
-        {/* ── 2. Today's Workout Card (or Rest Day) ── */}
+        {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ── */}
         {today ? (
           <View style={styles.workoutCard}>
-            {/* Left accent bar */}
-            <View style={styles.accentBar} />
-
-            {/* Top label row */}
             <View style={styles.workoutTopRow}>
               <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
               <View style={styles.dayBadge}>
@@ -414,10 +437,8 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Workout name */}
             <Text style={styles.workoutName}>{today.title}</Text>
 
-            {/* Muscle group chips */}
             <View style={styles.chipRow}>
               {(today.muscleGroups ?? []).map((muscle) => (
                 <View key={muscle} style={styles.muscleChip}>
@@ -426,10 +447,8 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {/* Divider */}
-            <View style={styles.divider} />
+            <View style={styles.workoutDivider} />
 
-            {/* Stats row */}
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{exerciseCount}</Text>
@@ -445,7 +464,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* CTA */}
             <TouchableOpacity
               style={styles.ctaButton}
               activeOpacity={0.8}
@@ -495,7 +513,7 @@ export default function HomeScreen() {
               disabled={isGenerating}
             >
               {isGenerating ? (
-                <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
+                <ActivityIndicator color={Colors.textPrimary} />
               ) : (
                 <Text style={styles.generateCTAButtonText}>
                   Generate Week {(planData?.currentWeek ?? 0) + 1}
@@ -505,7 +523,8 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.restCard}>
-            <Text style={styles.restTitle}>Rest Day 💤</Text>
+            <Text style={styles.restEmoji}>💤</Text>
+            <Text style={styles.restTitle}>Rest Day</Text>
             <Text style={styles.restSubtitle}>
               Recovery day — no training scheduled
             </Text>
@@ -518,14 +537,14 @@ export default function HomeScreen() {
                   params: { planId: planData?.planId ?? 'mock', weekNumber: planData?.currentWeek ?? 1 },
                 })
               }
-              style={styles.viewPlanLink}
+              style={styles.restPlanLink}
             >
-              <Text style={styles.viewPlanText}>View Full Plan →</Text>
+              <Text style={styles.restPlanLinkText}>View Full Plan →</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* ── 3. Week Progress Bar ── */}
+        {/* ── 5. Week Progress ── */}
         <View style={styles.weekCard}>
           <View style={styles.weekTopRow}>
             <Text style={styles.weekLabel}>
@@ -536,12 +555,6 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          {/* Progress bar */}
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: progressPct as `${number}%` }]} />
-          </View>
-
-          {/* Day dots */}
           <View style={styles.dotsRow}>
             {Array.from({ length: daysPerWeek }, (_, i) => i + 1).map((dot) => {
               const isComplete = dot <= completedSessions;
@@ -553,14 +566,20 @@ export default function HomeScreen() {
                     styles.dayDot,
                     isComplete && styles.dayDotComplete,
                     isCurrent && styles.dayDotCurrent,
+                    !isComplete && !isCurrent && styles.dayDotFuture,
                   ]}
                 >
-                  {isComplete && (
+                  {isComplete ? (
                     <Text style={styles.dotCheckmark}>✓</Text>
-                  )}
+                  ) : null}
+                  {isCurrent ? <View style={styles.dayDotCurrentInner} /> : null}
                 </View>
               );
             })}
+          </View>
+
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: progressFillWidth }]} />
           </View>
         </View>
 
@@ -592,14 +611,14 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── 3c. Daily Weight Log Card ── */}
+        {/* ── 6. Daily Weight Log Card ── */}
         <View style={styles.weightLogCard}>
           {weightLoggedToday ? (
             <>
               <View style={styles.weightLogLeft}>
                 <View style={styles.weightLoggedRow}>
                   <Text style={styles.weightLogCheck}>✓</Text>
-                  <Text style={styles.weightLogTitle}>Weighed In</Text>
+                  <Text style={styles.weightLogTitleLogged}>Weighed In</Text>
                 </View>
                 <Text style={styles.weightLogSub}>{todayWeight} lbs today</Text>
               </View>
@@ -616,8 +635,10 @@ export default function HomeScreen() {
           ) : (
             <>
               <View style={styles.weightLogLeft}>
-                <Text style={styles.weightLogTitle}>Daily Weigh-In</Text>
-                <Text style={styles.weightLogSub}>Tap to log today's weight</Text>
+                <View style={styles.weightLogTitleRow}>
+                  <Text style={styles.weightScaleEmoji}>⚖️</Text>
+                  <Text style={styles.weightLogTitlePrompt}>Daily Weigh-In</Text>
+                </View>
               </View>
               <TouchableOpacity
                 style={styles.weightLogBtn}
@@ -633,33 +654,44 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ── 4. Quick Stats Row ── */}
+        {/* ── 7. Quick Stats Row ── */}
         <View style={styles.quickStatsRow}>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>🔥</Text>
-            <Text style={styles.quickStatValue}>
-              {statsLoading ? '—' : currentStreak}
+            <Text
+              style={[
+                styles.quickStatValue,
+                currentStreak > 0 ? styles.quickStatValueAccent : null,
+              ]}
+            >
+              {streakDisplay}
             </Text>
             <Text style={styles.quickStatLabel}>Day streak</Text>
           </View>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>⚡</Text>
-            <Text style={styles.quickStatValue}>
-              {statsLoading ? '—' : totalSessions}
+            <Text
+              style={[
+                styles.quickStatValue,
+                totalSessions > 0 ? styles.quickStatValueAccent : null,
+              ]}
+            >
+              {sessionsDisplay}
             </Text>
             <Text style={styles.quickStatLabel}>Sessions</Text>
           </View>
           <View style={styles.quickStatCard}>
             <Text style={styles.quickStatEmoji}>📈</Text>
             <View style={styles.volRow}>
-              <Text style={styles.quickStatValue}>
-                {statsLoading
-                  ? '—'
-                  : weeklyVolume === 0
-                    ? '—'
-                    : weeklyVolume >= 1000
-                      ? `${Math.round((weeklyVolume / 1000) * 10) / 10}k`
-                      : String(weeklyVolume)}
+              <Text
+                style={[
+                  styles.quickStatValue,
+                  weeklyVolume > 0 && !statsLoading
+                    ? styles.quickStatValueAccent
+                    : null,
+                ]}
+              >
+                {volumeDisplay}
               </Text>
               <Text style={styles.volUnit}>sets</Text>
             </View>
@@ -667,32 +699,30 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── 5. Coach Message Card (mock — Phase 2) ── */}
+        {/* ── 8. Coach Card ── */}
         <View style={styles.coachCard}>
-          {/* Header row */}
           <View style={styles.coachHeaderRow}>
-            <View style={styles.coachTitleGroup}>
-              <Text style={styles.coachEmoji}>🤖</Text>
-              <Text style={styles.coachTitle}>Your Coach</Text>
-            </View>
-            {coachSummary && (
+            <Text style={styles.coachBrand}>JORDAN</Text>
+            {coachSummary ? (
               <View style={styles.weekPill}>
                 <Text style={styles.weekPillText}>
                   Week {coachSummary.week_number}
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {/* Divider */}
-          <View style={styles.divider} />
-
-          {/* Message */}
-          <Text style={styles.coachMessage}>
-            {coachSummary?.headline ?? 'Your weekly summary will appear here after your first week.'}
+          <Text
+            style={
+              coachSummary?.headline
+                ? styles.coachHeadline
+                : styles.coachFallback
+            }
+          >
+            {coachSummary?.headline ??
+              'Your weekly summary will appear here after your first week.'}
           </Text>
 
-          {/* Bottom row */}
           <View style={styles.coachFooterRow}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -720,7 +750,7 @@ export default function HomeScreen() {
         <View style={styles.weightModalOverlay}>
           <View style={styles.weightModalSheet}>
             <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
-            <Text style={styles.weightModalTip}>
+            <Text style={styles.weightModalSubtitle}>
               🌅 For best accuracy, weigh yourself first thing in the morning
             </Text>
             <TextInput
@@ -746,7 +776,7 @@ export default function HomeScreen() {
                 activeOpacity={0.8}
               >
                 {weightSaving ? (
-                  <ActivityIndicator color="#FFFFFF" /* TODO: map to design token */ />
+                  <ActivityIndicator color={Colors.textPrimary} />
                 ) : (
                   <Text style={styles.weightModalSaveText}>Save</Text>
                 )}
@@ -769,8 +799,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingTop: 0,
+    paddingBottom: 120,
   },
   loadingContainer: {
     flex: 1,
@@ -778,60 +808,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  /* ── Header ── */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 60,
-    marginBottom: 24,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 56,
+    paddingBottom: Spacing.lg,
   },
-  greetingTop: {
+  greetingTime: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   greetingName: {
+    marginTop: 2,
     fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
   profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.bgCard,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileInitial: {
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
 
-  /* ── Today's Workout Card ── */
   workoutCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    paddingLeft: 24,
-    overflow: 'hidden',
-  },
-  accentBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: Colors.accent,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   workoutTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: Spacing.md,
   },
   workoutLabel: {
     fontSize: FontSizes.label,
@@ -844,190 +867,199 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: Radius.full,
   },
   dayBadgeText: {
-    fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
     color: Colors.accent,
   },
   workoutName: {
     fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    marginTop: 6,
+    marginBottom: Spacing.sm,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
+    gap: 6,
+    marginBottom: Spacing.lg,
   },
   muscleChip: {
-    backgroundColor: Colors.divider,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginRight: 6,
+    backgroundColor: Colors.bgElevated,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
   },
   muscleChipText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.divider,
-    marginTop: 16,
-    marginBottom: 16,
+  workoutDivider: {
+    ...CommonStyles.divider,
+    marginBottom: Spacing.lg,
   },
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   statItem: {
     alignItems: 'center',
-    flex: 1,
   },
   statValue: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
   statLabel: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
   ctaButton: {
-    marginTop: 16,
+    marginTop: Spacing.xl,
+    height: 56,
+    borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   ctaText: {
-    color: '#FFFFFF', // TODO: map to design token
-    fontFamily: Fonts.bold, 
-    fontSize: FontSizes.body,
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
   },
   viewPlanLink: {
+    marginTop: Spacing.md,
     alignItems: 'center',
-    marginTop: 10,
   },
   viewPlanText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
     color: Colors.accent,
+    textAlign: 'center',
   },
 
-  /* ── Rest Day Card ── */
   generateCTACard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 20,
-    marginTop: 16,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderWidth: 1.5,
+    borderColor: Colors.accentBorder,
   },
   generateCTATitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   generateCTACheckmark: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2,
+    fontSize: 20,
   },
   generateCTATitle: {
     color: Colors.textPrimary,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    marginLeft: Spacing.sm,
   },
   generateCTASubtitle: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     marginTop: 6,
   },
   generateCTAButton: {
     backgroundColor: Colors.accent,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     height: 50,
-    marginTop: 16,
+    marginTop: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   generateCTAButtonText: {
-    color: '#FFFFFF', // TODO: map to design token
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold, 
+    color: Colors.textPrimary,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
   },
 
   restCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     alignItems: 'center',
+    paddingVertical: 32,
+  },
+  restEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 48,
+    textAlign: 'center',
   },
   restTitle: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    marginBottom: 8,
+    textAlign: 'center',
+    marginTop: Spacing.md,
   },
   restSubtitle: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginBottom: 16,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  restPlanLink: {
+    marginTop: Spacing.lg,
+    alignItems: 'center',
+  },
+  restPlanLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
     textAlign: 'center',
   },
 
-  /* ── Week Progress Card ── */
   weekCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
   },
   weekTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   weekLabel: {
     color: Colors.textSecondary,
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
     letterSpacing: 1.5,
-    textTransform: 'uppercase',
   },
   weekSessions: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
-  progressTrack: {
-    marginTop: 10,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.divider,
-  },
-  progressFill: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.accent,
-  },
   dotsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
   },
   dayDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.divider,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1035,42 +1067,66 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   dayDotCurrent: {
-    backgroundColor: Colors.accentMuted,
-    borderWidth: 1.5,
+    backgroundColor: Colors.bgPrimary,
+    borderWidth: 2,
     borderColor: Colors.accent,
   },
+  dayDotFuture: {
+    backgroundColor: Colors.bgElevated,
+  },
+  dayDotCurrentInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.accent,
+  },
   dotCheckmark: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: '#FFFFFF', // TODO: map to design token
+    fontFamily: Fonts.bold,
+    fontSize: 20,
+    color: Colors.textPrimary,
+  },
+  progressTrack: {
+    marginTop: 12,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.divider,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.accent,
   },
 
-  /* ── Quick Stats Row ── */
   quickStatsRow: {
     flexDirection: 'row',
-    marginTop: 16,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
     gap: 10,
   },
   quickStatCard: {
     flex: 1,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
     alignItems: 'center',
   },
   quickStatEmoji: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2,
+    fontSize: 24,
+    marginBottom: 6,
   },
   quickStatValue: {
-    fontSize: FontSizes.heading1,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginTop: 4,
+    fontSize: FontSizes.display,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+  },
+  quickStatValueAccent: {
+    color: Colors.accent,
   },
   quickStatLabel: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
@@ -1079,7 +1135,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 2,
-    marginTop: 4,
   },
   volUnit: {
     fontFamily: Fonts.regular,
@@ -1087,48 +1142,50 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  /* ── Coach Message Card ── */
   coachCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    overflow: 'hidden',
   },
   coachHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
   },
-  coachTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  coachEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.heading2,
-  },
-  coachTitle: {
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold, 
-    color: Colors.textPrimary,
-    marginLeft: 8,
+  coachBrand: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
   },
   weekPill: {
     backgroundColor: Colors.accentMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: Radius.full,
   },
   weekPillText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
   },
-  coachMessage: {
+  coachHeadline: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    lineHeight: 24,
+  },
+  coachFallback: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    lineHeight: 22,
+    fontStyle: 'italic',
   },
   coachFooterRow: {
     flexDirection: 'row',
@@ -1137,29 +1194,29 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   coachLink: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
     color: Colors.accent,
   },
   coachUpdated: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
 
-  /* ── Next Week Ready Banner ── */
   nextWeekBanner: {
     backgroundColor: Colors.bgCard,
     borderLeftWidth: 4,
     borderLeftColor: Colors.success,
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
   },
   nextWeekBannerTitle: {
     color: Colors.textPrimary,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
   },
   nextWeekBannerSubtitle: {
     fontFamily: Fonts.regular,
@@ -1169,25 +1226,26 @@ const styles = StyleSheet.create({
   },
   nextWeekBannerButton: {
     backgroundColor: Colors.success,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 12,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
     alignSelf: 'flex-start',
   },
   nextWeekBannerButtonText: {
-    color: '#FFFFFF', // TODO: map to design token
+    color: Colors.textPrimary,
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
   },
 
-  /* ── Weight Log Card ── */
   weightLogCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-    marginBottom: 12,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1195,20 +1253,34 @@ const styles = StyleSheet.create({
   weightLogLeft: {
     flex: 1,
   },
+  weightLogTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weightScaleEmoji: {
+    fontFamily: Fonts.regular,
+    fontSize: 20,
+  },
+  weightLogTitlePrompt: {
+    marginLeft: 10,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
   weightLoggedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
   },
   weightLogCheck: {
     color: Colors.accent,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
   },
-  weightLogTitle: {
+  weightLogTitleLogged: {
     color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
   },
   weightLogSub: {
     fontFamily: Fonts.regular,
@@ -1217,15 +1289,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   weightLogBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: Spacing.sm,
   },
   weightLogBtnText: {
-    color: '#FFFFFF', // TODO: map to design token
+    color: Colors.accent,
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.semiBold, 
+    fontFamily: Fonts.bold,
   },
   weightEditBtn: {
     fontFamily: Fonts.regular,
@@ -1233,38 +1305,37 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
   },
 
-  /* ── Weight Log Modal ── */
   weightModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)', // TODO: map to design token
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   weightModalSheet: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.bgElevated,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 24,
+    padding: Spacing.xxl,
   },
   weightModalTitle: {
     color: Colors.textPrimary,
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold, 
-    marginBottom: 8,
+    fontFamily: Fonts.bold,
+    marginBottom: Spacing.sm,
   },
-  weightModalTip: {
+  weightModalSubtitle: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSizes.caption,
-    marginBottom: 20,
+    marginBottom: Spacing.xl,
   },
   weightModalInput: {
     backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: Colors.divider,
-    borderRadius: 12,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
     padding: 14,
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold, 
+    fontFamily: Fonts.bold,
     textAlign: 'center',
     color: Colors.textPrimary,
   },
@@ -1278,13 +1349,13 @@ const styles = StyleSheet.create({
   },
   weightModalBtns: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
   },
   weightModalCancelBtn: {
     flex: 1,
     height: 50,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.divider,
     alignItems: 'center',
@@ -1298,14 +1369,14 @@ const styles = StyleSheet.create({
   weightModalSaveBtn: {
     flex: 1,
     height: 50,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weightModalSaveText: {
-    color: '#FFFFFF', // TODO: map to design token
+    color: Colors.textPrimary,
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold, 
+    fontFamily: Fonts.semiBold,
   },
 });

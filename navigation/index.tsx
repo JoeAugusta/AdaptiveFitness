@@ -117,11 +117,13 @@ function MainTabs() {
             backgroundColor: Colors.bgCard,
             borderTopColor: Colors.divider,
             borderTopWidth: 1,
-            height: 60,
+            height: 84,
+            paddingBottom: 28,
+            paddingTop: 8,
           },
           tabBarActiveTintColor: Colors.accent,
-          tabBarInactiveTintColor: Colors.textSecondary,
-          tabBarLabelStyle: { fontSize: FontSizes.label, fontFamily: Fonts.regular },
+          tabBarInactiveTintColor: Colors.textTertiary,
+          tabBarLabelStyle: { fontSize: FontSizes.micro, fontFamily: Fonts.medium },
           tabBarLabel: TAB_LABELS[name] ?? name,
           tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
             <Ionicons name={focused ? icons[0] : icons[1]} size={size} color={color} />

@@ -56,6 +56,119 @@ const SPLIT_INFO_TITLE = "What's a training split?";
 const SPLIT_INFO_BODY =
   'A training split defines how you divide muscle groups across your weekly sessions. Push/Pull/Legs is the most popular for intermediate lifters. Upper/Lower suits those training 4 days. Full Body works best for 3 days/week.';
 
+interface SplitRecommendation {
+  splitId: string;
+  reason: string;
+  warning?: string;
+}
+
+function getRecommendedSplit(
+  goal: string,
+  days: string,
+  targetLift?: string,
+): SplitRecommendation {
+  const d = parseInt(days);
+  const lift = targetLift?.replace(/_/g, ' ') ?? 'your target lift';
+
+  if (goal === 'strength') {
+    if (d <= 3) {
+      return {
+        splitId: 'upper_lower',
+        reason: `Upper/Lower lets ${lift} appear twice per week — essential for 1RM progression.`,
+        warning: `PPL with 3 days means ${lift} only appears once per week. Upper/Lower gives you twice the practice on your target lift.`,
+      };
+    }
+    if (d === 4) {
+      return {
+        splitId: 'upper_lower',
+        reason: `Upper/Lower A/B gives you two ${lift} sessions per week at different intensities — heavy and volume.`,
+        warning: `PPL works at 4 days but Upper/Lower puts ${lift} on both upper days, giving you twice the weekly exposure to your target movement.`,
+      };
+    }
+    // 5-6 days
+    return {
+      splitId: 'ppl',
+      reason: `PPL at ${d} days gives you two push sessions per week — one heavy, one volume — ideal for ${lift} progression.`,
+      warning: `Upper/Lower works well too at ${d} days. PPL is slightly better for strength specialisation as it dedicates full sessions to your target movement pattern.`,
+    };
+  }
+
+  if (goal === 'hypertrophy') {
+    if (d <= 3) {
+      return {
+        splitId: 'full_body',
+        reason: 'Full Body hits every muscle group 3x per week — optimal frequency for muscle growth at 3 days.',
+        warning: 'PPL with 3 days means each muscle only gets hit once per week. Full Body gives 3x the weekly stimulus for the same number of sessions.',
+      };
+    }
+    if (d === 4) {
+      return {
+        splitId: 'upper_lower',
+        reason: 'Upper/Lower gives each muscle 2x weekly frequency — the sweet spot for hypertrophy at 4 days.',
+        warning: 'PPL works well at 4 days too — slightly less weekly frequency per muscle but higher volume per session. Both are solid choices.',
+      };
+    }
+    // 5-6 days
+    return {
+      splitId: 'ppl',
+      reason: `PPL at ${d} days gives high volume per muscle group with full recovery between sessions — ideal for hypertrophy.`,
+      warning: 'Upper/Lower at this frequency can work but PPL keeps volume per session higher, which is better for hypertrophy stimulus.',
+    };
+  }
+
+  if (goal === 'recomp') {
+    if (d <= 3) {
+      return {
+        splitId: 'full_body',
+        reason: 'Full Body sessions maximise caloric burn while hitting every muscle — ideal for recomposition at 3 days.',
+        warning: 'PPL means each muscle only gets hit once per week. Full Body keeps frequency high while burning more calories per session.',
+      };
+    }
+    return {
+      splitId: 'upper_lower',
+      reason: 'Upper/Lower keeps intensity high and frequency balanced — effective for building muscle while in a slight deficit.',
+      warning: 'PPL is a reasonable choice. Upper/Lower gives slightly more weekly frequency per muscle which helps maintain muscle during a deficit.',
+    };
+  }
+
+  if (goal === 'fat_loss') {
+    if (d <= 3) {
+      return {
+        splitId: 'full_body',
+        reason: 'Full Body sessions burn significantly more calories and keep muscle stimulus high across fewer days.',
+        warning: 'PPL means each muscle only trains once per week. Full Body burns more calories per session and preserves more muscle during fat loss.',
+      };
+    }
+    return {
+      splitId: 'upper_lower',
+      reason: 'Upper/Lower balances muscle preservation with caloric expenditure — each muscle trains twice weekly.',
+      warning: 'PPL can work for fat loss but Full Body or Upper/Lower burns more calories per session and preserves more muscle.',
+    };
+  }
+
+  // general
+  if (d <= 3) {
+    return {
+      splitId: 'full_body',
+      reason: 'Full Body is the most efficient way to build balanced fitness at 3 days — every session hits everything.',
+      warning: 'PPL with 3 days means each muscle only trains once per week. Full Body gives more balanced stimulus for general fitness.',
+    };
+  }
+  if (d === 4) {
+    return {
+      splitId: 'upper_lower',
+      reason: 'Upper/Lower is the most balanced split for general fitness at 4 days — each muscle trains twice weekly.',
+      warning: 'PPL works well at 4 days too. Upper/Lower is slightly more balanced for general fitness as it hits everything twice per week.',
+    };
+  }
+  // 5-6 days
+  return {
+    splitId: 'ppl',
+    reason: `PPL at ${d} days gives great volume distribution and recovery — solid for building overall fitness.`,
+    warning: 'Upper/Lower works too at this frequency. PPL gives slightly more volume per session which can be better for strength and size.',
+  };
+}
+
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -75,6 +188,9 @@ export default function ExperienceScreen() {
   const [daysPerWeek, setDaysPerWeek] = useState<string | null>(null);
   const [sessionLength, setSessionLength] = useState<string | null>(null);
   const [split, setSplit] = useState<string | null>(null);
+  const [recommendation, setRecommendation] = useState<SplitRecommendation | null>(
+    null,
+  );
   const [splitInfoVisible, setSplitInfoVisible] = useState(false);
 
   const allSelected = experience && daysPerWeek && sessionLength && split;
@@ -153,7 +269,12 @@ export default function ExperienceScreen() {
                 key={opt.id}
                 activeOpacity={0.7}
                 style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => setDaysPerWeek(opt.id)}
+                onPress={() => {
+                  setDaysPerWeek(opt.id);
+                  const rec = getRecommendedSplit(goal, opt.id, targetLift);
+                  setRecommendation(rec);
+                  setSplit(rec.splitId);
+                }}
               >
                 <Text
                   style={[styles.chipText, selected && styles.chipTextSelected]}
@@ -221,9 +342,34 @@ export default function ExperienceScreen() {
             );
           })}
         </View>
-        <Text style={styles.splitHint}>
-          Not sure? Push / Pull / Legs is a great default for most goals.
-        </Text>
+        {recommendation && split ? (
+          split === recommendation.splitId ? (
+            <View style={styles.recommendCard}>
+              <Text style={styles.recommendLabel}>JORDAN</Text>
+              <Text style={styles.recommendText}>{recommendation.reason}</Text>
+            </View>
+          ) : recommendation.warning ? (
+            <View style={styles.warningCard}>
+              <Text style={styles.warningLabel}>JORDAN</Text>
+              <Text style={styles.warningText}>{recommendation.warning}</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setSplit(recommendation.splitId)}
+                style={styles.warningRevertBtn}
+              >
+                <Text style={styles.warningRevertText}>
+                  Switch to{' '}
+                  {SPLIT_OPTIONS.find((s) => s.id === recommendation.splitId)
+                    ?.label}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
+        ) : (
+          <Text style={styles.splitHint}>
+            Select days per week to get Jordan's recommendation.
+          </Text>
+        )}
       </ScrollView>
 
       <View
@@ -423,6 +569,60 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
+  },
+
+  recommendCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+  },
+  recommendLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  recommendText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  warningCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.warningMuted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+    padding: Spacing.md,
+  },
+  warningLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.warning,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  warningText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  warningRevertBtn: {
+    marginTop: Spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  warningRevertText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.warning,
   },
 
   footer: {

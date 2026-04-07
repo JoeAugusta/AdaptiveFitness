@@ -61,6 +61,57 @@ function calculateStartingWeight(oneRM: number, percentage: number): number {
   return Math.round((oneRM * percentage) / 2.5) * 2.5;
 }
 
+const VOLUME_LANDMARKS: Record<
+  string,
+  { minSets: number; maxSets: number; priorityMin: number; priorityMax: number }
+> = {
+  beginner: { minSets: 8, maxSets: 10, priorityMin: 10, priorityMax: 12 },
+  intermediate: { minSets: 10, maxSets: 16, priorityMin: 14, priorityMax: 18 },
+  advanced: { minSets: 12, maxSets: 20, priorityMin: 16, priorityMax: 20 },
+};
+
+const LIFT_ACCESSORIES: Record<
+  string,
+  { direct: string[]; tricepLockout: string[]; stability: string[]; upperBack: string[] }
+> = {
+  'bench press': {
+    direct: ['Close Grip Bench Press', 'Incline Barbell Press', 'Incline Dumbbell Press'],
+    tricepLockout: ['Tricep Pushdown', 'Skull Crushers', 'Weighted Dips', 'Close Grip Bench Press'],
+    stability: ['Face Pulls', 'Rear Delt Fly', 'Band Pull-Aparts', 'Cable External Rotation'],
+    upperBack: ['Barbell Row', 'Seated Cable Row', 'Chest-Supported Row'],
+  },
+  'back squat': {
+    direct: ['Pause Squat', 'Box Squat', 'Front Squat'],
+    tricepLockout: [],
+    stability: ['Glute Bridge', 'Clamshells', 'Hip Abduction'],
+    upperBack: ['Romanian Deadlift', 'Good Morning', 'Glute Ham Raise'],
+  },
+  deadlift: {
+    direct: ['Romanian Deadlift', 'Rack Pull', 'Deficit Deadlift'],
+    tricepLockout: [],
+    stability: ['Glute Ham Raise', 'Back Extension', 'Bird Dog'],
+    upperBack: ['Barbell Row', 'Weighted Pull-up', 'Farmer Carry'],
+  },
+  'overhead press': {
+    direct: ['Push Press', 'Seated DB Press', 'Arnold Press'],
+    tricepLockout: ['Tricep Pushdown', 'Skull Crushers', 'Dips'],
+    stability: ['Face Pulls', 'Band Pull-Aparts', 'Y-T-W Raises'],
+    upperBack: ['Barbell Row', 'Lat Pulldown', 'Rear Delt Row'],
+  },
+};
+
+const MOVEMENT_PATTERN_BLOCK = `MOVEMENT PATTERN REQUIREMENTS — every weekly plan must include at least one exercise from each of these patterns:
+- Horizontal push: Bench Press, DB Press, Push-up variants
+- Horizontal pull: Barbell Row, Cable Row, DB Row, Machine Row
+- Squat pattern: Back Squat, Front Squat, Goblet Squat, Hack Squat
+- Hinge pattern: Deadlift, Romanian Deadlift, Hip Thrust, Good Morning
+- Core: Plank, Ab Wheel, Pallof Press, Cable Crunch, Hanging Leg Raise
+- Vertical push (min every other week): Overhead Press, Arnold Press
+- Vertical pull (min every other week): Pull-up, Lat Pulldown, Cable Pulldown
+- Single leg (min every other week): Lunge, Bulgarian Split Squat, Step-up
+
+For a 3-day PPL: horizontal push + horizontal pull + squat + hinge + core MUST all appear in Week 1. Vertical push/pull can be distributed across days.`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -82,12 +133,15 @@ serve(async (req) => {
     // Build goal-specific context for the prompt
     let goalContext = '';
     let weightAnchor = '';
+    let exerciseSelectionSection = '';
 
     if (goal === 'strength' && profile.current1RM && profile.targetLift) {
-      const current1RM = parseFloat(profile.current1RM);
-      const target1RM = parseFloat(profile.target1RM ?? profile.current1RM);
+      const current1RM = parseFloat(profile.current1RM ?? '0');
+      const target1RM = parseFloat(profile.target1RM ?? profile.current1RM ?? '0');
       const week1Weight = calculateStartingWeight(current1RM, 0.75);
       const liftName = profile.targetLift.replace(/_/g, ' ');
+      const liftKey = profile.targetLift?.replace(/_/g, ' ').toLowerCase() ?? '';
+      const accessories = LIFT_ACCESSORIES[liftKey] ?? LIFT_ACCESSORIES['bench press'];
 
       goalContext = `Primary lift: ${liftName}. Current 1RM: ${current1RM} lbs. Target 1RM: ${target1RM} lbs over ${totalWeeks} weeks.`;
       weightAnchor = `
@@ -96,7 +150,47 @@ CRITICAL WEIGHT RULES for strength goal:
 - All other compound lifts: estimate based on the athlete's ${liftName} strength (they are ${profile.experience} level).
 - Week 1 is a baseline week. Do NOT start at their max. 75% 1RM is the starting point.
 - Use straight sets (same weight across all sets) for the primary lift.
-- Secondary lifts should be calibrated proportionally to their strength level.`;
+- Secondary lifts should be calibrated proportionally to their strength level.
+
+STRENGTH FREQUENCY RULES:
+- The primary lift (${liftName}) should appear on BOTH push/upper days at different intensities:
+  - Heavy day: 5 sets × 3-5 reps @ 75-85% 1RM (Week 1 = 75%)
+  - Volume day: 4 sets × 4-6 reps @ 70-75% 1RM (Week 1 = 70%)
+- This gives the athlete 2 exposures per week to the target movement
+- If only 3 days/week (PPL): Day 1 = heavy push, Day 2 = pull, Day 3 = legs
+  The following week would rotate: Day 1 = volume push, etc.
+- If 4+ days/week: dedicate separate heavy and volume push days
+
+1RM PROGRESSION PATH over ${totalWeeks} weeks:
+- Week 1: ${calculateStartingWeight(current1RM, 0.75)} lbs (75% of ${current1RM} 1RM) — baseline
+- Week ${Math.round(totalWeeks * 0.25)}: ~${calculateStartingWeight(current1RM, 0.8)} lbs (80%) — accumulation
+- Week ${Math.round(totalWeeks * 0.5)}: ~${calculateStartingWeight(current1RM, 0.85)} lbs (85%) — intensification
+- Week ${Math.round(totalWeeks * 0.75)}: ~${calculateStartingWeight(current1RM, 0.9)} lbs (90%) — peak
+- Week ${totalWeeks}: ~${calculateStartingWeight(target1RM, 1.0)} lbs — target 1RM attempt
+Build Week 1 with this arc in mind. The weights should feel manageable now so there is room to add load each week.`;
+
+      exerciseSelectionSection = `STRENGTH SPECIALISATION RULES for ${liftName.toUpperCase()} goal:
+Every exercise must have a clear reason tied to the target lift.
+Use these categories as your exercise pool:
+
+Direct variations (choose 1-2 per push session):
+${accessories.direct.join(', ')}
+
+Lockout/assistance work (choose 1-2):
+${accessories.tricepLockout.length > 0 ? accessories.tricepLockout.join(', ') : 'N/A for this lift'}
+
+Shoulder/joint stability — MANDATORY at least 1 per week:
+${accessories.stability.join(', ')}
+
+Upper back / antagonist work — MANDATORY at least 1 per session:
+${accessories.upperBack.join(', ')}
+
+For a PPL split targeting ${liftName}:
+- Push days: primary lift + 1-2 direct variations + lockout work
+- Pull days: upper back work + vertical pull + biceps
+- Leg days: full lower body — do NOT skip legs even on a bench specialisation program
+
+${MOVEMENT_PATTERN_BLOCK}`;
     } else if (goal === 'hypertrophy' && profile.priorityMuscles?.length > 0) {
       goalContext = `Priority muscle groups: ${profile.priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
       weightAnchor = `
@@ -112,6 +206,17 @@ WEIGHT RULES for hypertrophy goal:
       weightAnchor = `Weight selection: Choose weights that allow completion of ${programming.repRange} reps with ${programming.restSeconds}s rest. Slightly lighter than hypertrophy — density is the goal.`;
     } else {
       weightAnchor = `Weight selection: Choose appropriate starting weights for a ${profile.experience} level athlete with access to ${profile.equipment}. Use standard percentage-based estimates.`;
+    }
+
+    if (!exerciseSelectionSection) {
+      exerciseSelectionSection = `EXERCISE SELECTION RULES:
+- Max 5 exercises per session for ${profile.sessionLength} minute sessions
+- For ${profile.split} split, ensure logical muscle group distribution across days
+- Use exercises appropriate for ${profile.equipment}
+- Week 1: focus on foundational movements. Save advanced variations for later weeks.
+- Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
+
+${MOVEMENT_PATTERN_BLOCK}`;
     }
 
     const prompt = `Create Week 1 of a ${totalWeeks}-week ${goal} training plan.
@@ -135,12 +240,15 @@ PROGRAMMING PARAMETERS for ${goal.toUpperCase()}:
 
 ${weightAnchor}
 
-EXERCISE SELECTION RULES:
-- Max 5 exercises per session for ${profile.sessionLength} minute sessions
-- For ${profile.split} split, ensure logical muscle group distribution across days
-- Use exercises appropriate for ${profile.equipment}
-- Week 1: focus on foundational movements. Save advanced variations for later weeks.
-- Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
+${exerciseSelectionSection}
+
+VOLUME RULES (weekly sets per muscle group):
+- Experience level: ${profile.experience}
+- Each muscle group should receive ${VOLUME_LANDMARKS[profile.experience]?.minSets ?? 10}–${VOLUME_LANDMARKS[profile.experience]?.maxSets ?? 16} sets per week
+- Priority muscles (if any) should receive ${VOLUME_LANDMARKS[profile.experience]?.priorityMin ?? 14}–${VOLUME_LANDMARKS[profile.experience]?.priorityMax ?? 18} sets per week
+- Do NOT exceed the max — overdosing a muscle group causes excessive fatigue
+- Do NOT go below the min — underdosing produces no adaptation
+- Count total sets across ALL workout days when distributing volume
 
 Generate exactly ${daysPerWeek} workout days plus rest days to fill all 7 days.
 Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "".

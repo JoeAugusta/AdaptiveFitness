@@ -294,6 +294,74 @@ function WeightLineChart({
   );
 }
 
+function getStrengthInsight(
+  data: StrengthDataPoint[],
+  exerciseName: string,
+): string | null {
+  if (data.length < 2) return null;
+  const first = data[0].estimated1RM;
+  const last = data[data.length - 1].estimated1RM;
+  const gain = Math.round(last - first);
+  const weeks = data[data.length - 1].week - data[0].week;
+  if (gain <= 0) {
+    return `${exerciseName} has held steady over ${weeks} weeks — weights may need increasing to drive further progress.`;
+  }
+  return `${exerciseName} is up an estimated ${gain} lbs over ${weeks} weeks. Keep the load climbing each session.`;
+}
+
+function getVolumeInsight(
+  muscleRows: [string, number][],
+  weekNum: number,
+): string | null {
+  if (muscleRows.length === 0) return null;
+  const top = muscleRows[0];
+  const totalSets = muscleRows.reduce((s, [, n]) => s + n, 0);
+  const lowest = muscleRows[muscleRows.length - 1];
+  if (muscleRows.length === 1) {
+    return `${top[0]} got ${top[1]} sets in Week ${weekNum}. Add variety across more muscle groups next week.`;
+  }
+  return `${top[0]} leads with ${top[1]} sets this week. ${lowest[0]} is lowest at ${lowest[1]} — consider balancing the volume.`;
+}
+
+function getWeightInsight(data: WeightLogPoint[]): string | null {
+  if (data.length < 4) return null;
+  const first = data[0].weight_lbs;
+  const last = data[data.length - 1].weight_lbs;
+  const diff = Math.round((last - first) * 10) / 10;
+  const days = data.length;
+  if (Math.abs(diff) < 0.5) {
+    return `Weight has been stable over ${days} days — consistent with a maintenance or recomp approach.`;
+  }
+  if (diff < 0) {
+    return `Down ${Math.abs(diff)} lbs over ${days} days — on track. Keep hitting your protein target to preserve muscle.`;
+  }
+  return `Up ${diff} lbs over ${days} days — expected for a building phase. Monitor the rate and adjust calories if needed.`;
+}
+
+function getConsistencyInsight(
+  trainedDays: number,
+  totalDays: number,
+): string | null {
+  const rate = Math.round((trainedDays / totalDays) * 100);
+  if (trainedDays === 0) return null;
+  if (rate >= 80) {
+    return `${rate}% consistency over 10 weeks — that's elite-level attendance. This is what drives long-term results.`;
+  }
+  if (rate >= 60) {
+    return `${rate}% consistency over 10 weeks — solid. Closing the gap to 80%+ will accelerate your progress significantly.`;
+  }
+  return `${rate}% consistency over 10 weeks. Getting to 3+ sessions per week consistently is the single biggest lever for improvement.`;
+}
+
+function JordanInsightCard({ text }: { text: string }) {
+  return (
+    <View style={insightStyles.card}>
+      <Text style={insightStyles.label}>JORDAN</Text>
+      <Text style={insightStyles.text}>{text}</Text>
+    </View>
+  );
+}
+
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
@@ -636,6 +704,11 @@ export default function ProgressChartsScreen() {
             </View>
 
             {(() => {
+              const insight = getStrengthInsight(strengthData, activeExercise ?? '');
+              return insight ? <JordanInsightCard text={insight} /> : null;
+            })()}
+
+            {(() => {
               const volumeWeeks = Array.from(volumeWeekData.keys()).sort((a, b) => a - b);
               const activeVolWeek = selectedVolumeWeek ?? volumeWeeks[volumeWeeks.length - 1] ?? null;
               const weekMuscleData = activeVolWeek != null ? volumeWeekData.get(activeVolWeek) : null;
@@ -722,6 +795,11 @@ export default function ProgressChartsScreen() {
                       </>
                     )}
                   </View>
+
+                  {(() => {
+                    const insight = getVolumeInsight(muscleRows, activeVolWeek ?? 0);
+                    return insight ? <JordanInsightCard text={insight} /> : null;
+                  })()}
                 </>
               );
             })()}
@@ -737,6 +815,11 @@ export default function ProgressChartsScreen() {
                 <WeightLineChart data={weightData} width={chartWidth} height={180} />
               )}
             </View>
+
+            {(() => {
+              const insight = getWeightInsight(weightData);
+              return insight ? <JordanInsightCard text={insight} /> : null;
+            })()}
 
             <Text style={styles.sectionHeading}>Consistency</Text>
             <Text style={styles.sectionSubLabel}>
@@ -790,6 +873,14 @@ export default function ProgressChartsScreen() {
                 {trainedDaysCount} training days in the last 10 weeks
               </Text>
             </View>
+
+            {(() => {
+              const insight = getConsistencyInsight(
+                trainedDaysCount,
+                consistencyDays.length,
+              );
+              return insight ? <JordanInsightCard text={insight} /> : null;
+            })()}
           </>
         )}
       </ScrollView>
@@ -1103,5 +1194,32 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     textAlign: 'center',
     marginTop: 20,
+  },
+});
+
+const insightStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  label: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  text: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
 });

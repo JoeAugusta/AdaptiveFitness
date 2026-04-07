@@ -35,6 +35,7 @@ interface PlanDay {
 
 interface PlanWeek {
   weekNumber: number;
+  phase?: string;
   days: PlanDay[];
 }
 
@@ -60,6 +61,7 @@ interface RawDay {
 
 interface RawWeek {
   weekNumber: number;
+  phase?: string;
   days: RawDay[];
 }
 
@@ -69,6 +71,46 @@ interface LoadedPlan {
   totalWeeks: number;
   daysPerWeek: number;
   weeks: PlanWeek[];
+}
+
+function getPhaseDisplay(
+  phase: string | undefined,
+  weekNumber: number,
+  totalWeeks: number,
+): { label: string; color: string; bg: string } {
+  if (weekNumber % 4 === 0) {
+    return {
+      label: 'DELOAD',
+      color: Colors.success,
+      bg: Colors.successMuted,
+    };
+  }
+  if (phase === 'intensification') {
+    return {
+      label: 'INTENSIFICATION',
+      color: Colors.warning,
+      bg: Colors.warningMuted,
+    };
+  }
+  if (phase === 'deload') {
+    return {
+      label: 'DELOAD',
+      color: Colors.success,
+      bg: Colors.successMuted,
+    };
+  }
+  if (weekNumber > totalWeeks / 2) {
+    return {
+      label: 'INTENSIFICATION',
+      color: Colors.warning,
+      bg: Colors.warningMuted,
+    };
+  }
+  return {
+    label: 'ACCUMULATION',
+    color: Colors.accent,
+    bg: Colors.accentMuted,
+  };
 }
 
 function WorkoutDayCard({
@@ -205,6 +247,7 @@ export default function PlanViewScreen() {
       const rawWeeks: RawWeek[] = planJson.weeks ?? [];
       const mappedWeeks: PlanWeek[] = rawWeeks.map((rw) => ({
         weekNumber: rw.weekNumber,
+        phase: rw.phase,
         days: rw.days.map((rd) => ({
           dayNumber: rd.dayNumber,
           type: rd.type,
@@ -297,7 +340,13 @@ export default function PlanViewScreen() {
     { length: planData.totalWeeks },
     (_, i) => i + 1,
   );
-  const weekData = planData.weeks.find((w) => w.weekNumber === selectedWeek);
+  const selectedWeekData = planData.weeks.find((w) => w.weekNumber === selectedWeek);
+  const phaseDisplay = getPhaseDisplay(
+    selectedWeekData?.phase,
+    selectedWeek,
+    planData.totalWeeks,
+  );
+  const weekData = selectedWeekData;
   const nextWorkoutDayNumber =
     weekData?.days.find((d) => d.type === 'workout' && !d.completed)
       ?.dayNumber ?? null;
@@ -326,6 +375,15 @@ export default function PlanViewScreen() {
                 {planData.daysPerWeek} days/week
               </Text>
             </View>
+            <View
+              style={[styles.phasePill, { backgroundColor: phaseDisplay.bg }]}
+            >
+              <Text
+                style={[styles.phasePillText, { color: phaseDisplay.color }]}
+              >
+                {phaseDisplay.label}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -339,6 +397,8 @@ export default function PlanViewScreen() {
             const isSelected = wn === selectedWeek;
             const isLocked = wn > planData.currentWeek;
             const isCompletedWeek = wn < planData.currentWeek;
+            const weekEntry = planData.weeks.find((w) => w.weekNumber === wn);
+            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks);
 
             const tabStyles = [
               styles.weekTabCircle,
@@ -372,6 +432,22 @@ export default function PlanViewScreen() {
                   <Text style={textStyles}>W{wn}</Text>
                   <View style={[styles.weekStatusDot, dotStyle]} />
                 </View>
+                {!isLocked ? (
+                  <Text
+                    style={[
+                      styles.weekPhaseLabel,
+                      {
+                        color: isSelected ? wPhase.color : Colors.textTertiary,
+                      },
+                    ]}
+                  >
+                    {wn % 4 === 0
+                      ? 'DL'
+                      : wPhase.label === 'INTENSIFICATION'
+                        ? 'INT'
+                        : 'ACC'}
+                  </Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -513,6 +589,23 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.medium,
     color: Colors.textSecondary,
+  },
+  phasePill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+  },
+  phasePillText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    letterSpacing: 0.8,
+  },
+  weekPhaseLabel: {
+    fontSize: 8,
+    fontFamily: Fonts.bold,
+    marginTop: 3,
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
 
   weekSelector: {

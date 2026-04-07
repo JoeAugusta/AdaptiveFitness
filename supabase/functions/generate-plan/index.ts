@@ -130,6 +130,25 @@ serve(async (req) => {
       ...(profile.excludedExercises ?? []),
     ].join(', ') || 'none';
 
+    let effectiveSplit = profile.split ?? 'ppl';
+    let splitOverrideNote = '';
+
+    if (goal === 'strength') {
+      const d = parseInt(profile.daysPerWeek ?? '4');
+      const chosenSplit = profile.split ?? 'ppl';
+
+      if (chosenSplit === 'ppl' && d <= 3) {
+        effectiveSplit = 'upper_lower';
+        splitOverrideNote = `Note: The athlete selected PPL with ${d} days, but I've switched to Upper/Lower so ${profile.targetLift?.replace(/_/g, ' ') ?? 'the target lift'} appears twice per week. Mention this in your plan title or first coaching note.`;
+      } else if (chosenSplit === 'bro_split') {
+        effectiveSplit = 'upper_lower';
+        splitOverrideNote = `Note: The athlete selected Bro Split which doesn't suit 1RM progression. I've switched to Upper/Lower for better frequency on the target lift. Mention this briefly.`;
+      } else if (chosenSplit === 'full_body' && d >= 4) {
+        effectiveSplit = 'upper_lower';
+        splitOverrideNote = `Note: Switched from Full Body to Upper/Lower at ${d} days — better recovery between sessions at this frequency.`;
+      }
+    }
+
     // Build goal-specific context for the prompt
     let goalContext = '';
     let weightAnchor = '';
@@ -223,7 +242,7 @@ ${MOVEMENT_PATTERN_BLOCK}`;
 
 ATHLETE PROFILE:
 - Experience: ${profile.experience}
-- Split: ${profile.split}
+- Split: ${effectiveSplit}${splitOverrideNote ? ` (overridden from ${profile.split})` : ''}
 - Equipment: ${profile.equipment}
 - Session length: ${profile.sessionLength} minutes
 - Days per week: ${daysPerWeek}
@@ -241,6 +260,7 @@ PROGRAMMING PARAMETERS for ${goal.toUpperCase()}:
 ${weightAnchor}
 
 ${exerciseSelectionSection}
+${splitOverrideNote ? `\nSPLIT OVERRIDE:\n${splitOverrideNote}\n` : ''}
 
 VOLUME RULES (weekly sets per muscle group):
 - Experience level: ${profile.experience}
@@ -358,14 +378,19 @@ Weight selection is CRITICAL. Under-programming (weights too light) destroys tru
       throw new Error('JSON parse failed: ' + String(e));
     }
 
+    const week1Data = plan.week ?? plan.weeks?.[0] ?? { weekNumber: 1, days: [] };
+    if (!week1Data.phase) {
+      week1Data.phase = 'accumulation';
+    }
+
     const normalized = {
       title: plan.title ?? 'Training Plan',
       totalWeeks: plan.totalWeeks ?? totalWeeks,
       daysPerWeek: plan.daysPerWeek ?? daysPerWeek,
       goal: goal,
-      split: profile.split,
+      split: effectiveSplit,
       currentWeek: 1,
-      weeks: [plan.week ?? plan.weeks?.[0] ?? { weekNumber: 1, days: [] }],
+      weeks: [week1Data],
     };
 
     if (normalized.weeks[0] && !normalized.weeks[0].weekNumber) {

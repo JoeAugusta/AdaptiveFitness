@@ -71,10 +71,51 @@ type SetItem = {
   swapped: boolean;
 };
 
+function getPhaseDisplay(
+  phase: string | undefined,
+  weekNumber: number,
+  totalWeeks: number,
+): { label: string; color: string; bg: string } {
+  if (weekNumber % 4 === 0) {
+    return {
+      label: 'DELOAD',
+      color: Colors.success,
+      bg: Colors.successMuted,
+    };
+  }
+  if (phase === 'intensification') {
+    return {
+      label: 'INTENSIFICATION',
+      color: Colors.warning,
+      bg: Colors.warningMuted,
+    };
+  }
+  if (phase === 'deload') {
+    return {
+      label: 'DELOAD',
+      color: Colors.success,
+      bg: Colors.successMuted,
+    };
+  }
+  if (weekNumber > totalWeeks / 2) {
+    return {
+      label: 'INTENSIFICATION',
+      color: Colors.warning,
+      bg: Colors.warningMuted,
+    };
+  }
+  return {
+    label: 'ACCUMULATION',
+    color: Colors.accent,
+    bg: Colors.accentMuted,
+  };
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
+  const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [totalSessions, setTotalSessions] = useState<number>(0);
@@ -149,6 +190,8 @@ export default function HomeScreen() {
           (w: { weekNumber: number }) => w.weekNumber === plan.current_week,
         ) ?? planJson.weeks?.[0];
 
+      const currentWeekPhase: string | undefined = currentWeekData?.phase;
+
       if (!currentWeekData) {
         setStatsLoading(false);
         return;
@@ -207,6 +250,7 @@ export default function HomeScreen() {
         nextWeekFirstWorkout,
         showGenerateNextWeekCTA,
       });
+      setCurrentPhase(currentWeekPhase);
 
       // Fetch latest weekly summary for coach card
       const { data: latestSummary } = await supabase
@@ -430,7 +474,25 @@ export default function HomeScreen() {
         {today ? (
           <View style={styles.workoutCard}>
             <View style={styles.workoutTopRow}>
-              <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
+              <View style={styles.workoutLabelRow}>
+                <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
+                {planData ? (() => {
+                    const ph = getPhaseDisplay(
+                      currentPhase,
+                      planData.currentWeek,
+                      planData.totalWeeks,
+                    );
+                    return (
+                      <View
+                        style={[styles.workoutPhaseBadge, { backgroundColor: ph.bg }]}
+                      >
+                        <Text style={[styles.workoutPhaseText, { color: ph.color }]}>
+                          {ph.label}
+                        </Text>
+                      </View>
+                    );
+                  })() : null}
+              </View>
               <View style={styles.dayBadge}>
                 <Text style={styles.dayBadgeText}>
                   {today.isNextWeek
@@ -1400,5 +1462,21 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSizes.body,
     fontFamily: Fonts.semiBold,
+  },
+  workoutLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  workoutPhaseBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  workoutPhaseText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    letterSpacing: 0.8,
   },
 });

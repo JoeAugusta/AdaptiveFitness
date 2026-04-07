@@ -187,6 +187,20 @@ serve(async (req) => {
       }
     }
 
+    const stagnantExercises = Object.entries(actualMap)
+      .filter(([name, actual]) => {
+        const prescribed = prescribedMap[name];
+        if (!prescribed || actual.count === 0) return false;
+        const avgWeight = actual.totalWeight / actual.count;
+        const rpeOnTarget = actual.totalRpe / actual.count;
+        return (
+          avgWeight === prescribed.targetWeight &&
+          rpeOnTarget >= prescribed.targetRpe - 1 &&
+          rpeOnTarget <= prescribed.targetRpe + 1
+        );
+      })
+      .map(([name]) => name);
+
     const avgRpeVsTarget =
       rpeDeltas.length > 0
         ? rpeDeltas.reduce((a, b) => a + b, 0) / rpeDeltas.length
@@ -218,6 +232,7 @@ serve(async (req) => {
       exercisesOverPerformed,
       exercisesUnderPerformed,
       exercisesTooLight,
+      stagnantExercises,
       prsHit,
       avgRpeVsTarget: Math.round(avgRpeVsTarget * 10) / 10,
       rpeDataRecorded, // true = user logged RPE, false = no RPE data
@@ -295,6 +310,11 @@ RPE deltas (only when rpeDataRecorded is true):
   for a completed deload. The performanceSummary should mention that
   reduced loads were intentional and the body is recovering. 
   nextWeekChanges should reference that full loads resume next week.
+
+- stagnantExercises: exercises where weight matched target exactly
+  and RPE was on target. If this list has 3+ exercises, mention in
+  nextWeekChanges that exercise variations may be introduced to
+  provide fresh stimulus.
 
 Return ONLY this exact JSON structure with no other text:
 {

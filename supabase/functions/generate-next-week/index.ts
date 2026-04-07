@@ -167,6 +167,14 @@ serve(async (req) => {
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
 
+    const priorWeeksData = (planJson.weeks ?? [])
+      .filter(
+        (w: any) =>
+          w.weekNumber >= completedWeekNumber - 2 &&
+          w.weekNumber < completedWeekNumber,
+      )
+      .sort((a: any, b: any) => a.weekNumber - b.weekNumber);
+
     // Build exercise map from plan_json for name resolution
     const exerciseMap: Record<string, string> = {};
     for (const week of planJson.weeks ?? []) {
@@ -199,6 +207,23 @@ serve(async (req) => {
           reps: ex.reps ?? '8-10',
         };
       }
+    }
+
+    const weightHistoryMap: Record<string, number[]> = {};
+    const plateauedExercises = new Set<string>();
+
+    for (const priorWeek of priorWeeksData) {
+      for (const day of (priorWeek.days ?? []).filter((d: any) => d.type === 'workout')) {
+        for (const ex of day.exercises ?? []) {
+          if (!weightHistoryMap[ex.name]) weightHistoryMap[ex.name] = [];
+          weightHistoryMap[ex.name].push(ex.targetWeight ?? 0);
+        }
+      }
+    }
+
+    for (const [name, prescribed] of Object.entries(prescribedMap)) {
+      if (!weightHistoryMap[name]) weightHistoryMap[name] = [];
+      weightHistoryMap[name].push(prescribed.targetWeight);
     }
 
     // Step 4 — Compute performance metrics
@@ -316,6 +341,32 @@ serve(async (req) => {
       });
     }
 
+    for (const adaptation of exerciseAdaptations) {
+      if (adaptation.weightAction === 'hold') {
+        const history = weightHistoryMap[adaptation.name] ?? [];
+        if (history.length >= 3) {
+          const last3 = history.slice(-3);
+          const allSame = last3.every((w: number) => w === last3[0]);
+          if (allSame) {
+            plateauedExercises.add(adaptation.name);
+            adaptation.plateaued = true;
+            adaptation.plateauWeeks = history.filter((w: number) => w === last3[0]).length;
+          }
+        }
+      }
+    }
+
+    for (const adaptation of exerciseAdaptations) {
+      if (adaptation.plateaued) {
+        if (adaptation.plateauWeeks >= 4) {
+          adaptation.sets = Math.min(adaptation.sets + 1, 6);
+          adaptation.plateauResponse = 'volume_increase';
+        } else {
+          adaptation.plateauResponse = 'rotation_needed';
+        }
+      }
+    }
+
     // Step 5 — Determine next week phase
     const nextWeekNumber = completedWeekNumber + 1;
     const weekInCycle = nextWeekNumber % 4;
@@ -371,6 +422,21 @@ For each exercise coachingNote:
 - Never use generic form cues like 'Focus on good form'
 - Never use filler praise like 'Great job!' or 'Keep it up!'
 
+PLATEAU HANDLING:
+- If an exercise has plateaued: true and plateauResponse: 'rotation_needed':
+  Replace it with a variation that targets the same muscle group and movement pattern. Choose a different implement or angle.
+  Examples:
+  - Barbell Bench Press plateaued → swap to Dumbbell Bench Press or Incline Barbell Press
+  - Back Squat plateaued → swap to Front Squat or Pause Squat
+  - Barbell Row plateaued → swap to Chest-Supported Row or Cable Row
+  The coachingNote MUST mention the swap: "Your [exercise] has stalled at [weight] for 3 weeks — I'm rotating to [new exercise] to hit the same pattern from a fresh angle."
+
+- If plateauResponse: 'volume_increase':
+  Keep the same exercise but use the updated sets value.
+  The coachingNote MUST mention the volume increase: "Same weight this week but I'm adding a set — more total work is the stimulus you need to break through this sticking point."
+
+- If no plateau: handle as normal.
+
 For each workout day, include a sessionFocus field: one sentence (max 12 words) that tells the athlete exactly what today is about.
 Reference real numbers from the exercise adaptations where possible.
 This appears on the athlete's Dashboard before they start the workout.
@@ -412,6 +478,7 @@ Rules:
 - If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
 - If hasRpeData is false for an exercise: the coachingNote MUST ask the user to log RPE next session. Weight is held. Example: "I'm holding 225 lbs here — I need your RPE to know where to take this. Rate every set next session."
 - Never decrease weight solely because RPE was not logged.
+- Exercises with plateaued: true require special handling per the system prompt. Do not ignore this field.
 - Each exercise must have: id (new uuid), name, muscleGroup, sets, reps (string e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote
 - Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "" (empty string).
 - Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type 'rest'.

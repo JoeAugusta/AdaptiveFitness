@@ -127,6 +127,7 @@ export default function HomeScreen() {
     headline: string;
     week_number: number;
   } | null>(null);
+  const [jordanWelcome, setJordanWelcome] = useState<string | null>(null);
 
   const [todayWeight, setTodayWeight] = useState<number | null>(null);
   const [weightLoggedToday, setWeightLoggedToday] = useState(false);
@@ -185,6 +186,9 @@ export default function HomeScreen() {
       }
 
       const planJson = plan.plan_json;
+      const jordanWelcome: string | null =
+        (planJson as { jordanWelcome?: string }).jordanWelcome ?? null;
+
       const currentWeekData =
         planJson.weeks?.find(
           (w: { weekNumber: number }) => w.weekNumber === plan.current_week,
@@ -250,6 +254,7 @@ export default function HomeScreen() {
         nextWeekFirstWorkout,
         showGenerateNextWeekCTA,
       });
+      setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
 
       // Fetch latest weekly summary for coach card
@@ -787,10 +792,13 @@ export default function HomeScreen() {
             style={
               coachSummary?.headline
                 ? styles.coachHeadline
-                : styles.coachFallback
+                : jordanWelcome
+                  ? styles.coachHeadline
+                  : styles.coachFallback
             }
           >
             {coachSummary?.headline ??
+              jordanWelcome ??
               'Your weekly summary will appear here after your first week.'}
           </Text>
 

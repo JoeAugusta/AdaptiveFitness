@@ -4,13 +4,14 @@ import {
   Text,
   StyleSheet,
   Animated,
+  TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
-import { Colors, Fonts, FontSizes, Spacing } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -176,6 +177,13 @@ export default function BuildingPlanScreen() {
     return () => timeouts.forEach(clearTimeout);
   }, [stepAnims]);
 
+  const [planReady, setPlanReady] = useState(false);
+  const [jordanMessage, setJordanMessage] = useState<string | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [weekNumber] = useState(1);
+  const [firstDayNumber, setFirstDayNumber] = useState<number>(1);
+  const [firstWorkoutTitle, setFirstWorkoutTitle] = useState<string>('Workout');
+
   // --- Generate plan, save to Supabase, then navigate ---
   useEffect(() => {
     generateAndSavePlan();
@@ -273,7 +281,7 @@ export default function BuildingPlanScreen() {
       if (!planJson) throw new Error('No plan returned from Edge Function');
 
       // Save plan
-      const { error: planError } = await supabase
+      const { data: savedPlan, error: planError } = await supabase
         .from('plans')
         .insert({
           user_id: userId,
@@ -289,6 +297,16 @@ export default function BuildingPlanScreen() {
 
       if (planError) throw planError;
 
+      // Find first workout day
+      const week1Days = planJson.weeks?.[0]?.days ?? [];
+      const firstWorkout = week1Days.find((d: any) => d.type === 'workout');
+
+      // Set handoff state
+      setPlanId(savedPlan.id);
+      setJordanMessage(planJson.jordanWelcome ?? null);
+      setFirstDayNumber(firstWorkout?.dayNumber ?? 1);
+      setFirstWorkoutTitle(firstWorkout?.title ?? 'Workout');
+
       // Fire-and-forget: save goal projection — does not block navigation
       saveGoalProjection(
         goalData.id,
@@ -303,7 +321,10 @@ export default function BuildingPlanScreen() {
         },
       );
 
-      navigateAfterDelay(3000);
+      // Wait minimum 3 seconds for animation, then show handoff
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 3000 - elapsed);
+      setTimeout(() => setPlanReady(true), remaining);
     } catch (error) {
       console.error('Plan generation failed:', error);
       navigateAfterDelay(1000);
@@ -358,6 +379,71 @@ export default function BuildingPlanScreen() {
           );
         })}
       </View>
+
+      {planReady && (
+        <View style={styles.handoffOverlay}>
+          <View style={styles.handoffCard}>
+            <View style={styles.handoffCheckCircle}>
+              <Text style={styles.handoffCheck}>✓</Text>
+            </View>
+
+            <Text style={styles.handoffTitle}>Your Plan is Ready</Text>
+
+            {jordanMessage ? (
+              <View style={styles.handoffJordanCard}>
+                <Text style={styles.handoffJordanLabel}>JORDAN</Text>
+                <Text style={styles.handoffJordanText}>{jordanMessage}</Text>
+              </View>
+            ) : (
+              <Text style={styles.handoffSubtitle}>
+                Week 1 is built and ready to go.
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={styles.handoffPrimaryBtn}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (planId) {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Dashboard' }],
+                  });
+                  setTimeout(() => {
+                    navigation.navigate('ActiveWorkout', {
+                      planId: planId!,
+                      weekNumber: weekNumber,
+                      dayNumber: firstDayNumber,
+                      workoutTitle: firstWorkoutTitle,
+                    });
+                  }, 100);
+                } else {
+                  navigation.navigate('Dashboard');
+                }
+              }}
+            >
+              <Text style={styles.handoffPrimaryBtnText}>
+                Start Workout Now →
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.handoffSecondaryBtn}
+              activeOpacity={0.7}
+              onPress={() =>
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Dashboard' }],
+                })
+              }
+            >
+              <Text style={styles.handoffSecondaryBtnText}>
+                Go to Dashboard
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -454,5 +540,96 @@ const styles = StyleSheet.create({
   rowDivider: {
     height: 1,
     backgroundColor: Colors.divider,
+  },
+  handoffOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.bgPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  handoffCard: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  handoffCheckCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  handoffCheck: {
+    fontSize: 32,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  handoffTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  handoffJordanCard: {
+    width: '100%',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
+    marginBottom: 32,
+  },
+  handoffJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  handoffJordanText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  handoffSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  handoffPrimaryBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  handoffPrimaryBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  handoffSecondaryBtn: {
+    width: '100%',
+    height: 52,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handoffSecondaryBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.accent,
   },
 });

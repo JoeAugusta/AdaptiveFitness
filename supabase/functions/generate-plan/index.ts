@@ -275,6 +275,7 @@ Each workout day must include sessionFocus (one sentence, max 12 words — see s
 Respond with ONLY this JSON, no other text:
 {
   "title": "descriptive plan name",
+  "jordanWelcome": "One sentence. References their specific goal, starting weight, and what Week 1 is about.",
   "totalWeeks": ${totalWeeks},
   "daysPerWeek": ${daysPerWeek},
   "week": {
@@ -349,6 +350,25 @@ sessionFocus rules (Week 1):
 
 Rest days: sessionFocus must be an empty string "".
 
+JORDAN WELCOME MESSAGE:
+Write a jordanWelcome field at the top level of the JSON.
+This is the first thing the athlete reads from Jordan after their plan is built. It appears on their Dashboard before their first session.
+
+Rules:
+- 2 sentences maximum
+- Must reference at least 2 specific numbers from their plan (starting weight, 1RM, target, weeks, or days per week)
+- Must reference their goal specifically
+- Tone: direct and confident — Jordan has a plan
+- Never say "Welcome" or "Great to have you"
+- Never use filler praise
+- Must end with a clear action ("Your first session starts now." or "Week 1 begins today.")
+
+Examples by goal:
+  Strength: "You're targeting 405 on bench — we start at 275 today, 75% of your current 1RM, and build from there over 12 weeks. Your first session starts now."
+  Hypertrophy: "12 weeks, 4 days per week, chest and back as priority — the plan is built around adding real size where it matters to you. Week 1 begins today."
+  Fat Loss: "Your target is 165 lbs over 16 weeks — 0.75 lbs per week, which is aggressive but achievable with consistent training and hitting your 2,200 calorie target. Week 1 begins today."
+  General: "3 days per week, full body — this programme builds balanced fitness from the ground up over 12 weeks. Your first session starts now."
+
 Weight selection is CRITICAL. Under-programming (weights too light) destroys trust. Follow the weight rules in the prompt exactly.`,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -385,6 +405,7 @@ Weight selection is CRITICAL. Under-programming (weights too light) destroys tru
 
     const normalized = {
       title: plan.title ?? 'Training Plan',
+      jordanWelcome: plan.jordanWelcome ?? null,
       totalWeeks: plan.totalWeeks ?? totalWeeks,
       daysPerWeek: plan.daysPerWeek ?? daysPerWeek,
       goal: goal,

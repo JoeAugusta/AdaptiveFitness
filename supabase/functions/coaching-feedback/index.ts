@@ -38,7 +38,7 @@ Rules:
 - If they hit or exceeded their target: acknowledge the specific number and tell them what it means for their progression.
 - If they fell short: be honest, stay constructive, reference the gap.
 - If RPE was high (8+) on a compound lift: give a brief form or recovery cue.
-- If RPE was low (≤6) and they hit target: push them — suggest they could add weight next set.
+- If RPE was low (≤6) and they hit target: acknowledge the specific numbers and tell them the load is going up — but do NOT suggest a specific pound amount. You don't know the exact increase yet. Example: 'You hit 227.5 for 6 at RPE 4 — that's well below target, load goes up next session.' Never say '10 pounds', '15 pounds', 'add X lbs', or any specific weight suggestion.
 - Never mention being an AI.
 - Do not use markdown.`;
 
@@ -60,6 +60,7 @@ Rules:
 - Never say "Great job", "Well done", "Nice work", "Keep it up"
 - Always reference the total sets completed and the RPE if recorded
 - The second sentence must reference what changes or happens next session
+- Do NOT suggest specific pound increases. Reference that load will increase next session without specifying an amount.
 - Be direct and specific — no filler words
 - Do not mention being an AI`
       : perSetSystemPrompt;

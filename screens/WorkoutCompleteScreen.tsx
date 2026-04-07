@@ -91,10 +91,8 @@ export default function WorkoutCompleteScreen() {
     },
   ] as const;
   // Separate display state to trigger re-render
-  const [coachNoteDisplay, setCoachNoteDisplay] =
-    require('react').useState<string | null>(null);
-  const [coachLoading, setCoachLoading] =
-    require('react').useState(true);
+  const [coachNoteDisplay, setCoachNoteDisplay] = useState<string | null>(null);
+  const [coachLoading, setCoachLoading] = useState(true);
 
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
   const [nextWeekReady, setNextWeekReady] = useState(false);
@@ -121,15 +119,14 @@ export default function WorkoutCompleteScreen() {
 
         const { data: planRow } = await supabase
           .from('plans')
-          .select('plan_json, current_week')
+          .select('plan_json')
           .eq('id', planId)
           .single();
 
         const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
-        const currentWeek: number = planRow?.current_week ?? (weekNumber + 1);
 
         if (distinctDays < daysPerWeek) return;
-        if (weekNumber >= currentWeek) return;
+        // generate-next-week and weekly-coach-summary have their own idempotency guards
 
         supabase.functions
           .invoke('weekly-coach-summary', { body: { userId, planId, weekNumber } })
@@ -140,22 +137,6 @@ export default function WorkoutCompleteScreen() {
             }
             if (!data?.summary) {
               console.error('weekly-coach-summary: no summary in response', data);
-              return;
-            }
-            const { error: upsertError } = await supabase
-              .from('weekly_summaries')
-              .upsert(
-                {
-                  user_id: userId,
-                  plan_id: planId,
-                  week_number: weekNumber,
-                  summary_json: data.summary,
-                  generated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id,plan_id,week_number' },
-              );
-            if (upsertError) {
-              console.error('weekly_summaries upsert error:', upsertError);
               return;
             }
             setShowSummaryBanner(true);
@@ -240,29 +221,88 @@ export default function WorkoutCompleteScreen() {
     );
     pulse.start();
 
-    // 4 — Non-blocking coaching note fetch
-    supabase.functions
-      .invoke('coaching-feedback', {
-        body: {
-          exerciseName: 'session_summary',
-          targetReps: `${totalSets} sets across ${totalExercises} exercises`,
-          targetWeight: 0,
-          targetRpe: 7,
-          loggedReps: totalSets,
-          loggedWeight: 0,
-          loggedRpe: fatigueRating * 2,
-        },
-      })
-      .then(({ data }) => {
+    // 4 — Non-blocking coaching note fetch (real RPE from log + plan targets)
+    void (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) {
+          pulse.stop();
+          setCoachLoading(false);
+          setCoachNoteDisplay(null);
+          return;
+        }
+
+        const { data: log } = await supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('user_id', userId)
+          .eq('plan_id', planId)
+          .eq('week_number', weekNumber)
+          .eq('day_number', dayNumber)
+          .order('logged_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const sets = (log?.sets_json ?? []) as Array<{ rpe?: number }>;
+        const rpeValues = sets
+          .map((s) => Number(s.rpe ?? 0))
+          .filter((r) => r > 0);
+        const avgRpe =
+          rpeValues.length > 0
+            ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length
+            : 0;
+
+        const { data: planRow } = await supabase
+          .from('plans')
+          .select('plan_json')
+          .eq('id', planId)
+          .single();
+
+        type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
+        type PlanDay = { dayNumber?: number; exercises?: Array<{ targetRpe?: number }> };
+        const weeks = (planRow?.plan_json as { weeks?: PlanWeek[] } | undefined)?.weeks ?? [];
+        const weekData = weeks.find((w) => w.weekNumber === weekNumber);
+        const dayData = (weekData?.days ?? []).find((d) => d.dayNumber === dayNumber);
+        const exercises = dayData?.exercises ?? [];
+        const targetRpeValues = exercises
+          .map((e) => Number(e.targetRpe ?? 0))
+          .filter((r) => r > 0);
+        const avgTargetRpe =
+          targetRpeValues.length > 0
+            ? targetRpeValues.reduce((a, b) => a + b, 0) / targetRpeValues.length
+            : 7;
+
+        const { data } = await supabase.functions.invoke('coaching-feedback', {
+          body: {
+            exerciseName: 'session_summary',
+            targetReps: totalExercises,
+            targetWeight: 0,
+            targetRpe: Math.round(avgTargetRpe * 10) / 10,
+            loggedReps: totalSets,
+            loggedWeight: 0,
+            loggedRpe: avgRpe > 0 ? Math.round(avgRpe * 10) / 10 : 0,
+            sessionContext: {
+              totalSets,
+              totalExercises,
+              weekNumber,
+              dayNumber,
+              rpeRecorded: avgRpe > 0,
+            },
+          },
+        });
+
         pulse.stop();
         setCoachLoading(false);
-        setCoachNoteDisplay(data?.feedback ?? 'Great session — keep building on this!');
-      })
-      .catch(() => {
+        setCoachNoteDisplay(data?.feedback ?? null);
+      } catch {
         pulse.stop();
         setCoachLoading(false);
-        setCoachNoteDisplay('Great session — keep building on this!');
-      });
+        setCoachNoteDisplay(null);
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -326,12 +366,31 @@ export default function WorkoutCompleteScreen() {
             <TouchableOpacity
               style={styles.summaryBannerButton}
               activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('WeeklyCoachSummary', {
-                  planId,
-                  weekNumber,
-                })
-              }
+              onPress={() => {
+                navigation.reset({
+                  index: 0,
+                  routes: [
+                    {
+                      name: 'Dashboard',
+                      state: {
+                        routes: [
+                          {
+                            name: 'HomeTab',
+                            state: {
+                              routes: [
+                                {
+                                  name: 'WeeklyCoachSummary',
+                                  params: { planId, weekNumber },
+                                },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                });
+              }}
             >
               <Text style={styles.summaryBannerButtonText}>
                 View Weekly Summary
@@ -359,29 +418,31 @@ export default function WorkoutCompleteScreen() {
           <Text style={styles.fatigueTip}>{fatigue.tip}</Text>
         </View>
 
-        <View style={styles.coachCard}>
-          <View style={styles.coachHeader}>
-            <Text style={styles.coachBrand}>JORDAN</Text>
-          </View>
-          {coachLoading ? (
-            <View>
-              <Animated.View
-                style={[
-                  styles.coachSkeletonLine,
-                  { opacity: skeletonOpacity },
-                ]}
-              />
-              <Animated.View
-                style={[
-                  styles.coachSkeletonLineShort,
-                  { opacity: skeletonOpacity },
-                ]}
-              />
+        {(coachLoading || coachNoteDisplay) && (
+          <View style={styles.coachCard}>
+            <View style={styles.coachHeader}>
+              <Text style={styles.coachBrand}>JORDAN</Text>
             </View>
-          ) : (
-            <Text style={styles.coachNote}>{coachNoteDisplay}</Text>
-          )}
-        </View>
+            {coachLoading ? (
+              <View>
+                <Animated.View
+                  style={[
+                    styles.coachSkeletonLine,
+                    { opacity: skeletonOpacity },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.coachSkeletonLineShort,
+                    { opacity: skeletonOpacity },
+                  ]}
+                />
+              </View>
+            ) : (
+              <Text style={styles.coachNote}>{coachNoteDisplay}</Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.footerSpacer} />
       </ScrollView>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-import RPESelector from './RPESelector';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 export interface SetTarget {
@@ -71,7 +70,7 @@ export default function ExerciseCard({
   const [inputValues, setInputValues] = useState<
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
-  const [rpeModalSet, setRpeModalSet] = useState<number | null>(null);
+  const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
   const [showSwapSheet, setShowSwapSheet] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -108,7 +107,6 @@ export default function ExerciseCard({
       const existing = prev[setNumber] || getDefaultInput(setNumber);
       return { ...prev, [setNumber]: { ...existing, rpe } };
     });
-    setRpeModalSet(null);
   };
 
   const isSetLogged = (setNumber: number) =>
@@ -170,100 +168,138 @@ export default function ExerciseCard({
         const input = getInputForSet(set.setNumber);
 
         return (
-          <View
-            key={set.setNumber}
-            style={[styles.setRow, logged && styles.setRowLogged]}
-          >
-            <View style={styles.setBadge}>
-              <Text style={styles.setBadgeText}>{set.setNumber}</Text>
-            </View>
+          <Fragment key={set.setNumber}>
+            <View
+              style={[styles.setRow, logged && styles.setRowLogged]}
+            >
+              <View style={styles.setBadge}>
+                <Text style={styles.setBadgeText}>{set.setNumber}</Text>
+              </View>
 
-            {logged && loggedData ? (
-              <>
-                <Text style={styles.loggedWeight}>{loggedData.weightLbs}</Text>
-                <Text style={styles.timesSep}>×</Text>
-                <Text style={styles.loggedReps}>{loggedData.reps}</Text>
-                <View style={styles.rpeBadge}>
-                  {loggedData.rpe != null ? (
+              {logged && loggedData ? (
+                <>
+                  <Text style={styles.loggedWeight}>{loggedData.weightLbs}</Text>
+                  <Text style={styles.timesSep}>×</Text>
+                  <Text style={styles.loggedReps}>{loggedData.reps}</Text>
+                  <View style={styles.rpeBadge}>
+                    {loggedData.rpe != null ? (
+                      <Text
+                        style={[
+                          styles.rpeBadgeValue,
+                          { color: rpeValueColor(loggedData.rpe) },
+                        ]}
+                      >
+                        {loggedData.rpe}
+                      </Text>
+                    ) : (
+                      <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
+                    )}
+                  </View>
+                  <View style={styles.completionCircleDone}>
+                    <Text style={styles.completionCheck}>✓</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    style={[
+                      styles.setInputWeight,
+                      focusedField === `w-${set.setNumber}` && styles.inputFocused,
+                    ]}
+                    keyboardType="numeric"
+                    value={input.weight}
+                    onChangeText={(v) => updateInput(set.setNumber, 'weight', v)}
+                    placeholder="0"
+                    placeholderTextColor={Colors.textTertiary}
+                    selectTextOnFocus
+                    onFocus={() => setFocusedField(`w-${set.setNumber}`)}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <Text style={styles.timesSep}>×</Text>
+                  <TextInput
+                    style={[
+                      styles.setInputReps,
+                      focusedField === `r-${set.setNumber}` && styles.inputFocused,
+                    ]}
+                    keyboardType="numeric"
+                    value={input.reps}
+                    onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
+                    placeholder="0"
+                    placeholderTextColor={Colors.textTertiary}
+                    selectTextOnFocus
+                    onFocus={() => setFocusedField(`r-${set.setNumber}`)}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <TouchableOpacity
+                    style={styles.rpeBadge}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      setRpeExpandedSet((prev) =>
+                        prev === set.setNumber ? null : set.setNumber,
+                      )
+                    }
+                  >
+                    {input.rpe != null ? (
+                      <Text
+                        style={[
+                          styles.rpeBadgeValue,
+                          { color: rpeValueColor(input.rpe) },
+                        ]}
+                      >
+                        {input.rpe}
+                      </Text>
+                    ) : (
+                      <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.completionCircle,
+                      canLogSet(set.setNumber) && styles.completionCircleReady,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => handleLogSet(set.setNumber)}
+                    disabled={!canLogSet(set.setNumber)}
+                  >
+                    <View />
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+            {!logged && rpeExpandedSet === set.setNumber && (
+              <View style={styles.rpeInlineRow}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[
+                      styles.rpeInlineBtn,
+                      input.rpe === val && styles.rpeInlineBtnSelected,
+                      val <= 4 && input.rpe === val && styles.rpeInlineBtnSuccess,
+                      val >= 5 &&
+                        val <= 7 &&
+                        input.rpe === val &&
+                        styles.rpeInlineBtnWarning,
+                      val >= 8 && input.rpe === val && styles.rpeInlineBtnDanger,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setRpeForSet(set.setNumber, val);
+                      setRpeExpandedSet(null);
+                    }}
+                  >
                     <Text
                       style={[
-                        styles.rpeBadgeValue,
-                        { color: rpeValueColor(loggedData.rpe) },
+                        styles.rpeInlineBtnText,
+                        input.rpe === val && styles.rpeInlineBtnTextSelected,
                       ]}
                     >
-                      {loggedData.rpe}
+                      {val}
                     </Text>
-                  ) : (
-                    <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
-                  )}
-                </View>
-                <View style={styles.completionCircleDone}>
-                  <Text style={styles.completionCheck}>✓</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <TextInput
-                  style={[
-                    styles.setInputWeight,
-                    focusedField === `w-${set.setNumber}` && styles.inputFocused,
-                  ]}
-                  keyboardType="numeric"
-                  value={input.weight}
-                  onChangeText={(v) => updateInput(set.setNumber, 'weight', v)}
-                  placeholder="0"
-                  placeholderTextColor={Colors.textTertiary}
-                  selectTextOnFocus
-                  onFocus={() => setFocusedField(`w-${set.setNumber}`)}
-                  onBlur={() => setFocusedField(null)}
-                />
-                <Text style={styles.timesSep}>×</Text>
-                <TextInput
-                  style={[
-                    styles.setInputReps,
-                    focusedField === `r-${set.setNumber}` && styles.inputFocused,
-                  ]}
-                  keyboardType="numeric"
-                  value={input.reps}
-                  onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
-                  placeholder="0"
-                  placeholderTextColor={Colors.textTertiary}
-                  selectTextOnFocus
-                  onFocus={() => setFocusedField(`r-${set.setNumber}`)}
-                  onBlur={() => setFocusedField(null)}
-                />
-                <TouchableOpacity
-                  style={styles.rpeBadge}
-                  activeOpacity={0.7}
-                  onPress={() => setRpeModalSet(set.setNumber)}
-                >
-                  {input.rpe != null ? (
-                    <Text
-                      style={[
-                        styles.rpeBadgeValue,
-                        { color: rpeValueColor(input.rpe) },
-                      ]}
-                    >
-                      {input.rpe}
-                    </Text>
-                  ) : (
-                    <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.completionCircle,
-                    canLogSet(set.setNumber) && styles.completionCircleReady,
-                  ]}
-                  activeOpacity={0.7}
-                  onPress={() => handleLogSet(set.setNumber)}
-                  disabled={!canLogSet(set.setNumber)}
-                >
-                  <View />
-                </TouchableOpacity>
-              </>
+                  </TouchableOpacity>
+                ))}
+              </View>
             )}
-          </View>
+          </Fragment>
         );
       })}
 
@@ -285,19 +321,6 @@ export default function ExerciseCard({
       >
         <Text style={styles.swapButtonText}>Swap Exercise →</Text>
       </TouchableOpacity>
-
-      <RPESelector
-        visible={rpeModalSet !== null}
-        onClose={() => setRpeModalSet(null)}
-        onConfirm={(rpe) => {
-          if (rpeModalSet !== null) setRpeForSet(rpeModalSet, rpe);
-        }}
-        initialValue={
-          rpeModalSet !== null
-            ? (inputValues[rpeModalSet]?.rpe ?? null)
-            : null
-        }
-      />
 
       <Modal
         visible={showCoachingSheet}
@@ -530,6 +553,48 @@ const styles = StyleSheet.create({
   completionCheck: {
     fontSize: 16,
     fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  rpeInlineRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  rpeInlineBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rpeInlineBtnSelected: {
+    borderWidth: 1.5,
+  },
+  rpeInlineBtnSuccess: {
+    backgroundColor: Colors.successMuted,
+    borderColor: Colors.success,
+  },
+  rpeInlineBtnWarning: {
+    backgroundColor: Colors.warningMuted,
+    borderColor: Colors.warning,
+  },
+  rpeInlineBtnDanger: {
+    backgroundColor: Colors.dangerMuted,
+    borderColor: Colors.danger,
+  },
+  rpeInlineBtnText: {
+    fontSize: 10,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+  },
+  rpeInlineBtnTextSelected: {
     color: Colors.textPrimary,
   },
   coachingNoteBox: {

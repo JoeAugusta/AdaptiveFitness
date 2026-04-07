@@ -26,8 +26,61 @@ function parseMidReps(reps: string): number {
   return parseInt(reps) || 0;
 }
 
+function parseMinReps(reps: string): number {
+  const parts = reps.split('-');
+  return parseInt(parts[0]) || 0;
+}
+
 function roundTo2_5(value: number): number {
   return Math.round(value / 2.5) * 2.5;
+}
+
+function calculateIncrease(
+  currentWeight: number,
+  avgRpe: number,
+  targetRpe: number,
+  trainingAge: string,
+  compound: boolean,
+): number {
+  const rpeGap = avgRpe - targetRpe; // negative = too light
+
+  // Base percentage by RPE gap
+  let basePct: number;
+  if (rpeGap <= -4) {
+    basePct = 0.10; // Way too light — +10%
+  } else if (rpeGap <= -2) {
+    basePct = 0.05; // Too light — +5%
+  } else {
+    basePct = 0; // On target — use standard increment
+  }
+
+  // Training age multiplier
+  let multiplier: number;
+  if (trainingAge === 'beginner') {
+    multiplier = 1.3; // Beginners adapt faster — larger jumps
+  } else if (trainingAge === 'advanced') {
+    multiplier = 0.7; // Advanced athletes near ceiling — smaller jumps
+  } else {
+    multiplier = 1.0; // Intermediate — base percentage
+  }
+
+  // If RPE is near target, use standard fixed increment
+  if (basePct === 0) {
+    return compound ? 2.5 : 1.0;
+  }
+
+  // Calculate percentage-based increase
+  const rawIncrease = currentWeight * basePct * multiplier;
+
+  // Round to nearest 2.5 lbs
+  const rounded = Math.round(rawIncrease / 2.5) * 2.5;
+
+  // Minimum increase of 2.5 lbs — never less
+  const withMinimum = Math.max(2.5, rounded);
+
+  // Cap at 12% of current weight — safety ceiling
+  const cap = Math.round((currentWeight * 0.12) / 2.5) * 2.5;
+  return Math.min(withMinimum, cap);
 }
 
 serve(async (req) => {
@@ -67,7 +120,9 @@ serve(async (req) => {
         .from('user_profiles')
         .select('training_age, weight_lbs, equipment')
         .eq('user_id', userId)
-        .single(),
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (planResult.error) throw new Error(`Failed to fetch plan: ${planResult.error.message}`);
@@ -77,6 +132,7 @@ serve(async (req) => {
     const planJson = plan.plan_json;
     const logs = logsResult.data ?? [];
     const profile = profileResult.data;
+    const trainingAge: string = profile?.training_age ?? 'intermediate';
 
     // Fetch goal type via goal_id
     let goalType = 'general';
@@ -111,10 +167,23 @@ serve(async (req) => {
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
 
+    // Build exercise map from plan_json for name resolution
+    const exerciseMap: Record<string, string> = {};
+    for (const week of planJson.weeks ?? []) {
+      for (const day of week.days ?? []) {
+        for (const ex of day.exercises ?? []) {
+          if (ex.id && ex.name) {
+            exerciseMap[ex.id] = ex.name;
+          }
+        }
+      }
+    }
+
     type PrescribedEx = {
       targetWeight: number;
       targetRpe: number;
       targetReps: number;
+      minReps: number;
       sets: number;
       reps: string;
     };
@@ -125,6 +194,7 @@ serve(async (req) => {
           targetWeight: ex.targetWeight ?? 0,
           targetRpe: ex.targetRpe ?? 0,
           targetReps: parseMidReps(ex.reps ?? '0'),
+          minReps: parseMinReps(ex.reps ?? '1'),
           sets: ex.sets ?? 3,
           reps: ex.reps ?? '8-10',
         };
@@ -154,12 +224,18 @@ serve(async (req) => {
     for (const log of logs) {
       const setsJson: any[] = log.sets_json ?? [];
       for (const set of setsJson) {
-        const name: string = set.exerciseName ?? set.name ?? '';
+        // Resolve exercise name — try exerciseId lookup first, then fallbacks
+        const name: string =
+          (set.exerciseId ? exerciseMap[set.exerciseId] : null) ??
+          set.exerciseName ??
+          set.name ??
+          '';
         if (!name) continue;
         if (!actualMap[name]) {
           actualMap[name] = { totalWeight: 0, totalReps: 0, totalRpe: 0, count: 0, maxWeight: 0 };
         }
-        const weight = Number(set.weight ?? set.loggedWeight ?? 0);
+        // FIX: use weightLbs (the actual field name in sets_json) not weight
+        const weight = Number(set.weightLbs ?? set.weight ?? set.loggedWeight ?? 0);
         const reps = Number(set.reps ?? set.loggedReps ?? 0);
         const rpe = Number(set.rpe ?? set.loggedRpe ?? 0);
         actualMap[name].totalWeight += weight;
@@ -175,18 +251,37 @@ serve(async (req) => {
 
     for (const [name, prescribed] of Object.entries(prescribedMap)) {
       const actual = actualMap[name];
-      const avgReps = actual ? actual.totalReps / actual.count : 0;
-      const avgRpe = actual ? actual.totalRpe / actual.count : 0;
+      const avgReps = actual && actual.count > 0 ? actual.totalReps / actual.count : 0;
+      const avgRpe = actual && actual.count > 0 ? actual.totalRpe / actual.count : 0;
       const compound = isCompound(name);
+      const hasRpeData = avgRpe > 0;
 
       let weightAction: 'increase' | 'decrease' | 'hold';
       let weightDelta: number;
 
       if (completionTier === 'full') {
-        if (avgRpe <= 7 && avgReps >= prescribed.targetReps * 1.05) {
+        const rpeIsLow = hasRpeData && avgRpe <= 6;
+        const rpeIsHigh = hasRpeData && avgRpe >= 9;
+        const repsExceeded = avgReps > 0 && avgReps >= prescribed.targetReps * 1.05;
+        // Only decrease if user failed to hit the minimum of the rep range
+        // Hitting 3 reps on a "3-5" range is valid — do not decrease
+        const repsFell = avgReps > 0 && avgReps < prescribed.minReps;
+
+        if (!hasRpeData && !repsFell && !repsExceeded) {
+          // No RPE data logged and reps were within range — hold weight
+          // Jordan's note will ask user to log RPE next session
+          weightAction = 'hold';
+          weightDelta = 0;
+        } else if (rpeIsLow || repsExceeded) {
           weightAction = 'increase';
-          weightDelta = compound ? 2.5 : 1;
-        } else if (avgRpe >= 9 || avgReps < prescribed.targetReps * 0.85) {
+          weightDelta = calculateIncrease(
+            prescribed.targetWeight,
+            avgRpe,
+            prescribed.targetRpe,
+            trainingAge,
+            compound,
+          );
+        } else if (rpeIsHigh || repsFell) {
           weightAction = 'decrease';
           weightDelta = -2.5;
         } else {
@@ -197,6 +292,7 @@ serve(async (req) => {
         weightAction = 'hold';
         weightDelta = 0;
       } else {
+        // Low completion — decrease
         weightAction = 'decrease';
         weightDelta = -2.5;
       }
@@ -208,9 +304,15 @@ serve(async (req) => {
         oldWeight: prescribed.targetWeight,
         newTargetWeight,
         weightAction,
+        rpeGap: Math.round((avgRpe - prescribed.targetRpe) * 10) / 10,
+        avgRpe: Math.round(avgRpe * 10) / 10,
+        hasRpeData,
+        avgReps: Math.round(avgReps * 10) / 10,
+        targetRpe: prescribed.targetRpe,
+        targetReps: prescribed.targetReps,
+        minReps: prescribed.minReps,
         oldReps: prescribed.reps,
         sets: prescribed.sets,
-        targetRpe: prescribed.targetRpe,
       });
     }
 
@@ -238,7 +340,6 @@ serve(async (req) => {
     // Step 6 — Call Claude API
     const split = planJson.split ?? weekData?.title ?? 'mixed';
     const equipment = profile?.equipment ?? 'full gym';
-    const trainingAge = profile?.training_age ?? 'unknown';
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -252,15 +353,41 @@ serve(async (req) => {
         max_tokens: 4000,
         system: `You are Jordan, the athlete's personal coach. You have their last week of performance data and you are writing their next week plan. Generate the training plan as structured JSON with varied exercise selection, smart ordering, and coaching notes that reference the user's actual performance.
 
+RPE INTERPRETATION — read this carefully:
+- avgRpe is the athlete's ACTUAL RPE for that exercise last week
+- targetRpe is what was programmed
+- If avgRpe < targetRpe: the weight was TOO LIGHT. The athlete found it easy. Increase load.
+- If avgRpe > targetRpe: the weight was HEAVY. High effort.
+- weightAction field tells you exactly what to do: 'increase', 'hold', 'decrease', or 'deload'
+
 For each exercise coachingNote:
-- Speak as Jordan directly to the athlete
-- If weight increased: tell them why ('You hit 185 at RPE 7 last week — I'm moving you to 190 this week, you have more in the tank')
-- If weight held: tell them why ('RPE was high last week — same weight this week, focus on cleaner reps')
-- If weight decreased or it's a deload: be honest and frame it positively ('Backing off this week is intentional — your body needs it to come back stronger')
+- Speak as Jordan directly to the athlete in first person
+- Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing
+- If weightAction is 'increase': explain why ("You hit this at RPE ${'{avgRpe}'} last week — that's lighter than target. Moving you up to ${'{newTargetWeight}'} lbs.")
+- If weightAction is 'hold': explain why ("RPE was on target last week — same weight, focus on quality reps.")
+- If weightAction is 'decrease': be honest ("Your RPE was high last week — backing off slightly to reset.")
+- If weightAction is 'deload': frame it positively ("This is an intentional deload week — lighter weight is the prescription, not a step back.")
 - Keep each note to 1-2 sentences
-- Reference the actual numbers from last week where available
 - Never use generic form cues like 'Focus on good form'
 - Never use filler praise like 'Great job!' or 'Keep it up!'
+
+For each workout day, include a sessionFocus field: one sentence (max 12 words) that tells the athlete exactly what today is about.
+Reference real numbers from the exercise adaptations where possible.
+This appears on the athlete's Dashboard before they start the workout.
+
+sessionFocus rules:
+- Always reference at least one specific number (weight, RPE, or sets)
+- Reference the most important exercise of the day
+- If weights are increasing: mention the increase and why
+- If it is a deload: say so directly
+- Never use filler like 'Great session ahead' or 'You've got this'
+- Examples:
+  'Bench goes to 302.5 today — your RPE 4 last week earned this.'
+  'Volume day: 4x6 at 225, focus on bar speed not max effort.'
+  'Deload week — move well at 220, nothing more.'
+  'Heavy deadlift day — 410 lbs, chase that RPE 8 target.'
+
+Rest days: sessionFocus must be an empty string "".
 
 Return ONLY valid JSON with no prose, preamble, or markdown.`,
         messages: [
@@ -275,40 +402,52 @@ Equipment: ${equipment}
 Training age: ${trainingAge}
 Completion tier last week: ${completionTier} (${sessionsCompleted}/${sessionsPlanned} sessions)
 
-Exercise adaptations for next week:
+Exercise adaptations for next week (use newTargetWeight for each exercise):
 ${JSON.stringify(exerciseAdaptations, null, 2)}
 
 Rules:
-- Use the newTargetWeight for each exercise listed above
-- Maintain the same core exercise selection unless weightAction is 'decrease' for 3+ consecutive sets (in that case, suggest a regression)
-- If phase is 'deload': reduce sets by 1, keep reps in lower range, add coaching notes about recovery
-- If completionTier is 'low': add a coaching note suggesting the user review their schedule
-- Each exercise must have: id (uuid), name, muscleGroup, sets, reps (string range e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote (1 sentence referencing their performance)
-- Include all 7 days. Workout days have exercises, rest days have empty exercises array and type 'rest'.
+- Use the newTargetWeight for each exercise listed above — do not change these weights
+- Maintain the same core exercise selection as last week unless weightAction is 'decrease' for 3+ sets (then suggest a regression)
+- If phase is 'deload': sets are already reduced in the data above, keep reps in lower range
+- If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
+- If hasRpeData is false for an exercise: the coachingNote MUST ask the user to log RPE next session. Weight is held. Example: "I'm holding 225 lbs here — I need your RPE to know where to take this. Rate every set next session."
+- Never decrease weight solely because RPE was not logged.
+- Each exercise must have: id (new uuid), name, muscleGroup, sets, reps (string e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote
+- Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "" (empty string).
+- Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type 'rest'.
 
-Return ONLY this exact JSON structure with no other text:
+Return ONLY this exact JSON structure:
 {
   "weekNumber": ${nextWeekNumber},
   "phase": "${phase}",
   "days": [
     {
-      "dayNumber": number,
-      "type": "workout" | "rest",
-      "title": string,
-      "muscleGroups": string[],
+      "dayNumber": 1,
+      "type": "workout",
+      "title": "Push A",
+      "sessionFocus": "Bench goes to 302.5 — RPE 4 last week earned this increase.",
+      "muscleGroups": ["Chest", "Shoulders", "Triceps"],
       "exercises": [
         {
-          "id": string,
-          "name": string,
-          "muscleGroup": string,
-          "sets": number,
-          "reps": string,
-          "targetWeight": number,
-          "restSeconds": number,
-          "targetRpe": number,
-          "coachingNote": string
+          "id": "uuid-string",
+          "name": "Exercise Name",
+          "muscleGroup": "Chest",
+          "sets": 4,
+          "reps": "8-10",
+          "targetWeight": 185,
+          "restSeconds": 90,
+          "targetRpe": 7,
+          "coachingNote": "Jordan's note referencing their actual performance numbers"
         }
       ]
+    },
+    {
+      "dayNumber": 2,
+      "type": "rest",
+      "title": "Rest Day",
+      "sessionFocus": "",
+      "muscleGroups": [],
+      "exercises": []
     }
   ]
 }`,
@@ -341,7 +480,7 @@ Return ONLY this exact JSON structure with no other text:
       throw new Error('JSON parse failed: ' + String(e));
     }
 
-    // Ensure weekNumber and phase are set
+    // Ensure weekNumber and phase are set correctly
     nextWeekData.weekNumber = nextWeekNumber;
     nextWeekData.phase = phase;
 

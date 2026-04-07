@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
@@ -46,6 +46,7 @@ type WorkoutDay = {
   muscleGroups: string[];
   exercises: Exercise[];
   isNextWeek?: boolean;
+  sessionFocus?: string;
 };
 
 type PlanData = {
@@ -93,9 +94,11 @@ export default function HomeScreen() {
   const [weightSaving, setWeightSaving] = useState(false);
   const uidRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboardData();
+    }, []),
+  );
 
   const loadDashboardData = async () => {
     try {
@@ -446,6 +449,12 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
+
+            {today.sessionFocus ? (
+              <View style={styles.focusRow}>
+                <Text style={styles.focusText}>{today.sessionFocus}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.workoutDivider} />
 
@@ -896,6 +905,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
+  },
+  focusRow: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: Spacing.lg,
+  },
+  focusText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    lineHeight: 18,
   },
   workoutDivider: {
     ...CommonStyles.divider,

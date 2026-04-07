@@ -237,7 +237,7 @@ export default function WeeklyCoachSummaryScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('Dashboard' as any)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={styles.backHit}
           >

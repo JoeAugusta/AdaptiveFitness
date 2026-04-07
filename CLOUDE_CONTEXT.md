@@ -1,4 +1,3 @@
-CLAUDE_CONTEXT.md
 <!-- DO NOT CHANGE THE FILENAME -->
 PROJECT CONTEXT
 App: Adaptive Fitness Coach — iOS/Android subscription SaaS
@@ -49,10 +48,14 @@ Meal builder ✅
 Weekly summary fixes ✅
 Dashboard polish ✅
 
+Design Upgrade — applying new design system across all screens (✅ Complete)
+Reference document: AdaptiveFitnessCoach_PRD_v1_6.md and AdaptiveFitness_DesignSpec_v1_0.md
+
 
 CURRENT PHASE
-Design Upgrade — applying new design system across all screens.
-Reference document: AdaptiveFitness_DesignSpec_v1.0.md (in project folder)
+Phase 4 — Integrations (Apple Health, Google Fit, MyFitnessPal OAuth, wearable HR data)
+Pre-launch: TestFlight build + paywall conversion optimization
+
 
 DESIGN SYSTEM (✅ Implemented)
 constants/design.ts is the single source of truth for all tokens.
@@ -94,25 +97,23 @@ FontSizes: micro(10) label(11) caption(13) body(15) title(17)
 
 Radius: sm(8) md(12) lg(16) xl(20) xxl(24) full(9999)
 
-DESIGN UPGRADE PROGRESS
+DESIGN UPGRADE PROGRESS (✅ All Complete — committed April 2026)
 Color pass ✅ — all screens use Colors.* from constants/design.ts
 Font pass ✅ — all screens use Fonts.* and FontSizes.* from constants/design.ts
 
 Screen redesigns completed:
+✅ S02–S07b Onboarding screens (step counter replaces progress bar, full card selection pattern)
 ✅ S08 Home Dashboard
 ✅ S09 Active Workout (ExerciseCard.tsx, RPESelector.tsx)
 ✅ S10 Workout Complete
-✅ S15 Weekly Coach Summary
 ✅ S11 Plan View
-
-Screen redesigns remaining:
-🟡 S02–S07 Onboarding screens (highest priority — conversion critical)
-🟡 S13 Progress Charts
-🟡 S16 Macro Tracker
-🟡 S12 Exercise Library
-🟡 S14 Goal Tracker
-🟡 S17 Profile & Settings
-🟡 S18 Subscription Management / Paywall
+✅ S12 Exercise Library
+✅ S13 Progress Charts (bodyweight chart date fix + clip fix)
+✅ S14 Goal Tracker (lift name formatter, Expectations tooltip wired)
+✅ S15 Weekly Coach Summary
+✅ S16 Macro Tracker + MealBuilderModal
+✅ S17 Profile & Settings + NotificationsSettings
+✅ S18 Subscription Management
 
 
 DESIGN RULES FOR ALL REMAINING PROMPTS
@@ -239,6 +240,39 @@ CREATE TABLE IF NOT EXISTS meal_suggestions (
   UNIQUE(user_id)
 );
 
+DATABASE — ACTIVE PLAN QUERY PATTERN
+⚠️ Always use created_at ordering when querying active plans/goals to guarantee
+the most recent record wins (multiple records may be marked active from test runs):
+
+supabase
+  .from('plans')
+  .select(...)
+  .eq('user_id', uid)
+  .eq('status', 'active')
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .maybeSingle()
+
+Same pattern for goals table. Run this SQL once to clean up stale active records:
+
+-- Keep only the most recent active plan per user
+UPDATE plans SET status = 'inactive'
+WHERE status = 'active'
+  AND id NOT IN (
+    SELECT DISTINCT ON (user_id) id FROM plans
+    WHERE status = 'active'
+    ORDER BY user_id, created_at DESC
+  );
+
+-- Same for goals
+UPDATE goals SET status = 'inactive'
+WHERE status = 'active'
+  AND id NOT IN (
+    SELECT DISTINCT ON (user_id) id FROM goals
+    WHERE status = 'active'
+    ORDER BY user_id, created_at DESC
+  );
+
 ADAPTIVE ENGINE LOGIC
 Completion tiers:
   full ≥80%: +2.5 compound / +1 isolation if RPE≤7 and reps exceeded
@@ -261,6 +295,7 @@ Files: constants/ingredientLibrary.ts + components/MealBuilderModal.tsx
 50 hardcoded ingredients across 4 categories
 getFilteredIngredients(category, slot, dietaryStyle, allergies): Ingredient[]
 Accessed via "Customise →" on Jordan meal cards
+Ingredient selection is per-serving (− / count / +) not single toggle
 
 KNOWN ISSUES / NOTES
 - Lib/ uses capital L — imports must be 'Lib/supabase'
@@ -275,8 +310,14 @@ KNOWN ISSUES / NOTES
 - Coach card on Dashboard only shows if summary is for currentWeek-1 or newer
 - user_profiles may have duplicate rows from test runs — always query with
   .order('id', { ascending: false }).limit(1).maybeSingle()
-- TODO comments exist in some files for unmapped color/font tokens from
-  the automated codemod pass — resolve during individual screen redesigns
+- Weight log date display: always parse log_date as local time using
+  new Date(log_date + 'T00:00:00') to prevent UTC timezone offset shifting
+  the date back by one day in US timezones
+- Lift names stored as snake_case in DB (e.g. bench_press) — use formatLiftName()
+  helper to display: lift.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+- Sign out uses navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
+  via getParent().getParent() to reach the root navigator from tab screens
+- DEV: Restart Onboarding button visible in ProfileSettings when __DEV__ === true
 
 RULES FOR THIS PROJECT
 - React Native + Expo only, TypeScript everywhere
@@ -293,16 +334,18 @@ HOW WE WORK
 - Composer 2 for all multi-file tasks and screen redesigns
 - Commit after every completed screen
 
-PHASE 4 PRIORITIES (after design + TestFlight)
+PHASE 4 PRIORITIES (next)
 - Apple Health integration (HealthKit)
 - Google Fit integration (Android)
 - MyFitnessPal nutrition sync (OAuth)
 - Wearable heart rate data
+- TestFlight build + paywall conversion optimization
 
 DEFERRED FEATURES
 - Bodyweight goal in onboarding with healthy rate guardrails
 - Metric unit toggle (imperial only in v1 — deferred to v1.2)
 - Social features, in-app chat, cardio plans, web app
+- Nutrition trend chart on Progress screen (redundant with Nutrition tab weekly chart)
 
 DO NOT CHANGE
 The filename — it must remain CLAUDE_CONTEXT.md

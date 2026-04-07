@@ -41,7 +41,7 @@ serve(async (req) => {
     );
 
     const [planResult, logsResult] = await Promise.all([
-      supabase.from('plans').select('plan_json').eq('id', planId).single(),
+      supabase.from('plans').select('plan_json, goal_id').eq('id', planId).single(),
       supabase
         .from('workout_logs')
         .select('*')
@@ -56,6 +56,18 @@ serve(async (req) => {
     const planJson = planResult.data.plan_json;
     const logs = logsResult.data ?? [];
 
+    // Fetch goal type
+    let goalType = planJson.goal ?? 'general';
+    if (planResult.data.goal_id) {
+      const { data: goalRow } = await supabase
+        .from('goals')
+        .select('goal_type')
+        .eq('id', planResult.data.goal_id)
+        .single();
+      if (goalRow?.goal_type) goalType = goalRow.goal_type;
+    }
+
+    // Build exercise id → name map from all weeks in plan_json
     const exerciseMap: Record<string, string> = {};
     for (const week of planJson.weeks ?? []) {
       for (const day of week.days ?? []) {
@@ -67,11 +79,10 @@ serve(async (req) => {
       }
     }
 
-    // Step 2 — Find the matching week in plan_json and extract workout day targets
+    // Step 2 — Find the matching week and extract workout day targets
     const weekData = (planJson.weeks ?? []).find((w: any) => w.weekNumber === weekNumber);
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
-    const goalType: string = planJson.goal ?? 'general';
 
     type ExerciseTarget = { targetWeight: number; targetRpe: number; targetReps: number };
     const prescribedMap: Record<string, ExerciseTarget> = {};
@@ -101,6 +112,7 @@ serve(async (req) => {
 
     const exercisesOverPerformed: string[] = [];
     const exercisesUnderPerformed: string[] = [];
+    const exercisesTooLight: string[] = []; // completed with very low RPE
     const prsHit: string[] = [];
     const rpeDeltas: number[] = [];
 
@@ -116,8 +128,9 @@ serve(async (req) => {
     for (const log of logs) {
       const setsJson: any[] = log.sets_json ?? [];
       for (const set of setsJson) {
+        // FIX: resolve name via exerciseId map first, then fallbacks
         const name: string =
-          exerciseMap[set.exerciseId] ??
+          (set.exerciseId ? exerciseMap[set.exerciseId] : null) ??
           set.exerciseName ??
           set.name ??
           '';
@@ -125,6 +138,7 @@ serve(async (req) => {
         if (!actualMap[name]) {
           actualMap[name] = { totalWeight: 0, totalReps: 0, totalRpe: 0, count: 0, maxWeight: 0 };
         }
+        // FIX: use weightLbs (the actual field name in sets_json), not weight
         const weight = Number(set.weightLbs ?? set.weight ?? set.loggedWeight ?? 0);
         const reps = Number(set.reps ?? set.loggedReps ?? 0);
         const rpe = Number(set.rpe ?? set.loggedRpe ?? 0);
@@ -144,20 +158,31 @@ serve(async (req) => {
       const avgWeight = actual.count > 0 ? actual.totalWeight / actual.count : 0;
       const avgRpe = actual.count > 0 ? actual.totalRpe / actual.count : 0;
 
+      // Over-performed: exceeded reps or weight targets
       if (avgReps > prescribed.targetReps * 1.1 || avgWeight > prescribed.targetWeight * 1.05) {
         exercisesOverPerformed.push(name);
-      } else if (
+      }
+
+      // Under-performed: fell short on reps or weight
+      if (
         avgReps < prescribed.targetReps * 0.85 ||
         avgWeight < prescribed.targetWeight * 0.9
       ) {
         exercisesUnderPerformed.push(name);
       }
 
+      // Too light: completed sets but RPE was well below target
+      // This means the weight needs to go UP, NOT that it was a bad week
+      if (prescribed.targetRpe > 0 && avgRpe > 0 && avgRpe <= prescribed.targetRpe - 2) {
+        exercisesTooLight.push(name);
+      }
+
       if (actual.maxWeight > prescribed.targetWeight * 1.05) {
         prsHit.push(name);
       }
 
-      if (prescribed.targetRpe > 0) {
+      // RPE delta: positive = harder than target, negative = easier than target
+      if (prescribed.targetRpe > 0 && avgRpe > 0) {
         rpeDeltas.push(avgRpe - prescribed.targetRpe);
       }
     }
@@ -167,6 +192,24 @@ serve(async (req) => {
         ? rpeDeltas.reduce((a, b) => a + b, 0) / rpeDeltas.length
         : 0;
 
+    const rpeDataRecorded = rpeDeltas.length > 0;
+    const isDeloadWeek = weekNumber % 4 === 0;
+
+    // Determine performance rating correctly
+    // Negative avgRpeVsTarget = weights were too light = NOT a tough week
+    let derivedRating: 'strong' | 'on-track' | 'tough-week';
+    if (completionRate < 0.6) {
+      derivedRating = 'tough-week'; // missed too many sessions
+    } else if (avgRpeVsTarget > 1.5 && exercisesUnderPerformed.length > 2) {
+      derivedRating = 'tough-week'; // genuinely struggled
+    } else if (avgRpeVsTarget < -1 || exercisesTooLight.length > 2) {
+      derivedRating = 'on-track'; // easy week — weights need adjustment, not a failure
+    } else if (completionRate >= 0.8 && avgRpeVsTarget >= -1 && avgRpeVsTarget <= 1.5) {
+      derivedRating = 'strong'; // completed sessions, RPE on target
+    } else {
+      derivedRating = 'on-track';
+    }
+
     const metrics = {
       sessionsCompleted,
       sessionsPlanned,
@@ -174,8 +217,12 @@ serve(async (req) => {
       avgFatigueRating: Math.round(avgFatigueRating * 10) / 10,
       exercisesOverPerformed,
       exercisesUnderPerformed,
+      exercisesTooLight,
       prsHit,
       avgRpeVsTarget: Math.round(avgRpeVsTarget * 10) / 10,
+      rpeDataRecorded, // true = user logged RPE, false = no RPE data
+      isDeloadWeek,
+      derivedRating, // pre-calculated — Claude should use this as the basis
     };
 
     // Step 4 — Call Claude API
@@ -196,8 +243,8 @@ Your response must be a JSON object with these exact fields:
   "headline": "One punchy sentence summarising the week. No filler.",
   "performanceRating": "strong | on-track | tough-week",
   "highlights": ["Array of 2-3 strings. Each is a specific win with real numbers. No generic statements."],
-  "performanceSummary": "2-3 sentences. Jordan's honest read of the week. Reference specific exercises and numbers. If it was a tough week, say so clearly.",
-  "nextWeekChanges": "2-3 sentences. What Jordan is changing and exactly why. Reference the performance data that drove the decision.",
+  "performanceSummary": "2-3 sentences. Jordan's honest read of the week. Reference specific exercises and numbers.",
+  "nextWeekChanges": "2-3 sentences. What Jordan is changing and exactly why. Reference the performance data.",
   "nutritionCheckin": "1-2 sentences on macro targets. Keep brief.",
   "motivationalNote": "1-2 sentences. Specific to the user's goal. Forward-looking. End with '— Jordan'."
 }
@@ -205,7 +252,6 @@ Your response must be a JSON object with these exact fields:
 Tone rules:
 - Write as Jordan in first person throughout
 - Reference actual weights, reps, and RPE from the data
-- The motivationalNote must reference the user's specific goal (e.g. their target 1RM, their target weight loss, their muscle goals)
 - Never use filler praise like 'Great job!', 'Keep it up!', 'Well done!', or 'Fantastic work!'
 - The sign-off '— Jordan' appears only at the end of motivationalNote, nowhere else
 - Return only valid JSON, no markdown, no prose outside the JSON`,
@@ -216,6 +262,39 @@ Tone rules:
 Goal type: ${goalType}
 Performance metrics:
 ${JSON.stringify(metrics, null, 2)}
+
+CRITICAL INTERPRETATION RULES — you must follow this exactly:
+
+RPE deltas (only when rpeDataRecorded is true):
+- avgRpeVsTarget = (actual RPE) minus (target RPE)
+  - NEGATIVE value means weights were TOO LIGHT — the athlete found it easy. 
+    This means weights need to go UP next week. This is NOT a tough week.
+    A negative avgRpeVsTarget with all sessions completed should be "on-track" or "strong".
+  - POSITIVE value means the athlete worked harder than planned.
+    If reps were still hit: weights are appropriate or slightly heavy — "strong" or "on-track".
+    If reps were missed AND RPE was high: weights were too heavy — "tough-week".
+  - Near zero: perfectly calibrated.
+
+- exercisesTooLight = exercises where RPE was 2+ points below target.
+  These INCREASE in weight next week. Do NOT treat this as underperformance.
+
+- derivedRating is pre-calculated from the data. Use it as the basis for performanceRating
+  unless your analysis of the full data clearly contradicts it.
+
+- NEVER use "tough-week" just because RPE was low. Low RPE = easy = good compliance.
+  "tough-week" is reserved for: missed sessions, missed rep targets with HIGH RPE, or injury.
+
+- rpeDataRecorded: if false, the user did NOT log RPE this week.
+  Do NOT say "RPE was on target" or reference RPE performance.
+  Instead acknowledge that RPE data was not captured and note that
+  logging RPE each set will improve the accuracy of next week's plan.
+  Base the rating on completion rate and fatigue only.
+
+- isDeloadWeek: if true, this was a planned deload week. The summary
+  should acknowledge this explicitly. "Strong Week" is appropriate 
+  for a completed deload. The performanceSummary should mention that
+  reduced loads were intentional and the body is recovering. 
+  nextWeekChanges should reference that full loads resume next week.
 
 Return ONLY this exact JSON structure with no other text:
 {
@@ -250,6 +329,25 @@ Return ONLY this exact JSON structure with no other text:
       summary = JSON.parse(jsonMatch[0]);
     } catch (e) {
       throw new Error('JSON parse failed: ' + String(e));
+    }
+
+    // Save summary to weekly_summaries using service role
+    const { error: saveError } = await supabase
+      .from('weekly_summaries')
+      .upsert(
+        {
+          user_id: userId,
+          plan_id: planId,
+          week_number: weekNumber,
+          summary_json: summary,
+          generated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,plan_id,week_number' },
+      );
+
+    if (saveError) {
+      console.error('weekly_summaries upsert error:', saveError);
+      // Non-critical — still return the summary to the client
     }
 
     return new Response(JSON.stringify({ summary }), {

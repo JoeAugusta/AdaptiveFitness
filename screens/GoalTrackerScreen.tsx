@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import Svg, { Line as SvgLine, Circle, Text as SvgText, G, Path } from 'react-native-svg';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -55,6 +57,12 @@ interface Milestone {
   pct: number;
   label: string;
   reached: boolean;
+}
+
+interface RmDataPoint {
+  week: number;
+  projected: number;
+  actual: number | null;
 }
 
 const GOAL_BADGE: Record<string, { color: string; label: string }> = {
@@ -141,10 +149,228 @@ function formatMonth(dateStr: string): string {
   return `Started ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+function RmProgressionChart({
+  data,
+  width,
+}: {
+  data: Array<{ week: number; projected: number; actual: number | null }>;
+  width: number;
+  targetLift: string;
+}) {
+  if (data.length < 2) return null;
+
+  const height = 200;
+  const padL = 44;
+  const padR = 16;
+  const padT = 20;
+  const padB = 28;
+  const cw = width - padL - padR;
+  const ch = height - padT - padB;
+
+  const allVals = [
+    ...data.map((d) => d.projected),
+    ...data.map((d) => d.actual).filter((v): v is number => v !== null),
+  ];
+  const minV = Math.floor(Math.min(...allVals) * 0.97);
+  const maxV = Math.ceil(Math.max(...allVals) * 1.03);
+  const rangeV = maxV - minV || 1;
+  const totalWeeks = data.length;
+
+  const toX = (wk: number) =>
+    padL + ((wk - 1) / (totalWeeks - 1)) * cw;
+  const toY = (v: number) =>
+    padT + ch - ((v - minV) / rangeV) * ch;
+
+  // Y axis ticks
+  const yTicks = 4;
+  const yStep = rangeV / yTicks;
+
+  // Projected line path
+  const projPoints = data.map((d) => ({
+    x: toX(d.week),
+    y: toY(d.projected),
+  }));
+  const projPath = projPoints
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+    .join(' ');
+
+  // Actual line — only connected points where actual exists
+  const actualPoints = data
+    .filter((d) => d.actual !== null)
+    .map((d) => ({ x: toX(d.week), y: toY(d.actual!) }));
+  const actualPath = actualPoints
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+    .join(' ');
+
+  // Last actual point for callout
+  const lastActual = actualPoints[actualPoints.length - 1];
+  const lastActualData = data.filter((d) => d.actual !== null).slice(-1)[0];
+
+  return (
+    <View>
+      {/* Legend */}
+      <View style={chartStyles.legend}>
+        <View style={chartStyles.legendItem}>
+          <View style={[chartStyles.legendDot, { backgroundColor: Colors.divider }]} />
+          <Text style={chartStyles.legendLabel}>Projected</Text>
+        </View>
+        <View style={chartStyles.legendItem}>
+          <View style={[chartStyles.legendDot, { backgroundColor: Colors.accent }]} />
+          <Text style={chartStyles.legendLabel}>Actual 1RM</Text>
+        </View>
+      </View>
+
+      <Svg width={width} height={height}>
+        {/* Y axis grid + labels */}
+        {Array.from({ length: yTicks + 1 }, (_, i) => {
+          const val = minV + i * yStep;
+          const y = toY(val);
+          return (
+            <G key={`y-${i}`}>
+              <SvgLine
+                x1={padL}
+                y1={y}
+                x2={width - padR}
+                y2={y}
+                stroke={Colors.divider}
+                strokeWidth={1}
+              />
+              <SvgText
+                x={padL - 6}
+                y={y + 4}
+                fill={Colors.textTertiary}
+                fontSize={FontSizes.micro}
+                fontFamily={Fonts.regular}
+                textAnchor="end"
+              >
+                {Math.round(val)}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {/* X axis labels — every 2nd week to avoid overlap */}
+        {data
+          .filter((_, i) => i === 0 || i === data.length - 1 || i % 2 === 0)
+          .map((d) => (
+            <SvgText
+              key={`x-${d.week}`}
+              x={toX(d.week)}
+              y={height - 6}
+              fill={Colors.textTertiary}
+              fontSize={FontSizes.micro}
+              fontFamily={Fonts.regular}
+              textAnchor="middle"
+            >
+              W{d.week}
+            </SvgText>
+          ))}
+
+        {/* Projected dashed line */}
+        {projPath ? (
+          <Path
+            d={projPath}
+            stroke={Colors.divider}
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            fill="none"
+          />
+        ) : null}
+
+        {/* Actual solid line */}
+        {actualPath ? (
+          <Path
+            d={actualPath}
+            stroke={Colors.accent}
+            strokeWidth={2.5}
+            fill="none"
+          />
+        ) : null}
+
+        {/* Actual data point dots */}
+        {actualPoints.map((p, i) => (
+          <Circle
+            key={`adot-${i}`}
+            cx={p.x}
+            cy={p.y}
+            r={4}
+            fill={Colors.accent}
+          />
+        ))}
+
+        {/* Target endpoint marker */}
+        <Circle
+          cx={projPoints[projPoints.length - 1].x}
+          cy={projPoints[projPoints.length - 1].y}
+          r={5}
+          fill="none"
+          stroke={Colors.divider}
+          strokeWidth={2}
+        />
+
+        {/* Callout for last actual */}
+        {lastActual && lastActualData && (
+          <SvgText
+            x={lastActual.x}
+            y={lastActual.y - 10}
+            fill={Colors.textPrimary}
+            fontSize={FontSizes.caption}
+            fontFamily={Fonts.bold}
+            textAnchor="middle"
+          >
+            {lastActualData.actual} lbs
+          </SvgText>
+        )}
+      </Svg>
+
+      {/* Target annotation */}
+      <View style={chartStyles.targetRow}>
+        <Text style={chartStyles.targetLabel}>
+          Target: {data[data.length - 1]?.projected} lbs by Week {data.length}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const chartStyles = StyleSheet.create({
+  legend: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 8,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  targetRow: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  targetLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+  },
+});
+
 // ── Main Screen ──
 
 export default function GoalTrackerScreen() {
   const navigation = useNavigation<NavProp>();
+  const { width: screenWidth } = useWindowDimensions();
 
   const [loading, setLoading] = useState(true);
   const [goal, setGoal] = useState<GoalRow | null>(null);
@@ -326,6 +552,57 @@ export default function GoalTrackerScreen() {
     ? Math.min(logs.length / (currentWeek - 1), daysPerWeek)
     : 0;
 
+  // 1RM Progression Chart data (strength goal only)
+  const chartWidth = screenWidth - Spacing.xl * 2 - 40;
+
+  const rmChartData: RmDataPoint[] = [];
+
+  if (goal?.goal_type === 'strength' && goal.current_1rm && goal.target_1rm && plan) {
+    const start1rm = goal.current_1rm;
+    const target1rm = goal.target_1rm;
+    const totalWeeks = plan.total_weeks;
+
+    // Build actual 1RM per week from logs using Epley formula
+    const actual1rmByWeek: Record<number, number> = {};
+    const targetLiftLower = (goal.target_lift ?? '').toLowerCase();
+
+    for (const log of logs) {
+      const wk: number = log.week_number;
+      for (const s of log.sets_json ?? []) {
+        const name = (
+          s.exerciseName ?? s.name ??
+          (plan.plan_json?.weeks ?? [])
+            .flatMap((w: any) => w.days ?? [])
+            .flatMap((d: any) => d.exercises ?? [])
+            .find((e: any) => e.id === s.exerciseId)?.name ?? ''
+        ).toLowerCase();
+        if (!name.includes(targetLiftLower)) continue;
+        const w = Number(s.weightLbs ?? s.weight ?? 0);
+        const r = Number(s.reps ?? 0);
+        if (w > 0 && r > 0) {
+          const est = w * (1 + r / 30);
+          if (!actual1rmByWeek[wk] || est > actual1rmByWeek[wk]) {
+            actual1rmByWeek[wk] = Math.round(est);
+          }
+        }
+      }
+    }
+
+    // Build projected line: linear ramp from start to target
+    for (let wk = 1; wk <= totalWeeks; wk++) {
+      const projected = Math.round(
+        start1rm + ((target1rm - start1rm) * (wk - 1)) / (totalWeeks - 1),
+      );
+      const actual = actual1rmByWeek[wk] ?? null;
+      // Only include weeks up to current week + 1 for actual
+      if (wk <= plan.current_week + 1) {
+        rmChartData.push({ week: wk, projected, actual });
+      } else {
+        rmChartData.push({ week: wk, projected, actual: null });
+      }
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -344,6 +621,7 @@ export default function GoalTrackerScreen() {
             <Text style={styles.emptySubtext}>Complete onboarding to set your goal.</Text>
           </View>
         ) : (
+          <>
           <View style={styles.goalCard}>
             <View style={styles.goalTopRow}>
               {badge ? (
@@ -407,6 +685,27 @@ export default function GoalTrackerScreen() {
               </View>
             </View>
           </View>
+
+          {goal?.goal_type === 'strength' && rmChartData.length > 1 && (
+            <>
+              <Text style={styles.sectionLabel1RM}>1RM PROGRESSION</Text>
+              <View style={styles.chartCard}>
+                <RmProgressionChart
+                  data={rmChartData}
+                  width={chartWidth}
+                  targetLift={goal.target_lift
+                    ? formatLiftName(goal.target_lift)
+                    : 'Target Lift'}
+                />
+                {rmChartData.every((d) => d.actual === null) && (
+                  <Text style={styles.chartEmptyHint}>
+                    Complete sessions to see your actual 1RM plotted against the projection.
+                  </Text>
+                )}
+              </View>
+            </>
+          )}
+          </>
         )}
 
         {/* ── Expectations vs Reality ── */}
@@ -1172,6 +1471,33 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     textAlign: 'center',
+  },
+
+  sectionLabel1RM: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 32,
+    marginBottom: 12,
+  },
+  chartCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 20,
+    marginBottom: Spacing.lg,
+    overflow: 'visible',
+  },
+  chartEmptyHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });
 

@@ -289,11 +289,19 @@ export default function NotificationsSettingsScreen() {
 
   // ── Permission request ──
 
-  const requestPermissions = async () => {
+  const handleRequestPermissions = async () => {
     if (Platform.OS === 'web') return;
     try {
       const { status } = await Notifications.requestPermissionsAsync();
-      setPermissionStatus(status as PermissionStatus);
+      if (status === 'granted') {
+        setPermissionGranted(true);
+      } else {
+        Alert.alert(
+          'Notifications Disabled',
+          'To receive workout reminders, enable notifications for Adaptive Fitness in your device Settings.',
+          [{ text: 'OK' }],
+        );
+      }
     } catch (e) {
       console.error('Permission request error:', e);
     }
@@ -312,46 +320,39 @@ export default function NotificationsSettingsScreen() {
 
   // ── Render helpers ──
 
-  const renderPermissionBanner = () => {
-    const isDenied = permissionStatus === 'denied';
+  const renderPermissionSection = () => {
     const isWeb = Platform.OS === 'web';
 
     return (
       <View style={styles.permissionContent}>
         <View style={styles.bannerCard}>
-          <Text style={styles.bannerEmoji}>{isDenied ? '🔕' : '🔔'}</Text>
-          <Text style={styles.bannerTitle}>
-            {isDenied ? 'Notifications Disabled' : 'Enable Notifications'}
-          </Text>
+          <Text style={styles.bannerEmoji}>🔔</Text>
+          <Text style={styles.bannerTitle}>Enable Notifications</Text>
           <Text style={styles.bannerBody}>
-            {isDenied
-              ? 'To receive workout reminders, enable notifications for Adaptive Fitness in your device Settings.'
-              : 'Get reminders for your scheduled workouts and celebrate milestones as you hit them.'}
+            Get reminders for your scheduled workouts and celebrate milestones as you hit them.
           </Text>
 
-          {isDenied ? (
-            <>
-              <TouchableOpacity
-                style={styles.bannerBtn}
-                onPress={() => Linking.openSettings()}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.bannerBtnLabel}>Open Settings</Text>
-              </TouchableOpacity>
-              <Text style={styles.bannerNote}>
-                You can change this at any time in Settings → Adaptive Fitness → Notifications.
-              </Text>
-            </>
+          {isWeb ? (
+            <TouchableOpacity
+              style={[styles.permissionEnableBtn, styles.bannerBtnWeb]}
+              onPress={undefined}
+              activeOpacity={1}
+              disabled
+            >
+              <Text style={styles.permissionEnableBtnTextMuted}>Available on iOS & Android</Text>
+            </TouchableOpacity>
+          ) : permissionGranted ? (
+            <View style={styles.permissionStatusRow}>
+              <View style={styles.permissionStatusDot} />
+              <Text style={styles.permissionStatusLabel}>Notifications enabled</Text>
+            </View>
           ) : (
             <TouchableOpacity
-              style={[styles.bannerBtn, isWeb && styles.bannerBtnWeb]}
-              onPress={!isWeb ? requestPermissions : undefined}
-              activeOpacity={0.8}
-              disabled={isWeb}
+              style={styles.permissionEnableBtn}
+              onPress={handleRequestPermissions}
+              activeOpacity={0.85}
             >
-              <Text style={styles.bannerBtnLabel}>
-                {isWeb ? 'Available on iOS & Android' : 'Enable Notifications'}
-              </Text>
+              <Text style={styles.permissionEnableBtnText}>Enable Notifications</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -516,10 +517,11 @@ export default function NotificationsSettingsScreen() {
         >
         {loading ? (
           <SkeletonRows pulseAnim={pulseAnim} />
-        ) : permissionStatus === 'granted' ? (
-          renderPreferences()
         ) : (
-          renderPermissionBanner()
+          <>
+            {renderPermissionSection()}
+            {renderPreferences()}
+          </>
         )}
         </ScrollView>
       </View>

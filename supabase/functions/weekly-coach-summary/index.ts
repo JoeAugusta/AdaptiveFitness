@@ -5,6 +5,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -241,7 +242,8 @@ serve(async (req) => {
     };
 
     // Step 4 — Call Claude API
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    const claudeResponse = await fetchAnthropicMessagesWithRetry(() =>
+      fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -331,6 +333,14 @@ Return ONLY this exact JSON structure with no other text:
         ],
       }),
     });
+    );
+
+    if (claudeResponse.status === 503) {
+      return new Response(await claudeResponse.text(), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const claudeData = await claudeResponse.json();
 

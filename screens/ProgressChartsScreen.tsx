@@ -37,6 +37,34 @@ interface ConsistencyDay {
   trained: boolean;
 }
 
+/** Monday 00:00 local of the week containing `anchor` (fallback when no plan created_at). */
+function planMondayFromAnchor(anchor: Date): Date {
+  const planMonday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  const dayOfWeek = anchor.getDay();
+  const daysToMonday = (dayOfWeek + 6) % 7;
+  planMonday.setDate(planMonday.getDate() - daysToMonday);
+  planMonday.setHours(0, 0, 0, 0);
+  return planMonday;
+}
+
+/** Match plan grid anchor: Monday of the calendar week containing plan `created_at`. */
+function planMondayFromCreatedAt(planCreatedAt: Date): Date {
+  const dow = planCreatedAt.getDay();
+  const daysBack = (dow + 6) % 7;
+  const planMonday = new Date(planCreatedAt);
+  planMonday.setDate(planCreatedAt.getDate() - daysBack);
+  planMonday.setHours(0, 0, 0, 0);
+  return planMonday;
+}
+
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Mon–Sun; index aligns with dayIndex = (getDay() + 6) % 7 */
+const HEATMAP_DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const HEATMAP_ROWS = 7;
+
 const MUSCLE_COLORS: Record<string, string> = {
   'chest':        Colors.accent,
   'back':         Colors.success,
@@ -385,18 +413,79 @@ function getWeightInsight(data: WeightLogPoint[]): string | null {
 }
 
 function getConsistencyInsight(
-  trainedDays: number,
-  totalDays: number,
+  totalLoggedSessions: number,
+  activeWeeks: number,
+  daysPerWeek: number,
 ): string | null {
-  const rate = Math.round((trainedDays / totalDays) * 100);
-  if (trainedDays === 0) return null;
-  if (rate >= 80) {
-    return `${rate}% consistency over 10 weeks — that's elite-level attendance. This is what drives long-term results.`;
+  if (totalLoggedSessions === 0) return null;
+  const totalPlannedSessions = activeWeeks * daysPerWeek;
+  const consistencyRate =
+    totalPlannedSessions > 0
+      ? Math.round((totalLoggedSessions / totalPlannedSessions) * 100)
+      : 0;
+
+  let consistencyContext = '';
+  if (consistencyRate >= 80) {
+    consistencyContext = 'elite-level consistency';
+  } else if (consistencyRate >= 60) {
+    consistencyContext = 'solid consistency';
+  } else {
+    consistencyContext = 'room to improve';
   }
-  if (rate >= 60) {
-    return `${rate}% consistency over 10 weeks — solid. Closing the gap to 80%+ will accelerate your progress significantly.`;
+
+  return `${consistencyRate}% session completion — ${consistencyContext}. Hitting your ${daysPerWeek} sessions every week is the single biggest lever for results.`;
+}
+
+type PlanWeekLike = {
+  weekNumber?: number;
+  week_number?: number;
+  days?: Array<{ type?: string }>;
+};
+
+function findPlanWeekDays(weeks: PlanWeekLike[], weekNum: number): Array<{ type?: string }> {
+  const w =
+    weeks.find((x) => (x.weekNumber ?? x.week_number) === weekNum) ??
+    weeks[weekNum - 1];
+  return Array.isArray(w?.days) ? w.days! : [];
+}
+
+/** Early-plan copy avoids raw % on sparse heatmaps; week 3+ delegates to getConsistencyInsight. */
+function getConsistencyJordanNote(
+  logs: Array<{ week_number: number; plan_id?: string }>,
+  currentWeek: number,
+  planWeeks: PlanWeekLike[],
+  daysPerWeekFallback: number,
+  activePlanId: string | null,
+): string | null {
+  const completedWeeks = new Set(logs.map((l) => l.week_number)).size;
+  const totalSessions = logs.length;
+
+  if (completedWeeks === 0) {
+    return null;
   }
-  return `${rate}% consistency over 10 weeks. Getting to 3+ sessions per week consistently is the single biggest lever for improvement.`;
+
+  const weekDays = findPlanWeekDays(planWeeks, currentWeek);
+  const workoutDayCount = weekDays.filter((d) => d.type === 'workout').length;
+  const sessionsPlanned =
+    workoutDayCount > 0 ? workoutDayCount : daysPerWeekFallback;
+  const sessionsThisWeek = logs.filter((l) => l.week_number === currentWeek).length;
+  const weekCompletionRate =
+    sessionsPlanned > 0 ? sessionsThisWeek / sessionsPlanned : 0;
+
+  if (completedWeeks === 1 && weekCompletionRate >= 1.0) {
+    return 'Week 1 done — 100% completion rate. The grid fills up fast from here.';
+  }
+
+  if (completedWeeks < 3) {
+    return `${totalSessions} ${totalSessions === 1 ? 'session' : 'sessions'} logged — keep building.`;
+  }
+
+  const planLogs = activePlanId
+    ? logs.filter((l) => l.plan_id === activePlanId)
+    : logs;
+  const weeksWithSessions = new Set(planLogs.map((l) => l.week_number)).size;
+  const totalLoggedSessions = planLogs.length;
+  return getConsistencyInsight(totalLoggedSessions, weeksWithSessions, daysPerWeekFallback);
 }
 
 function JordanInsightCard({ text }: { text: string }) {
@@ -425,6 +514,10 @@ export default function ProgressChartsScreen() {
   const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
   const [weightData, setWeightData] = useState<WeightLogPoint[]>([]);
   const [planDaysPerWeek, setPlanDaysPerWeek] = useState(4);
+  const [planCurrentWeek, setPlanCurrentWeek] = useState(1);
+  const [planWeeksJson, setPlanWeeksJson] = useState<PlanWeekLike[]>([]);
+  const [planCreatedAt, setPlanCreatedAt] = useState<string | null>(null);
+  const [planTotalWeeks, setPlanTotalWeeks] = useState(12);
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -436,7 +529,7 @@ export default function ProgressChartsScreen() {
 
       const { data: plan, error: pe } = await supabase
         .from('plans')
-        .select('id, plan_json, current_week, total_weeks, goal_id')
+        .select('id, plan_json, current_week, total_weeks, goal_id, created_at')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
@@ -446,18 +539,47 @@ export default function ProgressChartsScreen() {
       if (pe || !plan) {
         setPlanId(null);
         setPlanDaysPerWeek(4);
+        setPlanCurrentWeek(1);
+        setPlanWeeksJson([]);
+        setPlanCreatedAt(null);
+        setPlanTotalWeeks(12);
         setLogs([]);
         setLoading(false);
         return;
       }
 
       setPlanId(plan.id);
-      const dpwRaw = (plan.plan_json as { daysPerWeek?: number } | null)?.daysPerWeek;
+      setPlanCreatedAt(
+        typeof plan.created_at === 'string' ? plan.created_at : null,
+      );
+      const pj = plan.plan_json as {
+        daysPerWeek?: number;
+        weeks?: PlanWeekLike[];
+        totalWeeks?: number;
+      } | null;
+      const dpwRaw = pj?.daysPerWeek;
       setPlanDaysPerWeek(
         typeof dpwRaw === 'number' && dpwRaw >= 1 && dpwRaw <= 7
           ? dpwRaw
           : 4,
       );
+      setPlanCurrentWeek(
+        typeof plan.current_week === 'number' && plan.current_week >= 1
+          ? plan.current_week
+          : 1,
+      );
+      setPlanWeeksJson(Array.isArray(pj?.weeks) ? pj!.weeks! : []);
+
+      const weeksFromJson = Array.isArray(pj?.weeks) ? pj!.weeks!.length : 0;
+      const twRaw =
+        typeof plan.total_weeks === 'number' && plan.total_weeks >= 1
+          ? plan.total_weeks
+          : typeof pj?.totalWeeks === 'number' && pj.totalWeeks >= 1
+            ? pj.totalWeeks
+            : weeksFromJson >= 1
+              ? weeksFromJson
+              : 12;
+      setPlanTotalWeeks(Math.min(52, Math.max(1, twRaw)));
 
       // Build exerciseId → { name, muscleGroup } lookup from plan_json
       const eMap: Record<string, { name: string; muscleGroup: string }> = {};
@@ -503,7 +625,7 @@ export default function ProgressChartsScreen() {
 
   // ── Process data ──
 
-  const { strengthMap, topExercises, volumeWeekData, consistencyDays, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
+  const { strengthMap, topExercises, volumeWeekData, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
     const sMap: Record<string, Map<number, number>> = {};
     const volMap = new Map<number, Map<string, number>>();
     const exerciseVolume: Record<string, number> = {};
@@ -549,17 +671,8 @@ export default function ProgressChartsScreen() {
     const sorted = Object.entries(exerciseVolume).sort((a, b) => b[1] - a[1]);
     const top4 = sorted.slice(0, 4).map(([name]) => name);
 
-    // Consistency: last 10 weeks calendar
-    const today = new Date();
-    const cDays: ConsistencyDay[] = [];
-    for (let i = 69; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      cDays.push({ dateStr: ds, trained: logDates.has(ds) });
-    }
-
     // Streak
+    const today = new Date();
     let streak = 0;
     const sortedDates = Array.from(logDates).sort().reverse();
     if (sortedDates.length > 0) {
@@ -593,12 +706,86 @@ export default function ProgressChartsScreen() {
       strengthMap: sMap,
       topExercises: top4,
       volumeWeekData: volMap,
-      consistencyDays: cDays,
       totalWorkouts: logs.length,
       currentStreak: streak,
       bestWeek: bw ? { week: Number(bw[0]), sessions: bw[1] } : null,
     };
   }, [logs, exerciseMap]);
+
+  const planMondayHeatmap = useMemo((): Date => {
+    if (planCreatedAt) {
+      return planMondayFromCreatedAt(new Date(planCreatedAt));
+    }
+    if (logs.length > 0) {
+      const times = logs
+        .map((l) => new Date(l.logged_at ?? l.created_at).getTime())
+        .filter((t) => !Number.isNaN(t));
+      const anchorDate = new Date(times.length > 0 ? Math.min(...times) : Date.now());
+      return planMondayFromAnchor(anchorDate);
+    }
+    return planMondayFromAnchor(new Date());
+  }, [planCreatedAt, logs]);
+
+  const heatmapTotalWeeks = useMemo(
+    () => Math.min(52, Math.max(1, planTotalWeeks)),
+    [planTotalWeeks],
+  );
+
+  const gridDates = useMemo(() => {
+    const n = heatmapTotalWeeks * HEATMAP_ROWS;
+    return Array.from({ length: n }, (_, i) => {
+      const d = new Date(planMondayHeatmap);
+      d.setDate(planMondayHeatmap.getDate() + i);
+      return d;
+    });
+  }, [planMondayHeatmap, heatmapTotalWeeks]);
+
+  const trainedIndices = useMemo(() => {
+    const indices = new Set<number>();
+    const numCells = heatmapTotalWeeks * HEATMAP_ROWS;
+    if (!logs?.length) return indices;
+
+    const planStartMidnight = new Date(planMondayHeatmap);
+    planStartMidnight.setHours(0, 0, 0, 0);
+
+    logs.forEach((log) => {
+      const raw = log.logged_at ?? log.created_at;
+      if (!raw) return;
+      const logDate = new Date(raw);
+      logDate.setHours(0, 0, 0, 0);
+      const daysSince = Math.floor(
+        (logDate.getTime() - planStartMidnight.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const weekIndex = Math.floor(daysSince / 7);
+      const dayIndex = (logDate.getDay() + 6) % 7;
+      const cellIndex = weekIndex * HEATMAP_ROWS + dayIndex;
+      if (cellIndex >= 0 && cellIndex < numCells) {
+        indices.add(cellIndex);
+      }
+    });
+
+    return indices;
+  }, [logs, planMondayHeatmap, heatmapTotalWeeks]);
+
+  const heatmapDays = useMemo((): ConsistencyDay[] => {
+    const cells = gridDates.map((d, i) => ({
+      dateStr: localDateKey(d),
+      trained: trainedIndices.has(i),
+    }));
+    if (__DEV__) {
+      const planStartMidnight = new Date(planMondayHeatmap);
+      planStartMidnight.setHours(0, 0, 0, 0);
+      const grid0 = gridDates[0];
+      console.log('[heatmap] planMonday:', planMondayHeatmap.toISOString());
+      console.log('[heatmap] trained cell indices:', [...trainedIndices].sort((a, b) => a - b));
+      console.log('[heatmap] gridDate[0]:', grid0 ? grid0.toISOString() : null);
+      console.log(
+        '[heatmap] gridDate[0] local key matches planMonday:',
+        grid0 ? localDateKey(grid0) === localDateKey(planStartMidnight) : false,
+      );
+    }
+    return cells;
+  }, [gridDates, trainedIndices, planMondayHeatmap]);
 
   const activeExercise = selectedExercise ?? topExercises[0] ?? null;
   const strengthData: StrengthDataPoint[] = useMemo(() => {
@@ -638,10 +825,8 @@ export default function ProgressChartsScreen() {
   }
 
   const hasData = logs.length > 0;
-  const trainedDaysCount = consistencyDays.filter((d) => d.trained).length;
-
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const sessionsLogged = logs.length;
+  const heatmapStatLabel = `${sessionsLogged} ${sessionsLogged === 1 ? 'session' : 'sessions'} logged — Week ${planCurrentWeek} of ${planTotalWeeks}`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -877,61 +1062,88 @@ export default function ProgressChartsScreen() {
 
             <Text style={styles.sectionHeading}>Consistency</Text>
             <Text style={styles.sectionSubLabel}>
-              Your training days over the last 10 weeks
+              Training days by plan week
             </Text>
             <View style={styles.sectionCard}>
               <View style={styles.heatmapContainer}>
-                <View style={styles.heatmapDayLabels}>
-                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-                    <Text key={i} style={styles.heatmapDayLabel}>
-                      {d}
-                    </Text>
+                <View style={styles.heatmapDayLabelsColumn}>
+                  <View style={styles.heatmapWeekHeaderSpacer} />
+                  {Array.from({ length: HEATMAP_ROWS }, (_, i) => (
+                    <View key={i} style={styles.heatmapRow}>
+                      <Text style={styles.heatmapRowLabel}>{HEATMAP_DAY_LABELS[i]}</Text>
+                    </View>
                   ))}
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View>
-                    <View style={styles.heatmapWeekLabels}>
-                      {Array.from({ length: 10 }, (_, i) => (
-                        <Text key={i} style={styles.heatmapWeekLabel}>
-                          {i + 1}
-                        </Text>
-                      ))}
-                    </View>
-                    {Array.from({ length: 7 }, (_, row) => (
-                      <View key={row} style={styles.heatmapRow}>
-                        {Array.from({ length: 10 }, (_, col) => {
-                          const idx = col * 7 + row;
-                          const day = consistencyDays[idx];
-                          const isToday = day?.dateStr === todayStr;
+                {(() => {
+                  const heatmapCore = (
+                    <View>
+                      <View style={styles.heatmapWeekLabelsRow}>
+                        <View style={styles.heatmapWeekLabelGutter} />
+                        {Array.from({ length: heatmapTotalWeeks }, (_, colIndex) => {
+                          const showWeekLabel =
+                            colIndex % 3 === 0 || colIndex === heatmapTotalWeeks - 1;
                           return (
-                            <View
-                              key={col}
-                              style={[
-                                styles.heatmapCell,
-                                isToday
-                                  ? styles.heatmapCellToday
-                                  : day?.trained
-                                    ? styles.heatmapCellTrained
-                                    : styles.heatmapCellEmpty,
-                              ]}
-                            />
+                            <View key={colIndex} style={styles.heatmapWeekLabelCell}>
+                              {showWeekLabel ? (
+                                <Text style={styles.heatmapWeekLabel}>{colIndex + 1}</Text>
+                              ) : null}
+                            </View>
                           );
                         })}
                       </View>
-                    ))}
-                  </View>
-                </ScrollView>
+                      <View style={styles.heatmapColumnsRow}>
+                        {Array.from({ length: heatmapTotalWeeks }, (_, colIndex) => {
+                          const isCurrentWeekCol = colIndex === planCurrentWeek - 1;
+                          return (
+                            <View
+                              key={colIndex}
+                              style={[
+                                styles.heatmapWeekColumn,
+                                isCurrentWeekCol && styles.heatmapWeekColumnCurrent,
+                              ]}
+                            >
+                              {Array.from({ length: HEATMAP_ROWS }, (_, rowIndex) => {
+                                const cellIndex = colIndex * HEATMAP_ROWS + rowIndex;
+                                const day = heatmapDays[cellIndex];
+                                const trained = !!day?.trained;
+                                return (
+                                  <View
+                                    key={rowIndex}
+                                    style={[
+                                      styles.heatmapCell,
+                                      trained && styles.heatmapCellActive,
+                                    ]}
+                                  />
+                                );
+                              })}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                  return heatmapTotalWeeks > 10 ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {heatmapCore}
+                    </ScrollView>
+                  ) : (
+                    heatmapCore
+                  );
+                })()}
               </View>
 
               <Text style={styles.heatmapStat}>
-                {trainedDaysCount} training days in the last 10 weeks
+                {heatmapStatLabel}
               </Text>
             </View>
 
             {(() => {
-              const insight = getConsistencyInsight(
-                trainedDaysCount,
-                consistencyDays.length,
+              const insight = getConsistencyJordanNote(
+                logs as Array<{ week_number: number; plan_id?: string }>,
+                planCurrentWeek,
+                planWeeksJson,
+                planDaysPerWeek,
+                planId,
               );
               return insight ? <JordanInsightCard text={insight} /> : null;
             })()}
@@ -1194,53 +1406,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 4,
   },
-  heatmapDayLabels: {
+  heatmapDayLabelsColumn: {
     justifyContent: 'flex-start',
     marginRight: Spacing.xs,
-    paddingTop: 22,
   },
-  heatmapDayLabel: {
-    width: 16,
+  heatmapWeekHeaderSpacer: {
+    width: 14,
+    height: 22,
+  },
+  heatmapWeekLabelGutter: {
+    width: 14,
+    height: 18,
+    marginBottom: 4,
+  },
+  heatmapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
     height: 28,
-    fontFamily: Fonts.bold,
+  },
+  heatmapRowLabel: {
+    width: 14,
+    height: 28,
+    lineHeight: 28,
+    textAlignVertical: 'center',
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
     color: Colors.textTertiary,
     textAlign: 'right',
-    lineHeight: 28,
   },
-  heatmapWeekLabels: {
+  heatmapWeekLabelsRow: {
     flexDirection: 'row',
     marginBottom: 4,
   },
-  heatmapWeekLabel: {
+  heatmapWeekLabelCell: {
     width: 32,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heatmapWeekLabel: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
     color: Colors.textTertiary,
     textAlign: 'center',
-    height: 18,
     lineHeight: 18,
   },
-  heatmapRow: {
+  heatmapColumnsRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+  },
+  heatmapWeekColumn: {
+    width: 32,
+    alignItems: 'center',
+  },
+  heatmapWeekColumnCurrent: {
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    borderRadius: Radius.sm,
   },
   heatmapCell: {
     width: 28,
     height: 28,
     borderRadius: Radius.sm,
-    margin: 2,
-  },
-  heatmapCellEmpty: {
     backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    marginRight: 2,
   },
-  heatmapCellTrained: {
+  heatmapCellActive: {
     backgroundColor: Colors.accent,
-  },
-  heatmapCellToday: {
-    borderWidth: 1.5,
-    borderColor: Colors.accentBorder,
-    backgroundColor: Colors.accentMuted,
+    borderWidth: 0,
   },
   heatmapStat: {
     fontFamily: Fonts.semiBold,

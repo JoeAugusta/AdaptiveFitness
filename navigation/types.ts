@@ -130,6 +130,7 @@ export type RootStackParamList = {
     weekNumber: number;
     dayNumber: number;
     workoutTitle?: string;
+    preSessionMessage?: string | null;
   };
   WorkoutComplete: {
     planId: string;

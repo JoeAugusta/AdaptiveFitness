@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import {
   useFonts,
   DMSans_400Regular,
+  DMSans_400Regular_Italic,
   DMSans_500Medium,
   DMSans_600SemiBold,
   DMSans_700Bold,
@@ -12,6 +13,7 @@ import RootNavigator from './navigation';
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
+    DMSans_400Regular_Italic,
     DMSans_500Medium,
     DMSans_600SemiBold,
     DMSans_700Bold,

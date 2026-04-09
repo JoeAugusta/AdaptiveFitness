@@ -31,6 +31,7 @@ export const Colors = {
 
 export const Fonts = {
   regular: 'DMSans_400Regular',
+  italic: 'DMSans_400Regular_Italic',
   medium: 'DMSans_500Medium',
   semiBold: 'DMSans_600SemiBold',
   bold: 'DMSans_700Bold',

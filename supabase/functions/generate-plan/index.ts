@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -872,10 +873,10 @@ This replaces any implication that Jordan has already set conservative working l
       : `- Never mention RPE as a number in the welcome (e.g. do not say "RPE 7") — the user just learned about RPE in onboarding; prefer "effort ratings" where it fits (Sentences 3–4 may use the phrase "RPE data" as in the template above, without numeric RPE)`;
 
     const jordanWelcomeFieldSpec = `JORDAN WELCOME FIELD (top-level JSON key "jordanWelcome"):
-jordanWelcome is the user's FIRST introduction to Jordan, their AI coach. It must follow this exact structure:
+jordanWelcome is the user's FIRST introduction to Jordan, their coach. It must follow this exact structure:
 
 Sentence 1 — Self introduction:
-  Always start with "I'm Jordan, your AI coach for the next ${totalWeeks} weeks."
+  Always start with "I'm Jordan, your coach for the next ${totalWeeks} weeks."
   Never skip this. This is the user's first time meeting Jordan.
 
 Sentence 2 — Goal acknowledgement (specific to their inputs):
@@ -899,7 +900,11 @@ RULES:
 - Never uses: "Great!", "Excited to", "Let's crush", "Let's go", "Amazing"
 - Tone: direct, knowledgeable, like a real coach talking to a new client for the first time — not a chatbot greeting
 ${jordanWelcomeRpeRuleLine}
-- Do not end with a separate "call to action" sentence beyond Sentence 4; Sentence 4 is the close`;
+- Do not end with a separate "call to action" sentence beyond Sentence 4; Sentence 4 is the close
+- CRITICAL: Never use the word "AI" anywhere in jordanWelcome or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
+- Good opening (pattern): "I'm Jordan, your coach for the next ${totalWeeks} weeks..."
+- Bad opening (never): "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
+- Apply the same CRITICAL rule (no "AI"; first person as Jordan; "I" or "your coach" only) to every sessionFocus line, every exercise coachingNote, and any motivationalNote field in this response.`;
 
     const prompt = `${absoluteRuleBlock}
 ${sessionStructureFollowBlock}
@@ -1009,7 +1014,8 @@ Respond with ONLY this JSON, no other text:
 }
 Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetchAnthropicMessagesWithRetry(() =>
+      fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1034,6 +1040,7 @@ For coachingNote fields:
 - Keep each note to 1-2 sentences
 - Never write generic form cues ("focus on good form")
 - Never use filler praise ("Great choice!", "This is perfect!")
+- CRITICAL: Never use the word "AI" anywhere in coachingNote or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
 
 ${
   isNonStrengthGoal
@@ -1057,8 +1064,12 @@ sessionFocus rules (Week 1):
 - Reference at least one specific number (sets, reps, RPE, or prescribed weight when applicable) when it fits within 12 words
 - Reference the most important exercise of the day when possible
 - Never use filler like 'Great session ahead' or 'You've got this'
+- CRITICAL: Never use the word "AI" in sessionFocus. Jordan is a coach. First person as Jordan — "I" or "your coach" only; never "AI coach", "AI system", "artificial intelligence", or any variation.
 
 Rest days: sessionFocus must be an empty string "".
+
+motivationalNote (if present in any coaching copy you write):
+- CRITICAL: Same rule as above — never "AI" or AI-framing; Jordan is a human coach voice; "I" or "your coach" only.
 
 jordanWelcome (top-level JSON):
 Follow the JORDAN WELCOME FIELD specification in the user message exactly — 4 sentences, fixed intro, goal-specific Sentence 2 as given there, then calibration + how you'll use their data.${
@@ -1066,6 +1077,7 @@ Follow the JORDAN WELCOME FIELD specification in the user message exactly — 4 
     ? ' Non-strength: Sentence 2 may include numeric RPE bands per that spec.'
     : ' In the welcome text, say "effort ratings" not numeric RPE except where the user-message spec allows.'
 } Never use chatbot openers or banned hype phrases from that spec.
+- CRITICAL for jordanWelcome: Never use the word "AI" in the welcome or any coaching copy. Jordan is a coach. First person as Jordan — "I" or "your coach" only. Good: "I'm Jordan, your coach for the next ${totalWeeks} weeks..." Bad: "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
 
 ${
   isNonStrengthGoal
@@ -1074,7 +1086,15 @@ ${
 }`,
         messages: [{ role: 'user', content: prompt }],
       }),
-    });
+    })
+    );
+
+    if (response.status === 503) {
+      return new Response(await response.text(), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const data = await response.json();
 

@@ -18,7 +18,14 @@ import type { RootStackParamList } from '../../navigation/types';
 import Purchases from 'react-native-purchases';
 import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
 import { supabase } from '../../Lib/supabase';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import {
+  Colors,
+  Fonts,
+  FontSizes,
+  LineHeights,
+  Spacing,
+  Radius,
+} from '../../constants/design';
 import { formatSplitName } from '../../utils/splitRecommendation';
 import type { SessionDay } from '../../utils/splitRecommendation';
 import type { CaloriePace } from '../../utils/projections';
@@ -30,6 +37,7 @@ import {
   getRecompBfProjection,
 } from '../../utils/projections';
 import ProjectionChart, {
+  type ProjectionChartGoal,
   type ProjectionChartLine,
 } from '../../components/ProjectionChart';
 
@@ -112,7 +120,7 @@ function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
         col1: {
           label: 'End result',
           value: `${endWeight} lbs`,
-          sub: `−${(weightLbs - endWeight).toFixed(1)} lbs total`,
+          sub: 'lbs bodyweight',
         },
         col2: {
           label: 'Rate',
@@ -152,7 +160,7 @@ function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
         col1: {
           label: 'End result',
           value: `+${endGain.toFixed(1)} lbs`,
-          sub: 'lean mass (est.)',
+          sub: 'lbs lean mass (est.)',
         },
         col2: {
           label: 'Rate',
@@ -194,7 +202,7 @@ function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
         col1: {
           label: 'End result',
           value: `${end} lbs / ${target} goal`,
-          sub: 'projected vs target',
+          sub: 'lbs (est. 1RM)',
         },
         col2: {
           label: 'Rate',
@@ -234,7 +242,7 @@ function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
         col1: {
           label: 'End result',
           value: `~${w} lbs`,
-          sub: 'weight steady',
+          sub: 'lbs bodyweight',
         },
         col2: {
           label: 'Rate',
@@ -438,6 +446,26 @@ export default function PlanPreviewScreen() {
 
   const projection = useMemo(() => buildProjectionBundle(params), [params]);
 
+  const projectionData = projection.lines?.[0]?.data ?? [];
+  const projectedGain =
+    projectionData.length > 1
+      ? projectionData[projectionData.length - 1] - projectionData[0]
+      : 0;
+
+  const showJordanContextCard =
+    params.goal === 'hypertrophy' &&
+    expKey(params.experience ?? '') === 'advanced' &&
+    projectedGain < 2.0;
+
+  const previewChartGoal: ProjectionChartGoal | null =
+    params.goal === 'fat_loss' ||
+    params.goal === 'hypertrophy' ||
+    params.goal === 'strength' ||
+    params.goal === 'recomp' ||
+    params.goal === 'general'
+      ? (params.goal as ProjectionChartGoal)
+      : null;
+
   const buildingPlanParams = useMemo(
     () => ({ ...params, caloriePace: normalizePace(params.caloriePace) }),
     [params],
@@ -627,9 +655,17 @@ export default function PlanPreviewScreen() {
       actualDay: trainingDays?.[index] ?? null,
     }));
 
-  const structureSlots = (sessionStructure ?? []).length;
-  const moreDaysCount =
-    structureSlots > 0 ? structureSlots - sampleDays.length : 0;
+  const visibleDays = 2;
+  const visibleSampleDays = sampleDays.slice(0, visibleDays);
+  if (__DEV__) {
+    console.log('sessionStructure length:', sessionStructure?.length);
+    console.log('sampleDays length:', sampleDays.length);
+  }
+  const remainingDays = Math.max(0, sampleDays.length - visibleDays);
+  const lockText =
+    remainingDays > 0
+      ? `+ ${remainingDays} more ${remainingDays === 1 ? 'day' : 'days'} visible after unlocking`
+      : null;
 
   return (
     <View style={styles.container}>
@@ -670,15 +706,6 @@ export default function PlanPreviewScreen() {
           </Text>
         </View>
 
-        {paceReadOnlyLabel ? (
-          <View style={styles.paceReadOnly}>
-            <Text style={styles.paceReadOnlyLabel}>PACE</Text>
-            <View style={styles.paceReadOnlyBadge}>
-              <Text style={styles.paceReadOnlyText}>{paceReadOnlyLabel}</Text>
-            </View>
-          </View>
-        ) : null}
-
         <ProjectionChart
           width={chartWidth}
           height={200}
@@ -688,15 +715,7 @@ export default function PlanPreviewScreen() {
           yLabel={projection.yLabel}
           lines={projection.lines}
           targetValue={projection.targetValue}
-          chartGoal={
-            params.goal === 'fat_loss' ||
-            params.goal === 'hypertrophy' ||
-            params.goal === 'strength' ||
-            params.goal === 'recomp' ||
-            params.goal === 'general'
-              ? params.goal
-              : null
-          }
+          chartGoal={previewChartGoal}
           recompBfStart={recompBfStartForChart}
           strengthGapAnnotate={projection.strengthGapAnnotate}
         />
@@ -719,6 +738,24 @@ export default function PlanPreviewScreen() {
           ))}
         </View>
 
+        {paceReadOnlyLabel ? (
+          <View style={styles.paceReadOnly}>
+            <Text style={styles.paceReadOnlyLabel}>PACE</Text>
+            <View style={styles.paceReadOnlyBadge}>
+              <Text style={styles.paceReadOnlyText}>{paceReadOnlyLabel}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {showJordanContextCard ? (
+          <View style={styles.jordanContextCard}>
+            <Text style={styles.jordanContextLabel}>JORDAN</Text>
+            <Text style={styles.jordanContextText}>
+              {`Advanced lifters gain lean mass slowly — that's the biology, not the plan.\n+${projectedGain.toFixed(1)} lbs of lean mass is visible, meaningful change at your level. This is what separates advanced training from wasted effort.`}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.summaryCard}>
           <View style={styles.statsGrid}>
             {stats.map((stat) => (
@@ -732,7 +769,7 @@ export default function PlanPreviewScreen() {
 
         <Text style={styles.sectionLabel}>Sample Week</Text>
 
-        {sampleDays.map((item) => (
+        {visibleSampleDays.map((item) => (
           <View key={`sample-day-${item.dayNumber}`} style={styles.dayCard}>
             <Text style={styles.sampleDayHeading}>
               DAY {item.dayNumber}
@@ -751,12 +788,7 @@ export default function PlanPreviewScreen() {
           </View>
         ))}
 
-        {moreDaysCount > 0 ? (
-          <Text style={styles.moreDays}>
-            + {moreDaysCount} more day{moreDaysCount === 1 ? '' : 's'} visible after
-            unlocking
-          </Text>
-        ) : null}
+        {lockText ? <Text style={styles.moreDays}>{lockText}</Text> : null}
 
         <Text style={styles.sectionLabelNutrition}>Your Daily Nutrition</Text>
 
@@ -964,6 +996,30 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
 
+  jordanContextCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  jordanContextLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  jordanContextText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: LineHeights.body,
+  },
+
   calloutStrip: {
     flexDirection: 'row',
     backgroundColor: Colors.bgElevated,
@@ -994,11 +1050,11 @@ const styles = StyleSheet.create({
   },
   calloutColSub: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro,
+    fontSize: FontSizes.caption,
     color: Colors.textTertiary,
     textAlign: 'center',
     marginTop: 2,
-    lineHeight: 14,
+    lineHeight: LineHeights.caption,
   },
 
   summaryCard: {

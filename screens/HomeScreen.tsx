@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   StatusBar,
   ActivityIndicator,
   Alert,
@@ -25,8 +26,11 @@ import {
   Radius,
   CommonStyles,
 } from '../constants/design';
+import { getSessionIntent } from '../utils/getSessionIntent';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
+type JordanCardState = 'day1' | 'in_week' | 'summary_available';
 
 type Exercise = {
   id: string;
@@ -61,6 +65,8 @@ type PlanData = {
   nextWeekReady: boolean;
   nextWeekFirstWorkout: WorkoutDay | null;
   showGenerateNextWeekCTA: boolean;
+  planSplit?: string;
+  nextWeekPhase?: string;
 };
 
 type SetItem = {
@@ -70,6 +76,36 @@ type SetItem = {
   rpe: number | null;
   swapped: boolean;
 };
+
+type SessionSignal = 'high_fatigue' | 'low_fatigue' | 'on_target';
+
+const PRE_SESSION_COPY: Record<SessionSignal, string> = {
+  high_fatigue:
+    'Your last session ran hot — execute clean today. Focus on form and hit your rep targets without chasing extra load.',
+  low_fatigue:
+    'You had plenty left in the tank last session — today we use it. Push the top of your rep ranges.',
+  on_target: 'Last session dialled in well. Same approach today — trust the targets.',
+};
+
+function calculateAvgRpe(setsJson: unknown[]): number {
+  if (!setsJson?.length) return 0;
+  const rpeValues = setsJson
+    .map((s) => (s as { rpe?: number }).rpe)
+    .filter((r): r is number => typeof r === 'number' && r > 0);
+  if (!rpeValues.length) return 0;
+  return rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length;
+}
+
+function getSessionSignal(
+  avgRpe: number,
+  energyRating: number,
+): SessionSignal | null {
+  if (avgRpe === 0) return null;
+  if (avgRpe > 8.5 && energyRating <= 2) return 'high_fatigue';
+  if (avgRpe < 6.0 && energyRating >= 4) return 'low_fatigue';
+  if (avgRpe >= 7.0 && avgRpe <= 8.5) return 'on_target';
+  return null;
+}
 
 /** `plan_json.weeks` entries may use weekNumber, week_number, or number */
 function getPlanWeekNumber(w: unknown): number | undefined {
@@ -150,6 +186,17 @@ export default function HomeScreen() {
     week_number: number;
   } | null>(null);
   const [jordanWelcome, setJordanWelcome] = useState<string | null>(null);
+  const [workoutLogs, setWorkoutLogs] = useState<
+    Array<{
+      id?: string;
+      plan_id?: string;
+      week_number?: number;
+      day_number?: number;
+      sets_json?: unknown;
+      logged_at?: string;
+      session_fatigue_rating?: number;
+    }>
+  >([]);
 
   const [todayWeight, setTodayWeight] = useState<number | null>(null);
   const [weightLoggedToday, setWeightLoggedToday] = useState(false);
@@ -304,6 +351,8 @@ export default function HomeScreen() {
         nextWeekReady,
         nextWeekFirstWorkout,
         showGenerateNextWeekCTA,
+        planSplit: (planJson as { split?: string }).split,
+        nextWeekPhase: nextWeekData?.phase,
       });
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
@@ -341,6 +390,10 @@ export default function HomeScreen() {
   };
 
   const loadStats = async (uid: string, planId: string, currentWeek: number) => {
+    if (!planId) {
+      setStatsLoading(false);
+      return;
+    }
     try {
       setStatsLoading(true);
 
@@ -352,10 +405,13 @@ export default function HomeScreen() {
           .eq('plan_id', planId),
         supabase
           .from('workout_logs')
-          .select('sets_json')
+          .select(
+            'id, plan_id, week_number, day_number, logged_at, sets_json, session_fatigue_rating',
+          )
           .eq('user_id', uid)
+          .eq('plan_id', planId)
           .eq('week_number', currentWeek)
-          .eq('plan_id', planId),
+          .order('logged_at', { ascending: false }),
         supabase
           .from('workout_logs')
           .select('logged_at')
@@ -367,14 +423,30 @@ export default function HomeScreen() {
       // 1. Total sessions
       setTotalSessions(countRes.count ?? 0);
 
-      // 2. Weekly volume — sum the length of each sets_json array
-      let volume = 0;
-      for (const row of (weeklyRes.data ?? []) as { sets_json: SetItem[] }[]) {
-        if (Array.isArray(row.sets_json)) {
-          volume += row.sets_json.length;
+      if (weeklyRes.error) {
+        console.error('workout_logs error:', weeklyRes.error.message);
+        setWorkoutLogs([]);
+        setWeeklyVolume(0);
+      } else {
+        const planWeekRows =
+          (weeklyRes.data ?? []) as Array<{
+            plan_id?: string;
+            week_number?: number;
+            day_number?: number;
+            sets_json?: SetItem[];
+            logged_at?: string;
+            session_fatigue_rating?: number;
+            id?: string;
+          }>;
+        let volume = 0;
+        for (const row of planWeekRows) {
+          if (Array.isArray(row.sets_json)) {
+            volume += row.sets_json.length;
+          }
         }
+        setWeeklyVolume(volume);
+        setWorkoutLogs(planWeekRows);
       }
-      setWeeklyVolume(volume);
 
       // 3. Current streak — consecutive training days up to today
       const sessionDates = new Set<string>();
@@ -402,6 +474,7 @@ export default function HomeScreen() {
       setCurrentStreak(streak);
     } catch (err) {
       console.error('loadStats error:', err);
+      setWorkoutLogs([]);
       // Silent — stats are non-critical, leave values at 0
     } finally {
       setStatsLoading(false);
@@ -460,6 +533,38 @@ export default function HomeScreen() {
     }
   };
 
+  const handleStartWorkout = useCallback(() => {
+    const todayWorkout = planData?.todayWorkout ?? null;
+    if (!todayWorkout) return;
+    const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
+    const weeklyLogsLocal = workoutLogs ?? [];
+    const lastSessionLocal = weeklyLogsLocal[0] ?? null;
+    const lastSessionSetsLocal = lastSessionLocal?.sets_json;
+    const avgRpeLocal = calculateAvgRpe(
+      Array.isArray(lastSessionSetsLocal) ? lastSessionSetsLocal : [],
+    );
+    const energyRatingLocal = lastSessionLocal?.session_fatigue_rating ?? 3;
+    const sessionSignalLocal = getSessionSignal(avgRpeLocal, energyRatingLocal);
+    const sessionsThisWeekLocal = weeklyLogsLocal.length;
+    const isWeekCompleteLocal =
+      sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
+    const preSessionCopyLocal =
+      sessionsThisWeekLocal >= 1 &&
+      !isWeekCompleteLocal &&
+      sessionSignalLocal !== null
+        ? PRE_SESSION_COPY[sessionSignalLocal]
+        : null;
+    navigation.navigate('ActiveWorkout', {
+      planId: planData?.planId ?? 'mock',
+      weekNumber: todayWorkout.isNextWeek
+        ? (planData?.currentWeek ?? 1) + 1
+        : planData?.currentWeek ?? 1,
+      dayNumber: todayWorkout.dayNumber,
+      workoutTitle: todayWorkout.title,
+      preSessionMessage: preSessionCopyLocal ?? null,
+    });
+  }, [navigation, planData, workoutLogs]);
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -478,6 +583,11 @@ export default function HomeScreen() {
     'Good evening';
 
   const today = planData?.todayWorkout ?? null;
+  const todaySessionFocus = getSessionIntent(
+    currentPhase,
+    today?.sessionFocus,
+    planData?.planSplit,
+  );
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;
   const showGenerateNextWeekCTA = planData?.showGenerateNextWeekCTA ?? false;
@@ -508,6 +618,47 @@ export default function HomeScreen() {
   } else {
     volumeDisplay = String(weeklyVolume);
   }
+
+  const sessionCount = totalSessions;
+  const dashboardCurrentWeek = planData?.currentWeek ?? 1;
+  const isDay1ColdStart =
+    planData != null && sessionCount === 0 && dashboardCurrentWeek === 1;
+
+  const jordanCardState: JordanCardState =
+    sessionCount === 0 && dashboardCurrentWeek === 1
+      ? 'day1'
+      : coachSummary?.headline
+        ? 'summary_available'
+        : 'in_week';
+
+  const displayedJordanText: string = {
+    day1:
+      "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.",
+    in_week:
+      "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.",
+    summary_available: coachSummary?.headline ?? jordanWelcome ?? '',
+  }[jordanCardState];
+
+  const weeklyLogs = workoutLogs ?? [];
+
+  const lastSession = weeklyLogs[0] ?? null;
+  const lastSessionSets = lastSession?.sets_json;
+  const avgRpe = calculateAvgRpe(
+    Array.isArray(lastSessionSets) ? lastSessionSets : [],
+  );
+  const energyRating = lastSession?.session_fatigue_rating ?? 3;
+
+  const sessionSignal = getSessionSignal(avgRpe, energyRating);
+
+  const sessionsThisWeek = weeklyLogs.length;
+  const isWeekComplete = sessionsThisWeek >= (daysPerWeek ?? 2);
+  const preSessionCopy =
+    sessionsThisWeek >= 1 &&
+    !isWeekComplete &&
+    sessionSignal !== null
+      ? PRE_SESSION_COPY[sessionSignal]
+      : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
@@ -577,9 +728,9 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {today.sessionFocus ? (
-              <View style={styles.focusRow}>
-                <Text style={styles.focusText}>{today.sessionFocus}</Text>
+            {todaySessionFocus ? (
+              <View style={styles.sessionFocusCard}>
+                <Text style={styles.sessionFocusText}>{todaySessionFocus}</Text>
               </View>
             ) : null}
 
@@ -603,16 +754,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.ctaButton}
               activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('ActiveWorkout', {
-                  planId: planData?.planId ?? 'mock',
-                  weekNumber: today.isNextWeek
-                    ? (planData?.currentWeek ?? 1) + 1
-                    : planData?.currentWeek ?? 1,
-                  dayNumber: today.dayNumber,
-                  workoutTitle: today.title,
-                })
-              }
+              onPress={handleStartWorkout}
             >
               <Text style={styles.ctaText}>Start Workout →</Text>
             </TouchableOpacity>
@@ -737,6 +879,7 @@ export default function HomeScreen() {
                   weekNumber: planData.currentWeek + 1,
                   dayNumber: planData.nextWeekFirstWorkout?.dayNumber ?? 1,
                   workoutTitle: planData.nextWeekFirstWorkout?.title ?? 'Workout',
+                  preSessionMessage: preSessionCopy ?? null,
                 })
               }
             >
@@ -791,34 +934,41 @@ export default function HomeScreen() {
         </View>
 
         {/* ── 7. Quick Stats Row ── */}
-        <View style={styles.quickStatsRow}>
-          <View style={styles.quickStatCard}>
-            <Text style={styles.quickStatEmoji}>🔥</Text>
-            <Text
-              style={[
-                styles.quickStatValue,
-                currentStreak > 0 ? styles.quickStatValueAccent : null,
-              ]}
-            >
-              {streakDisplay}
+        {isDay1ColdStart ? (
+          <View style={styles.coldStartPlaceholder}>
+            <Text style={styles.coldStartText}>
+              Your stats will build here as you train. Start your first session to
+              begin.
             </Text>
-            <Text style={styles.quickStatLabel}>Day streak</Text>
           </View>
-          <View style={styles.quickStatCard}>
-            <Text style={styles.quickStatEmoji}>⚡</Text>
-            <Text
-              style={[
-                styles.quickStatValue,
-                totalSessions > 0 ? styles.quickStatValueAccent : null,
-              ]}
-            >
-              {sessionsDisplay}
-            </Text>
-            <Text style={styles.quickStatLabel}>Sessions</Text>
-          </View>
-          <View style={styles.quickStatCard}>
-            <Text style={styles.quickStatEmoji}>📈</Text>
-            <View style={styles.volRow}>
+        ) : (
+          <View style={styles.quickStatsRow}>
+            <View style={styles.quickStatCard}>
+              <Text style={styles.quickStatEmoji}>🔥</Text>
+              <Text
+                style={[
+                  styles.quickStatValue,
+                  currentStreak > 0 ? styles.quickStatValueAccent : null,
+                ]}
+              >
+                {streakDisplay}
+              </Text>
+              <Text style={styles.quickStatLabel}>Day streak</Text>
+            </View>
+            <View style={styles.quickStatCard}>
+              <Text style={styles.quickStatEmoji}>⚡</Text>
+              <Text
+                style={[
+                  styles.quickStatValue,
+                  totalSessions > 0 ? styles.quickStatValueAccent : null,
+                ]}
+              >
+                {sessionsDisplay}
+              </Text>
+              <Text style={styles.quickStatLabel}>Sessions</Text>
+            </View>
+            <View style={styles.quickStatCard}>
+              <Text style={styles.quickStatEmoji}>📈</Text>
               <Text
                 style={[
                   styles.quickStatValue,
@@ -829,11 +979,10 @@ export default function HomeScreen() {
               >
                 {volumeDisplay}
               </Text>
-              <Text style={styles.volUnit}>sets</Text>
+              <Text style={styles.quickStatLabel}>Vol. this week</Text>
             </View>
-            <Text style={styles.quickStatLabel}>Vol. this week</Text>
           </View>
-        </View>
+        )}
 
         {/* ── 8. Coach Card ── */}
         <View style={styles.coachCard}>
@@ -850,30 +999,30 @@ export default function HomeScreen() {
 
           <Text
             style={
-              coachSummary?.headline
+              displayedJordanText
                 ? styles.coachHeadline
-                : jordanWelcome
-                  ? styles.coachHeadline
-                  : styles.coachFallback
+                : styles.coachFallback
             }
           >
-            {coachSummary?.headline ??
-              jordanWelcome ??
+            {displayedJordanText ||
               'Your weekly summary will appear here after your first week.'}
           </Text>
 
           <View style={styles.coachFooterRow}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() =>
-                navigation.navigate('WeeklyCoachSummary', {
-                  planId: planData?.planId ?? '',
-                  weekNumber: planData?.currentWeek ?? 1,
-                })
-              }
-            >
-              <Text style={styles.coachLink}>Weekly Summary →</Text>
-            </TouchableOpacity>
+            {jordanCardState === 'summary_available' ? (
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('WeeklyCoachSummary', {
+                    planId: planData?.planId ?? '',
+                    weekNumber: planData?.currentWeek ?? 1,
+                  })
+                }
+              >
+                <Text style={styles.coachLink}>Weekly Summary →</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.coachFooterSpacer} />
+            )}
             <Text style={styles.coachUpdated}>Updated today</Text>
           </View>
         </View>
@@ -1036,15 +1185,18 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
-  focusRow: {
+  sessionFocusCard: {
     backgroundColor: Colors.accentMuted,
     borderRadius: Radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
-  focusText: {
-    fontFamily: Fonts.regular,
+  sessionFocusText: {
+    fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
     color: Colors.accent,
     lineHeight: 18,
@@ -1250,6 +1402,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
 
+  coldStartPlaceholder: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  coldStartText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
   quickStatsRow: {
     flexDirection: 'row',
     marginHorizontal: Spacing.xl,
@@ -1282,16 +1448,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
-  },
-  volRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 2,
-  },
-  volUnit: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro,
-    color: Colors.textSecondary,
   },
 
   coachCard: {
@@ -1344,6 +1500,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 14,
+  },
+  coachFooterSpacer: {
+    flex: 1,
   },
   coachLink: {
     fontFamily: Fonts.medium,

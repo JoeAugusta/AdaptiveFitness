@@ -5,30 +5,65 @@ import {
   StyleSheet,
   Animated,
   TouchableOpacity,
+  Pressable,
+  ActivityIndicator,
+  LayoutChangeEvent,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
 
-const MESSAGES = [
-  'Analysing your goals...',
-  'Calculating your macros...',
-  'Structuring your weekly split...',
-  'Applying progressive overload...',
-  'Personalising your coaching style...',
-  'Almost ready...',
-];
+type LoadingStep = {
+  id: string;
+  label: string;
+  message: string;
+  duration: number;
+};
 
-const STEPS = [
-  'Goal & experience analysed',
-  'Nutrition targets calculated',
-  'Training plan structured',
+const LOADING_STEPS: LoadingStep[] = [
+  {
+    id: 'goals',
+    label: 'Goal & experience analysed',
+    message: 'Reading your training history and goal...',
+    duration: 2000,
+  },
+  {
+    id: 'structure',
+    label: 'Weekly structure built',
+    message: 'Mapping your split across your training days...',
+    duration: 2500,
+  },
+  {
+    id: 'nutrition',
+    label: 'Nutrition targets calculated',
+    message: 'Calculating your calories and macro targets...',
+    duration: 2000,
+  },
+  {
+    id: 'weights',
+    label: 'Week 1 weights calibrated',
+    message: 'Setting your starting weights for Week 1...',
+    duration: 2000,
+  },
+  {
+    id: 'coaching',
+    label: 'Coaching notes written',
+    message: 'Jordan is writing your session-by-session cues...',
+    duration: 2500,
+  },
+  {
+    id: 'ready',
+    label: 'Plan ready',
+    message: 'Finishing touches...',
+    duration: 1000,
+  },
 ];
 
 // ── Goal projection (fire-and-forget after plan save) ──
@@ -133,87 +168,162 @@ function resolvePlanWeeksFromParams(params: RouteType['params']): number {
   return 12;
 }
 
+type RetryPlanContext = {
+  userId: string;
+  goalData: { id: string };
+  generatePlanBody: Record<string, unknown>;
+  planWeeksResolved: number;
+};
+
+function isGeneratePlanOverloaded(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { error?: string }).error === 'overloaded'
+  );
+}
+
 export default function BuildingPlanScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const params = route.params;
   const startTime = useRef(Date.now()).current;
 
-  // --- Pulsing circle ---
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0.6,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1.0,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulseAnim]);
-
-  // --- Cycling subtitle ---
-  const [displayedMessage, setDisplayedMessage] = useState(MESSAGES[0]);
-  const subtitleOpacity = useRef(new Animated.Value(1)).current;
-  const msgIndexRef = useRef(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      Animated.timing(subtitleOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        msgIndexRef.current = (msgIndexRef.current + 1) % MESSAGES.length;
-        setDisplayedMessage(MESSAGES[msgIndexRef.current]);
-        Animated.timing(subtitleOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start();
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [subtitleOpacity]);
-
-  // --- Sequential step rows ---
-  const stepAnims = useRef(STEPS.map(() => new Animated.Value(0))).current;
-
-  useEffect(() => {
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    STEPS.forEach((_, i) => {
-      const t = setTimeout(() => {
-        Animated.timing(stepAnims[i], {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }).start();
-      }, i * 1500);
-      timeouts.push(t);
-    });
-    return () => timeouts.forEach(clearTimeout);
-  }, [stepAnims]);
-
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [apiDone, setApiDone] = useState(false);
+  const [animDone, setAnimDone] = useState(false);
+  const [sequenceEpoch, setSequenceEpoch] = useState(0);
   const [planReady, setPlanReady] = useState(false);
   const [jordanMessage, setJordanMessage] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [weekNumber] = useState(1);
   const [firstDayNumber, setFirstDayNumber] = useState<number>(1);
   const [firstWorkoutTitle, setFirstWorkoutTitle] = useState<string>('Workout');
+  const [errorState, setErrorState] = useState<{ message: string; canRetry: boolean } | null>(null);
+  const [displaySubtitle, setDisplaySubtitle] = useState(LOADING_STEPS[0].message);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
+
+  const stopSequenceRef = useRef(false);
+  const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const retryContextRef = useRef<RetryPlanContext | null>(null);
+
+  const avatarPulseOpacity = useRef(new Animated.Value(1)).current;
+  const subtitleOpacity = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const rowOpacities = useRef(
+    LOADING_STEPS.map(() => new Animated.Value(0)),
+  ).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(avatarPulseOpacity, {
+          toValue: 0.7,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(avatarPulseOpacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [avatarPulseOpacity]);
+
+  const clearStepTimers = () => {
+    stepTimersRef.current.forEach(clearTimeout);
+    stepTimersRef.current = [];
+  };
+
+  const stopLoadingSequence = () => {
+    stopSequenceRef.current = true;
+    clearStepTimers();
+  };
+
+  useEffect(() => {
+    stopSequenceRef.current = false;
+    clearStepTimers();
+    let stepIndex = 0;
+
+    const advance = () => {
+      if (stopSequenceRef.current) return;
+      if (stepIndex < LOADING_STEPS.length - 1) {
+        setCompletedSteps((prev) => [...prev, LOADING_STEPS[stepIndex].id]);
+        stepIndex += 1;
+        setCurrentStepIndex(stepIndex);
+        const t = setTimeout(advance, LOADING_STEPS[stepIndex].duration);
+        stepTimersRef.current.push(t);
+      } else {
+        setCompletedSteps((prev) => [...prev, LOADING_STEPS[stepIndex].id]);
+        setAnimDone(true);
+      }
+    };
+
+    const t0 = setTimeout(advance, LOADING_STEPS[0].duration);
+    stepTimersRef.current.push(t0);
+
+    return () => {
+      clearStepTimers();
+    };
+  }, [sequenceEpoch]);
+
+  useEffect(() => {
+    LOADING_STEPS.forEach((_, i) => {
+      rowOpacities[i].setValue(0);
+    });
+  }, [sequenceEpoch, rowOpacities]);
+
+  useEffect(() => {
+    Animated.timing(rowOpacities[currentStepIndex], {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [currentStepIndex, sequenceEpoch, rowOpacities]);
+
+  const progressFraction = completedSteps.length / LOADING_STEPS.length;
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: progressFraction,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [progressFraction, progressAnim]);
+
+  const prevStepForSubtitleRef = useRef(0);
+  useEffect(() => {
+    if (errorState) return;
+    if (prevStepForSubtitleRef.current === currentStepIndex) return;
+    const nextText = LOADING_STEPS[currentStepIndex].message;
+    prevStepForSubtitleRef.current = currentStepIndex;
+    Animated.timing(subtitleOpacity, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setDisplaySubtitle(nextText);
+      Animated.timing(subtitleOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [currentStepIndex, errorState, subtitleOpacity]);
+
+  useEffect(() => {
+    if (apiDone && animDone && !errorState) {
+      setPlanReady(true);
+    }
+  }, [apiDone, animDone, errorState]);
 
   // --- Generate plan, save to Supabase, then navigate ---
   useEffect(() => {
-    generateAndSavePlan();
+    generateAndSavePlan(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -223,138 +333,168 @@ export default function BuildingPlanScreen() {
     setTimeout(() => navigation.navigate('Dashboard'), remaining);
   };
 
-  const generateAndSavePlan = async () => {
+  const generateAndSavePlan = async (isRetry: boolean) => {
+    setErrorState(null);
+    if (isRetry) {
+      stopLoadingSequence();
+      setApiDone(false);
+      setAnimDone(false);
+      setPlanReady(false);
+      setCompletedSteps([]);
+      setCurrentStepIndex(0);
+      setDisplaySubtitle(LOADING_STEPS[0].message);
+      subtitleOpacity.setValue(1);
+      prevStepForSubtitleRef.current = 0;
+      setSequenceEpoch((e) => e + 1);
+    }
     try {
-      let { data: { session } } = await supabase.auth.getSession();
+      let userId: string;
+      let goalData: { id: string };
+      let generatePlanBody: Record<string, unknown>;
+      let planWeeksResolved: number;
 
-      // If no session exists (e.g. web dev mode or auth not completed),
-      // sign in anonymously so data can still be saved
-      if (!session) {
-        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) throw new Error('Could not create session: ' + anonError.message);
-        session = anonData.session;
-      }
+      if (!isRetry) {
+        let { data: { session } } = await supabase.auth.getSession();
 
-      const userId = session?.user?.id;
-      if (!userId) throw new Error('No user session after anonymous sign in');
-
-      const sessionStructureForProfile = params.sessionStructure ?? [];
-      const profileWorkoutDayCount = sessionStructureForProfile.filter(
-        (d: { type: string }) => d.type === 'workout',
-      ).length;
-      const daysPerWeekForProfile =
-        profileWorkoutDayCount > 0
-          ? profileWorkoutDayCount
-          : parseInt(String(params.daysPerWeek), 10);
-
-      // Save user profile
-      await supabase.from('user_profiles').upsert({
-        user_id: userId,
-        training_age: params.experience,
-        days_per_week: daysPerWeekForProfile,
-        training_days: params.trainingDays ?? [],
-        session_duration_mins: parseDuration(params.sessionLength),
-        preferred_split: params.splitId,
-        equipment: params.equipment,
-        excluded_exercises: params.excludedExercises ?? [],
-        injuries: params.injuries ?? [],
-        weak_points: params.priorityMuscles ?? [],
-        age: parseInt(params.age),
-        sex: params.sex,
-        height_ft: parseInt(params.heightFt),
-        height_in: parseInt(params.heightIn),
-        weight_lbs: parseFloat(params.weightLbs),
-        body_fat_pct: params.bodyFatPct ? parseFloat(params.bodyFatPct) : null,
-      });
-
-      const planWeeksResolved = resolvePlanWeeksFromParams(params);
-
-      // Save goal
-      const { data: goalData, error: goalError } = await supabase
-        .from('goals')
-        .insert({
-          user_id: userId,
-          goal_type: params.goal,
-          target_lift: params.targetLift ?? null,
-          current_1rm: params.current1RM ? parseFloat(params.current1RM) : null,
-          target_1rm: params.target1RM ? parseFloat(params.target1RM) : null,
-          plan_duration_weeks: planWeeksResolved,
-          recomp_focus: params.recompFocus ?? null,
-          general_focus: params.generalFocus ?? null,
-          starting_weight_lbs: params.startingWeightLbs
-            ? parseFloat(params.startingWeightLbs)
-            : null,
-          status: 'active',
-          target_date: params.targetDate ?? null,
-        })
-        .select()
-        .single();
-
-      if (goalError) throw goalError;
-
-      // Save macro plan
-      await supabase.from('macro_plans').insert({
-        user_id: userId,
-        goal_id: goalData.id,
-        calories_target: params.calories,
-        protein_g: params.proteinG,
-        carbs_g: params.carbsG,
-        fats_g: params.fatsG,
-        calorie_pace: params.caloriePace ?? 'balanced',
-      });
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (user) {
-        const { error: pauseError } = await supabase
-          .from('plans')
-          .update({ status: 'paused' })
-          .eq('user_id', user.id)
-          .eq('status', 'active');
-
-        if (pauseError) {
-          console.warn('[BuildingPlan] Could not pause existing plans:', pauseError);
-          // Non-fatal — continue with generation
-        } else {
-          console.log('[BuildingPlan] Existing active plans paused');
+        if (!session) {
+          const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+          if (anonError) throw new Error('Could not create session: ' + anonError.message);
+          session = anonData.session;
         }
+
+        const uid = session?.user?.id;
+        if (!uid) throw new Error('No user session after anonymous sign in');
+        userId = uid;
+
+        const sessionStructureForProfile = params.sessionStructure ?? [];
+        const profileWorkoutDayCount = sessionStructureForProfile.filter(
+          (d: { type: string }) => d.type === 'workout',
+        ).length;
+        const daysPerWeekForProfile =
+          profileWorkoutDayCount > 0
+            ? profileWorkoutDayCount
+            : parseInt(String(params.daysPerWeek), 10);
+
+        await supabase.from('user_profiles').upsert({
+          user_id: userId,
+          training_age: params.experience,
+          days_per_week: daysPerWeekForProfile,
+          training_days: params.trainingDays ?? [],
+          session_duration_mins: parseDuration(params.sessionLength),
+          preferred_split: params.splitId,
+          equipment: params.equipment,
+          excluded_exercises: params.excludedExercises ?? [],
+          injuries: params.injuries ?? [],
+          weak_points: params.priorityMuscles ?? [],
+          age: parseInt(params.age),
+          sex: params.sex,
+          height_ft: parseInt(params.heightFt),
+          height_in: parseInt(params.heightIn),
+          weight_lbs: parseFloat(params.weightLbs),
+          body_fat_pct: params.bodyFatPct ? parseFloat(params.bodyFatPct) : null,
+        });
+
+        planWeeksResolved = resolvePlanWeeksFromParams(params);
+
+        const { data: gData, error: goalError } = await supabase
+          .from('goals')
+          .insert({
+            user_id: userId,
+            goal_type: params.goal,
+            target_lift: params.targetLift ?? null,
+            current_1rm: params.current1RM ? parseFloat(params.current1RM) : null,
+            target_1rm: params.target1RM ? parseFloat(params.target1RM) : null,
+            plan_duration_weeks: planWeeksResolved,
+            recomp_focus: params.recompFocus ?? null,
+            general_focus: params.generalFocus ?? null,
+            starting_weight_lbs: params.startingWeightLbs
+              ? parseFloat(params.startingWeightLbs)
+              : null,
+            status: 'active',
+            target_date: params.targetDate ?? null,
+          })
+          .select()
+          .single();
+
+        if (goalError) throw goalError;
+        if (!gData?.id) throw new Error('Goal insert returned no id');
+        goalData = { id: gData.id };
+
+        await supabase.from('macro_plans').insert({
+          user_id: userId,
+          goal_id: goalData.id,
+          calories_target: params.calories,
+          protein_g: params.proteinG,
+          carbs_g: params.carbsG,
+          fats_g: params.fatsG,
+          calorie_pace: params.caloriePace ?? 'balanced',
+        });
+
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          const { error: pauseError } = await supabase
+            .from('plans')
+            .update({ status: 'paused' })
+            .eq('user_id', user.id)
+            .eq('status', 'active');
+
+          if (pauseError) {
+            console.warn('[BuildingPlan] Could not pause existing plans:', pauseError);
+          } else {
+            console.log('[BuildingPlan] Existing active plans paused');
+          }
+        }
+
+        const sessionStructure = params.sessionStructure ?? [];
+        const structureWorkoutCount = sessionStructure.filter(
+          (d: { type: string }) => d.type === 'workout',
+        ).length;
+        const daysPerWeekResolved =
+          structureWorkoutCount > 0
+            ? String(structureWorkoutCount)
+            : params.daysPerWeek;
+
+        console.log('[generate-plan body] daysPerWeek:', daysPerWeekResolved);
+        console.log('[generate-plan body] trainingDays:', params.trainingDays);
+        console.log('[generate-plan body] sessionStructure length:', structureWorkoutCount);
+        console.log(
+          '[generate-plan body] totalWeeks:',
+          params.recommendedWeeks ?? params.planDuration ?? (params as { totalWeeks?: unknown }).totalWeeks ?? (params as { weeks?: unknown }).weeks,
+          'targetDate:',
+          params.targetDate,
+          '=> resolved:',
+          planWeeksResolved,
+        );
+
+        generatePlanBody = {
+          ...params,
+          daysPerWeek: daysPerWeekResolved,
+          totalWeeks: planWeeksResolved,
+          recommendedWeeks: planWeeksResolved,
+        };
+
+        console.log(
+          '[BuildingPlan] generate-plan request body:',
+          JSON.stringify(generatePlanBody, null, 2),
+        );
+
+        retryContextRef.current = {
+          userId,
+          goalData,
+          generatePlanBody,
+          planWeeksResolved,
+        };
+      } else {
+        const ctx = retryContextRef.current;
+        if (!ctx) throw new Error('Nothing to retry');
+        userId = ctx.userId;
+        goalData = ctx.goalData;
+        generatePlanBody = ctx.generatePlanBody;
+        planWeeksResolved = ctx.planWeeksResolved;
       }
 
-      // Call the Edge Function to generate the training plan
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-
-      const sessionStructure = params.sessionStructure ?? [];
-      const structureWorkoutCount = sessionStructure.filter(
-        (d: { type: string }) => d.type === 'workout',
-      ).length;
-      const daysPerWeekResolved =
-        structureWorkoutCount > 0
-          ? String(structureWorkoutCount)
-          : params.daysPerWeek;
-
-      console.log('[generate-plan body] daysPerWeek:', daysPerWeekResolved);
-      console.log('[generate-plan body] trainingDays:', params.trainingDays);
-      console.log('[generate-plan body] sessionStructure length:', structureWorkoutCount);
-      console.log(
-        '[generate-plan body] totalWeeks:',
-        params.recommendedWeeks ?? params.planDuration ?? (params as { totalWeeks?: unknown }).totalWeeks ?? (params as { weeks?: unknown }).weeks,
-        'targetDate:',
-        params.targetDate,
-        '=> resolved:',
-        planWeeksResolved,
-      );
-
-      const generatePlanBody = {
-        ...params,
-        daysPerWeek: daysPerWeekResolved,
-        totalWeeks: planWeeksResolved,
-        recommendedWeeks: planWeeksResolved,
-      };
-
-      console.log(
-        '[BuildingPlan] generate-plan request body:',
-        JSON.stringify(generatePlanBody, null, 2),
-      );
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'generate-plan',
@@ -365,12 +505,22 @@ export default function BuildingPlanScreen() {
           },
         },
       );
+
+      if (isGeneratePlanOverloaded(fnData)) {
+        stopLoadingSequence();
+        subtitleOpacity.setValue(1);
+        setErrorState({
+          message: 'Jordan is in high demand right now — tap to try again.',
+          canRetry: true,
+        });
+        return;
+      }
+
       if (fnError) throw fnError;
 
-      const planJson = fnData?.plan;
+      const planJson = (fnData as { plan?: any } | null)?.plan;
       if (!planJson) throw new Error('No plan returned from Edge Function');
 
-      // Save plan
       const { data: savedPlan, error: planError } = await supabase
         .from('plans')
         .insert({
@@ -387,17 +537,14 @@ export default function BuildingPlanScreen() {
 
       if (planError) throw planError;
 
-      // Find first workout day
       const week1Days = planJson.weeks?.[0]?.days ?? [];
       const firstWorkout = week1Days.find((d: any) => d.type === 'workout');
 
-      // Set handoff state
       setPlanId(savedPlan.id);
       setJordanMessage(planJson.jordanWelcome ?? null);
       setFirstDayNumber(firstWorkout?.dayNumber ?? 1);
       setFirstWorkoutTitle(firstWorkout?.title ?? 'Workout');
 
-      // Fire-and-forget: save goal projection — does not block navigation
       saveGoalProjection(
         goalData.id,
         params.goal,
@@ -411,63 +558,115 @@ export default function BuildingPlanScreen() {
         },
       );
 
-      // Wait minimum 3 seconds for animation, then show handoff
-      const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, 3000 - elapsed);
-      setTimeout(() => setPlanReady(true), remaining);
+      setApiDone(true);
     } catch (error) {
       console.error('Plan generation failed:', error);
-      navigateAfterDelay(1000);
+      if (retryContextRef.current) {
+        stopLoadingSequence();
+        subtitleOpacity.setValue(1);
+        setErrorState({
+          message: 'Something went wrong while building your plan — tap to try again.',
+          canRetry: true,
+        });
+      } else {
+        navigateAfterDelay(1000);
+      }
     }
   };
 
+  const onProgressBarLayout = (e: LayoutChangeEvent) => {
+    setProgressBarWidth(e.nativeEvent.layout.width);
+  };
+
+  const progressFillWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, Math.max(0, progressBarWidth)],
+  });
+
   return (
-    <View style={styles.container}>
-      <Animated.View
-        style={[styles.outerRing, { opacity: pulseAnim }]}
-      >
-        <View style={styles.innerFill} />
-      </Animated.View>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <View style={styles.content}>
+        <View style={styles.topSection}>
+          <Animated.View
+            style={[styles.jordanAvatar, { opacity: avatarPulseOpacity }]}
+          >
+            <Text style={styles.jordanInitial}>J</Text>
+          </Animated.View>
 
-      <Text style={styles.title}>Building Your Plan</Text>
-      <Animated.Text style={[styles.subtitle, { opacity: subtitleOpacity }]}>
-        {displayedMessage}
-      </Animated.Text>
+          <Text style={styles.buildTitle}>Building your plan</Text>
 
-      <View style={styles.checklist}>
-        {STEPS.map((step, i) => {
-          const inv = stepAnims[i].interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0],
-          });
-          return (
-            <View key={step}>
-              <View style={styles.stepRow}>
-                <View style={styles.checkSlot}>
-                  <Animated.Text style={[styles.pendingGlyph, { opacity: inv }]}>
-                    ·
-                  </Animated.Text>
-                  <Animated.Text
-                    style={[styles.checkGlyph, { opacity: stepAnims[i] }]}
-                  >
-                    ✓
-                  </Animated.Text>
-                </View>
-                <View style={styles.stepTextWrap}>
-                  <Animated.Text style={[styles.stepTextPending, { opacity: inv }]}>
-                    {step}
-                  </Animated.Text>
-                  <Animated.Text
-                    style={[styles.stepTextDone, { opacity: stepAnims[i] }]}
-                  >
-                    {step}
-                  </Animated.Text>
-                </View>
-              </View>
-              {i < STEPS.length - 1 ? <View style={styles.rowDivider} /> : null}
-            </View>
-          );
-        })}
+          <Animated.Text
+            style={[styles.buildSubtitle, { opacity: subtitleOpacity }]}
+          >
+            {errorState ? errorState.message : displaySubtitle}
+          </Animated.Text>
+
+          {errorState?.canRetry ? (
+            <Pressable
+              style={styles.loadRetryButton}
+              onPress={() => generateAndSavePlan(true)}
+            >
+              <Text style={styles.loadRetryButtonText}>Try Again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={styles.midSection}>
+          <View style={styles.progressTrack} onLayout={onProgressBarLayout}>
+            <Animated.View
+              style={[styles.progressFill, { width: progressFillWidth }]}
+            />
+          </View>
+
+          <View style={styles.stepList}>
+            {LOADING_STEPS.slice(0, currentStepIndex + 1).map((step, i) => {
+              const isComplete = completedSteps.includes(step.id);
+              const isCurrent = i === currentStepIndex && !isComplete;
+
+              return (
+                <Animated.View
+                  key={step.id}
+                  style={[styles.stepRowOuter, { opacity: rowOpacities[i] }]}
+                >
+                  <View style={styles.stepRow}>
+                    <View style={styles.stepIconCol}>
+                      {isComplete ? (
+                        <Text style={styles.stepIconDone}>✓</Text>
+                      ) : isCurrent ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={Colors.accent}
+                        />
+                      ) : (
+                        <View style={styles.stepIconPending} />
+                      )}
+                    </View>
+                    <Text
+                      style={
+                        isComplete
+                          ? styles.stepLabelDone
+                          : isCurrent
+                            ? styles.stepLabelCurrent
+                            : styles.stepLabelPending
+                      }
+                      numberOfLines={2}
+                    >
+                      {step.label}
+                    </Text>
+                  </View>
+                </Animated.View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.bottomQuote}>
+          <Text style={styles.quoteText}>
+            The plan is only as good as the data behind it.{'\n'}
+            You gave me everything I need.{'\n'}
+            — Jordan
+          </Text>
+        </View>
       </View>
 
       {planReady && (
@@ -534,102 +733,141 @@ export default function BuildingPlanScreen() {
           </View>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
-    justifyContent: 'center',
-    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
     paddingHorizontal: Spacing.xl,
   },
-  outerRing: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  topSection: {
+    alignItems: 'center',
+    paddingTop: Spacing.md,
+  },
+  jordanAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: Colors.bgCard,
     borderWidth: 2,
     borderColor: Colors.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  innerFill: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.accent,
+  jordanInitial: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.accent,
   },
-  title: {
+  buildTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     textAlign: 'center',
-    marginTop: 32,
+    marginTop: Spacing.lg,
   },
-  subtitle: {
+  buildSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
   },
-  checklist: {
-    marginTop: 40,
-    alignSelf: 'stretch',
-    paddingHorizontal: 16,
+  loadRetryButton: {
+    marginTop: Spacing.lg,
+    width: '100%',
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadRetryButtonText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  midSection: {
+    flex: 1,
+    marginTop: Spacing.xxl,
+    minHeight: 0,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgElevated,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accent,
+  },
+  stepList: {
+    marginTop: Spacing.lg,
+  },
+  stepRowOuter: {
+    width: '100%',
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: Spacing.sm,
   },
-  checkSlot: {
+  stepIconCol: {
     width: 24,
-    minHeight: 22,
-    marginRight: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: Spacing.md,
   },
-  pendingGlyph: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textTertiary,
-    position: 'absolute',
-  },
-  checkGlyph: {
-    fontFamily: Fonts.bold,
+  stepIconDone: {
+    fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.success,
-    position: 'absolute',
   },
-  stepTextWrap: {
+  stepIconPending: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  stepLabelDone: {
     flex: 1,
-    position: 'relative',
-    minHeight: 22,
-    justifyContent: 'center',
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
-  stepTextPending: {
+  stepLabelCurrent: {
+    flex: 1,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
+  stepLabelPending: {
+    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textTertiary,
-    position: 'absolute',
-    left: 0,
-    right: 0,
   },
-  stepTextDone: {
+  bottomQuote: {
+    paddingBottom: Spacing.lg,
+  },
+  quoteText: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textPrimary,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
-  rowDivider: {
-    height: 1,
-    backgroundColor: Colors.divider,
+    fontSize: FontSizes.caption,
+    fontStyle: 'italic',
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: LineHeights.caption,
   },
   handoffOverlay: {
     ...StyleSheet.absoluteFillObject,

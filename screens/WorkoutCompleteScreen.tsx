@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
+  ActivityIndicator,
   Animated,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -60,6 +62,25 @@ const STAT_CARDS = (
   { icon: '🏆', label: 'PRs Hit', value: String(prsHit), isPr: true },
 ];
 
+function rawWeekNumber(w: {
+  weekNumber?: unknown;
+  week_number?: unknown;
+}): number {
+  const n = w.weekNumber ?? w.week_number;
+  return typeof n === 'number' && !Number.isNaN(n) ? n : 0;
+}
+
+function isGenerateNextWeekOk(data: unknown, error: unknown): boolean {
+  if (error) return false;
+  const d = data as { status?: string; error?: string } | null | undefined;
+  if (d == null) return false;
+  if (d.error) return false;
+  if (d.status === 'error') return false;
+  return ['success', 'already_exists', 'plan_complete', 'already_advanced'].includes(
+    d.status ?? '',
+  );
+}
+
 export default function WorkoutCompleteScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -90,6 +111,7 @@ export default function WorkoutCompleteScreen() {
   const checkScale = useRef(new Animated.Value(0)).current;
   const cardOpacities = useRef(stats.map(() => new Animated.Value(0))).current;
   const skeletonOpacity = useRef(new Animated.Value(0.4)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Coaching note state via ref to avoid re-render loop
   const [coachNote, setCoachNote] = [
@@ -106,14 +128,34 @@ export default function WorkoutCompleteScreen() {
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
   const [nextWeekReady, setNextWeekReady] = useState(false);
   const [macroAdjustment, setMacroAdjustment] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState(false);
+  const [isWeekComplete, setIsWeekComplete] = useState(false);
+  const [weekCompletionChecked, setWeekCompletionChecked] = useState(false);
+  const autoGenStartedRef = useRef(false);
 
-  // Check whether the completed session finishes the week — if so, pre-generate the summary
   useEffect(() => {
-    async function checkWeekCompletion() {
+    if (nextWeekReady) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [nextWeekReady]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         const userId = session?.user?.id;
-        if (!userId) return;
+        if (!userId) {
+          if (!cancelled) setWeekCompletionChecked(true);
+          return;
+        }
 
         const { data: logs } = await supabase
           .from('workout_logs')
@@ -122,7 +164,7 @@ export default function WorkoutCompleteScreen() {
           .eq('plan_id', planId)
           .eq('week_number', weekNumber);
 
-        const distinctDays = new Set(
+        const distinctLoggedDays = new Set(
           (logs ?? []).map((r: { day_number: number }) => r.day_number),
         ).size;
 
@@ -134,64 +176,129 @@ export default function WorkoutCompleteScreen() {
 
         const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
 
-        if (distinctDays < daysPerWeek) return;
-        // generate-next-week and weekly-coach-summary have their own idempotency guards
-
-        supabase.functions
-          .invoke('weekly-coach-summary', { body: { userId, planId, weekNumber } })
-          .then(async ({ data, error }) => {
-            if (error) {
-              console.error('weekly-coach-summary error:', error);
-              return;
-            }
-            if (!data?.summary) {
-              console.error('weekly-coach-summary: no summary in response', data);
-              return;
-            }
-            setShowSummaryBanner(true);
-
-            try {
-              const { data: macroAdj } = await supabase.functions.invoke(
-                'adjust-macros',
-                { body: { userId, planId, weekNumber } },
-              );
-              if (macroAdj?.status === 'adjusted' && macroAdj.reasoning) {
-                setMacroAdjustment(macroAdj.reasoning);
-              }
-            } catch (macroErr) {
-              console.error('adjust-macros invoke failed:', macroErr);
-            }
-
-            try {
-              await supabase.functions.invoke('generate-meals', { body: { userId } });
-            } catch {
-              // Silent — weekly meal refresh is non-critical
-            }
-          })
-          .catch((err) => {
-            console.error('weekly-coach-summary invoke failed:', err);
-          });
-
-        supabase.functions
-          .invoke('generate-next-week', {
-            body: { userId, planId, completedWeekNumber: weekNumber },
-          })
-          .then(({ data, error }) => {
-            if (error) return;
-            if (data?.status === 'success') setNextWeekReady(true);
-            if (data?.status === 'plan_complete') setNextWeekReady(false);
-          })
-          .catch(() => {
-            // Non-critical — plan generation failure is silent here
-          });
+        if (!cancelled) {
+          setIsWeekComplete(distinctLoggedDays >= daysPerWeek);
+          setWeekCompletionChecked(true);
+        }
       } catch {
-        // Non-critical
+        if (!cancelled) setWeekCompletionChecked(true);
       }
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [planId, weekNumber]);
 
-    checkWeekCompletion();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleGenerateNextWeek = useCallback(async () => {
+    setIsGenerating(true);
+    setGenerationError(false);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) {
+        setGenerationError(true);
+        return;
+      }
+
+      const { data: existingPlan } = await supabase
+        .from('plans')
+        .select('plan_json')
+        .eq('id', planId)
+        .maybeSingle();
+
+      const weeks =
+        (existingPlan?.plan_json as { weeks?: unknown[] } | undefined)?.weeks ??
+        [];
+      const nextWeekExists = weeks.some(
+        (w) => rawWeekNumber(w as { weekNumber?: unknown; week_number?: unknown }) === weekNumber + 1,
+      );
+
+      const summaryPromise = supabase.functions.invoke('weekly-coach-summary', {
+        body: { userId, planId, weekNumber },
+      });
+
+      const nextWeekPromise = nextWeekExists
+        ? Promise.resolve({
+            data: { status: 'already_exists' as const },
+            error: null,
+          })
+        : supabase.functions.invoke('generate-next-week', {
+            body: { userId, planId, completedWeekNumber: weekNumber },
+          });
+
+      const [summarySettled, nextWeekSettled] = await Promise.allSettled([
+        summaryPromise,
+        nextWeekPromise,
+      ]);
+
+      const summaryResult =
+        summarySettled.status === 'fulfilled' ? summarySettled.value : null;
+      if (summaryResult && !summaryResult.error && summaryResult.data?.summary) {
+        setShowSummaryBanner(true);
+        try {
+          const { data: macroAdj } = await supabase.functions.invoke(
+            'adjust-macros',
+            { body: { userId, planId, weekNumber } },
+          );
+          if (macroAdj?.status === 'adjusted' && macroAdj.reasoning) {
+            setMacroAdjustment(macroAdj.reasoning);
+          }
+        } catch (macroErr) {
+          console.error('adjust-macros invoke failed:', macroErr);
+        }
+        try {
+          await supabase.functions.invoke('generate-meals', { body: { userId } });
+        } catch {
+          // Silent — weekly meal refresh is non-critical
+        }
+      } else {
+        if (summaryResult?.error) {
+          console.error('weekly-coach-summary error:', summaryResult.error);
+        }
+        if (summaryResult && !summaryResult.data?.summary) {
+          console.error(
+            'weekly-coach-summary: no summary in response',
+            summaryResult.data,
+          );
+        }
+      }
+
+      let nextOk = false;
+      if (nextWeekSettled.status === 'fulfilled') {
+        const { data, error } = nextWeekSettled.value;
+        nextOk = isGenerateNextWeekOk(data, error);
+      }
+
+      if (!nextOk) {
+        setGenerationError(true);
+      } else {
+        setNextWeekReady(true);
+      }
+    } catch (err) {
+      console.error('handleGenerateNextWeek:', err);
+      setGenerationError(true);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [planId, weekNumber]);
+
+  useEffect(() => {
+    if (!weekCompletionChecked || !isWeekComplete || nextWeekReady || generationError) {
+      return;
+    }
+    if (autoGenStartedRef.current) return;
+    autoGenStartedRef.current = true;
+    void handleGenerateNextWeek();
+  }, [
+    weekCompletionChecked,
+    isWeekComplete,
+    nextWeekReady,
+    generationError,
+    handleGenerateNextWeek,
+  ]);
 
   useEffect(() => {
     // 1 — Checkmark spring
@@ -458,19 +565,70 @@ export default function WorkoutCompleteScreen() {
 
       {/* ── Section 5: Fixed action buttons ── */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          activeOpacity={0.8}
-          onPress={() =>
-            navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] })
-          }
-        >
-          <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
-        </TouchableOpacity>
+        {!weekCompletionChecked ? (
+          <View style={styles.generatingState}>
+            <ActivityIndicator color={Colors.accent} size="small" />
+            <Text style={styles.generatingText}>One moment…</Text>
+          </View>
+        ) : isWeekComplete && isGenerating ? (
+          <View style={styles.generatingState}>
+            <ActivityIndicator color={Colors.accent} size="small" />
+            <Text style={styles.generatingText}>
+              Jordan is building your Week {weekNumber + 1} — it'll be ready in a
+              moment.
+            </Text>
+          </View>
+        ) : isWeekComplete && generationError ? (
+          <View style={styles.generatingState}>
+            <Text style={styles.generatingText}>
+              Jordan is building your next week — tap to check if it's ready.
+            </Text>
+            <Pressable style={styles.retryButton} onPress={handleGenerateNextWeek}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </Pressable>
+          </View>
+        ) : isWeekComplete && nextWeekReady ? (
+          <Animated.View style={{ opacity: fadeAnim }}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] })
+              }
+            >
+              <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.primaryButton,
+              isWeekComplete && !nextWeekReady && styles.primaryButtonDisabled,
+            ]}
+            activeOpacity={0.8}
+            disabled={isWeekComplete && !nextWeekReady}
+            onPress={() =>
+              navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] })
+            }
+          >
+            <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
-          style={styles.secondaryButton}
+          style={[
+            styles.secondaryButton,
+            (!weekCompletionChecked ||
+              isGenerating ||
+              (isWeekComplete && !nextWeekReady)) &&
+              styles.secondaryButtonDisabled,
+          ]}
           activeOpacity={0.8}
+          disabled={
+            !weekCompletionChecked ||
+            isGenerating ||
+            (isWeekComplete && !nextWeekReady)
+          }
           onPress={() =>
             // PlanView lives under Dashboard → WorkoutTab stack (not root)
             (navigation as { navigate: (a: string, b?: object) => void }).navigate(
@@ -682,6 +840,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  primaryButtonDisabled: {
+    opacity: 0.45,
+  },
+  generatingState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    gap: Spacing.md,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  generatingText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
+    lineHeight: 22,
+  },
+  retryButton: {
+    backgroundColor: Colors.accent,
+    height: 56,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  retryButtonText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
   primaryButtonText: {
     fontSize: FontSizes.title,
     fontFamily: Fonts.semiBold,
@@ -700,6 +890,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     fontFamily: Fonts.semiBold,
     color: Colors.accent,
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.4,
   },
 
   summaryBanner: {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import Svg, {
   Text as SvgText,
   G,
 } from 'react-native-svg';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
@@ -424,11 +425,15 @@ export default function MacroTrackerScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
 
   const t = targets ?? DEFAULT_TARGETS;
+
+  const hasLoggedToday = (todayLogs ?? []).length > 0;
 
   const userDietaryStyle = useMemo((): DietaryStyle => {
     const allowed: DietaryStyle[] = [
@@ -755,15 +760,25 @@ export default function MacroTrackerScreen() {
         {mealPrefsSet && mealSuggestions.length > 0 && (
           <View style={styles.mealPlanSection}>
             <Text style={styles.mealPlanHeading}>{"Today's Meal Plan"}</Text>
-            {jordanMealNote ? (
-              <View style={styles.jordanCard}>
-                <Text style={styles.jordanAuthor}>JORDAN</Text>
-                <Text style={styles.jordanBody}>{jordanMealNote}</Text>
-                <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
-              </View>
-            ) : (
-              <Text style={styles.jordanTapHintStandalone}>Tap any meal to log it</Text>
-            )}
+            <View style={styles.jordanCard}>
+              <Text style={styles.jordanAuthor}>JORDAN</Text>
+              {hasLoggedToday ? (
+                <>
+                  {jordanMealNote ? (
+                    <Text style={styles.jordanBody}>{jordanMealNote}</Text>
+                  ) : null}
+                  <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.jordanBody}>
+                    Here&apos;s your plan for today — hit these targets and you&apos;ll be right
+                    on track.
+                  </Text>
+                  <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
+                </>
+              )}
+            </View>
             {mealSuggestions.map((meal) => (
               <View key={meal.name} style={styles.suggestedMealCard}>
                 <TouchableOpacity
@@ -1395,12 +1410,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
     marginTop: 10,
-  },
-  jordanTapHintStandalone: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-    marginBottom: Spacing.md,
   },
   suggestedMealCard: {
     backgroundColor: Colors.bgCard,

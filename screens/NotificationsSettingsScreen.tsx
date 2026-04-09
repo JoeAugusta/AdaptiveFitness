@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -16,15 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 // ── Constants ──
 
 const STORAGE_KEY = 'notification_preferences';
-
-const defaultTime = new Date();
-defaultTime.setHours(9, 0, 0, 0);
+const ASYNC_KEY_WORKOUT_TIME = 'workoutReminderTime';
+const ASYNC_KEY_WEIGH_IN_TIME = 'weighInReminderTime';
 
 // ── Types ──
 
@@ -41,7 +42,11 @@ interface NotificationPreferences {
 // ── Helpers ──
 
 const formatTime = (date: Date): string =>
-  date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 
 // ── Sub-components ──
 
@@ -69,30 +74,26 @@ export default function NotificationsSettingsScreen() {
 
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [workoutRemindersEnabled, setWorkoutRemindersEnabled] = useState(false);
+  const [weighInReminderEnabled, setWeighInReminderEnabled] = useState(false);
   const [prAlertsEnabled, setPrAlertsEnabled] = useState(false);
   const [weeklySummaryEnabled, setWeeklySummaryEnabled] = useState(false);
   const [streakProtectionEnabled, setStreakProtectionEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState<Date>(defaultTime);
-  const [pendingTime, setPendingTime] = useState<Date>(defaultTime);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [weighInReminderEnabled, setWeighInReminderEnabled] = useState(false);
-  const [weighInTime, setWeighInTime] = useState<Date>(() => {
-    const d = new Date();
-    d.setHours(7, 0, 0, 0);
-    return d;
-  });
-  const [pendingWeighInTime, setPendingWeighInTime] = useState<Date>(() => {
-    const d = new Date();
-    d.setHours(7, 0, 0, 0);
-    return d;
-  });
-  const [showWeighInTimePicker, setShowWeighInTimePicker] = useState(false);
+  const [workoutReminderTime, setWorkoutReminderTime] = useState(
+    () => new Date(new Date().setHours(9, 0, 0, 0)),
+  );
+  const [weighInReminderTime, setWeighInReminderTime] = useState(
+    () => new Date(new Date().setHours(7, 0, 0, 0)),
+  );
+  const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
+  const [showWeighInPicker, setShowWeighInPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const weighInNotifId = useRef<string | null>(null);
+  const workoutTimeSnapshotRef = useRef<Date | null>(null);
+  const weighInTimeSnapshotRef = useRef<Date | null>(null);
 
   // Skeleton pulse while loading
   useEffect(() => {
@@ -123,28 +124,44 @@ export default function NotificationsSettingsScreen() {
     const init = async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const savedWorkoutKey = await AsyncStorage.getItem(ASYNC_KEY_WORKOUT_TIME);
+        const savedWeighInKey = await AsyncStorage.getItem(ASYNC_KEY_WEIGH_IN_TIME);
+
+        let prefs: NotificationPreferences | null = null;
         if (raw) {
-          const prefs = JSON.parse(raw) as NotificationPreferences;
+          prefs = JSON.parse(raw) as NotificationPreferences;
           setWorkoutRemindersEnabled(prefs.workoutReminders);
           setPrAlertsEnabled(prefs.prAlerts);
           setWeeklySummaryEnabled(prefs.weeklySummary);
           setStreakProtectionEnabled(prefs.streakProtection);
-          const savedTime = new Date(prefs.reminderTimeISO);
-          if (!isNaN(savedTime.getTime())) {
-            setReminderTime(savedTime);
-            setPendingTime(savedTime);
-          }
           if (prefs.weighInReminder !== undefined) {
             setWeighInReminderEnabled(prefs.weighInReminder);
           }
-          if (prefs.weighInTimeISO) {
-            const savedWeighInTime = new Date(prefs.weighInTimeISO);
-            if (!isNaN(savedWeighInTime.getTime())) {
-              setWeighInTime(savedWeighInTime);
-              setPendingWeighInTime(savedWeighInTime);
-            }
-          }
         }
+
+        let workoutT = new Date(new Date().setHours(9, 0, 0, 0));
+        let weighT = new Date(new Date().setHours(7, 0, 0, 0));
+
+        if (prefs?.reminderTimeISO) {
+          const d = new Date(prefs.reminderTimeISO);
+          if (!isNaN(d.getTime())) workoutT = d;
+        }
+        if (prefs?.weighInTimeISO) {
+          const d = new Date(prefs.weighInTimeISO);
+          if (!isNaN(d.getTime())) weighT = d;
+        }
+
+        if (savedWorkoutKey) {
+          const d = new Date(savedWorkoutKey);
+          if (!isNaN(d.getTime())) workoutT = d;
+        }
+        if (savedWeighInKey) {
+          const d = new Date(savedWeighInKey);
+          if (!isNaN(d.getTime())) weighT = d;
+        }
+
+        setWorkoutReminderTime(workoutT);
+        setWeighInReminderTime(weighT);
       } catch (e) {
         console.error('NotificationsSettings init error:', e);
       } finally {
@@ -166,9 +183,9 @@ export default function NotificationsSettingsScreen() {
             prAlerts: prAlertsEnabled,
             weeklySummary: weeklySummaryEnabled,
             streakProtection: streakProtectionEnabled,
-            reminderTimeISO: reminderTime.toISOString(),
+            reminderTimeISO: workoutReminderTime.toISOString(),
             weighInReminder: weighInReminderEnabled,
-            weighInTimeISO: weighInTime.toISOString(),
+            weighInTimeISO: weighInReminderTime.toISOString(),
             ...overrides,
           };
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
@@ -182,9 +199,9 @@ export default function NotificationsSettingsScreen() {
       prAlertsEnabled,
       weeklySummaryEnabled,
       streakProtectionEnabled,
-      reminderTime,
+      workoutReminderTime,
       weighInReminderEnabled,
-      weighInTime,
+      weighInReminderTime,
     ],
   );
 
@@ -219,10 +236,10 @@ export default function NotificationsSettingsScreen() {
   const toggleWorkoutReminders = useCallback(
     async (value: boolean) => {
       setWorkoutRemindersEnabled(value);
-      await scheduleWorkoutReminder(value, reminderTime);
+      await scheduleWorkoutReminder(value, workoutReminderTime);
       schedulePreferencesSave({ workoutReminders: value });
     },
-    [reminderTime, scheduleWorkoutReminder, schedulePreferencesSave],
+    [workoutReminderTime, scheduleWorkoutReminder, schedulePreferencesSave],
   );
 
   const toggleWeighInReminder = useCallback(
@@ -239,8 +256,8 @@ export default function NotificationsSettingsScreen() {
               },
               trigger: {
                 type: Notifications.SchedulableTriggerInputTypes.DAILY,
-                hour: weighInTime.getHours(),
-                minute: weighInTime.getMinutes(),
+                hour: weighInReminderTime.getHours(),
+                minute: weighInReminderTime.getMinutes(),
               },
             });
             weighInNotifId.current = id;
@@ -254,38 +271,60 @@ export default function NotificationsSettingsScreen() {
       }
       schedulePreferencesSave({ weighInReminder: value });
     },
-    [weighInTime, schedulePreferencesSave],
+    [weighInReminderTime, schedulePreferencesSave],
   );
 
-  const confirmWeighInTime = () => {
-    setWeighInTime(pendingWeighInTime);
-    setShowWeighInTimePicker(false);
-    if (weighInReminderEnabled && Platform.OS !== 'web') {
-      (async () => {
-        try {
-          if (weighInNotifId.current) {
-            await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
-          }
-          const id = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Time to weigh in 🌅',
-              body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
-              sound: true,
-            },
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DAILY,
-              hour: pendingWeighInTime.getHours(),
-              minute: pendingWeighInTime.getMinutes(),
-            },
-          });
-          weighInNotifId.current = id;
-        } catch (e) {
-          console.error('Weigh-in reschedule error:', e);
-        }
-      })();
+  const rescheduleWeighInNotification = useCallback(async (time: Date) => {
+    if (Platform.OS === 'web' || !weighInReminderEnabled) return;
+    try {
+      if (weighInNotifId.current) {
+        await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
+      }
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Time to weigh in 🌅',
+          body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: time.getHours(),
+          minute: time.getMinutes(),
+        },
+      });
+      weighInNotifId.current = id;
+    } catch (e) {
+      console.error('Weigh-in reschedule error:', e);
     }
-    schedulePreferencesSave({ weighInTimeISO: pendingWeighInTime.toISOString() });
-  };
+  }, [weighInReminderEnabled]);
+
+  const commitWorkoutReminderTime = useCallback(
+    async (time: Date) => {
+      try {
+        await AsyncStorage.setItem(ASYNC_KEY_WORKOUT_TIME, time.toISOString());
+      } catch (e) {
+        console.error('Workout time save error:', e);
+      }
+      schedulePreferencesSave({ reminderTimeISO: time.toISOString() });
+      if (workoutRemindersEnabled) {
+        await scheduleWorkoutReminder(true, time);
+      }
+    },
+    [schedulePreferencesSave, workoutRemindersEnabled, scheduleWorkoutReminder],
+  );
+
+  const commitWeighInReminderTime = useCallback(
+    async (time: Date) => {
+      try {
+        await AsyncStorage.setItem(ASYNC_KEY_WEIGH_IN_TIME, time.toISOString());
+      } catch (e) {
+        console.error('Weigh-in time save error:', e);
+      }
+      schedulePreferencesSave({ weighInTimeISO: time.toISOString() });
+      await rescheduleWeighInNotification(time);
+    },
+    [schedulePreferencesSave, rescheduleWeighInNotification],
+  );
 
   // ── Permission request ──
 
@@ -307,15 +346,74 @@ export default function NotificationsSettingsScreen() {
     }
   };
 
-  // ── Time picker confirm ──
-
-  const confirmTime = () => {
-    setReminderTime(pendingTime);
-    setShowTimePicker(false);
-    if (workoutRemindersEnabled) {
-      scheduleWorkoutReminder(true, pendingTime);
+  const dismissWorkoutPickerOverlay = () => {
+    if (workoutTimeSnapshotRef.current) {
+      setWorkoutReminderTime(workoutTimeSnapshotRef.current);
     }
-    schedulePreferencesSave({ reminderTimeISO: pendingTime.toISOString() });
+    workoutTimeSnapshotRef.current = null;
+    setShowWorkoutPicker(false);
+  };
+
+  const onWorkoutPickerDone = () => {
+    workoutTimeSnapshotRef.current = null;
+    setShowWorkoutPicker(false);
+    setWorkoutReminderTime((latest) => {
+      void commitWorkoutReminderTime(latest);
+      return latest;
+    });
+  };
+
+  const onAndroidWorkoutTimeChange = (event: DateTimePickerEvent, date?: Date) => {
+    setShowWorkoutPicker(false);
+    if (event.type === 'dismissed') return;
+    if (date) {
+      setWorkoutReminderTime(date);
+      void commitWorkoutReminderTime(date);
+    }
+  };
+
+  const openWorkoutPicker = () => {
+    if (Platform.OS === 'android') {
+      setShowWorkoutPicker(true);
+      return;
+    }
+    workoutTimeSnapshotRef.current = new Date(workoutReminderTime.getTime());
+    setShowWorkoutPicker(true);
+  };
+
+  const dismissWeighInPickerOverlay = () => {
+    if (weighInTimeSnapshotRef.current) {
+      setWeighInReminderTime(weighInTimeSnapshotRef.current);
+    }
+    weighInTimeSnapshotRef.current = null;
+    setShowWeighInPicker(false);
+  };
+
+  const onWeighInPickerDone = () => {
+    weighInTimeSnapshotRef.current = null;
+    setShowWeighInPicker(false);
+    setWeighInReminderTime((latest) => {
+      void commitWeighInReminderTime(latest);
+      return latest;
+    });
+  };
+
+  const onAndroidWeighInTimeChange = (event: DateTimePickerEvent, date?: Date) => {
+    setShowWeighInPicker(false);
+    if (event.type === 'dismissed') return;
+    if (date) {
+      setWeighInReminderTime(date);
+      void commitWeighInReminderTime(date);
+    }
+  };
+
+  const openWeighInPicker = () => {
+    if (Platform.OS === 'android') {
+      setShowWeighInPicker(true);
+      return;
+    }
+    weighInTimeSnapshotRef.current = new Date(weighInReminderTime.getTime());
+    setShowWeighInPicker(true);
   };
 
   // ── Render helpers ──
@@ -325,36 +423,39 @@ export default function NotificationsSettingsScreen() {
 
     return (
       <View style={styles.permissionContent}>
-        <View style={styles.bannerCard}>
-          <Text style={styles.bannerEmoji}>🔔</Text>
-          <Text style={styles.bannerTitle}>Enable Notifications</Text>
-          <Text style={styles.bannerBody}>
-            Get reminders for your scheduled workouts and celebrate milestones as you hit them.
-          </Text>
+        <View style={styles.valuePropsCard}>
+          <Text style={styles.valuePropsLabel}>JORDAN WILL NOTIFY YOU</Text>
 
-          {isWeb ? (
-            <TouchableOpacity
-              style={[styles.permissionEnableBtn, styles.bannerBtnWeb]}
-              onPress={undefined}
-              activeOpacity={1}
-              disabled
-            >
-              <Text style={styles.permissionEnableBtnTextMuted}>Available on iOS & Android</Text>
-            </TouchableOpacity>
-          ) : permissionGranted ? (
-            <View style={styles.permissionStatusRow}>
-              <View style={styles.permissionStatusDot} />
-              <Text style={styles.permissionStatusLabel}>Notifications enabled</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.permissionEnableBtn}
-              onPress={handleRequestPermissions}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.permissionEnableBtnText}>Enable Notifications</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.valuePropRow}>
+            <Text style={styles.valuePropIcon}>🔔</Text>
+            <Text style={styles.valuePropText}>
+              30 minutes before each scheduled session
+            </Text>
+          </View>
+
+          <View style={styles.valuePropRow}>
+            <Text style={styles.valuePropIcon}>📋</Text>
+            <Text style={styles.valuePropText}>
+              When your weekly coaching review is ready
+            </Text>
+          </View>
+
+          <View style={styles.valuePropRow}>
+            <Text style={styles.valuePropIcon}>🏆</Text>
+            <Text style={styles.valuePropText}>When you hit a milestone</Text>
+          </View>
+
+          {!isWeb &&
+            (!permissionGranted ? (
+              <Pressable style={styles.enableButton} onPress={handleRequestPermissions}>
+                <Text style={styles.enableButtonText}>Enable Notifications</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.grantedRow}>
+                <View style={styles.grantedDot} />
+                <Text style={styles.grantedText}>Notifications enabled</Text>
+              </View>
+            ))}
         </View>
       </View>
     );
@@ -383,15 +484,12 @@ export default function NotificationsSettingsScreen() {
             <Divider />
             <TouchableOpacity
               style={styles.prefRow}
-              onPress={() => {
-                setPendingTime(reminderTime);
-                setShowTimePicker(true);
-              }}
+              onPress={openWorkoutPicker}
               activeOpacity={0.7}
             >
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
-                <Text style={styles.timeValue}>{formatTime(reminderTime)}</Text>
+                <Text style={styles.timeValue}>{formatTime(workoutReminderTime)}</Text>
                 <Text style={styles.rowChevron}>›</Text>
               </View>
             </TouchableOpacity>
@@ -417,15 +515,12 @@ export default function NotificationsSettingsScreen() {
             <Divider />
             <TouchableOpacity
               style={styles.prefRow}
-              onPress={() => {
-                setPendingWeighInTime(weighInTime);
-                setShowWeighInTimePicker(true);
-              }}
+              onPress={openWeighInPicker}
               activeOpacity={0.7}
             >
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
-                <Text style={styles.timeValue}>{formatTime(weighInTime)}</Text>
+                <Text style={styles.timeValue}>{formatTime(weighInReminderTime)}</Text>
                 <Text style={styles.rowChevron}>›</Text>
               </View>
             </TouchableOpacity>
@@ -526,83 +621,95 @@ export default function NotificationsSettingsScreen() {
         </ScrollView>
       </View>
 
-      {/* ── Time Picker Modal ── */}
-      <Modal
-        visible={showTimePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowTimePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Reminder Time</Text>
-            <DateTimePicker
-              value={pendingTime}
-              mode="time"
-              display="spinner"
-              onChange={(_event, date) => {
-                if (date) setPendingTime(date);
-              }}
-              textColor={Colors.textPrimary}
-            />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowTimePicker(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalConfirmBtn}
-                onPress={confirmTime}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalConfirmText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {Platform.OS === 'android' && showWorkoutPicker ? (
+        <DateTimePicker
+          value={workoutReminderTime}
+          mode="time"
+          display="default"
+          onChange={onAndroidWorkoutTimeChange}
+        />
+      ) : null}
 
-      {/* ── Weigh-In Time Picker Modal ── */}
-      <Modal
-        visible={showWeighInTimePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowWeighInTimePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Weigh-In Reminder Time</Text>
-            <DateTimePicker
-              value={pendingWeighInTime}
-              mode="time"
-              display="spinner"
-              onChange={(_event, date) => {
-                if (date) setPendingWeighInTime(date);
-              }}
-              textColor={Colors.textPrimary}
+      {Platform.OS === 'android' && showWeighInPicker ? (
+        <DateTimePicker
+          value={weighInReminderTime}
+          mode="time"
+          display="default"
+          onChange={onAndroidWeighInTimeChange}
+        />
+      ) : null}
+
+      {showWorkoutPicker && Platform.OS !== 'android' ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible
+          onRequestClose={dismissWorkoutPickerOverlay}
+        >
+          <View style={styles.pickerModalRoot}>
+            <Pressable
+              style={styles.pickerBackdrop}
+              onPress={dismissWorkoutPickerOverlay}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss time picker"
             />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowWeighInTimePicker(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalConfirmBtn}
-                onPress={confirmWeighInTime}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalConfirmText}>Confirm</Text>
-              </TouchableOpacity>
+            <View style={styles.pickerSheet}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Workout Reminder Time</Text>
+                <Pressable onPress={onWorkoutPickerDone} hitSlop={12}>
+                  <Text style={styles.pickerDone}>Done</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={workoutReminderTime}
+                mode="time"
+                display="spinner"
+                onChange={(_event, date) => {
+                  if (date) setWorkoutReminderTime(date);
+                }}
+                themeVariant="dark"
+                textColor={Colors.textPrimary}
+              />
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      ) : null}
+
+      {showWeighInPicker && Platform.OS !== 'android' ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible
+          onRequestClose={dismissWeighInPickerOverlay}
+        >
+          <View style={styles.pickerModalRoot}>
+            <Pressable
+              style={styles.pickerBackdrop}
+              onPress={dismissWeighInPickerOverlay}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss time picker"
+            />
+            <View style={styles.pickerSheet}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Daily Weigh-In Time</Text>
+                <Pressable onPress={onWeighInPickerDone} hitSlop={12}>
+                  <Text style={styles.pickerDone}>Done</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={weighInReminderTime}
+                mode="time"
+                display="spinner"
+                onChange={(_event, date) => {
+                  if (date) setWeighInReminderTime(date);
+                }}
+                themeVariant="dark"
+                textColor={Colors.textPrimary}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -637,61 +744,69 @@ const styles = StyleSheet.create({
 
   permissionContent: {
     marginTop: 48,
-    alignItems: 'center',
     width: '100%',
   },
-  bannerCard: {
+  valuePropsCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
-    padding: 32,
-    alignItems: 'center',
-    width: '100%',
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
   },
-  bannerEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  bannerTitle: {
+  valuePropsLabel: {
     fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
-    color: Colors.textPrimary,
-    textAlign: 'center',
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.md,
   },
-  bannerBody: {
+  valuePropRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.sm,
+    gap: 10,
+  },
+  valuePropIcon: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  valuePropText: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+    color: Colors.textPrimary,
+    flex: 1,
     lineHeight: 22,
-    marginTop: 8,
   },
-  bannerBtn: {
-    marginTop: 24,
-    width: '100%',
-    height: 52,
+  enableButton: {
+    backgroundColor: Colors.accent,
+    height: 56,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: Spacing.md,
   },
-  bannerBtnWeb: { opacity: 0.55 },
-  bannerBtnLabel: {
+  enableButtonText: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+    color: Colors.textPrimary,
   },
-  bannerNote: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 10,
+  grantedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.md,
+  },
+  grantedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.success,
+  },
+  grantedText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 
   sectionHeading: {
@@ -775,39 +890,37 @@ const styles = StyleSheet.create({
     width: '20%',
   },
 
-  // ── Time picker modal ──
-  modalOverlay: {
+  pickerModalRoot: {
     flex: 1,
-    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
-  modalSheet: {
-    backgroundColor: Colors.bgCard,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
+  pickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
   },
-  modalTitle: { color: Colors.textPrimary, fontSize: FontSizes.heading2, fontFamily: Fonts.bold,  marginBottom: 8 },
-  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  modalCancelBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.divider,
+  pickerSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    paddingBottom: 40,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
   },
-  modalCancelText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary, fontSize: FontSizes.body, },
-  modalConfirmBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  pickerTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
-  modalConfirmText: { color: '#FFFFFF', fontSize: FontSizes.body, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+  pickerDone: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
 });

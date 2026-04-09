@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Modal,
   TouchableWithoutFeedback,
   TextInput,
@@ -242,6 +243,7 @@ export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const params = route.params;
+  const preSessionMessage = params.preSessionMessage ?? null;
   const sessionStartedAt = useRef(new Date()).current;
 
   // Workout data
@@ -273,6 +275,9 @@ export default function ActiveWorkoutScreen() {
   const [showFatigueSheet, setShowFatigueSheet] = useState(false);
   const [fatigueRating, setFatigueRating] = useState<number | null>(null);
   const [sessionNotes, setSessionNotes] = useState('');
+  const [showPreSessionModal, setShowPreSessionModal] = useState(
+    () => !!preSessionMessage,
+  );
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1056,6 +1061,31 @@ export default function ActiveWorkoutScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
+
+      <Modal
+        visible={showPreSessionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPreSessionModal(false)}
+      >
+        <View style={styles.preSessionModalRoot}>
+          <Pressable
+            style={styles.preSessionOverlay}
+            onPress={() => setShowPreSessionModal(false)}
+          />
+          <View style={styles.preSessionSheet}>
+            <View style={styles.preSessionHandle} />
+            <Text style={styles.preSessionLabel}>JORDAN</Text>
+            <Text style={styles.preSessionMessage}>{preSessionMessage}</Text>
+            <Pressable
+              style={styles.preSessionCTA}
+              onPress={() => setShowPreSessionModal(false)}
+            >
+              <Text style={styles.preSessionCTAText}>Let's go →</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       </View>
     </SafeAreaView>
   );
@@ -1313,5 +1343,57 @@ const styles = StyleSheet.create({
   },
   saveButtonTextDisabled: {
     color: Colors.textSecondary,
+  },
+
+  preSessionModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  preSessionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  preSessionSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    padding: Spacing.xl,
+    paddingBottom: 48,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  preSessionHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
+  },
+  preSessionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.sm,
+  },
+  preSessionMessage: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    lineHeight: 26,
+    marginBottom: Spacing.xl,
+  },
+  preSessionCTA: {
+    backgroundColor: Colors.accent,
+    height: 56,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preSessionCTAText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 });

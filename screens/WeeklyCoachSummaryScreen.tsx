@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   SafeAreaView,
   Animated,
   ActivityIndicator,
@@ -268,6 +269,51 @@ export default function WeeklyCoachSummaryScreen() {
                 "Your weekly summary from Jordan will be ready once you've completed this week's sessions."
               }
             </Text>
+            <Pressable
+              style={styles.startWorkoutCTA}
+              onPress={() => {
+                const tabNav = navigation.getParent();
+                if (tabNav) {
+                  tabNav.reset({
+                    index: 1,
+                    routes: [
+                      {
+                        name: 'HomeTab',
+                        state: { routes: [{ name: 'Dashboard' }], index: 0 },
+                      },
+                      {
+                        name: 'WorkoutTab',
+                        state: { routes: [{ name: 'WorkoutHome' }], index: 0 },
+                      },
+                      {
+                        name: 'ProgressTab',
+                        state: { routes: [{ name: 'ProgressCharts' }], index: 0 },
+                      },
+                      {
+                        name: 'NutritionTab',
+                        state: { routes: [{ name: 'MacroTracker' }], index: 0 },
+                      },
+                      {
+                        name: 'ProfileTab',
+                        state: { routes: [{ name: 'ProfileSettings' }], index: 0 },
+                      },
+                    ],
+                  } as any);
+                } else {
+                  navigation.navigate(
+                    'Dashboard',
+                    {
+                      screen: 'WorkoutTab',
+                      params: { screen: 'WorkoutHome' },
+                    } as any,
+                  );
+                }
+              }}
+            >
+              <Text style={styles.startWorkoutCTAText}>
+                {`Start Today's Workout →`}
+              </Text>
+            </Pressable>
           </View>
         )}
 
@@ -430,6 +476,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     lineHeight: 22,
+  },
+  startWorkoutCTA: {
+    alignSelf: 'stretch',
+    backgroundColor: Colors.accent,
+    height: 56,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  startWorkoutCTAText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 
   errorCard: {

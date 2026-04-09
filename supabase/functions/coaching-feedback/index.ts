@@ -4,6 +4,7 @@
 // Never commit your API key. Never put it in .env for client use.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +78,8 @@ Target: ${targetReps} reps at ${targetWeight} lbs, RPE ${targetRpe}
 Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}
 Give a brief coaching note.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetchAnthropicMessagesWithRetry(() =>
+      fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -96,8 +98,28 @@ Give a brief coaching note.`;
         ],
       }),
     });
+    );
+
+    if (response.status === 503) {
+      return new Response(await response.text(), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const data = await response.json();
+
+    if (!response.ok) {
+      return new Response(
+        JSON.stringify({
+          feedback: isSessionSummary ? null : 'Set logged — stay locked in for the next one.',
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      );
+    }
     const raw = data.content?.[0]?.text;
     const text = isSessionSummary
       ? (typeof raw === 'string' && raw.trim() ? raw.trim() : null)

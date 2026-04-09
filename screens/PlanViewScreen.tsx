@@ -13,6 +13,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { getSessionIntent } from '../utils/getSessionIntent';
 import WorkoutResultsModal, {
   type WorkoutLog,
   type ExerciseObject,
@@ -36,6 +37,7 @@ interface PlanDay {
   muscleGroups: string[];
   exercises: ExerciseSummary[];
   completed: boolean;
+  sessionFocus?: string;
 }
 
 interface PlanWeek {
@@ -58,6 +60,10 @@ interface RawExercise {
 
 interface RawPlanJson {
   weeks?: RawWeek[];
+  split?: string;
+  daysPerWeek?: number;
+  title?: string;
+  totalWeeks?: number;
 }
 
 interface RawDay {
@@ -66,6 +72,7 @@ interface RawDay {
   title: string;
   muscleGroups?: string[];
   exercises?: RawExercise[];
+  sessionFocus?: string;
 }
 
 interface RawWeek {
@@ -186,12 +193,16 @@ function getPhaseDisplay(
 
 function WorkoutDayCard({
   day,
+  weekPhase,
+  planSplit,
   onStartWorkout,
   isNextWorkout,
   onViewResults,
   loadingResults,
 }: {
   day: PlanDay;
+  weekPhase: string | undefined;
+  planSplit: string | undefined;
   onStartWorkout: (day: PlanDay) => void;
   isNextWorkout: boolean;
   onViewResults: (day: PlanDay) => void;
@@ -236,6 +247,10 @@ function WorkoutDayCard({
           ))}
         </View>
       ) : null}
+
+      <Text style={styles.sessionIntent}>
+        {getSessionIntent(weekPhase, day.sessionFocus, planSplit)}
+      </Text>
 
       <View style={styles.exerciseList}>
         {visibleExercises.map((ex) => (
@@ -399,6 +414,7 @@ export default function PlanViewScreen() {
             weight: ex.targetWeight ?? 0,
           })),
           completed: logSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
+          sessionFocus: rd.sessionFocus,
         })),
       }));
 
@@ -733,6 +749,8 @@ export default function PlanViewScreen() {
               <WorkoutDayCard
                 key={day.dayNumber}
                 day={day}
+                weekPhase={weekData.phase}
+                planSplit={rawPlanJson?.split}
                 isNextWorkout={day.dayNumber === nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
                 onViewResults={handleViewResults}
@@ -1013,6 +1031,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
     borderRadius: Radius.full,
+  },
+  sessionIntent: {
+    fontFamily: Fonts.italic,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 6,
+    marginBottom: 2,
   },
   muscleChipText: {
     fontSize: FontSizes.micro,

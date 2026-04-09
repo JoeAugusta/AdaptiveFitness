@@ -8,13 +8,24 @@ import {
   Linking,
   Alert,
   Animated,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import {
+  Colors,
+  Fonts,
+  FontSizes,
+  LineHeights,
+  Spacing,
+  Radius,
+  CommonStyles,
+} from '../constants/design';
+import { deleteUserAccount } from '../utils/deleteAccount';
 
 // ── Label maps ──
 
@@ -80,6 +91,7 @@ interface PlanData {
   current_week: number;
   total_weeks: number;
   title: string;
+  plan_json?: Record<string, unknown> | null;
 }
 
 interface ScreenData {
@@ -104,6 +116,60 @@ function truncate(str: string, maxLen: number): string {
 
 function mapped(map: Record<string, string>, key: string | undefined): string {
   return key ? (map[key] ?? key) : '—';
+}
+
+function formatSessionLengthDisplay(val: unknown): string {
+  if (val == null || val === '') return '—';
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    return `${Math.round(val)} min`;
+  }
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s) return '—';
+    if (/^\d+$/.test(s)) return `${s} min`;
+    const m = s.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) return `${m[1]}–${m[2]} min`;
+    const parts = s.split(/[–-]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 2 && parts.every((p) => /^\d+$/.test(p))) {
+      return `${parts[0]}–${parts[1]} min`;
+    }
+    return s.toLowerCase().includes('min') ? s : `${s} min`;
+  }
+  return '—';
+}
+
+function trainingPrefsDisplay(
+  plan: PlanData | null,
+  profile: UserProfile | null | undefined,
+): {
+  experienceDisplay: string;
+  daysDisplay: string;
+  sessionDisplay: string;
+  splitDisplay: string;
+  equipmentDisplay: string;
+} {
+  const pj = plan?.plan_json ?? null;
+  const exp = (pj?.experience ?? profile?.training_age) as string | undefined;
+  const daysRaw = pj?.daysPerWeek ?? profile?.days_per_week;
+  const sessionRaw = pj?.sessionLength ?? profile?.session_duration_mins;
+  const splitKey = (pj?.split ?? pj?.splitId ?? profile?.preferred_split) as
+    | string
+    | undefined;
+  const equipKey = (pj?.equipment ?? profile?.equipment) as string | undefined;
+
+  let daysDisplay = '—';
+  if (daysRaw != null && daysRaw !== '') {
+    const n = Number(daysRaw);
+    if (Number.isFinite(n)) daysDisplay = `${n} days`;
+  }
+
+  return {
+    experienceDisplay: exp ? mapped(TRAINING_AGE_LABELS, exp) : '—',
+    daysDisplay,
+    sessionDisplay: formatSessionLengthDisplay(sessionRaw),
+    splitDisplay: splitKey ? mapped(SPLIT_LABELS, splitKey) : '—',
+    equipmentDisplay: equipKey ? mapped(EQUIPMENT_LABELS, equipKey) : '—',
+  };
 }
 
 // ── Sub-components ──
@@ -151,6 +217,9 @@ export default function ProfileSettingsScreen() {
     weight_lbs: number;
     log_date: string;
   } | null>(null);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
@@ -206,7 +275,7 @@ export default function ProfileSettingsScreen() {
           .maybeSingle(),
         supabase
           .from('plans')
-          .select('current_week, total_weeks, title')
+          .select('current_week, total_weeks, title, plan_json')
           .eq('user_id', uid)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
@@ -264,6 +333,16 @@ export default function ProfileSettingsScreen() {
     );
   };
 
+  const resetToSplash = () => {
+    const rootNav = navigation.getParent()?.getParent();
+    rootNav?.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Splash' }],
+      }),
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -282,6 +361,30 @@ export default function ProfileSettingsScreen() {
         },
       },
     ]);
+  };
+
+  const handleConfirmDeleteAccount = () => {
+    void (async () => {
+      try {
+        setIsDeleting(true);
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw userError ?? new Error('Not authenticated');
+        }
+        await deleteUserAccount(user.id);
+        await supabase.auth.signOut();
+        setShowDeleteModal(false);
+        resetToSplash();
+      } catch (e) {
+        console.error('Delete account error:', e);
+        Alert.alert('Something went wrong. Please try again.');
+      } finally {
+        setIsDeleting(false);
+      }
+    })();
   };
 
   // ── Error state ──
@@ -305,6 +408,10 @@ export default function ProfileSettingsScreen() {
 
   const today = new Date().toISOString().split('T')[0];
   const isToday = latestWeightLog?.log_date === today;
+
+  const trainingPrefs = data
+    ? trainingPrefsDisplay(data.plan, data.profile)
+    : null;
 
   // ── Render ──
 
@@ -418,26 +525,19 @@ export default function ProfileSettingsScreen() {
             <View style={styles.sectionCard}>
               <Row
                 label="Experience"
-                value={mapped(TRAINING_AGE_LABELS, data?.profile.training_age)}
+                value={trainingPrefs?.experienceDisplay ?? '—'}
               />
-              <Row
-                label="Days/Week"
-                value={
-                  data?.profile.days_per_week != null
-                    ? `${data.profile.days_per_week} days`
-                    : '—'
-                }
-              />
+              <Row label="Days/Week" value={trainingPrefs?.daysDisplay ?? '—'} />
               <Row
                 label="Session Length"
-                value={
-                  data?.profile.session_duration_mins != null
-                    ? `${data.profile.session_duration_mins} min`
-                    : '—'
-                }
+                value={trainingPrefs?.sessionDisplay ?? '—'}
               />
-              <Row label="Split" value={mapped(SPLIT_LABELS, data?.profile.preferred_split)} />
-              <Row label="Equipment" value={mapped(EQUIPMENT_LABELS, data?.profile.equipment)} isLast />
+              <Row label="Split" value={trainingPrefs?.splitDisplay ?? '—'} />
+              <Row
+                label="Equipment"
+                value={trainingPrefs?.equipmentDisplay ?? '—'}
+                isLast
+              />
             </View>
             <Text style={styles.helperText}>
               To change your training setup, start a new plan.
@@ -478,11 +578,19 @@ export default function ProfileSettingsScreen() {
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.row, styles.rowLast]}
+            style={styles.row}
             onPress={() => Linking.openURL('https://adaptive.fitness/terms')}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Terms of Service</Text>
+            <Text style={styles.rowChevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.row, styles.rowLast]}
+            onPress={() => setShowDeleteModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.supportRowLabelDanger}>Delete Account</Text>
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
         </View>
@@ -509,6 +617,54 @@ export default function ProfileSettingsScreen() {
         {/* ── 8. Version footer ── */}
         <Text style={styles.versionText}>Adaptive Fitness • v1.0.0</Text>
       </ScrollView>
+
+      <Modal
+        transparent
+        visible={showDeleteModal}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeleting) setShowDeleteModal(false);
+        }}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Delete Account</Text>
+            <Text style={styles.deleteModalBody}>
+              This will permanently delete your account, all workout history, and your plan.
+              This cannot be undone.
+            </Text>
+            <TouchableOpacity
+              style={[
+                CommonStyles.primaryButton,
+                styles.deleteModalBtnFullWidth,
+                isDeleting && styles.deleteModalBtnDisabled,
+              ]}
+              onPress={() => setShowDeleteModal(false)}
+              disabled={isDeleting}
+              activeOpacity={0.85}
+            >
+              <Text style={CommonStyles.primaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.deleteModalDangerBtn,
+                styles.deleteModalBtnFullWidth,
+                styles.deleteModalDangerBtnMargin,
+                isDeleting && styles.deleteModalBtnDisabled,
+              ]}
+              onPress={handleConfirmDeleteAccount}
+              disabled={isDeleting}
+              activeOpacity={0.85}
+            >
+              {isDeleting ? (
+                <ActivityIndicator color={Colors.danger} />
+              ) : (
+                <Text style={styles.deleteModalDangerBtnText}>Delete My Account</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -748,5 +904,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
+
+  supportRowLabelDanger: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.danger,
+  },
+
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  deleteModalCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  deleteModalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  deleteModalBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginVertical: Spacing.xxxl,
+    lineHeight: LineHeights.body,
+  },
+  deleteModalBtnFullWidth: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  deleteModalDangerBtnMargin: {
+    marginTop: Spacing.md,
+  },
+  deleteModalDangerBtn: {
+    height: 56,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalDangerBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.danger,
+  },
+  deleteModalBtnDisabled: {
+    opacity: 0.5,
+  },
 
 });

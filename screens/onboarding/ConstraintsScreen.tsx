@@ -64,11 +64,6 @@ const EQUIPMENT_OPTIONS: Option[] = [
   { id: 'bodyweight', label: 'Bodyweight', detail: 'No equipment needed' },
 ];
 
-const WEAK_POINT_OPTIONS: string[] = [
-  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
-  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps',
-];
-
 const DEFAULT_EXCLUDED: string[] = [
   'Back Squat', 'Deadlift', 'Bench Press', 'Overhead Press',
   'Pull-ups', 'Dips', 'Lunges', 'Romanian Deadlift',
@@ -81,28 +76,9 @@ export default function ConstraintsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const insets = useSafeAreaInsets();
-  const {
-    goal,
-    targetLift,
-    current1RM,
-    target1RM,
-    priorityMuscles,
-    targetWeightLbs,
-    targetDate,
-    targetBodyFatPct,
-    experience,
-    daysPerWeek,
-    trainingDays,
-    sessionLength,
-    splitId,
-    splitName,
-    splitRationale,
-    sessionStructure,
-  } = route.params;
 
   const [injuries, setInjuries] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string | null>(null);
-  const [weakPoints, setWeakPoints] = useState<string[]>([]);
   const [excludedExercises, setExcludedExercises] = useState<string[]>([]);
   const [availableExcluded, setAvailableExcluded] = useState<string[]>(DEFAULT_EXCLUDED);
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -131,12 +107,6 @@ export default function ConstraintsScreen() {
     });
   };
 
-  const toggleWeakPoint = (point: string) => {
-    setWeakPoints((prev) =>
-      prev.includes(point) ? prev.filter((p) => p !== point) : [...prev, point],
-    );
-  };
-
   const toggleExcluded = (exercise: string) => {
     setExcludedExercises((prev) =>
       prev.includes(exercise)
@@ -160,26 +130,15 @@ export default function ConstraintsScreen() {
 
   const handleContinue = () => {
     if (!canContinue) return;
+    console.log('[Constraints] duration in params:', {
+      planDuration: route.params.planDuration,
+      recommendedWeeks: route.params.recommendedWeeks,
+      targetDate: route.params.targetDate,
+    });
     navigation.navigate('BodyMetrics', {
-      goal,
-      targetLift,
-      current1RM,
-      target1RM,
-      priorityMuscles,
-      targetWeightLbs,
-      targetDate,
-      targetBodyFatPct,
-      experience,
-      daysPerWeek,
-      trainingDays,
-      sessionLength,
-      splitId,
-      splitName,
-      splitRationale,
-      sessionStructure,
+      ...route.params,
       injuries,
       equipment: equipment!,
-      weakPoints,
       excludedExercises,
     });
   };
@@ -226,36 +185,6 @@ export default function ConstraintsScreen() {
                 {opt.detail ? (
                   <Text style={styles.equipCardDetail}>{opt.detail}</Text>
                 ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.sectionHeadingRow}>
-          <Text style={styles.sectionHeadingLabel}>Lagging Areas</Text>
-          <InfoTooltip
-            title="What are lagging areas?"
-            content="Lagging areas are muscle groups that are underdeveloped relative to the rest of your physique. Your coach will add extra sets and frequency to these muscles throughout your plan."
-          />
-        </View>
-        <Text style={styles.sectionCaption}>
-          Any muscle groups you want to prioritise? (optional)
-        </Text>
-        <View style={styles.chipRow}>
-          {WEAK_POINT_OPTIONS.map((point) => {
-            const selected = weakPoints.includes(point);
-            return (
-              <TouchableOpacity
-                key={point}
-                activeOpacity={0.7}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => toggleWeakPoint(point)}
-              >
-                <Text
-                  style={[styles.chipText, selected && styles.chipTextSelected]}
-                >
-                  {point}
-                </Text>
               </TouchableOpacity>
             );
           })}

@@ -3,6 +3,8 @@
  * Display fields (primaryMuscle, secondaryMuscles, category compound/isolation) are unchanged for UI.
  */
 
+import { DEFAULT_EXERCISE_CUES, EXERCISE_CUES } from './exerciseLibraryCues';
+
 export type MovementPattern =
   | 'horizontal_push'
   | 'horizontal_pull'
@@ -38,12 +40,20 @@ export interface Exercise {
   rotationGroup: string;
   rotationPriority: number;
   usesWeight: boolean;
+  /** Three setup / execution bullets for in-workout coaching */
+  cues: string[];
 }
 
 const E = (
   base: Omit<
     Exercise,
-    'secondaryMuscleTags' | 'movementPattern' | 'compoundTier' | 'rotationGroup' | 'rotationPriority' | 'usesWeight'
+    | 'secondaryMuscleTags'
+    | 'movementPattern'
+    | 'compoundTier'
+    | 'rotationGroup'
+    | 'rotationPriority'
+    | 'usesWeight'
+    | 'cues'
   >,
   arg2: { usesWeight?: boolean } | Pick<
     Exercise,
@@ -60,10 +70,12 @@ const E = (
     Exercise,
     'secondaryMuscleTags' | 'movementPattern' | 'compoundTier' | 'rotationGroup' | 'rotationPriority'
   >;
+  const cueTuple = EXERCISE_CUES[base.id] ?? DEFAULT_EXERCISE_CUES;
   return {
     ...base,
     ...meta,
     usesWeight: opts?.usesWeight ?? base.equipment !== 'bodyweight',
+    cues: [...cueTuple],
   };
 };
 
@@ -413,6 +425,13 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'forearm_wrist', rotationPriority: 4, secondaryMuscleTags: [] },
   ),
 ];
+
+export function getCuesForExerciseName(name: string): string[] {
+  const e = EXERCISES.find(
+    (x) => x.name.toLowerCase().trim() === String(name).toLowerCase().trim(),
+  );
+  return e ? [...e.cues] : [...DEFAULT_EXERCISE_CUES];
+}
 
 export function getRotationCandidates(
   exerciseId: string,

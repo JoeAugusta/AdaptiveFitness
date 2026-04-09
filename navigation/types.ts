@@ -13,7 +13,8 @@ type GoalDetailParams = {
   recompFocus?: string;
   generalFocus?: string;
   planDuration?: string;
-  weakPoints?: string[];
+  /** Numeric weeks from duration chips (single source of truth for plan length) */
+  recommendedWeeks?: number;
   /** Optional training history (GoalDetails) — passed through to generate-plan */
   currentSplit?: string | null;
   currentSplitOther?: string | null;
@@ -58,7 +59,6 @@ export type RootStackParamList = {
     sessionLength: string;
     injuries: string[];
     equipment: string;
-    weakPoints: string[];
     excludedExercises: string[];
   } & GoalDetailParams &
     PlanStructureParams;
@@ -70,7 +70,6 @@ export type RootStackParamList = {
     sessionLength: string;
     injuries: string[];
     equipment: string;
-    weakPoints: string[];
     excludedExercises: string[];
     age: string;
     sex: string;
@@ -88,7 +87,6 @@ export type RootStackParamList = {
     sessionLength: string;
     injuries: string[];
     equipment: string;
-    weakPoints: string[];
     excludedExercises: string[];
     age: string;
     sex: string;
@@ -100,6 +98,8 @@ export type RootStackParamList = {
     proteinG: number;
     carbsG: number;
     fatsG: number;
+    /** fat_loss / hypertrophy calorie tier from MacroSetup; default balanced */
+    caloriePace?: string;
   } & GoalDetailParams &
     PlanStructureParams;
   BuildingPlan: {
@@ -110,7 +110,6 @@ export type RootStackParamList = {
     sessionLength: string;
     injuries: string[];
     equipment: string;
-    weakPoints: string[];
     excludedExercises: string[];
     age: string;
     sex: string;
@@ -122,6 +121,7 @@ export type RootStackParamList = {
     proteinG: number;
     carbsG: number;
     fatsG: number;
+    caloriePace?: string;
   } & GoalDetailParams &
     PlanStructureParams;
   Dashboard: undefined;

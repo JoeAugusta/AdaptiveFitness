@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { getStrengthProjectionRange } from '../../utils/projections';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GoalDetails'>;
 type RouteType = RouteProp<RootStackParamList, 'GoalDetails'>;
@@ -43,6 +44,7 @@ const TIMELINE_OPTIONS: Option[] = [
 ];
 
 const TIMELINE_WEEKS: Record<string, number> = {
+  '4w': 4,
   '8w': 8,
   '12w': 12,
   '16w': 16,
@@ -105,12 +107,6 @@ const GENERAL_FOCUS_OPTIONS: (Option & { detail: string })[] = [
   },
 ];
 
-const STRENGTH_EXPECTATIONS: Record<string, string> = {
-  '8w': 'In 8 weeks of focused strength training, expect a 10–20lb increase on your target lift with consistent progressive overload.',
-  '12w': 'In 12 weeks, a 20–40lb 1RM increase is realistic. Your plan will peak you for a max attempt in week 12.',
-  '16w': '16 weeks gives you time for two strength phases. Expect 30–50lb gains with a structured deload built in.',
-};
-
 const HYPERTROPHY_EXPECTATIONS: Record<string, string> = {
   '8w': '8 weeks is enough to see visible muscle definition changes. Expect 2–4 lbs of lean muscle gain.',
   '12w': '12 weeks is the sweet spot for hypertrophy. Expect 4–6 lbs of lean mass with good nutrition adherence.',
@@ -163,6 +159,9 @@ function StrengthContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
+  const navigation = useNavigation<NavProp>();
+  const route = useRoute<RouteType>();
+  const [planDurationChipsReady, setPlanDurationChipsReady] = useState(false);
   const [targetLift, setTargetLift] = useState<string | null>(null);
   const [current1RM, setCurrent1RM] = useState('');
   const [target1RM, setTarget1RM] = useState('');
@@ -175,27 +174,41 @@ function StrengthContent({
 
   const canContinue = !!targetLift && current1RM.trim() !== '' && target1RM.trim() !== '';
 
-  const feasibility = useMemo(() => {
-    if (!current1RM.trim() || !target1RM.trim()) return null;
-    const diff = Number(target1RM) - Number(current1RM);
-    if (diff <= 20) {
-      return { message: `A ${diff}lb increase is very achievable. We recommend an `, weeks: 8, suffix: '-week plan.' };
-    }
-    if (diff <= 40) {
-      return { message: `A ${diff}lb increase is realistic with focused programming. We recommend a `, weeks: 12, suffix: '-week plan.' };
-    }
-    if (diff <= 60) {
-      return { message: `A ${diff}lb increase is ambitious but possible. We recommend a `, weeks: 16, suffix: '-week plan.' };
-    }
-    return { message: `A ${diff}lb increase is a long-term goal. Consider breaking it into phases. We recommend starting with a `, weeks: 12, suffix: '-week block.' };
-  }, [current1RM, target1RM]);
-
   useEffect(() => {
-    if (feasibility && !durationManuallySet) {
-      const w = feasibility.weeks;
-      setPlanDuration(w <= 8 ? '8w' : w <= 12 ? '12w' : '16w');
+    if (durationManuallySet) return;
+    const c = Number(current1RM);
+    const t = Number(target1RM);
+    if (
+      !current1RM.trim() ||
+      !target1RM.trim() ||
+      !Number.isFinite(c) ||
+      !Number.isFinite(t) ||
+      t <= c
+    ) {
+      return;
     }
-  }, [feasibility, durationManuallySet]);
+    const { weeksToTarget } = getStrengthProjectionRange(c, t, 12);
+    const chip = weeksToTarget <= 8 ? '8w' : weeksToTarget <= 12 ? '12w' : '16w';
+    setPlanDuration(chip);
+  }, [current1RM, target1RM, durationManuallySet]);
+
+  const strengthFeasibilityBody = useMemo(() => {
+    if (!current1RM.trim() || !target1RM.trim()) return null;
+    const c = Number(current1RM);
+    const t = Number(target1RM);
+    if (!Number.isFinite(c) || !Number.isFinite(t) || t <= c) return null;
+    const selectedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
+    const { low, high, weeksToTarget } = getStrengthProjectionRange(
+      c,
+      t,
+      selectedWeeks,
+    );
+    const gap = t - c;
+    const canReachGoal = high >= gap;
+    return canReachGoal
+      ? `In ${selectedWeeks} weeks, expect +${low}–${high} lbs depending on your experience level. At the right pace, reaching ${t} lbs is within reach.`
+      : `Reaching ${t} lbs typically takes around ${weeksToTarget} weeks. In ${selectedWeeks} weeks, expect +${low}–${high} lbs — your exact rate depends on your experience level.`;
+  }, [current1RM, target1RM, planDuration]);
 
   const handleSecondaryLift = (id: string) => {
     if (id !== 'none' && id === targetLift) {
@@ -204,6 +217,26 @@ function StrengthContent({
     }
     setSecondaryLiftError(false);
     setSecondaryLift(id);
+  };
+
+  const recommendedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
+
+  const handleSkipToExperience = () => {
+    if (!planDurationChipsReady || !canContinue) return;
+    navigation.navigate('Experience', {
+      ...route.params,
+      priorityMuscles: [],
+      currentSplit: undefined,
+      splitDuration: undefined,
+      recommendedWeeks,
+      trainingBackground: trainingBackground ?? null,
+      targetLift,
+      current1RM: current1RM.trim(),
+      target1RM: target1RM.trim(),
+      secondaryLift,
+      planDuration,
+      currentSplitOther: undefined,
+    } as RootStackParamList['Experience']);
   };
 
   return (
@@ -219,6 +252,7 @@ function StrengthContent({
           target1RM: target1RM.trim(),
           secondaryLift,
           planDuration,
+          recommendedWeeks,
           currentSplit: null,
           currentSplitOther: null,
           splitDuration: null,
@@ -288,58 +322,48 @@ function StrengthContent({
         />
       </View>
 
-      {feasibility && (
+      {strengthFeasibilityBody ? (
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardBody}>
-            {feasibility.message}
-            <Text style={styles.infoHighlight}>{feasibility.weeks}</Text>
-            {feasibility.suffix}
-          </Text>
+          <Text style={styles.infoCardBody}>{strengthFeasibilityBody}</Text>
         </View>
-      )}
+      ) : null}
 
       <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         Based on your goal, we recommend:
       </Text>
-      <View style={styles.chipRow}>
-        {PLAN_DURATION_OPTIONS.map((opt) => {
-          const selected = planDuration === opt.id;
-          return (
-            <TouchableOpacity
-              key={opt.id}
-              activeOpacity={0.7}
-              style={[
-                styles.chip,
-                styles.chipDuration,
-                selected && styles.chipSelected,
-              ]}
-              onPress={() => {
-                setDurationManuallySet(true);
-                setPlanDuration(opt.id);
-              }}
-            >
-              <Text
+      <View onLayout={() => setPlanDurationChipsReady(true)}>
+        <View style={styles.chipRow}>
+          {PLAN_DURATION_OPTIONS.map((opt) => {
+            const selected = planDuration === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.7}
                 style={[
-                  styles.chipText,
-                  styles.chipTextCentered,
-                  selected && styles.chipTextSelected,
+                  styles.chip,
+                  styles.chipDuration,
+                  selected && styles.chipSelected,
                 ]}
+                onPress={() => {
+                  setDurationManuallySet(true);
+                  setPlanDuration(opt.id);
+                }}
               >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {STRENGTH_EXPECTATIONS[planDuration] && (
-        <View style={styles.infoCard}>
-          <Text style={styles.infoCardBody}>
-            {STRENGTH_EXPECTATIONS[planDuration]}
-          </Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    styles.chipTextCentered,
+                    selected && styles.chipTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-      )}
-
+      </View>
       <View style={styles.trainingHistoryBlock}>
         <Text style={styles.trainingSectionHeading}>Your training background</Text>
         <Text style={styles.trainingQuestion}>
@@ -375,12 +399,23 @@ function StrengthContent({
         )}
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => setTrainingBackground(null)}
-          style={styles.skipLinkHit}
+          onPress={handleSkipToExperience}
+          disabled={!planDurationChipsReady || !canContinue}
+          style={[
+            styles.skipLinkHit,
+            (!planDurationChipsReady || !canContinue) && styles.skipLinkDisabled,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Skip training background"
         >
-          <Text style={styles.skipLinkText}>Skip — I&apos;ll let Jordan decide</Text>
+          <Text
+            style={[
+              styles.skipLinkText,
+              (!planDurationChipsReady || !canContinue) && styles.skipLinkTextDisabled,
+            ]}
+          >
+            Skip — I&apos;ll let Jordan decide
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -424,6 +459,9 @@ function HypertrophyContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
+  const navigation = useNavigation<NavProp>();
+  const route = useRoute<RouteType>();
+  const [planDurationChipsReady, setPlanDurationChipsReady] = useState(false);
   const [priorityMuscles, setPriorityMuscles] = useState<string[]>([]);
   const [planDuration, setPlanDuration] = useState('12w');
   const [currentSplit, setCurrentSplit] = useState<string | null>(null);
@@ -447,16 +485,33 @@ function HypertrophyContent({
     });
   };
 
+  const recommendedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
+
+  const handleSkipToExperience = () => {
+    if (!planDurationChipsReady) return;
+    navigation.navigate('Experience', {
+      ...route.params,
+      priorityMuscles: [],
+      currentSplit: undefined,
+      splitDuration: undefined,
+      recommendedWeeks,
+      trainingBackground: null,
+      planDuration,
+      currentSplitOther: undefined,
+    } as RootStackParamList['Experience']);
+  };
+
   return (
     <ScreenShell
       title="Muscle Priority"
       subtitle="Select up to 3 muscle groups you want to prioritise. Your plan will give these extra volume."
       canContinue
-      buttonLabel={priorityMuscles.length > 0 ? 'Continue' : 'Skip'}
+      buttonLabel="Continue"
       onContinue={() =>
         onContinue({
           priorityMuscles,
           planDuration,
+          recommendedWeeks,
           currentSplit: currentSplit ?? null,
           currentSplitOther:
             currentSplit === 'Other' && currentSplitOther.trim()
@@ -576,16 +631,23 @@ function HypertrophyContent({
         )}
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => {
-            setCurrentSplit(null);
-            setSplitDuration(null);
-            setCurrentSplitOther('');
-          }}
-          style={styles.skipLinkHit}
+          onPress={handleSkipToExperience}
+          disabled={!planDurationChipsReady}
+          style={[
+            styles.skipLinkHit,
+            !planDurationChipsReady && styles.skipLinkDisabled,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Skip current training questions"
         >
-          <Text style={styles.skipLinkText}>Skip — I&apos;ll let Jordan decide</Text>
+          <Text
+            style={[
+              styles.skipLinkText,
+              !planDurationChipsReady && styles.skipLinkTextDisabled,
+            ]}
+          >
+            Skip — I&apos;ll let Jordan decide
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -593,32 +655,34 @@ function HypertrophyContent({
       <Text style={styles.sectionSubtitle}>
         How many weeks do you want to commit to?
       </Text>
-      <View style={styles.chipRow}>
-        {PLAN_DURATION_OPTIONS.map((opt) => {
-          const selected = planDuration === opt.id;
-          return (
-            <TouchableOpacity
-              key={opt.id}
-              activeOpacity={0.7}
-              style={[
-                styles.chip,
-                styles.chipDuration,
-                selected && styles.chipSelected,
-              ]}
-              onPress={() => setPlanDuration(opt.id)}
-            >
-              <Text
+      <View onLayout={() => setPlanDurationChipsReady(true)}>
+        <View style={styles.chipRow}>
+          {PLAN_DURATION_OPTIONS.map((opt) => {
+            const selected = planDuration === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.7}
                 style={[
-                  styles.chipText,
-                  styles.chipTextCentered,
-                  selected && styles.chipTextSelected,
+                  styles.chip,
+                  styles.chipDuration,
+                  selected && styles.chipSelected,
                 ]}
+                onPress={() => setPlanDuration(opt.id)}
               >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Text
+                  style={[
+                    styles.chipText,
+                    styles.chipTextCentered,
+                    selected && styles.chipTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
       {HYPERTROPHY_EXPECTATIONS[planDuration] && (
         <View style={styles.infoCard}>
@@ -688,6 +752,9 @@ function FatLossContent({
           startingWeightLbs: currentWeightLbs.trim(),
           targetWeightLbs: targetWeightLbs.trim(),
           targetDate,
+          planDuration: targetDate ?? '12w',
+          recommendedWeeks:
+            targetDate != null ? TIMELINE_WEEKS[targetDate] ?? 12 : 12,
         })
       }
     >
@@ -788,7 +855,13 @@ function RecompContent({
       subtitle="Help us understand where you're starting from."
       canContinue={recompFocus !== null}
       buttonLabel="Continue"
-      onContinue={() => onContinue({ recompFocus, planDuration })}
+      onContinue={() =>
+        onContinue({
+          recompFocus,
+          planDuration,
+          recommendedWeeks: TIMELINE_WEEKS[planDuration] ?? 12,
+        })
+      }
     >
       <Text style={styles.sectionHeadingFirst}>What's your main focus?</Text>
       <Text style={styles.sectionSubtitle}>
@@ -872,7 +945,13 @@ function GeneralContent({
       subtitle="No specific targets needed — we'll build a balanced program to improve your overall fitness."
       canContinue
       buttonLabel="Let's Build My Plan"
-      onContinue={() => onContinue({ generalFocus, planDuration })}
+      onContinue={() =>
+        onContinue({
+          generalFocus,
+          planDuration,
+          recommendedWeeks: TIMELINE_WEEKS[planDuration] ?? 12,
+        })
+      }
     >
       <View style={styles.infoCard}>
         <Text style={styles.infoCardBody}>
@@ -1020,6 +1099,11 @@ export default function GoalDetailsScreen() {
   const { goal } = route.params;
 
   const handleContinue = (details: Record<string, unknown>) => {
+    console.log('[GoalDetails] duration param:', {
+      planDuration: details.planDuration,
+      recommendedWeeks: details.recommendedWeeks,
+      targetDate: details.targetDate,
+    });
     navigation.navigate('Experience', { goal, ...details } as RootStackParamList['Experience']);
   };
 
@@ -1267,6 +1351,12 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
     textDecorationLine: 'underline',
+  },
+  skipLinkDisabled: {
+    opacity: 0.4,
+  },
+  skipLinkTextDisabled: {
+    textDecorationLine: 'none',
   },
   splitOtherInput: {
     backgroundColor: Colors.bgElevated,

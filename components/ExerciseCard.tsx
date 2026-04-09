@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { getCuesForExerciseName } from '../constants/exerciseLibrary';
+import { RPEReferenceSheet } from './RPEReferenceSheet';
 
 export const WARMUP_COLLAPSED_STORAGE_KEY = 'warmup_collapsed_compound';
 
@@ -77,10 +79,14 @@ export interface Exercise {
   reps?: string;
   sets: SetTarget[];
   alternatives: string[];
+  /** From plan / library — three form cues; optional for legacy payloads */
+  cues?: string[];
 }
 
 export interface LoggedSet {
   exerciseId: string;
+  /** Present when logs were saved with display name (legacy id mismatch fallback) */
+  exerciseName?: string;
   setNumber: number;
   weightLbs: number;
   reps: number;
@@ -149,6 +155,8 @@ interface ExerciseCardProps {
   /** Shared across compound exercises in one active workout */
   warmupCollapsedCompound?: boolean;
   onWarmupCollapsedCompoundChange?: (collapsed: boolean) => void;
+  /** Profile training age — beginners get cues expanded on first view */
+  experience?: 'beginner' | 'intermediate' | 'advanced';
   onLogSet: (
     exerciseId: string,
     setNumber: number,
@@ -170,10 +178,20 @@ export default function ExerciseCard({
   goal = 'strength',
   warmupCollapsedCompound = false,
   onWarmupCollapsedCompoundChange,
+  experience = 'intermediate',
   onLogSet,
   onSwapExercise,
 }: ExerciseCardProps) {
   const displayName = swappedName || exercise.name;
+  const cueList = useMemo(
+    () =>
+      swappedName
+        ? getCuesForExerciseName(swappedName)
+        : exercise.cues != null && exercise.cues.length > 0
+          ? [...exercise.cues]
+          : getCuesForExerciseName(exercise.name),
+    [swappedName, exercise.cues, exercise.name],
+  );
   const isBodyweightExercise = exercise.usesWeight === false;
   const tw =
     exercise.targetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
@@ -185,8 +203,11 @@ export default function ExerciseCard({
 
   const [enteredWeight, setEnteredWeight] = useState(0);
 
+  const [showCueCard, setShowCueCard] = useState(false);
+
   useEffect(() => {
     setEnteredWeight(0);
+    setShowCueCard(false);
   }, [exercise.id]);
 
   const effectiveWeight = isSelfSelectMode
@@ -218,6 +239,12 @@ export default function ExerciseCard({
     }
   }, [exercise.name, enteredWeight, effectiveWeight, needsWarmup]);
 
+  useEffect(() => {
+    if (experience === 'beginner' && cueList.length > 0) {
+      setShowCueCard(true);
+    }
+  }, [experience, exercise.id, cueList.length]);
+
   const warmupSets = useMemo(
     () => (needsWarmup ? calculateWarmupSets(effectiveWeight) : []),
     [needsWarmup, effectiveWeight],
@@ -229,6 +256,7 @@ export default function ExerciseCard({
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
   const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);
+  const [showRpeReference, setShowRpeReference] = useState(false);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
   const [showSwapSheet, setShowSwapSheet] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -392,14 +420,52 @@ export default function ExerciseCard({
             <Text style={styles.muscleTagText}>{exercise.muscleGroup}</Text>
           </View>
         </View>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={() => setShowCoachingSheet(true)}
-        >
-          <Text style={styles.infoIcon}>ⓘ</Text>
-        </TouchableOpacity>
+        {cueList.length > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setShowCueCard((v) => !v)}
+          >
+            <Text style={styles.infoIcon}>ⓘ</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.infoIconSpacer} />
+        )}
       </View>
+
+      {showCueCard && cueList.length > 0 ? (
+        <View style={styles.cueCard}>
+          <View style={styles.cueCardHeaderRow}>
+            <Text style={styles.cueCardTitle}>HOW TO PERFORM</Text>
+            <TouchableOpacity
+              onPress={() => setShowCueCard(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cueCardClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {cueList.slice(0, 3).map((cue, idx, arr) => (
+            <View
+              key={`cue-${idx}`}
+              style={[
+                styles.cueRow,
+                idx === arr.length - 1 && styles.cueRowLast,
+              ]}
+            >
+              <View style={styles.cueBadge}>
+                <Text style={styles.cueBadgeText}>{String(idx + 1)}</Text>
+              </View>
+              <Text style={styles.cueText}>{cue}</Text>
+            </View>
+          ))}
+          {experience === 'beginner' ? (
+            <Text style={styles.cueBeginnerTip}>
+              Take your time with these — form first, weight second.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {isSelfSelectMode ? (
         <View style={styles.selfSelectStrip}>
@@ -412,7 +478,24 @@ export default function ExerciseCard({
         </View>
       ) : null}
 
-      <Text style={styles.targetLine}>{targetSummary}</Text>
+      <View style={styles.targetLineRow}>
+        {targetSummary ? (
+          <Text style={[styles.targetLine, styles.targetLineFlex]} numberOfLines={3}>
+            {targetSummary}
+          </Text>
+        ) : (
+          <View style={styles.targetLineFlex} />
+        )}
+        <TouchableOpacity
+          onPress={() => setShowRpeReference(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="What is RPE?"
+        >
+          <Text style={styles.rpeHelpLink}>RPE ?</Text>
+        </TouchableOpacity>
+      </View>
       {previousSets.length > 0 ? (
         <View style={styles.lastWeekStrip}>
           <View style={styles.lastWeekHeaderRow}>
@@ -687,14 +770,18 @@ export default function ExerciseCard({
       })}
 
       {showCoachingBlock ? (
-        <View style={styles.coachingNoteBox}>
+        <TouchableOpacity
+          style={styles.coachingNoteBox}
+          activeOpacity={0.85}
+          onPress={() => setShowCoachingSheet(true)}
+        >
           <Text style={styles.coachingJordan}>JORDAN</Text>
           {coachingLoading ? (
             <View style={styles.coachingSkeleton} />
           ) : (
             <Text style={styles.coachingNoteText}>{coachingNote}</Text>
           )}
-        </View>
+        </TouchableOpacity>
       ) : null}
 
       <TouchableOpacity
@@ -766,6 +853,11 @@ export default function ExerciseCard({
           ))}
         </View>
       </Modal>
+
+      <RPEReferenceSheet
+        visible={showRpeReference}
+        onClose={() => setShowRpeReference(false)}
+      />
     </View>
   );
 }
@@ -814,11 +906,90 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.textSecondary,
   },
+  infoIconSpacer: {
+    width: 22,
+  },
+  cueCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  cueCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  cueCardTitle: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  cueCardClose: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+  },
+  cueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.sm,
+  },
+  cueRowLast: {
+    marginBottom: 0,
+  },
+  cueBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.accentMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cueBadgeText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+  },
+  cueText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  cueBeginnerTip: {
+    marginTop: Spacing.xs,
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.regular,
+    fontStyle: 'italic',
+    color: Colors.textTertiary,
+  },
+  targetLineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.lg,
+  },
   targetLine: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginBottom: Spacing.lg,
+  },
+  targetLineFlex: {
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
+  rpeHelpLink: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+    textDecorationLine: 'underline',
+    paddingTop: 1,
   },
   lastWeekStrip: {
     backgroundColor: Colors.bgElevated,

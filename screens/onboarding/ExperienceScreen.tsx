@@ -71,7 +71,6 @@ export default function ExperienceScreen() {
     targetWeightLbs,
     targetDate,
     targetBodyFatPct,
-    weakPoints,
     currentSplit,
     splitDuration,
     trainingBackground,
@@ -113,7 +112,7 @@ export default function ExperienceScreen() {
         currentSplit ?? null,
         splitDuration ?? null,
         trainingBackground ?? null,
-        weakPoints ?? [],
+        [],
         priorityMuscles ?? [],
       );
       const structure = getSessionStructure(
@@ -122,7 +121,7 @@ export default function ExperienceScreen() {
         goal,
         targetLift ?? null,
         priorityMuscles ?? [],
-        weakPoints ?? [],
+        [],
         sortTrainingDays(selectedDays),
         undefined,
         experience,
@@ -143,7 +142,6 @@ export default function ExperienceScreen() {
     goal,
     targetLift,
     priorityMuscles,
-    weakPoints,
     currentSplit,
     splitDuration,
     trainingBackground,
@@ -168,6 +166,11 @@ export default function ExperienceScreen() {
       setTimeout(() => setCardHighlight(false), 300);
       return;
     }
+    console.log('[Experience] duration in params:', {
+      planDuration: route.params.planDuration,
+      recommendedWeeks: route.params.recommendedWeeks,
+      targetDate: route.params.targetDate,
+    });
     navigation.navigate('RPEEducation', {
       ...route.params,
       experience: experience!,
@@ -222,7 +225,7 @@ export default function ExperienceScreen() {
           goal,
           targetLift ?? null,
           priorityMuscles ?? [],
-          weakPoints ?? [],
+          [],
           sortTrainingDays(selectedDays),
           undefined,
           experience ?? 'intermediate',
@@ -255,7 +258,7 @@ export default function ExperienceScreen() {
             goal,
             targetLift ?? null,
             priorityMuscles ?? [],
-            weakPoints ?? [],
+            [],
             sortTrainingDays(selectedDays),
             undefined,
             experience ?? 'intermediate',
@@ -269,7 +272,7 @@ export default function ExperienceScreen() {
             goal,
             targetLift ?? null,
             priorityMuscles ?? [],
-            weakPoints ?? [],
+            [],
             sortTrainingDays(selectedDays),
             opt.hint,
             experience ?? 'intermediate',

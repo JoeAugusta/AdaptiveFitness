@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -19,44 +20,287 @@ import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { formatSplitName } from '../../utils/splitRecommendation';
+import type { SessionDay } from '../../utils/splitRecommendation';
+import type { CaloriePace } from '../../utils/projections';
+import {
+  getFatLossProjection,
+  getHypertrophyProjection,
+  getStrengthProjection,
+  getStrengthProjectionRange,
+  getRecompBfProjection,
+} from '../../utils/projections';
+import ProjectionChart, {
+  type ProjectionChartLine,
+} from '../../components/ProjectionChart';
 
+const CHART_ORANGE = '#F97316';
+const CHART_GREEN = '#22C55E';
+const CHART_AMBER = '#F59E0B';
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
 const COLOR_FATS = Colors.success;
+
+const MONTHLY_LEAN_MAP: Record<
+  CaloriePace,
+  Record<string, number>
+> = {
+  conservative: { beginner: 1.0, intermediate: 0.5, advanced: 0.25 },
+  balanced: { beginner: 1.5, intermediate: 0.75, advanced: 0.4 },
+  aggressive: { beginner: 2.5, intermediate: 1.25, advanced: 0.6 },
+};
+
+function normalizePace(p?: string): CaloriePace {
+  if (p === 'conservative' || p === 'balanced' || p === 'aggressive') return p;
+  return 'balanced';
+}
+
+function expKey(experience: string): string {
+  const e = experience.toLowerCase();
+  if (e === 'beginner' || e === 'intermediate' || e === 'advanced') return e;
+  return 'intermediate';
+}
+
+type CalloutTriple = {
+  col1: { label: string; value: string; sub?: string };
+  col2: { label: string; value: string; sub?: string };
+  col3: { label: string; value: string; sub?: string };
+};
+
+function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
+  weeks: number;
+  lines: ProjectionChartLine[];
+  yMin: number;
+  yMax: number;
+  yLabel: string;
+  targetValue?: number;
+  callout: CalloutTriple;
+  strengthGapAnnotate?: { current1RM: number; target1RM: number };
+} {
+  const weeks = params.recommendedWeeks ?? 12;
+  const goal = params.goal;
+  const caloriePace = normalizePace(params.caloriePace);
+
+  if (goal === 'fat_loss') {
+    const weightLbs = Number(
+      params.weightLbs ?? params.startingWeightLbs ?? 180,
+    );
+    const active = getFatLossProjection(weightLbs, caloriePace, weeks);
+    const endWeight = active[active.length - 1];
+    const lines: ProjectionChartLine[] = [
+      {
+        data: active,
+        color: CHART_ORANGE,
+        strokeWidth: 2.5,
+        animate: true,
+      },
+    ];
+    const yMin = Math.min(...active) - 2;
+    const yMax = weightLbs + 2;
+    const rateStr =
+      caloriePace === 'conservative'
+        ? '0.5'
+        : caloriePace === 'balanced'
+          ? '0.75'
+          : '1.1';
+    return {
+      weeks,
+      lines,
+      yMin,
+      yMax,
+      yLabel: 'lbs',
+      callout: {
+        col1: {
+          label: 'End result',
+          value: `${endWeight} lbs`,
+          sub: `−${(weightLbs - endWeight).toFixed(1)} lbs total`,
+        },
+        col2: {
+          label: 'Rate',
+          value: `−${rateStr} lb`,
+          sub: 'per week',
+        },
+        col3: { label: 'Plan length', value: `${weeks} wks` },
+      },
+    };
+  }
+
+  if (goal === 'hypertrophy') {
+    const exp = expKey(params.experience ?? 'intermediate');
+    const active = getHypertrophyProjection(
+      params.experience ?? 'intermediate',
+      caloriePace,
+      weeks,
+    );
+    const endGain = active[active.length - 1];
+    const lines: ProjectionChartLine[] = [
+      {
+        data: active,
+        color: CHART_GREEN,
+        strokeWidth: 2.5,
+        animate: true,
+      },
+    ];
+    const monthly = MONTHLY_LEAN_MAP[caloriePace][exp] ?? 0.75;
+    const yMax = Math.max(...active, 0.5) * 1.15;
+    return {
+      weeks,
+      lines,
+      yMin: 0,
+      yMax,
+      yLabel: 'lbs',
+      callout: {
+        col1: {
+          label: 'End result',
+          value: `+${endGain.toFixed(1)} lbs`,
+          sub: 'lean mass (est.)',
+        },
+        col2: {
+          label: 'Rate',
+          value: `+${monthly.toFixed(1)} lb`,
+          sub: 'per month',
+        },
+        col3: { label: 'Plan length', value: `${weeks} wks` },
+      },
+    };
+  }
+
+  if (goal === 'strength') {
+    const current = Number(params.current1RM ?? 0) || 185;
+    const target = Number(params.target1RM ?? current * 1.1);
+    const experience = params.experience ?? 'intermediate';
+    const data = getStrengthProjection(current, experience, weeks);
+    const end = data[data.length - 1];
+    const { low, high } = getStrengthProjectionRange(current, target, weeks);
+    const lines: ProjectionChartLine[] = [
+      {
+        data,
+        color: CHART_AMBER,
+        strokeWidth: 2.5,
+        animate: true,
+      },
+    ];
+    const yPadding = Math.max(15, (target - current) * 0.3);
+    const yMin = current - yPadding;
+    const yMax = target + yPadding;
+    return {
+      weeks,
+      lines,
+      yMin,
+      yMax,
+      yLabel: 'lbs',
+      targetValue: target,
+      strengthGapAnnotate: { current1RM: current, target1RM: target },
+      callout: {
+        col1: {
+          label: 'End result',
+          value: `${end} lbs / ${target} goal`,
+          sub: 'projected vs target',
+        },
+        col2: {
+          label: 'Rate',
+          value: `+${low}–${high} lbs`,
+          sub: 'depending on experience',
+        },
+        col3: { label: 'Plan length', value: `${weeks} wks` },
+      },
+    };
+  }
+
+  if (goal === 'recomp') {
+    const w = Number(params.weightLbs ?? 180);
+    const bfStart = Number(
+      params.bodyFatPct != null && String(params.bodyFatPct).trim() !== ''
+        ? params.bodyFatPct
+        : 18,
+    );
+    const bfLine = getRecompBfProjection(weeks, bfStart);
+    const endBf = bfLine[bfLine.length - 1];
+    const drop = bfStart - endBf;
+    const lines: ProjectionChartLine[] = [
+      {
+        data: bfLine,
+        color: CHART_GREEN,
+        strokeWidth: 2.5,
+        animate: true,
+      },
+    ];
+    return {
+      weeks,
+      lines,
+      yMin: Math.min(endBf, bfStart) - 0.5,
+      yMax: bfStart + 1,
+      yLabel: '% BF',
+      callout: {
+        col1: {
+          label: 'End result',
+          value: `~${w} lbs`,
+          sub: 'weight steady',
+        },
+        col2: {
+          label: 'Rate',
+          value: `−${drop.toFixed(1)}%`,
+          sub: 'body fat (est.)',
+        },
+        col3: { label: 'Plan length', value: `${weeks} wks` },
+      },
+    };
+  }
+
+  // general (and fallback)
+  const lines: ProjectionChartLine[] = [
+    {
+      data: Array.from({ length: weeks + 1 }, (_, i) =>
+        Math.round(i * 1.2 * 10) / 10,
+      ),
+      color: CHART_ORANGE,
+      strokeWidth: 2.5,
+      animate: true,
+    },
+  ];
+  const end = lines[0].data[lines[0].data.length - 1];
+  return {
+    weeks,
+    lines,
+    yMin: 0,
+    yMax: Math.max(end * 1.2, 5),
+    yLabel: 'index',
+    callout: {
+      col1: {
+        label: 'End result',
+        value: 'Stronger base',
+        sub: 'training capacity',
+      },
+      col2: {
+        label: 'Rate',
+        value: `+${end.toFixed(1)}`,
+        sub: 'progress index',
+      },
+      col3: { label: 'Plan length', value: `${weeks} wks` },
+    },
+  };
+}
+
+function formatPaceLabel(
+  pace: CaloriePace,
+  goal: string,
+): string | null {
+  if (goal === 'fat_loss') {
+    if (pace === 'conservative') return 'Conservative  −250 cal/day';
+    if (pace === 'balanced') return 'Balanced  −400 cal/day';
+    if (pace === 'aggressive') return 'Aggressive  −600 cal/day';
+  }
+  if (goal === 'hypertrophy') {
+    if (pace === 'conservative') return 'Lean Bulk  +200 cal/day';
+    if (pace === 'balanced') return 'Moderate  +300 cal/day';
+    if (pace === 'aggressive') return 'Aggressive  +500 cal/day';
+  }
+  return null;
+}
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanPreview'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanPreview'>;
 
 type PlanOption = 'monthly' | 'annual';
-
-interface SampleDay {
-  day: string;
-  workout: string;
-  tags: string[];
-}
-
-const SAMPLE_DAYS: SampleDay[] = [
-  {
-    day: 'Day 1',
-    workout: 'Push — Chest & Shoulders',
-    tags: ['Chest', 'Shoulders', 'Triceps'],
-  },
-  {
-    day: 'Day 2',
-    workout: 'Pull — Back & Biceps',
-    tags: ['Back', 'Biceps', 'Rear Delts'],
-  },
-  {
-    day: 'Day 3',
-    workout: 'Legs — Quad Focus',
-    tags: ['Quads', 'Hamstrings', 'Glutes'],
-  },
-  {
-    day: 'Day 4',
-    workout: 'Upper Body — Strength',
-    tags: ['Chest', 'Back', 'Shoulders'],
-  },
-];
 
 function formatGoal(goal: string): string {
   switch (goal) {
@@ -109,6 +353,63 @@ function formatEquipment(equipment: string): string {
   }
 }
 
+function formatSessionTitle(session: any): string {
+  // Use explicit title if it exists and isn't snake_case
+  if (session.title && !session.title.includes('_')) return session.title;
+
+  // Map known focus IDs to display titles
+  const focusMap: Record<string, string> = {
+    // Full body
+    full_body_a: 'Full Body A',
+    full_body_b: 'Full Body B',
+    full_body: 'Full Body',
+
+    // Upper / Lower
+    upper: 'Upper Body',
+    lower: 'Lower Body',
+    upper_heavy: 'Upper Body — Power',
+    upper_volume: 'Upper Body — Volume',
+    upper_hypertrophy: 'Upper Body — Hypertrophy',
+    lower_heavy: 'Lower Body — Power',
+    lower_volume: 'Lower Body — Volume',
+    lower_hypertrophy: 'Lower Body — Hypertrophy',
+
+    // PPL
+    push: 'Push — Chest & Shoulders',
+    pull: 'Pull — Back & Biceps',
+    legs: 'Legs',
+    push_a: 'Push A — Heavy',
+    push_b: 'Push B — Volume',
+    pull_a: 'Pull A — Heavy',
+    pull_b: 'Pull B — Volume',
+    legs_a: 'Legs — Quad Focus',
+    legs_b: 'Legs — Posterior Chain',
+
+    // Specialty
+    arms: 'Arms & Core',
+    arms_core: 'Arms & Core',
+    chest_back: 'Chest & Back',
+    chest_back_heavy: 'Chest & Back — Heavy',
+    chest_back_volume: 'Chest & Back — Volume',
+    shoulders_arms: 'Shoulders & Arms',
+    legs_shoulders: 'Legs & Shoulders',
+
+    // Strength
+    heavy_lift: 'Heavy Lift Day',
+    volume_lift: 'Volume Lift Day',
+    accessory: 'Accessory Day',
+  };
+
+  const key = session.focus?.toLowerCase().replace(/\s+/g, '_') ?? '';
+  if (focusMap[key]) return focusMap[key];
+
+  // Fallback: capitalise words and replace underscores
+  return key
+    .split('_')
+    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 async function updateSupabaseSubscription(customerInfo: CustomerInfo): Promise<void> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -130,7 +431,31 @@ export default function PlanPreviewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const params = route.params;
+  const { sessionStructure, trainingDays, splitName } = params;
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = Math.max(200, windowWidth - Spacing.xl * 2);
+
+  const projection = useMemo(() => buildProjectionBundle(params), [params]);
+
+  const buildingPlanParams = useMemo(
+    () => ({ ...params, caloriePace: normalizePace(params.caloriePace) }),
+    [params],
+  );
+
+  const paceReadOnlyLabel = formatPaceLabel(
+    normalizePace(params.caloriePace),
+    params.goal,
+  );
+
+  const recompBfStartForChart =
+    params.goal === 'recomp'
+      ? Number(
+          params.bodyFatPct != null && String(params.bodyFatPct).trim() !== ''
+            ? params.bodyFatPct
+            : 18,
+        )
+      : 22;
 
   const [selectedPlan, setSelectedPlan] = useState<PlanOption>('annual');
 
@@ -162,7 +487,12 @@ export default function PlanPreviewScreen() {
 
   const handlePurchase = async () => {
     if (Platform.OS === 'web') {
-      navigation.navigate('BuildingPlan', { ...params });
+      console.log('[PlanPreview] duration in params:', {
+        planDuration: params.planDuration,
+        recommendedWeeks: params.recommendedWeeks,
+        targetDate: params.targetDate,
+      });
+      navigation.navigate('BuildingPlan', buildingPlanParams);
       return;
     }
     const pkg = selectedPlan === 'monthly' ? monthlyPackage : annualPackage;
@@ -172,7 +502,12 @@ export default function PlanPreviewScreen() {
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       if (customerInfo.entitlements.active['pro']) {
         await updateSupabaseSubscription(customerInfo);
-        navigation.navigate('BuildingPlan', { ...params });
+        console.log('[PlanPreview] duration in params:', {
+          planDuration: params.planDuration,
+          recommendedWeeks: params.recommendedWeeks,
+          targetDate: params.targetDate,
+        });
+        navigation.navigate('BuildingPlan', buildingPlanParams);
       }
     } catch (e: unknown) {
       const err = e as { userCancelled?: boolean; message?: string };
@@ -189,7 +524,12 @@ export default function PlanPreviewScreen() {
       const customerInfo = await Purchases.restorePurchases();
       if (customerInfo.entitlements.active['pro']) {
         await updateSupabaseSubscription(customerInfo);
-        navigation.navigate('BuildingPlan', { ...params });
+        console.log('[PlanPreview] duration in params:', {
+          planDuration: params.planDuration,
+          recommendedWeeks: params.recommendedWeeks,
+          targetDate: params.targetDate,
+        });
+        navigation.navigate('BuildingPlan', buildingPlanParams);
       } else {
         Alert.alert('No active subscription found');
       }
@@ -215,7 +555,7 @@ export default function PlanPreviewScreen() {
     { label: 'Equipment', value: formatEquipment(params.equipment) },
     {
       label: 'Split',
-      value: params.splitName ?? formatSplitName(params.splitId),
+      value: splitName ?? formatSplitName(params.splitId),
     },
   ];
 
@@ -276,6 +616,21 @@ export default function PlanPreviewScreen() {
     value: params.planDuration ? (PLAN_DURATION_LABELS[params.planDuration] ?? '8 Weeks') : '8 Weeks',
   });
 
+  const sampleDays = (sessionStructure ?? [])
+    .filter((session: SessionDay) => session.type === 'workout')
+    .map((session: SessionDay, index: number) => ({
+      dayNumber: index + 1,
+      title: formatSessionTitle(session),
+      muscles: (session.primaryMuscles ?? []).map(
+        (m: string) => m.charAt(0).toUpperCase() + m.slice(1),
+      ),
+      actualDay: trainingDays?.[index] ?? null,
+    }));
+
+  const structureSlots = (sessionStructure ?? []).length;
+  const moreDaysCount =
+    structureSlots > 0 ? structureSlots - sampleDays.length : 0;
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -306,11 +661,62 @@ export default function PlanPreviewScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.titleBlock}>
-          <Text style={styles.screenTitle}>Your Plan is Ready</Text>
-          <Text style={styles.screenSubtitle}>
-            Here's what we've built for you.
+        <View style={styles.projectionHeader}>
+          <Text style={styles.projectionTitle}>
+            Your {projection.weeks}-week projection
           </Text>
+          <Text style={styles.screenSubtitle}>
+            Here&apos;s what we&apos;ve built for you.
+          </Text>
+        </View>
+
+        {paceReadOnlyLabel ? (
+          <View style={styles.paceReadOnly}>
+            <Text style={styles.paceReadOnlyLabel}>PACE</Text>
+            <View style={styles.paceReadOnlyBadge}>
+              <Text style={styles.paceReadOnlyText}>{paceReadOnlyLabel}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <ProjectionChart
+          width={chartWidth}
+          height={200}
+          weeks={projection.weeks}
+          yMin={projection.yMin}
+          yMax={projection.yMax}
+          yLabel={projection.yLabel}
+          lines={projection.lines}
+          targetValue={projection.targetValue}
+          chartGoal={
+            params.goal === 'fat_loss' ||
+            params.goal === 'hypertrophy' ||
+            params.goal === 'strength' ||
+            params.goal === 'recomp' ||
+            params.goal === 'general'
+              ? params.goal
+              : null
+          }
+          recompBfStart={recompBfStartForChart}
+          strengthGapAnnotate={projection.strengthGapAnnotate}
+        />
+
+        <View style={styles.calloutStrip}>
+          {(
+            [
+              projection.callout.col1,
+              projection.callout.col2,
+              projection.callout.col3,
+            ] as const
+          ).map((col, idx) => (
+            <View key={idx} style={styles.calloutCol}>
+              <Text style={styles.calloutColLabel}>{col.label}</Text>
+              <Text style={styles.calloutColValue}>{col.value}</Text>
+              {col.sub ? (
+                <Text style={styles.calloutColSub}>{col.sub}</Text>
+              ) : null}
+            </View>
+          ))}
         </View>
 
         <View style={styles.summaryCard}>
@@ -326,21 +732,31 @@ export default function PlanPreviewScreen() {
 
         <Text style={styles.sectionLabel}>Sample Week</Text>
 
-        {SAMPLE_DAYS.map((item) => (
-          <View key={item.day} style={styles.dayCard}>
-            <Text style={styles.dayLabel}>{item.day}</Text>
-            <Text style={styles.workoutName}>{item.workout}</Text>
-            <View style={styles.tagRow}>
-              {item.tags.map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+        {sampleDays.map((item) => (
+          <View key={`sample-day-${item.dayNumber}`} style={styles.dayCard}>
+            <Text style={styles.sampleDayHeading}>
+              DAY {item.dayNumber}
+            </Text>
+            <Text style={styles.sampleDayTitle}>{item.title}</Text>
+            {item.actualDay ? (
+              <Text style={styles.sampleDayCalendar}>{item.actualDay}</Text>
+            ) : null}
+            <View style={styles.muscleChipRow}>
+              {item.muscles.map((muscle) => (
+                <View key={`${item.dayNumber}-${muscle}`} style={styles.muscleChip}>
+                  <Text style={styles.muscleChipText}>{muscle}</Text>
                 </View>
               ))}
             </View>
           </View>
         ))}
 
-        <Text style={styles.moreDays}>+ 4 more days visible after unlocking</Text>
+        {moreDaysCount > 0 ? (
+          <Text style={styles.moreDays}>
+            + {moreDaysCount} more day{moreDaysCount === 1 ? '' : 's'} visible after
+            unlocking
+          </Text>
+        ) : null}
 
         <Text style={styles.sectionLabelNutrition}>Your Daily Nutrition</Text>
 
@@ -505,20 +921,84 @@ const styles = StyleSheet.create({
     paddingBottom: 320,
   },
 
-  titleBlock: {
+  projectionHeader: {
     marginTop: 56,
     paddingHorizontal: 0,
   },
-  screenTitle: {
+  projectionTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
   },
   screenSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginTop: 8,
+    marginTop: 0,
+  },
+
+  paceReadOnly: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: Spacing.sm,
+  },
+  paceReadOnlyLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  paceReadOnlyBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentMuted,
+  },
+  paceReadOnlyText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+
+  calloutStrip: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  calloutCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  calloutColLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  calloutColValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  calloutColSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 2,
+    lineHeight: 14,
   },
 
   summaryCard: {
@@ -527,7 +1007,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     padding: 20,
-    marginTop: 24,
+    marginTop: 0,
     marginHorizontal: 0,
   },
   statsGrid: {
@@ -580,34 +1060,42 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     marginBottom: Spacing.sm,
   },
-  dayLabel: {
-    fontFamily: Fonts.bold,
+  sampleDayHeading: {
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.label,
-    color: Colors.textTertiary,
-    letterSpacing: 1.2,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
-  workoutName: {
-    fontFamily: Fonts.semiBold,
+  sampleDayTitle: {
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
     marginTop: 4,
   },
-  tagRow: {
+  sampleDayCalendar: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
+  },
+  muscleChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
+    marginTop: Spacing.sm,
     gap: Spacing.xs,
   },
-  tag: {
-    backgroundColor: Colors.accentMuted,
+  muscleChip: {
+    backgroundColor: Colors.bgElevated,
     borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  tagText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.micro,
+  muscleChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.accent,
   },
   moreDays: {

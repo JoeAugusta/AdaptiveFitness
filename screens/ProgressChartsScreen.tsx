@@ -311,16 +311,62 @@ function getStrengthInsight(
 
 function getVolumeInsight(
   muscleRows: [string, number][],
-  weekNum: number,
+  daysPerWeek: number,
 ): string | null {
-  if (muscleRows.length === 0) return null;
-  const top = muscleRows[0];
-  const totalSets = muscleRows.reduce((s, [, n]) => s + n, 0);
-  const lowest = muscleRows[muscleRows.length - 1];
-  if (muscleRows.length === 1) {
-    return `${top[0]} got ${top[1]} sets in Week ${weekNum}. Add variety across more muscle groups next week.`;
+  if (!muscleRows || muscleRows.length === 0) return null;
+
+  const volumeData = muscleRows.map(([name, sets]) => ({ name, sets }));
+  const sorted = [...volumeData].sort((a, b) => b.sets - a.sets);
+  const highest = sorted[0];
+  const lowest = sorted[sorted.length - 1];
+
+  if (sorted.length < 2) return null;
+  if (highest.sets <= 0) return null;
+
+  const maxRealistic = daysPerWeek * 8;
+  const imbalanceRatio = lowest.sets / highest.sets;
+
+  const isolationMuscles = [
+    'biceps',
+    'triceps',
+    'calves',
+    'forearms',
+    'rear delts',
+  ];
+  const lowestIsIsolation = isolationMuscles.some((m) =>
+    lowest.name.toLowerCase().includes(m),
+  );
+
+  if (lowestIsIsolation && daysPerWeek <= 3) {
+    return (
+      `${lowest.name} is at ${lowest.sets} sets — ` +
+      `normal for a ${daysPerWeek}-day program. ` +
+      `Compound pulling movements provide indirect stimulus. ` +
+      `Direct volume increases are available on higher-frequency plans.`
+    );
   }
-  return `${top[0]} leads with ${top[1]} sets this week. ${lowest[0]} is lowest at ${lowest[1]} — consider balancing the volume.`;
+
+  if (imbalanceRatio < 0.5 && !lowestIsIsolation) {
+    return (
+      `${highest.name} leads at ${highest.sets} sets. ` +
+      `${lowest.name} is at ${lowest.sets} — Jordan will ` +
+      `increase direct volume in the next generated week.`
+    );
+  }
+
+  if (highest.sets > maxRealistic * 0.9) {
+    return (
+      `${highest.name} is approaching the upper limit of ` +
+      `productive volume at ${highest.sets} sets. ` +
+      `Quality is more important than adding further sets.`
+    );
+  }
+
+  return (
+    `${highest.sets} sets for ${highest.name} leads this week ` +
+    `across ${volumeData.length} muscle groups — ` +
+    `volume is distributed appropriately for your schedule.`
+  );
 }
 
 function getWeightInsight(data: WeightLogPoint[]): string | null {
@@ -378,6 +424,7 @@ export default function ProgressChartsScreen() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
   const [weightData, setWeightData] = useState<WeightLogPoint[]>([]);
+  const [planDaysPerWeek, setPlanDaysPerWeek] = useState(4);
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -398,12 +445,19 @@ export default function ProgressChartsScreen() {
 
       if (pe || !plan) {
         setPlanId(null);
+        setPlanDaysPerWeek(4);
         setLogs([]);
         setLoading(false);
         return;
       }
 
       setPlanId(plan.id);
+      const dpwRaw = (plan.plan_json as { daysPerWeek?: number } | null)?.daysPerWeek;
+      setPlanDaysPerWeek(
+        typeof dpwRaw === 'number' && dpwRaw >= 1 && dpwRaw <= 7
+          ? dpwRaw
+          : 4,
+      );
 
       // Build exerciseId → { name, muscleGroup } lookup from plan_json
       const eMap: Record<string, { name: string; muscleGroup: string }> = {};
@@ -797,7 +851,7 @@ export default function ProgressChartsScreen() {
                   </View>
 
                   {(() => {
-                    const insight = getVolumeInsight(muscleRows, activeVolWeek ?? 0);
+                    const insight = getVolumeInsight(muscleRows, planDaysPerWeek);
                     return insight ? <JordanInsightCard text={insight} /> : null;
                   })()}
                 </>

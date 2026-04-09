@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,57 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/desig
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
 const COLOR_FATS = Colors.success;
+
+const PACE_CONFIG = {
+  fat_loss: [
+    {
+      id: 'conservative',
+      label: 'Conservative',
+      adjustment: -250,
+      sub: '−250 cal/day',
+      note: 'Slower but easier to sustain',
+    },
+    {
+      id: 'balanced',
+      label: 'Balanced',
+      adjustment: -400,
+      sub: '−400 cal/day',
+      note: 'Best for most people',
+      default: true,
+    },
+    {
+      id: 'aggressive',
+      label: 'Aggressive',
+      adjustment: -600,
+      sub: '−600 cal/day',
+      note: 'Faster results, harder to maintain',
+    },
+  ],
+  hypertrophy: [
+    {
+      id: 'conservative',
+      label: 'Lean Bulk',
+      adjustment: 200,
+      sub: '+200 cal/day',
+      note: 'Minimal fat gain, slower muscle',
+    },
+    {
+      id: 'balanced',
+      label: 'Moderate',
+      adjustment: 300,
+      sub: '+300 cal/day',
+      note: 'Best for most people',
+      default: true,
+    },
+    {
+      id: 'aggressive',
+      label: 'Aggressive',
+      adjustment: 500,
+      sub: '+500 cal/day',
+      note: 'Fastest muscle gain, more fat gain',
+    },
+  ],
+} as const;
 
 const MIN_CALORIES = 1200;
 const MAX_CALORIES = 5000;
@@ -44,7 +95,7 @@ function calcBaseMacros(
   return { proteinG, carbsG, fatsG };
 }
 
-function calcInitialCalories(params: RouteType['params']): number {
+function computeTdee(params: RouteType['params']): number {
   const heightCm =
     (Number(params.heightFt) * 12 + Number(params.heightIn)) * 2.54;
   const weightKg = Number(params.weightLbs) * 0.453592;
@@ -74,29 +125,41 @@ function calcInitialCalories(params: RouteType['params']): number {
     activityMultiplier = 1.9;
   }
 
-  const tdee = bmr * activityMultiplier;
+  return bmr * activityMultiplier;
+}
 
-  let targetCalories: number;
-  switch (params.goal) {
+function getGoalAdjustment(goal: string): number {
+  switch (goal) {
     case 'strength':
-      targetCalories = tdee + 200;
-      break;
+      return 200;
     case 'hypertrophy':
-      targetCalories = tdee + 300;
-      break;
+      return 300;
     case 'fat_loss':
-      targetCalories = tdee - 400;
-      break;
+      return -400;
     case 'recomp':
     case 'general':
     default:
-      targetCalories = tdee;
-      break;
+      return 0;
   }
+}
 
+function computeTargetCalories(
+  params: RouteType['params'],
+  caloriePace: string,
+): number {
+  const tdee = computeTdee(params);
+  const goalAdjustment = getGoalAdjustment(params.goal);
+  const paceAdjustment = (() => {
+    const goalPaces = PACE_CONFIG[params.goal as keyof typeof PACE_CONFIG];
+    if (!goalPaces) return goalAdjustment;
+    return (
+      goalPaces.find((p) => p.id === caloriePace)?.adjustment ?? goalAdjustment
+    );
+  })();
+  const calories = Math.round((tdee + paceAdjustment) / 50) * 50;
   return Math.max(
     MIN_CALORIES,
-    Math.min(MAX_CALORIES, roundToNearest(targetCalories, 50)),
+    Math.min(MAX_CALORIES, calories),
   );
 }
 
@@ -123,8 +186,16 @@ export default function MacroSetupScreen() {
   const insets = useSafeAreaInsets();
   const params = route.params;
 
-  const initialCalories = useMemo(() => calcInitialCalories(params), []);
-  const [calories, setCalories] = useState(initialCalories);
+  const [caloriePace, setCaloriePace] = useState<string>('balanced');
+  const [calories, setCalories] = useState(() =>
+    computeTargetCalories(params, 'balanced'),
+  );
+
+  useEffect(() => {
+    if (params.goal === 'fat_loss' || params.goal === 'hypertrophy') {
+      setCalories(computeTargetCalories(params, caloriePace));
+    }
+  }, [caloriePace, params.goal]);
 
   const { proteinG, carbsG, fatsG } = useMemo(
     () => calcBaseMacros(calories, Number(params.weightLbs)),
@@ -140,12 +211,18 @@ export default function MacroSetupScreen() {
   };
 
   const handleContinue = () => {
+    console.log('[MacroSetup] duration in params:', {
+      planDuration: params.planDuration,
+      recommendedWeeks: params.recommendedWeeks,
+      targetDate: params.targetDate,
+    });
     navigation.navigate('PlanPreview', {
       ...params,
       calories,
       proteinG,
       carbsG,
       fatsG,
+      caloriePace,
     });
   };
 
@@ -241,6 +318,37 @@ export default function MacroSetupScreen() {
             Based on your {formatGoalLabel(params.goal)} goal
           </Text>
         </View>
+
+        {(params.goal === 'fat_loss' || params.goal === 'hypertrophy') && (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>
+              PACE
+            </Text>
+            <View style={styles.paceRow}>
+              {PACE_CONFIG[params.goal].map((pace) => (
+                <Pressable
+                  key={pace.id}
+                  style={[
+                    styles.paceCard,
+                    caloriePace === pace.id && styles.paceCardActive,
+                  ]}
+                  onPress={() => setCaloriePace(pace.id)}
+                >
+                  <Text
+                    style={[
+                      styles.paceLabel,
+                      caloriePace === pace.id && styles.paceLabelActive,
+                    ]}
+                  >
+                    {pace.label}
+                  </Text>
+                  <Text style={styles.paceSub}>{pace.sub}</Text>
+                  <Text style={styles.paceNote}>{pace.note}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
 
         <View style={styles.macroRow}>
           <View style={styles.macroCard}>
@@ -428,6 +536,53 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginTop: 12,
     textAlign: 'center',
+  },
+
+  sectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  paceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: Spacing.md,
+  },
+  paceCard: {
+    flex: 1,
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    backgroundColor: Colors.bgCard,
+  },
+  paceCardActive: {
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentMuted,
+  },
+  paceLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  paceLabelActive: {
+    color: Colors.accent,
+  },
+  paceSub: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  paceNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    lineHeight: 14,
   },
 
   macroRow: {

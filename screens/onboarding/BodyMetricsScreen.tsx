@@ -35,28 +35,6 @@ export default function BodyMetricsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const insets = useSafeAreaInsets();
-  const {
-    goal,
-    targetLift,
-    current1RM,
-    target1RM,
-    priorityMuscles,
-    targetWeightLbs,
-    targetDate,
-    targetBodyFatPct,
-    experience,
-    daysPerWeek,
-    trainingDays,
-    sessionLength,
-    splitId,
-    splitName,
-    splitRationale,
-    sessionStructure,
-    injuries,
-    equipment,
-    weakPoints,
-    excludedExercises,
-  } = route.params;
 
   const [sex, setSex] = useState<string | null>(null);
   const [age, setAge] = useState('');
@@ -75,27 +53,13 @@ export default function BodyMetricsScreen() {
 
   const handleContinue = () => {
     if (!canContinue) return;
+    console.log('[BodyMetrics] duration in params:', {
+      planDuration: route.params.planDuration,
+      recommendedWeeks: route.params.recommendedWeeks,
+      targetDate: route.params.targetDate,
+    });
     navigation.navigate('MacroSetup', {
-      goal,
-      targetLift,
-      current1RM,
-      target1RM,
-      priorityMuscles,
-      targetWeightLbs,
-      targetDate,
-      targetBodyFatPct,
-      experience,
-      daysPerWeek,
-      trainingDays,
-      sessionLength,
-      splitId,
-      splitName,
-      splitRationale,
-      sessionStructure,
-      injuries,
-      equipment,
-      weakPoints,
-      excludedExercises,
+      ...route.params,
       age: age.trim(),
       sex: sex!,
       heightFt: heightFt.trim(),

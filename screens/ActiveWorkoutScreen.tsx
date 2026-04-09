@@ -25,7 +25,7 @@ import ExerciseCard, {
   WARMUP_COLLAPSED_STORAGE_KEY,
 } from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier } from '../components/ExerciseCard';
-import { EXERCISES } from '../constants/exerciseLibrary';
+import { EXERCISES, getCuesForExerciseName } from '../constants/exerciseLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 const REST_DURATION = 90;
@@ -62,6 +62,7 @@ type WorkoutExercise = {
   reps: string;
   sets: ExerciseSet[];
   alternatives: string[];
+  cues: string[];
 };
 
 type WorkoutData = {
@@ -70,69 +71,74 @@ type WorkoutData = {
   exercises: WorkoutExercise[];
 };
 
-const MOCK_WORKOUT = {
+const MOCK_WORKOUT_EXERCISES_BASE: Omit<WorkoutExercise, 'cues'>[] = [
+  {
+    id: 'ex_bench',
+    name: 'Barbell Bench Press',
+    muscleGroup: 'Chest',
+    usesWeight: true,
+    planCategory: 'compound',
+    compoundTier: 'primary_compound',
+    category: 'primary_compound',
+    movementPattern: 'horizontal_push',
+    targetWeight: 265,
+    reps: '8–10',
+    sets: [
+      { setNumber: 1, targetReps: '8–10', targetWeight: 265, targetRpe: 7 },
+      { setNumber: 2, targetReps: '8–10', targetWeight: 265, targetRpe: 7 },
+      { setNumber: 3, targetReps: '8–10', targetWeight: 265, targetRpe: 8 },
+    ],
+    alternatives: ['Incline DB Press', 'Cable Fly', 'Machine Chest Press'],
+  },
+  {
+    id: 'ex_ohp',
+    name: 'Overhead Press',
+    muscleGroup: 'Shoulders',
+    usesWeight: true,
+    planCategory: 'compound',
+    compoundTier: 'primary_compound',
+    category: 'primary_compound',
+    movementPattern: 'vertical_push',
+    targetWeight: 75,
+    reps: '8–10',
+    sets: [
+      { setNumber: 1, targetReps: '8–10', targetWeight: 75, targetRpe: 7 },
+      { setNumber: 2, targetReps: '8–10', targetWeight: 75, targetRpe: 7 },
+      { setNumber: 3, targetReps: '8–10', targetWeight: 75, targetRpe: 8 },
+    ],
+    alternatives: ['DB Shoulder Press', 'Arnold Press', 'Landmine Press'],
+  },
+  {
+    id: 'ex_tricep',
+    name: 'Tricep Pushdown',
+    muscleGroup: 'Triceps',
+    usesWeight: true,
+    planCategory: 'isolation',
+    compoundTier: 'isolation',
+    category: 'isolation',
+    movementPattern: 'isolation_push',
+    targetWeight: 50,
+    reps: '10–12',
+    sets: [
+      { setNumber: 1, targetReps: '10–12', targetWeight: 50, targetRpe: 7 },
+      { setNumber: 2, targetReps: '10–12', targetWeight: 50, targetRpe: 7 },
+      { setNumber: 3, targetReps: '10–12', targetWeight: 50, targetRpe: 8 },
+    ],
+    alternatives: [
+      'Skull Crushers',
+      'Overhead Tricep Extension',
+      'Close-grip Bench',
+    ],
+  },
+];
+
+const MOCK_WORKOUT: WorkoutData = {
   title: 'Push Day A',
   goal: 'strength',
-  exercises: [
-    {
-      id: 'ex_bench',
-      name: 'Barbell Bench Press',
-      muscleGroup: 'Chest',
-      usesWeight: true,
-      planCategory: 'compound' as const,
-      compoundTier: 'primary_compound' as const,
-      category: 'primary_compound' as const,
-      movementPattern: 'horizontal_push',
-      targetWeight: 265,
-      reps: '8–10',
-      sets: [
-        { setNumber: 1, targetReps: '8–10', targetWeight: 265, targetRpe: 7 },
-        { setNumber: 2, targetReps: '8–10', targetWeight: 265, targetRpe: 7 },
-        { setNumber: 3, targetReps: '8–10', targetWeight: 265, targetRpe: 8 },
-      ],
-      alternatives: ['Incline DB Press', 'Cable Fly', 'Machine Chest Press'],
-    },
-    {
-      id: 'ex_ohp',
-      name: 'Overhead Press',
-      muscleGroup: 'Shoulders',
-      usesWeight: true,
-      planCategory: 'compound' as const,
-      compoundTier: 'primary_compound' as const,
-      category: 'primary_compound' as const,
-      movementPattern: 'vertical_push',
-      targetWeight: 75,
-      reps: '8–10',
-      sets: [
-        { setNumber: 1, targetReps: '8–10', targetWeight: 75, targetRpe: 7 },
-        { setNumber: 2, targetReps: '8–10', targetWeight: 75, targetRpe: 7 },
-        { setNumber: 3, targetReps: '8–10', targetWeight: 75, targetRpe: 8 },
-      ],
-      alternatives: ['DB Shoulder Press', 'Arnold Press', 'Landmine Press'],
-    },
-    {
-      id: 'ex_tricep',
-      name: 'Tricep Pushdown',
-      muscleGroup: 'Triceps',
-      usesWeight: true,
-      planCategory: 'isolation' as const,
-      compoundTier: 'isolation' as const,
-      category: 'isolation' as const,
-      movementPattern: 'isolation_push',
-      targetWeight: 50,
-      reps: '10–12',
-      sets: [
-        { setNumber: 1, targetReps: '10–12', targetWeight: 50, targetRpe: 7 },
-        { setNumber: 2, targetReps: '10–12', targetWeight: 50, targetRpe: 7 },
-        { setNumber: 3, targetReps: '10–12', targetWeight: 50, targetRpe: 8 },
-      ],
-      alternatives: [
-        'Skull Crushers',
-        'Overhead Tricep Extension',
-        'Close-grip Bench',
-      ],
-    },
-  ] satisfies WorkoutExercise[],
+  exercises: MOCK_WORKOUT_EXERCISES_BASE.map((e) => ({
+    ...e,
+    cues: getCuesForExerciseName(e.name),
+  })),
 };
 
 type PlanJsonExercise = {
@@ -155,6 +161,7 @@ type EnrichedPlanExercise = {
   movementPatternResolved: string | undefined;
   planCategoryResolved: 'compound' | 'isolation';
   usesWeightFromLibrary: boolean;
+  cuesResolved: string[];
 };
 
 function enrichExerciseWithLibraryData(
@@ -175,6 +182,7 @@ function enrichExerciseWithLibraryData(
       planCategoryResolved: 'compound',
       // Default weighted when unknown; targetWeight === 0 is self-select, not BW
       usesWeightFromLibrary: true,
+      cuesResolved: getCuesForExerciseName(planExercise.name),
     };
   }
 
@@ -186,6 +194,7 @@ function enrichExerciseWithLibraryData(
     planCategoryResolved:
       planExercise.category ?? libraryExercise.category,
     usesWeightFromLibrary: libraryExercise.usesWeight,
+    cuesResolved: [...libraryExercise.cues],
   };
 }
 
@@ -199,6 +208,28 @@ function parseSetsJson(rawSets: LoggedSet[] | string | null | undefined): Logged
     }
   }
   return Array.isArray(rawSets) ? rawSets : [];
+}
+
+/** Match plan exercise.id to last week sets_json (ids can drift across plan generations). */
+function getPreviousSetsForExercise(
+  previousSetsMap: Record<string, LoggedSet[]>,
+  exerciseId: string,
+  exerciseName: string,
+): LoggedSet[] {
+  const direct = previousSetsMap[exerciseId];
+  if (direct && direct.length > 0) return direct;
+  const nameLower = exerciseName.toLowerCase().trim();
+  for (const sets of Object.values(previousSetsMap)) {
+    const s0 = sets[0];
+    if (!s0) continue;
+    const en =
+      s0.exerciseName ??
+      (s0 as LoggedSet & { name?: string }).name;
+    if (typeof en === 'string' && en.toLowerCase().trim() === nameLower) {
+      return sets;
+    }
+  }
+  return [];
 }
 
 const formatTime = (seconds: number): string => {
@@ -216,6 +247,9 @@ export default function ActiveWorkoutScreen() {
   // Workout data
   const [workout, setWorkout] = useState<WorkoutData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [workoutExperience, setWorkoutExperience] = useState<
+    'beginner' | 'intermediate' | 'advanced'
+  >('intermediate');
 
   // Session state
   const [sets, setSets] = useState<LoggedSet[]>([]);
@@ -292,6 +326,26 @@ export default function ActiveWorkoutScreen() {
     try {
       console.log('[ActiveWorkout] planId from params:', params.planId);
 
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      let workoutTrainingAge: 'beginner' | 'intermediate' | 'advanced' =
+        'intermediate';
+      if (userId) {
+        const { data: profileRow } = await supabase
+          .from('user_profiles')
+          .select('training_age')
+          .eq('user_id', userId)
+          .maybeSingle();
+        const ta = profileRow?.training_age;
+        if (ta === 'beginner' || ta === 'intermediate' || ta === 'advanced') {
+          workoutTrainingAge = ta;
+        }
+      }
+      setWorkoutExperience(workoutTrainingAge);
+
       if (params.planId === 'mock') {
         setResolvedPlanId(null);
         setSessionPlanIdForLogs(null);
@@ -321,30 +375,6 @@ export default function ActiveWorkoutScreen() {
         return;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-
-      let activePlanId: string | null = null;
-      if (userId) {
-        const { data: activePlanRow } = await supabase
-          .from('plans')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (
-          activePlanRow?.id &&
-          typeof activePlanRow.id === 'string' &&
-          activePlanRow.id.trim().length >= 10
-        ) {
-          activePlanId = activePlanRow.id.trim();
-        }
-      }
-
       const planResult = await supabase
         .from('plans')
         .select('id, plan_json, current_week')
@@ -354,7 +384,6 @@ export default function ActiveWorkoutScreen() {
       const { data: plan, error } = planResult;
 
       console.log('[ActiveWorkout] plan id from row:', plan?.id);
-      console.log('[ActiveWorkout] active plan id (previous log):', activePlanId);
 
       const idForQueries =
         plan?.id &&
@@ -364,7 +393,11 @@ export default function ActiveWorkoutScreen() {
           : rawPlanId;
 
       const previousLogPlanId =
-        activePlanId && activePlanId.length >= 10 ? activePlanId : idForQueries;
+        idForQueries &&
+        typeof idForQueries === 'string' &&
+        idForQueries.length >= 10
+          ? idForQueries
+          : null;
 
       setResolvedPlanId(plan?.id ? String(plan.id).trim() : rawPlanId);
 
@@ -482,15 +515,15 @@ export default function ActiveWorkoutScreen() {
       setPreviousSetsMap(previousSetsMap);
 
       if (__DEV__ && userId) {
-        console.log('[workout_log consistency check]', {
+        console.log('[workout consistency]', {
           planId: idForQueries,
-          previousLogPlanId,
-          weekNumber: params.weekNumber,
           dayNumber: canonicalDayNumber,
-          previousWeekFound: !!previousLogForDev,
+          weekNumber: params.weekNumber,
+          previousWeekQueried:
+            previousWeekNumber >= 1 ? previousWeekNumber : null,
+          previousLogFound: !!previousLogForDev,
           previousSetsCount: previousSetsForDev.length,
-          activePlanIdMatches:
-            activePlanId && idForQueries ? activePlanId === idForQueries : null,
+          previousLogPlanId,
         });
       }
 
@@ -529,6 +562,7 @@ export default function ActiveWorkoutScreen() {
           movementPatternResolved,
           planCategoryResolved,
           usesWeightFromLibrary,
+          cuesResolved,
         }) => {
           const usesWeight = usesWeightFromLibrary;
           return {
@@ -549,6 +583,7 @@ export default function ActiveWorkoutScreen() {
               targetRpe: ex.targetRpe,
             })),
             alternatives: getAlternatives(ex.muscleGroup),
+            cues: cuesResolved,
           };
         },
       );
@@ -557,6 +592,22 @@ export default function ActiveWorkoutScreen() {
         typeof (planJson as { goal?: string }).goal === 'string'
           ? (planJson as { goal: string }).goal
           : 'general';
+
+      if (__DEV__ && exercises.length > 0 && Object.keys(previousSetsMap).length > 0) {
+        for (const ex of exercises) {
+          const found = getPreviousSetsForExercise(
+            previousSetsMap,
+            ex.id,
+            ex.name,
+          );
+          console.log('[previousSets lookup]', {
+            exerciseId: ex.id,
+            exerciseName: ex.name,
+            previousSetsMapKeys: Object.keys(previousSetsMap),
+            found: found.length > 0,
+          });
+        }
+      }
 
       setWorkout({ title: dayData.title, goal: planGoal, exercises });
     } catch (e) {
@@ -647,9 +698,14 @@ export default function ActiveWorkoutScreen() {
     reps: number,
     rpe: number | null,
   ) => {
+    const exercise = (workout?.exercises ?? []).find(
+      (ex) => ex.id === exerciseId,
+    );
     const isSwapped = exerciseSwaps[exerciseId] !== undefined;
     const newSet: LoggedSet = {
       exerciseId,
+      exerciseName:
+        exercise != null ? exerciseSwaps[exerciseId] || exercise.name : undefined,
       setNumber,
       weightLbs: weight,
       reps,
@@ -664,10 +720,6 @@ export default function ActiveWorkoutScreen() {
       setRestSeconds(REST_DURATION);
       setIsRestActive(true);
     }
-
-    const exercise = (workout?.exercises ?? []).find(
-      (ex) => ex.id === exerciseId,
-    );
     if (exercise) {
       const target = exercise.sets.find((s) => s.setNumber === setNumber);
       if (target) {
@@ -871,7 +923,11 @@ export default function ActiveWorkoutScreen() {
                 key={exercise.id}
                 exercise={exercise}
                 loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
-                previousSets={previousSetsMap[exercise.id] ?? []}
+                previousSets={getPreviousSetsForExercise(
+                  previousSetsMap,
+                  exercise.id,
+                  exercise.name,
+                )}
                 swappedName={exerciseSwaps[exercise.id] ?? null}
                 coachingNote={coachingNotes[exercise.id] ?? null}
                 coachingLoading={coachingLoading[exercise.id] ?? false}
@@ -881,6 +937,7 @@ export default function ActiveWorkoutScreen() {
                 onWarmupCollapsedCompoundChange={setWarmupCollapsedCompound}
                 onLogSet={handleLogSet}
                 onSwapExercise={handleSwapExercise}
+                experience={workoutExperience}
               />
             ))}
           </ScrollView>

@@ -42,6 +42,11 @@ export default function RPEEducationScreen() {
   const insets = useSafeAreaInsets();
 
   const handleGotIt = () => {
+    console.log('[RPEEducation] duration in params:', {
+      planDuration: route.params.planDuration,
+      recommendedWeeks: route.params.recommendedWeeks,
+      targetDate: route.params.targetDate,
+    });
     navigation.navigate('Constraints', { ...route.params });
   };
 

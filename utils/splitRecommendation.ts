@@ -373,8 +373,8 @@ export function getRecommendedSplit(
       splitName: getSplitLabel(splitId),
       reason:
         d <= 3
-          ? 'Full body training hits every muscle three times a week — the frequency that builds movement patterns fastest at this stage.'
-          : 'Upper/Lower hits every muscle twice a week — the frequency you need to build movement patterns and muscle simultaneously.',
+          ? `Full body training hits every muscle three times a week — ideal frequency when you train ${d} days per week and you are still learning the basics.`
+          : `Upper/Lower hits every muscle twice a week — the right frequency for ${d} training days while you build movement patterns and muscle.`,
     };
   }
 
@@ -390,35 +390,35 @@ export function getRecommendedSplit(
     if (d >= 6) {
       splitId = 'arnold';
       reason =
-        'Arnold Split — chest and back train together twice a week, shoulders and arms twice a week. Antagonist pairing means more volume per session without extra fatigue. At your level with 6 days, this is the right structure.';
+        `Arnold Split — chest and back train together twice a week, shoulders and arms twice a week. Antagonist pairing means more volume per session without extra fatigue. At your level with ${d} days, this is the right structure.`;
     } else if (d === 5) {
       splitId = 'ppl_upper';
       reason =
-        '5 days and advanced — PPL + Upper gives you the volume and frequency your body needs to keep progressing.';
+        `${d} days and advanced — PPL + Upper gives you the volume and frequency your body needs to keep progressing.`;
     } else if (d === 4) {
       splitId = 'phul';
       reason =
-        'PHUL combines power and hypertrophy days — the most effective 4-day structure for advanced muscle building.';
+        `PHUL combines power and hypertrophy days — the most effective ${d}-day structure for advanced muscle building.`;
     } else {
       splitId = 'upper_lower';
       reason =
-        'Upper/Lower gives each muscle twice-weekly frequency — the right choice at 3 days.';
+        `Upper/Lower gives each muscle twice-weekly frequency — the right choice at ${d} days.`;
     }
   } else {
     if (d >= 6) {
       splitId = 'ppl';
       reason =
-        'PPL at 6 days hits every muscle twice weekly — the frequency sweet spot for intermediate hypertrophy.';
+        `PPL at ${d} days hits every muscle twice weekly — the frequency sweet spot for intermediate hypertrophy.`;
     } else if (d === 5) {
       splitId = 'ppl_upper';
-      reason = 'PPL + Upper gives high volume and frequency across 5 days.';
+      reason = `PPL + Upper gives high volume and frequency across ${d} days.`;
     } else if (d === 4) {
       splitId = 'upper_lower';
       reason =
-        'Upper/Lower gives each muscle 2x weekly frequency — the sweet spot for hypertrophy at 4 days.';
+        `Upper/Lower gives each muscle 2× weekly frequency — the sweet spot for hypertrophy at ${d} days.`;
     } else {
       splitId = 'full_body_advanced';
-      reason = 'Full body training at 3 days maximises frequency per session.';
+      reason = `Full body training at ${d} days maximises frequency per session.`;
     }
   }
 

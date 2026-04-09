@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,8 +16,25 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
-import Svg, { Line as SvgLine, Circle, Text as SvgText, G, Path } from 'react-native-svg';
+import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../constants/design';
+import type { CaloriePace } from '../utils/projections';
+import {
+  getFatLossProjection,
+  getHypertrophyProjection,
+  getStrengthProjection,
+  getRecompBfProjection,
+} from '../utils/projections';
+import ProjectionChart, {
+  type ProjectionChartGoal,
+} from '../components/ProjectionChart';
+
+const TRACKER_CHART_STROKE: Record<string, string> = {
+  fat_loss: '#F97316',
+  hypertrophy: '#22C55E',
+  strength: '#F59E0B',
+  recomp: '#F97316',
+  general: '#F97316',
+};
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -45,6 +62,7 @@ interface PlanRow {
   current_week: number;
   total_weeks: number;
   plan_json: any;
+  created_at?: string;
 }
 
 interface ProgressResult {
@@ -57,12 +75,6 @@ interface Milestone {
   pct: number;
   label: string;
   reached: boolean;
-}
-
-interface RmDataPoint {
-  week: number;
-  projected: number;
-  actual: number | null;
 }
 
 const GOAL_BADGE: Record<string, { color: string; label: string }> = {
@@ -149,222 +161,299 @@ function formatMonth(dateStr: string): string {
   return `Started ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function RmProgressionChart({
-  data,
-  width,
-}: {
-  data: Array<{ week: number; projected: number; actual: number | null }>;
-  width: number;
-  targetLift: string;
-}) {
-  if (data.length < 2) return null;
-
-  const height = 200;
-  const padL = 44;
-  const padR = 16;
-  const padT = 20;
-  const padB = 28;
-  const cw = width - padL - padR;
-  const ch = height - padT - padB;
-
-  const allVals = [
-    ...data.map((d) => d.projected),
-    ...data.map((d) => d.actual).filter((v): v is number => v !== null),
-  ];
-  const minV = Math.floor(Math.min(...allVals) * 0.97);
-  const maxV = Math.ceil(Math.max(...allVals) * 1.03);
-  const rangeV = maxV - minV || 1;
-  const totalWeeks = data.length;
-
-  const toX = (wk: number) =>
-    padL + ((wk - 1) / (totalWeeks - 1)) * cw;
-  const toY = (v: number) =>
-    padT + ch - ((v - minV) / rangeV) * ch;
-
-  // Y axis ticks
-  const yTicks = 4;
-  const yStep = rangeV / yTicks;
-
-  // Projected line path
-  const projPoints = data.map((d) => ({
-    x: toX(d.week),
-    y: toY(d.projected),
-  }));
-  const projPath = projPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
-    .join(' ');
-
-  // Actual line — only connected points where actual exists
-  const actualPoints = data
-    .filter((d) => d.actual !== null)
-    .map((d) => ({ x: toX(d.week), y: toY(d.actual!) }));
-  const actualPath = actualPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
-    .join(' ');
-
-  // Last actual point for callout
-  const lastActual = actualPoints[actualPoints.length - 1];
-  const lastActualData = data.filter((d) => d.actual !== null).slice(-1)[0];
-
-  return (
-    <View>
-      {/* Legend */}
-      <View style={chartStyles.legend}>
-        <View style={chartStyles.legendItem}>
-          <View style={[chartStyles.legendDot, { backgroundColor: Colors.divider }]} />
-          <Text style={chartStyles.legendLabel}>Projected</Text>
-        </View>
-        <View style={chartStyles.legendItem}>
-          <View style={[chartStyles.legendDot, { backgroundColor: Colors.accent }]} />
-          <Text style={chartStyles.legendLabel}>Actual 1RM</Text>
-        </View>
-      </View>
-
-      <Svg width={width} height={height}>
-        {/* Y axis grid + labels */}
-        {Array.from({ length: yTicks + 1 }, (_, i) => {
-          const val = minV + i * yStep;
-          const y = toY(val);
-          return (
-            <G key={`y-${i}`}>
-              <SvgLine
-                x1={padL}
-                y1={y}
-                x2={width - padR}
-                y2={y}
-                stroke={Colors.divider}
-                strokeWidth={1}
-              />
-              <SvgText
-                x={padL - 6}
-                y={y + 4}
-                fill={Colors.textTertiary}
-                fontSize={FontSizes.micro}
-                fontFamily={Fonts.regular}
-                textAnchor="end"
-              >
-                {Math.round(val)}
-              </SvgText>
-            </G>
-          );
-        })}
-
-        {/* X axis labels — every 2nd week to avoid overlap */}
-        {data
-          .filter((_, i) => i === 0 || i === data.length - 1 || i % 2 === 0)
-          .map((d) => (
-            <SvgText
-              key={`x-${d.week}`}
-              x={toX(d.week)}
-              y={height - 6}
-              fill={Colors.textTertiary}
-              fontSize={FontSizes.micro}
-              fontFamily={Fonts.regular}
-              textAnchor="middle"
-            >
-              W{d.week}
-            </SvgText>
-          ))}
-
-        {/* Projected dashed line */}
-        {projPath ? (
-          <Path
-            d={projPath}
-            stroke={Colors.divider}
-            strokeWidth={1.5}
-            strokeDasharray="4 4"
-            fill="none"
-          />
-        ) : null}
-
-        {/* Actual solid line */}
-        {actualPath ? (
-          <Path
-            d={actualPath}
-            stroke={Colors.accent}
-            strokeWidth={2.5}
-            fill="none"
-          />
-        ) : null}
-
-        {/* Actual data point dots */}
-        {actualPoints.map((p, i) => (
-          <Circle
-            key={`adot-${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={4}
-            fill={Colors.accent}
-          />
-        ))}
-
-        {/* Target endpoint marker */}
-        <Circle
-          cx={projPoints[projPoints.length - 1].x}
-          cy={projPoints[projPoints.length - 1].y}
-          r={5}
-          fill="none"
-          stroke={Colors.divider}
-          strokeWidth={2}
-        />
-
-        {/* Callout for last actual */}
-        {lastActual && lastActualData && (
-          <SvgText
-            x={lastActual.x}
-            y={lastActual.y - 10}
-            fill={Colors.textPrimary}
-            fontSize={FontSizes.caption}
-            fontFamily={Fonts.bold}
-            textAnchor="middle"
-          >
-            {lastActualData.actual} lbs
-          </SvgText>
-        )}
-      </Svg>
-
-      {/* Target annotation */}
-      <View style={chartStyles.targetRow}>
-        <Text style={chartStyles.targetLabel}>
-          Target: {data[data.length - 1]?.projected} lbs by Week {data.length}
-        </Text>
-      </View>
-    </View>
-  );
+function normalizeTrackerPace(p?: string | null): CaloriePace {
+  if (p === 'conservative' || p === 'balanced' || p === 'aggressive') return p;
+  return 'balanced';
 }
 
-const chartStyles = StyleSheet.create({
-  legend: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 8,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-  },
-  targetRow: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  targetLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-    fontStyle: 'italic',
-  },
-});
+function buildExerciseNameMap(planJson: any): Record<string, string> {
+  const exerciseMap: Record<string, string> = {};
+  for (const week of planJson?.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      for (const ex of day.exercises ?? []) {
+        if (ex.id && ex.name) exerciseMap[ex.id] = ex.name;
+      }
+    }
+  }
+  return exerciseMap;
+}
+
+function buildWeightActualsByWeek(
+  logs: { log_date: string; weight_lbs: number }[],
+  planStartIso: string,
+  totalWeeks: number,
+): (number | null)[] {
+  const start = new Date(planStartIso);
+  if (Number.isNaN(start.getTime())) return Array(totalWeeks + 1).fill(null);
+  start.setHours(0, 0, 0, 0);
+  const out: (number | null)[] = Array(totalWeeks + 1).fill(null);
+  for (let i = 0; i <= totalWeeks; i++) {
+    const wStart = new Date(start);
+    wStart.setDate(wStart.getDate() + i * 7);
+    const wEnd = new Date(wStart);
+    wEnd.setDate(wEnd.getDate() + 7);
+    const inBucket = logs.filter((l) => {
+      const d = new Date(`${l.log_date}T12:00:00`);
+      return d >= wStart && d < wEnd;
+    });
+    if (inBucket.length === 0) continue;
+    const last = inBucket[inBucket.length - 1];
+    const lbs = Number(last.weight_lbs);
+    if (Number.isFinite(lbs)) out[i] = lbs;
+  }
+  return out;
+}
+
+function buildStrengthActualsSeries(
+  totalWeeks: number,
+  logs: { week_number: number; sets_json: any[] }[],
+  targetLiftLower: string,
+  exerciseMap: Record<string, string>,
+): (number | null)[] {
+  const out: (number | null)[] = Array(totalWeeks + 1).fill(null);
+  for (const log of logs) {
+    const wk = log.week_number;
+    if (wk < 1 || wk > totalWeeks) continue;
+    let best = 0;
+    for (const s of log.sets_json ?? []) {
+      const name = (
+        s.exerciseName ??
+        s.name ??
+        exerciseMap[s.exerciseId] ??
+        ''
+      ).toLowerCase();
+      if (!name.includes(targetLiftLower)) continue;
+      const w = Number(s.weightLbs ?? s.weight ?? 0);
+      const r = Number(s.reps ?? 0);
+      if (w > 0 && r > 0) {
+        const est = w * (1 + r / 30);
+        if (est > best) best = est;
+      }
+    }
+    if (best > 0) {
+      const rounded = Math.round(best);
+      if (out[wk] == null || rounded > (out[wk] as number)) {
+        out[wk] = rounded;
+      }
+    }
+  }
+  return out;
+}
+
+type TrackerCallout = {
+  col1: { label: string; value: string; sub?: string };
+  col2: { label: string; value: string; sub?: string };
+  col3: { label: string; value: string; sub?: string };
+};
+
+type TrackerChartModel = {
+  projection: number[];
+  actuals: (number | null)[];
+  yMin: number;
+  yMax: number;
+  yLabel: string;
+  targetValue?: number;
+  goalColor: string;
+  weeks: number;
+  callout: TrackerCallout;
+  compareIndex: number;
+};
+
+function buildTrackerChartModel(
+  goal: GoalRow,
+  plan: PlanRow,
+  weightLogs: { log_date: string; weight_lbs: number }[],
+  workoutLogs: { week_number: number; sets_json: any[] }[],
+  caloriePace: string | null,
+): TrackerChartModel | null {
+  const totalWeeks = plan.total_weeks;
+  if (totalWeeks < 1) return null;
+  const pace = normalizeTrackerPace(caloriePace);
+  const planStart =
+    plan.created_at ?? goal.created_at ?? new Date().toISOString();
+  const gt = goal.goal_type;
+  const badgeColor = GOAL_BADGE[gt]?.color ?? Colors.accent;
+
+  if (gt === 'fat_loss') {
+    const startW =
+      Number(goal.starting_weight_lbs) ||
+      weightLogs[0]?.weight_lbs ||
+      180;
+    const projection = getFatLossProjection(startW, pace, totalWeeks);
+    const actuals = buildWeightActualsByWeek(
+      weightLogs,
+      planStart,
+      totalWeeks,
+    );
+    const endP = projection[projection.length - 1];
+    const actNums = actuals.filter((v): v is number => v != null);
+    const yMin =
+      Math.min(
+        ...projection,
+        ...(actNums.length > 0 ? actNums : [projection[projection.length - 1]]),
+      ) - 2;
+    const yMax =
+      Math.max(
+        startW,
+        ...(actNums.length > 0 ? actNums : [startW]),
+      ) + 2;
+    return {
+      projection,
+      actuals,
+      yMin,
+      yMax,
+      yLabel: 'lbs',
+      goalColor: badgeColor,
+      weeks: totalWeeks,
+      compareIndex: Math.min(plan.current_week, totalWeeks),
+      callout: {
+        col1: {
+          label: 'End target',
+          value: `${endP} lbs`,
+          sub: `from ${startW} lbs`,
+        },
+        col2: {
+          label: 'Rate',
+          value:
+            pace === 'conservative'
+              ? '−0.5 lb/wk'
+              : pace === 'balanced'
+                ? '−0.75 lb/wk'
+                : '−1.1 lb/wk',
+        },
+        col3: { label: 'Plan', value: `${totalWeeks} wks` },
+      },
+    };
+  }
+
+  if (gt === 'hypertrophy') {
+    const projection = getHypertrophyProjection('intermediate', pace, totalWeeks);
+    const startW =
+      Number(goal.starting_weight_lbs) ||
+      weightLogs[0]?.weight_lbs ||
+      175;
+    const weights = buildWeightActualsByWeek(
+      weightLogs,
+      planStart,
+      totalWeeks,
+    );
+    const actuals = weights.map((w) =>
+      w == null ? null : Math.round((w - startW) * 10) / 10,
+    );
+    const maxP = Math.max(...projection);
+    const maxA = Math.max(
+      0,
+      ...actuals.filter((v): v is number => v != null),
+    );
+    const yMax = Math.max(maxP, maxA) * 1.15 || 1;
+    return {
+      projection,
+      actuals,
+      yMin: 0,
+      yMax,
+      yLabel: 'lbs Δ',
+      goalColor: badgeColor,
+      weeks: totalWeeks,
+      compareIndex: Math.min(plan.current_week, totalWeeks),
+      callout: {
+        col1: {
+          label: 'Projected gain',
+          value: `+${projection[projection.length - 1].toFixed(1)} lbs`,
+          sub: 'lean (est.)',
+        },
+        col2: { label: 'Pace', value: pace, sub: 'macro tier' },
+        col3: { label: 'Plan', value: `${totalWeeks} wks` },
+      },
+    };
+  }
+
+  if (gt === 'strength') {
+    const current = Number(goal.current_1rm) || 185;
+    const target = Number(goal.target_1rm) || current * 1.1;
+    const projection = getStrengthProjection(current, 'intermediate', totalWeeks);
+    const exMap = buildExerciseNameMap(plan.plan_json);
+    const tl = (goal.target_lift ?? '').toLowerCase();
+    const actuals = buildStrengthActualsSeries(
+      totalWeeks,
+      workoutLogs,
+      tl,
+      exMap,
+    );
+    const nums = [...projection, ...actuals.filter((v): v is number => v != null)];
+    const yMin = Math.min(...nums) * 0.97;
+    const yMax = Math.max(target, ...nums) * 1.03;
+    return {
+      projection,
+      actuals,
+      yMin,
+      yMax,
+      yLabel: 'lbs',
+      targetValue: target,
+      goalColor: badgeColor,
+      weeks: totalWeeks,
+      compareIndex: Math.min(plan.current_week, totalWeeks),
+      callout: {
+        col1: {
+          label: 'Target',
+          value: `${Math.round(projection[projection.length - 1])} lbs`,
+          sub: 'projected 1RM',
+        },
+        col2: {
+          label: 'Goal',
+          value: `${Math.round(target)} lbs`,
+          sub: 'your target',
+        },
+        col3: { label: 'Plan', value: `${totalWeeks} wks` },
+      },
+    };
+  }
+
+  if (gt === 'recomp') {
+    const bfStart = 18;
+    const projection = getRecompBfProjection(totalWeeks, bfStart);
+    const actuals: (number | null)[] = Array(totalWeeks + 1).fill(null);
+    const endBf = projection[projection.length - 1];
+    return {
+      projection,
+      actuals,
+      yMin: Math.min(endBf, bfStart) - 0.5,
+      yMax: bfStart + 1,
+      yLabel: '% BF',
+      goalColor: badgeColor,
+      weeks: totalWeeks,
+      compareIndex: Math.min(plan.current_week, totalWeeks),
+      callout: {
+        col1: { label: 'Focus', value: '~flat weight', sub: 'recomp' },
+        col2: {
+          label: 'BF trend',
+          value: `−${(bfStart - endBf).toFixed(1)}%`,
+          sub: 'projected',
+        },
+        col3: { label: 'Plan', value: `${totalWeeks} wks` },
+      },
+    };
+  }
+
+  // general
+  const projection = Array.from({ length: totalWeeks + 1 }, (_, i) =>
+    Math.round(i * 1.2 * 10) / 10,
+  );
+  return {
+    projection,
+    actuals: Array(totalWeeks + 1).fill(null),
+    yMin: 0,
+    yMax: Math.max(...projection) * 1.2 || 5,
+    yLabel: 'index',
+    goalColor: badgeColor,
+    weeks: totalWeeks,
+    compareIndex: Math.min(plan.current_week, totalWeeks),
+    callout: {
+      col1: { label: 'Track', value: 'Consistency', sub: 'training' },
+      col2: { label: 'Phase', value: 'Build', sub: 'habit + load' },
+      col3: { label: 'Plan', value: `${totalWeeks} wks` },
+    },
+  };
+}
 
 // ── Main Screen ──
 
@@ -378,6 +467,15 @@ export default function GoalTrackerScreen() {
   const [current1rm, setCurrent1rm] = useState<number | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
   const [logs, setLogs] = useState<any[]>([]);
+  const [weightLogsTracker, setWeightLogsTracker] = useState<
+    { log_date: string; weight_lbs: number }[]
+  >([]);
+  const [caloriePaceTracker, setCaloriePaceTracker] = useState<string | null>(
+    null,
+  );
+  const [weeklyCoachSnippet, setWeeklyCoachSnippet] = useState<string | null>(
+    null,
+  );
   const [history, setHistory] = useState<GoalRow[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTarget, setEditTarget] = useState('');
@@ -404,7 +502,7 @@ export default function GoalTrackerScreen() {
           .single(),
         supabase
           .from('plans')
-          .select('id, current_week, total_weeks, plan_json')
+          .select('id, current_week, total_weeks, plan_json, created_at')
           .eq('user_id', userId)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
@@ -431,9 +529,56 @@ export default function GoalTrackerScreen() {
           .from('workout_logs')
           .select('week_number, sets_json', { count: 'exact' })
           .eq('user_id', userId)
-          .eq('plan_id', activePlan.id);
+          .eq('plan_id', activePlan.id)
+          .order('logged_at', { ascending: true });
         setSessionCount(count ?? 0);
         setLogs(logsData ?? []);
+      } else {
+        setLogs([]);
+      }
+
+      if (activePlan && activeGoal) {
+        const planStartDate =
+          (activePlan.created_at ?? '').split('T')[0] ||
+          new Date().toISOString().split('T')[0];
+        const summaryQuery =
+          activePlan.current_week > 1
+            ? supabase
+                .from('weekly_summaries')
+                .select('summary_json')
+                .eq('plan_id', activePlan.id)
+                .eq('week_number', activePlan.current_week - 1)
+                .maybeSingle()
+            : Promise.resolve({ data: null, error: null });
+
+        const [wlRes, macroRes, wsRes] = await Promise.all([
+          supabase
+            .from('weight_logs')
+            .select('log_date, weight_lbs')
+            .eq('user_id', userId)
+            .gte('log_date', planStartDate)
+            .order('log_date', { ascending: true }),
+          supabase
+            .from('macro_plans')
+            .select('calorie_pace')
+            .eq('goal_id', activeGoal.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          summaryQuery,
+        ]);
+
+        setWeightLogsTracker((wlRes.data ?? []) as { log_date: string; weight_lbs: number }[]);
+        setCaloriePaceTracker(
+          (macroRes.data as { calorie_pace?: string } | null)?.calorie_pace ??
+            null,
+        );
+        const sj = (wsRes.data as { summary_json?: { performanceSummary?: string; headline?: string } } | null)?.summary_json;
+        setWeeklyCoachSnippet(sj?.performanceSummary ?? sj?.headline ?? null);
+      } else {
+        setWeightLogsTracker([]);
+        setCaloriePaceTracker(null);
+        setWeeklyCoachSnippet(null);
       }
 
       // Strength goal: estimate current 1RM from recent logs for target lift
@@ -495,6 +640,38 @@ export default function GoalTrackerScreen() {
 
   const milestones = progress ? buildMilestones(progress.progressPct) : [];
 
+  const chartWidth = screenWidth - Spacing.xl * 2 - 40;
+
+  const trackerModel = useMemo(() => {
+    if (!goal || !plan) return null;
+    return buildTrackerChartModel(
+      goal,
+      plan,
+      weightLogsTracker,
+      logs,
+      caloriePaceTracker,
+    );
+  }, [goal, plan, weightLogsTracker, logs, caloriePaceTracker]);
+
+  const isAhead = useMemo(() => {
+    if (!trackerModel || !goal) return null;
+    const gt = goal.goal_type;
+    if (gt !== 'fat_loss' && gt !== 'hypertrophy' && gt !== 'strength') {
+      return null;
+    }
+    const i = trackerModel.compareIndex;
+    const a = trackerModel.actuals[i];
+    const p = trackerModel.projection[i];
+    if (a == null || p == null) return null;
+    if (gt === 'fat_loss') return a < p;
+    return a > p;
+  }, [trackerModel, goal]);
+
+  const hasTrackerActuals = useMemo(
+    () => trackerModel?.actuals.some((v) => v != null) ?? false,
+    [trackerModel],
+  );
+
   const handleSaveEdit = async () => {
     if (!goal) return;
     const updates: any = {};
@@ -552,55 +729,26 @@ export default function GoalTrackerScreen() {
     ? Math.min(logs.length / (currentWeek - 1), daysPerWeek)
     : 0;
 
-  // 1RM Progression Chart data (strength goal only)
-  const chartWidth = screenWidth - Spacing.xl * 2 - 40;
+  const trackerChartStrokeColor = goal
+    ? TRACKER_CHART_STROKE[goal.goal_type] ?? '#F97316'
+    : '#F97316';
+  const trackerChartGoal: ProjectionChartGoal | null =
+    goal &&
+    (goal.goal_type === 'fat_loss' ||
+      goal.goal_type === 'hypertrophy' ||
+      goal.goal_type === 'strength' ||
+      goal.goal_type === 'recomp' ||
+      goal.goal_type === 'general')
+      ? (goal.goal_type as ProjectionChartGoal)
+      : null;
 
-  const rmChartData: RmDataPoint[] = [];
-
-  if (goal?.goal_type === 'strength' && goal.current_1rm && goal.target_1rm && plan) {
-    const start1rm = goal.current_1rm;
-    const target1rm = goal.target_1rm;
-    const totalWeeks = plan.total_weeks;
-
-    // Build actual 1RM per week from logs using Epley formula
-    const actual1rmByWeek: Record<number, number> = {};
-    const targetLiftLower = (goal.target_lift ?? '').toLowerCase();
-
-    for (const log of logs) {
-      const wk: number = log.week_number;
-      for (const s of log.sets_json ?? []) {
-        const name = (
-          s.exerciseName ?? s.name ??
-          (plan.plan_json?.weeks ?? [])
-            .flatMap((w: any) => w.days ?? [])
-            .flatMap((d: any) => d.exercises ?? [])
-            .find((e: any) => e.id === s.exerciseId)?.name ?? ''
-        ).toLowerCase();
-        if (!name.includes(targetLiftLower)) continue;
-        const w = Number(s.weightLbs ?? s.weight ?? 0);
-        const r = Number(s.reps ?? 0);
-        if (w > 0 && r > 0) {
-          const est = w * (1 + r / 30);
-          if (!actual1rmByWeek[wk] || est > actual1rmByWeek[wk]) {
-            actual1rmByWeek[wk] = Math.round(est);
-          }
-        }
-      }
-    }
-
-    // Build projected line: linear ramp from start to target
-    for (let wk = 1; wk <= totalWeeks; wk++) {
-      const projected = Math.round(
-        start1rm + ((target1rm - start1rm) * (wk - 1)) / (totalWeeks - 1),
-      );
-      const actual = actual1rmByWeek[wk] ?? null;
-      // Only include weeks up to current week + 1 for actual
-      if (wk <= plan.current_week + 1) {
-        rmChartData.push({ week: wk, projected, actual });
-      } else {
-        rmChartData.push({ week: wk, projected, actual: null });
-      }
-    }
+  if (__DEV__ && goal && plan && trackerModel) {
+    console.log(
+      '[GoalTracker] goalColor:',
+      trackerChartStrokeColor,
+      'goal:',
+      goal.goal_type,
+    );
   }
 
   return (
@@ -622,7 +770,70 @@ export default function GoalTrackerScreen() {
           </View>
         ) : (
           <>
-          <View style={styles.goalCard}>
+          {goal && plan && trackerModel ? (
+            <View style={styles.trackerProjectionBlock}>
+              <Text style={styles.projectionSectionLabel}>YOUR PROJECTION</Text>
+              {isAhead === true ? (
+                <View style={[styles.paceBadge, styles.paceBadgeSuccess]}>
+                  <Text style={styles.paceBadgeTextSuccess}>Ahead of pace</Text>
+                </View>
+              ) : isAhead === false ? (
+                <View style={[styles.paceBadge, styles.paceBadgeWarning]}>
+                  <Text style={styles.paceBadgeTextWarning}>Behind pace</Text>
+                </View>
+              ) : null}
+              <ProjectionChart
+                width={chartWidth}
+                height={200}
+                weeks={trackerModel.weeks}
+                data={trackerModel.projection}
+                yMin={trackerModel.yMin}
+                yMax={trackerModel.yMax}
+                yLabel={trackerModel.yLabel}
+                color={trackerChartStrokeColor}
+                projectionColor={trackerChartStrokeColor}
+                chartGoal={trackerChartGoal}
+                recompBfStart={goal.goal_type === 'recomp' ? 18 : 22}
+                trackerWeekMarkerStyle
+                actualsData={trackerModel.actuals}
+                currentWeek={Math.min(plan.current_week, trackerModel.weeks)}
+                targetValue={trackerModel.targetValue}
+                animateEntry={false}
+              />
+              {isAhead === false && weeklyCoachSnippet ? (
+                <Text style={styles.coachBehindNote}>{weeklyCoachSnippet}</Text>
+              ) : null}
+              <View style={styles.trackerCalloutStrip}>
+                {(
+                  [
+                    trackerModel.callout.col1,
+                    trackerModel.callout.col2,
+                    trackerModel.callout.col3,
+                  ] as const
+                ).map((col, idx) => (
+                  <View key={idx} style={styles.trackerCalloutCol}>
+                    <Text style={styles.trackerCalloutColLabel}>{col.label}</Text>
+                    <Text style={styles.trackerCalloutColValue}>{col.value}</Text>
+                    {col.sub ? (
+                      <Text style={styles.trackerCalloutColSub}>{col.sub}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+              {!hasTrackerActuals ? (
+                <Text style={styles.trackerPreDataNote}>
+                  Complete Week 1 to track your actual results here.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.goalCard,
+              goal && plan && trackerModel ? styles.goalCardAfterChart : null,
+            ]}
+          >
             <View style={styles.goalTopRow}>
               {badge ? (
                 <View style={styles.goalBadge}>
@@ -685,26 +896,6 @@ export default function GoalTrackerScreen() {
               </View>
             </View>
           </View>
-
-          {goal?.goal_type === 'strength' && rmChartData.length > 1 && (
-            <>
-              <Text style={styles.sectionLabel1RM}>1RM PROGRESSION</Text>
-              <View style={styles.chartCard}>
-                <RmProgressionChart
-                  data={rmChartData}
-                  width={chartWidth}
-                  targetLift={goal.target_lift
-                    ? formatLiftName(goal.target_lift)
-                    : 'Target Lift'}
-                />
-                {rmChartData.every((d) => d.actual === null) && (
-                  <Text style={styles.chartEmptyHint}>
-                    Complete sessions to see your actual 1RM plotted against the projection.
-                  </Text>
-                )}
-              </View>
-            </>
-          )}
           </>
         )}
 
@@ -992,6 +1183,92 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
 
+  trackerProjectionBlock: {
+    marginTop: Spacing.xl,
+    marginBottom: 0,
+  },
+  projectionSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  paceBadge: {
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+    marginBottom: Spacing.sm,
+  },
+  paceBadgeSuccess: {
+    backgroundColor: Colors.successMuted,
+  },
+  paceBadgeWarning: {
+    backgroundColor: Colors.warningMuted,
+  },
+  paceBadgeTextSuccess: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.success,
+  },
+  paceBadgeTextWarning: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.warning,
+  },
+  coachBehindNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    lineHeight: LineHeights.caption,
+  },
+  trackerCalloutStrip: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  trackerCalloutCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  trackerCalloutColLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  trackerCalloutColValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  trackerCalloutColSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 2,
+    lineHeight: 14,
+  },
+  trackerPreDataNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+
   emptyCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
@@ -1024,6 +1301,9 @@ const styles = StyleSheet.create({
     padding: 20,
     marginTop: Spacing.xl,
     marginBottom: Spacing.lg,
+  },
+  goalCardAfterChart: {
+    marginTop: Spacing.lg,
   },
   goalTopRow: {
     flexDirection: 'row',
@@ -1473,32 +1753,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  sectionLabel1RM: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 32,
-    marginBottom: 12,
-  },
-  chartCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    padding: 20,
-    marginBottom: Spacing.lg,
-    overflow: 'visible',
-  },
-  chartEmptyHint: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 12,
-    fontStyle: 'italic',
-  },
 });
 
 function historyBadgeStyle(goalType: string) {

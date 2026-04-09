@@ -106,6 +106,33 @@ const parseDuration = (sessionLength: string): number => {
   return 60;
 };
 
+/** Match chip ids (8w) and numeric strings; align with GoalDetails + generate-plan */
+function resolvePlanWeeksFromParams(params: RouteType['params']): number {
+  const rec = params.recommendedWeeks;
+  if (typeof rec === 'number' && Number.isFinite(rec) && rec >= 1 && rec <= 104) {
+    return Math.round(rec);
+  }
+  const chip =
+    params.planDuration ?? (params as { weeks?: string }).weeks ?? (params as { totalWeeks?: string }).totalWeeks;
+  if (chip != null && String(chip).trim() !== '') {
+    const n = parseInt(String(chip), 10);
+    if (!Number.isNaN(n) && n >= 1 && n <= 104) return n;
+  }
+  const td = params.targetDate;
+  if (td && typeof td === 'string') {
+    const map: Record<string, number> = {
+      '4w': 4,
+      '8w': 8,
+      '12w': 12,
+      '16w': 16,
+      '24w': 24,
+    };
+    const w = map[td];
+    if (typeof w === 'number') return w;
+  }
+  return 12;
+}
+
 export default function BuildingPlanScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -231,7 +258,7 @@ export default function BuildingPlanScreen() {
         equipment: params.equipment,
         excluded_exercises: params.excludedExercises ?? [],
         injuries: params.injuries ?? [],
-        weak_points: params.weakPoints ?? [],
+        weak_points: params.priorityMuscles ?? [],
         age: parseInt(params.age),
         sex: params.sex,
         height_ft: parseInt(params.heightFt),
@@ -239,6 +266,8 @@ export default function BuildingPlanScreen() {
         weight_lbs: parseFloat(params.weightLbs),
         body_fat_pct: params.bodyFatPct ? parseFloat(params.bodyFatPct) : null,
       });
+
+      const planWeeksResolved = resolvePlanWeeksFromParams(params);
 
       // Save goal
       const { data: goalData, error: goalError } = await supabase
@@ -249,7 +278,7 @@ export default function BuildingPlanScreen() {
           target_lift: params.targetLift ?? null,
           current_1rm: params.current1RM ? parseFloat(params.current1RM) : null,
           target_1rm: params.target1RM ? parseFloat(params.target1RM) : null,
-          plan_duration_weeks: parseInt(params.planDuration ?? '12'),
+          plan_duration_weeks: planWeeksResolved,
           recomp_focus: params.recompFocus ?? null,
           general_focus: params.generalFocus ?? null,
           starting_weight_lbs: params.startingWeightLbs
@@ -271,20 +300,24 @@ export default function BuildingPlanScreen() {
         protein_g: params.proteinG,
         carbs_g: params.carbsG,
         fats_g: params.fatsG,
+        calorie_pace: params.caloriePace ?? 'balanced',
       });
 
-      // Pause any existing active plans for this user — avoids duplicate active plans
-      const { error: pauseError } = await supabase
-        .from('plans')
-        .update({ status: 'paused' })
-        .eq('user_id', userId)
-        .eq('status', 'active');
+      const { data: { user } } = await supabase.auth.getUser();
 
-      if (pauseError) {
-        console.warn('[BuildingPlan] Could not pause existing plans:', pauseError);
-        // Non-fatal — continue with plan generation
-      } else {
-        console.log('[BuildingPlan] Existing active plans paused');
+      if (user) {
+        const { error: pauseError } = await supabase
+          .from('plans')
+          .update({ status: 'paused' })
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+
+        if (pauseError) {
+          console.warn('[BuildingPlan] Could not pause existing plans:', pauseError);
+          // Non-fatal — continue with generation
+        } else {
+          console.log('[BuildingPlan] Existing active plans paused');
+        }
       }
 
       // Call the Edge Function to generate the training plan
@@ -302,11 +335,26 @@ export default function BuildingPlanScreen() {
       console.log('[generate-plan body] daysPerWeek:', daysPerWeekResolved);
       console.log('[generate-plan body] trainingDays:', params.trainingDays);
       console.log('[generate-plan body] sessionStructure length:', structureWorkoutCount);
+      console.log(
+        '[generate-plan body] totalWeeks:',
+        params.recommendedWeeks ?? params.planDuration ?? (params as { totalWeeks?: unknown }).totalWeeks ?? (params as { weeks?: unknown }).weeks,
+        'targetDate:',
+        params.targetDate,
+        '=> resolved:',
+        planWeeksResolved,
+      );
 
       const generatePlanBody = {
         ...params,
         daysPerWeek: daysPerWeekResolved,
+        totalWeeks: planWeeksResolved,
+        recommendedWeeks: planWeeksResolved,
       };
+
+      console.log(
+        '[BuildingPlan] generate-plan request body:',
+        JSON.stringify(generatePlanBody, null, 2),
+      );
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'generate-plan',
@@ -353,7 +401,7 @@ export default function BuildingPlanScreen() {
       saveGoalProjection(
         goalData.id,
         params.goal,
-        parseInt(params.planDuration ?? '12'),
+        planWeeksResolved,
         {
           current1RM:        params.current1RM,
           target1RM:         params.target1RM,

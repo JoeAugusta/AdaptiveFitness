@@ -24,7 +24,6 @@ interface GeneratePlanBody {
   equipment?: string;
   injuries?: string[];
   excludedExercises?: string[];
-  weakPoints?: string[];
   splitId?: string;
   splitName?: string;
   splitRationale?: string;
@@ -40,8 +39,16 @@ interface GeneratePlanBody {
   trainingBackground?: string | null;
   /** Legacy / extra fields not in the primary contract */
   planDuration?: number | string;
+  /** Numeric weeks from client (preferred over parsing planDuration chips) */
+  recommendedWeeks?: number | string;
+  totalWeeks?: number | string;
+  weeks?: number | string;
+  plan_duration_weeks?: number | string;
+  /** Fat-loss timeline chip id (8w, 12w, …) */
+  targetDate?: string | null;
   split?: string;
   targetWeightLbs?: number;
+  caloriePace?: string;
 }
 
 interface ProgrammingParams {
@@ -53,6 +60,47 @@ interface ProgrammingParams {
   weeklySetMax: number;
   prioritySetMin: number;
   prioritySetMax: number;
+}
+
+/** Weekly set bands derived from training frequency + experience (replaces flat per-experience landmarks in prompts). */
+function getVolumeTargets(
+  daysPerWeek: number,
+  experience: string,
+  _sessionLength: string,
+): {
+  weeklySetMin: number;
+  weeklySetMax: number;
+  prioritySetMin: number;
+  prioritySetMax: number;
+} {
+  const d = Math.min(7, Math.max(2, Math.round(daysPerWeek)));
+  const byDays: Record<number, { min: number; max: number }> = {
+    2: { min: 8, max: 14 },
+    3: { min: 10, max: 16 },
+    4: { min: 12, max: 18 },
+    5: { min: 14, max: 20 },
+    6: { min: 16, max: 22 },
+    7: { min: 16, max: 22 },
+  };
+  const base = byDays[d] ?? byDays[4];
+
+  const expMultiplier =
+    {
+      beginner: 0.7,
+      intermediate: 0.85,
+      advanced: 1.0,
+    }[experience] ?? 0.85;
+
+  const targetSets = Math.round(
+    base.min + (base.max - base.min) * expMultiplier,
+  );
+
+  return {
+    weeklySetMin: base.min,
+    weeklySetMax: base.max,
+    prioritySetMin: Math.round(targetSets),
+    prioritySetMax: Math.min(base.max, Math.round(targetSets) + 2),
+  };
 }
 
 const GOAL_PROGRAMMING: Record<string, Record<string, ProgrammingParams>> = {
@@ -290,6 +338,91 @@ const MOVEMENT_PATTERN_BLOCK = `MOVEMENT PATTERN REQUIREMENTS — every weekly p
 
 For a 3-day PPL: horizontal push + horizontal pull + squat + hinge + core MUST all appear in Week 1. Vertical push/pull can be distributed across days.`;
 
+const SESSION_LENGTH_RULES: Record<string, { note: string }> = {
+  '30-45': {
+    note:
+      'Use shorter rest periods. ' +
+      'Prioritise compound movements only — no isolation work ' +
+      'unless there is time after the main lifts. ' +
+      'Supersets acceptable for antagonist pairs (e.g. bench + row).',
+  },
+  '45-60': {
+    note:
+      'Normal rest periods. ' +
+      'Include 1–2 isolation exercises after main compounds.',
+  },
+  '60-90': {
+    note:
+      'Full exercise selection where time allows. ' +
+      'Standard rest periods. Include 2–3 isolation exercises.',
+  },
+  '90+': {
+    note:
+      'Full volume programming when time allows. ' +
+      'Full rest periods for strength work. ' +
+      'Include complete isolation work for all target muscles. ' +
+      'Strength goal: include longer pause/technique sets.',
+  },
+};
+
+const TIMELINE_CHIP_WEEKS: Record<string, number> = {
+  '4w': 4,
+  '8w': 8,
+  '12w': 12,
+  '16w': 16,
+  '24w': 24,
+};
+
+function resolveTotalWeeks(body: GeneratePlanBody): number {
+  const tryNum = (v: unknown): number | null => {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      const r = Math.round(v);
+      return r >= 1 && r <= 104 ? r : null;
+    }
+    const s = String(v).trim();
+    const lead = s.match(/^\d+/);
+    if (lead) {
+      const n = parseInt(lead[0], 10);
+      return n >= 1 && n <= 104 ? n : null;
+    }
+    return null;
+  };
+
+  const fromFields =
+    tryNum(body.recommendedWeeks) ??
+    tryNum(body.totalWeeks) ??
+    tryNum(body.planDuration) ??
+    tryNum(body.weeks) ??
+    tryNum(body.plan_duration_weeks);
+
+  if (fromFields != null) return fromFields;
+
+  const td = body.targetDate;
+  if (typeof td === 'string' && TIMELINE_CHIP_WEEKS[td] != null) {
+    return TIMELINE_CHIP_WEEKS[td];
+  }
+
+  return 12;
+}
+
+function getMaxExercises(sessionLength: string, experience: string): number {
+  const base: Record<string, number> = {
+    '30-45': 4,
+    '45-60': 5,
+    '60-90': 6,
+    '90+': 7,
+  };
+  const expBonus: Record<string, number> = {
+    beginner: -1,
+    intermediate: 0,
+    advanced: 1,
+  };
+  const baseCount = base[sessionLength] ?? 5;
+  const bonus = expBonus[experience] ?? 0;
+  return Math.min(Math.max(1, baseCount + bonus), 8);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -303,11 +436,9 @@ serve(async (req) => {
       experience: experienceIn = 'intermediate',
       daysPerWeek: daysPerWeekIn = 4,
       trainingDays: trainingDaysIn = [],
-      sessionLength = '60',
       equipment = '',
       injuries: injuriesIn = [],
       excludedExercises: excludedExercisesIn = [],
-      weakPoints: weakPointsIn = [],
       splitId: splitIdIn,
       splitName: splitNameIn,
       splitRationale = '',
@@ -319,6 +450,12 @@ serve(async (req) => {
       priorityMuscles,
     } = body;
 
+    const workoutDayCount = (sessionStructure ?? []).filter(
+      (d: SessionDay) => d.type === 'workout',
+    ).length;
+
+    const sessionLength: string = body.sessionLength ?? '45-60';
+
     const currentSplit: string | null = body.currentSplit ?? null;
     const currentSplitOther: string | null = body.currentSplitOther ?? null;
     const splitDuration: string | null = body.splitDuration ?? null;
@@ -327,7 +464,6 @@ serve(async (req) => {
     const goal = goalIn ?? 'general';
     const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
     const daysPerWeekParsed = parseInt(String(daysPerWeekIn ?? '4'), 10);
-    const totalWeeks = parseInt(String(body.planDuration ?? '12'), 10);
     const expRaw = String(experienceIn ?? 'intermediate').toLowerCase();
     const experience =
       expRaw === 'beginner' || expRaw === 'intermediate' || expRaw === 'advanced'
@@ -338,9 +474,26 @@ serve(async (req) => {
       GOAL_PROGRAMMING[goal]?.['intermediate'] ??
       GOAL_PROGRAMMING.general['intermediate'];
 
+    const totalWeeks = resolveTotalWeeks(body);
+    console.log('[generate-plan] params received:', {
+      goal: body.goal,
+      experience: body.experience,
+      workoutDayCount: (sessionStructure ?? []).filter(
+        (d: SessionDay) => d.type === 'workout',
+      ).length,
+      totalWeeks,
+      splitId: body.splitId,
+      caloriePace: body.caloriePace,
+      sessionStructureLength: body.sessionStructure?.length,
+      bodyKeys: Object.keys(body),
+    });
+
+    const sessionRules =
+      SESSION_LENGTH_RULES[sessionLength] ?? SESSION_LENGTH_RULES['45-60'];
+    const maxExercises = getMaxExercises(sessionLength, experience);
+
     const injuries = Array.isArray(injuriesIn) ? injuriesIn : [];
     const excludedExercises = Array.isArray(excludedExercisesIn) ? excludedExercisesIn : [];
-    const weakPoints = Array.isArray(weakPointsIn) ? weakPointsIn : [];
 
     const exclusions = [...injuries, ...excludedExercises].join(', ') || 'none';
 
@@ -353,6 +506,31 @@ serve(async (req) => {
         : trainingDays.length > 0
           ? trainingDays.length
           : daysPerWeekParsed;
+
+    const volumeTargets = getVolumeTargets(
+      actualDaysPerWeek,
+      experience,
+      sessionLength,
+    );
+
+    const absoluteRuleDayCount = workoutDayCount > 0 ? workoutDayCount : actualDaysPerWeek;
+
+    const absoluteRuleBlock = `
+ABSOLUTE RULE — SESSION COUNT:
+The user trains ${absoluteRuleDayCount} days per week.
+You must generate EXACTLY ${absoluteRuleDayCount} workout days in every week of the plan.
+Generating more or fewer workout days than ${absoluteRuleDayCount} is a critical error.
+Do not use the split name to determine how many days to generate.
+The split name describes the training philosophy only.
+The sessionStructure array below defines the exact sessions — use it.
+`;
+
+    const sessionStructureFollowBlock = `Session structure (follow exactly — do not add sessions):
+${JSON.stringify(sessionStructure ?? [], null, 2)}
+
+Each object with type === 'workout' maps to exactly one DayObject.
+The title, focus, and primaryMuscles from each session object are your starting
+point — fill in the exercises using goal, experience, equipment, and volume targets.`;
 
     let effectiveSplit = body.split ?? 'ppl';
     let splitOverrideNote = '';
@@ -384,7 +562,7 @@ serve(async (req) => {
 WEEKLY STRUCTURE (do not deviate from this):
 ${sessionBreakdown}
 
-Split: ${splitName}
+Split (philosophy / exercise selection only — not a template for how many days to generate): ${splitName}
 Rationale: ${splitRationale || '—'}
 
 For each workout day, generate exercises that match the stated primary muscles and session intensity.
@@ -430,6 +608,7 @@ STRENGTH FREQUENCY RULES:
 - If only 3 days/week (PPL): Day 1 = heavy push, Day 2 = pull, Day 3 = legs
   The following week would rotate: Day 1 = volume push, etc.
 - If 4+ days/week: dedicate separate heavy and volume push days
+- If sessionStructure defines fewer workout days than above, follow it exactly (e.g. 2-day upper/lower = one upper day + one lower day only). Do not expand to more days because of split name or these frequency examples.
 
 1RM PROGRESSION PATH over ${totalWeeks} weeks:
 - Week 1: ${calculateStartingWeight(current1RMNum, 0.75)} lbs (75% of ${current1RMNum} 1RM) — baseline
@@ -457,10 +636,10 @@ ${accessories.upperBack.join(', ')}
 
 ${
         hasStructure
-          ? `Using the WEEKLY STRUCTURE (focus, primary muscles, and liftDay when present) for ${liftName}:
+          ? `Using sessionStructure + WEEKLY STRUCTURE (focus, primary muscles, and liftDay when present) for ${liftName} — output only the workout days in sessionStructure; do not add Push/Pull/Legs template days beyond that count:
 - Push / upper sessions that train chest, shoulders, or triceps: primary lift + 1-2 direct variations + lockout work when applicable
 - Pull sessions: upper back work + vertical pull + biceps
-- Leg sessions: full lower body — do NOT skip legs even on a bench specialisation program`
+- Leg sessions: full lower body — do NOT skip legs when a leg day appears in sessionStructure`
           : `For a PPL split targeting ${liftName}:
 - Push days: primary lift + 1-2 direct variations + lockout work
 - Pull days: upper back work + vertical pull + biceps
@@ -544,12 +723,28 @@ Total sets per exercise: ${params.sets}. For advanced users, the final set of is
 `
         : '';
 
+    const advancedLongSessionNote =
+      experience === 'advanced' && sessionLength === '90+'
+        ? `
+For advanced lifters with 90+ minute sessions: prioritise hitting the weekly volume landmarks for each muscle group (${volumeTargets.weeklySetMin}–${volumeTargets.weeklySetMax} sets/muscle/week).
+Do not sacrifice volume for brevity at this experience level.`
+        : '';
+
+    const advancedVolumePriorityBlock =
+      experience === 'advanced'
+        ? `
+ADVANCED VOLUME PRIORITY:
+Weekly sets per muscle group must reach the development range (${volumeTargets.prioritySetMin}–${volumeTargets.prioritySetMax} sets for priority muscles).
+Do not leave muscles at 5 sets/week for an advanced lifter — this is maintenance volume, not growth stimulus.
+Distribute exercises to ensure all target muscle groups reach minimum development volume.`
+        : '';
+
     const splitDescriptor = hasStructure ? splitName : effectiveSplit;
 
     if (!exerciseSelectionSection) {
       exerciseSelectionSection = `EXERCISE SELECTION RULES:
-- Max 5 exercises per session for ${sessionLength} minute sessions
-- For ${hasStructure ? `the "${splitName}" plan (follow WEEKLY STRUCTURE day-by-day)` : `the ${splitDescriptor} split`}, ensure logical muscle group distribution across days
+- Max ${maxExercises} exercises per session (${sessionLength} min band — see SESSION LENGTH CONSTRAINTS)
+- For ${hasStructure ? `the sessionStructure-defined week (follow WEEKLY STRUCTURE day-by-day; never use split name to add or remove workout days)` : `the ${splitDescriptor} split`}, ensure logical muscle group distribution across days
 - Use exercises appropriate for ${equipment}
 - Week 1: focus on foundational movements. Save advanced variations for later weeks.
 - Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
@@ -561,8 +756,10 @@ ${MOVEMENT_PATTERN_BLOCK}`;
       ? `- Split: ${splitName} (${splitId})`
       : `- Split: ${effectiveSplit}${splitOverrideNote ? ` (overridden from ${body.split ?? 'unknown'})` : ''}`;
 
-    const weakPointsLine =
-      weakPoints.length > 0 ? `\n- Weak points / focus areas: ${weakPoints.join(', ')}` : '';
+    const priorityMusclesProfileLine =
+      Array.isArray(priorityMuscles) && priorityMuscles.length > 0
+        ? `\n- Priority muscles (from onboarding): ${priorityMuscles.join(', ')}`
+        : '';
 
     const liftFrequencyLine =
       goal === 'strength' && liftFrequency != null && (liftFrequency === 2 || liftFrequency === 3)
@@ -691,6 +888,9 @@ ${jordanWelcomeSentence3Block}
 Sentence 4 — Forward looking (what Jordan will do with data):
   "I'll use your RPE data from this week to dial in Week 2 specifically to you — the more honest you are, the better your plan gets."
 
+CONTEXT FOR jordanWelcome (silent — apply when writing the welcome; do not mention in jordanWelcome text):
+Session length: ${sessionLength} minutes — programme accordingly and do not reference this constraint explicitly in the jordanWelcome message.
+
 RULES:
 - Maximum 4 sentences total
 - Always starts with "I'm Jordan"
@@ -701,15 +901,19 @@ RULES:
 ${jordanWelcomeRpeRuleLine}
 - Do not end with a separate "call to action" sentence beyond Sentence 4; Sentence 4 is the close`;
 
-    const prompt = `Create Week 1 of a ${totalWeeks}-week ${goal} training plan.
+    const prompt = `${absoluteRuleBlock}
+${sessionStructureFollowBlock}
+
+Create Week 1 of a ${totalWeeks}-week ${goal} training plan.
 
 ATHLETE PROFILE:
 - Experience: ${experience}
 ${athleteSplitLine}
 - Equipment: ${equipment}
-- Session length: ${sessionLength} minutes
+- Session length: ${sessionLength} (minutes per session, from onboarding)
+- Total plan duration: ${totalWeeks} weeks
 - Days per week: ${actualDaysPerWeek}
-- Exercises to avoid: ${exclusions}${weakPointsLine}${liftFrequencyLine}
+- Exercises to avoid: ${exclusions}${priorityMusclesProfileLine}${liftFrequencyLine}
 ${goalContext ? `- Goal details: ${goalContext}` : ''}
 ${weeklyStructureBlock}
 ${splitHistoryOtherLine}${structuralNoveltyBlock}${strengthExperienceBlock}
@@ -718,6 +922,15 @@ PROGRAMMING PARAMETERS for ${goal.toUpperCase()} (${experience}):
 - Sets per exercise: ${params.sets}
 - Rest between sets: ${params.restSeconds} seconds
 - Target RPE: ${params.targetRpe}
+
+SESSION LENGTH CONSTRAINTS:
+The user has ${sessionLength} minutes per session (onboarding band).
+Experience: ${experience}.
+Maximum exercises per workout day: ${maxExercises} (experience-adjusted cap for this session length).
+${sessionRules.note}
+${advancedLongSessionNote}
+
+Do NOT exceed ${maxExercises} exercises per day regardless of split type or goal. If a day would normally have more exercises, prioritise compound movements and drop the lowest-priority isolations.
 
 WARMUP / WORKING WEIGHT (app behavior):
 Do NOT include warmup sets in the sets count or targetWeight. targetWeight is the WORKING weight only — the app generates warmup progressions automatically when a working weight is known.
@@ -731,13 +944,19 @@ ${weightAnchor}
 ${exerciseSelectionSection}
 ${!hasStructure && splitOverrideNote ? `\nSPLIT OVERRIDE:\n${splitOverrideNote}\n` : ''}
 
-VOLUME RULES (weekly sets per muscle group):
+VOLUME TARGETS (derived from ${actualDaysPerWeek} training days):
+Weekly sets per muscle: ${volumeTargets.weeklySetMin}–${volumeTargets.weeklySetMax}
+Priority muscles: ${volumeTargets.prioritySetMin}–${volumeTargets.prioritySetMax} sets/week
+
+⚠️ Do NOT attempt to hit 6-day volume targets on a ${actualDaysPerWeek}-day program. Physical constraint: max ~6–10 quality sets per muscle per session.
+
+For ${actualDaysPerWeek} days: distribute volume realistically across available sessions. Isolation exercises for smaller muscles (biceps, triceps) will naturally be lower — this is correct, not a flaw.
+
 - Experience level: ${experience}
-- Each muscle group should receive ${params.weeklySetMin}–${params.weeklySetMax} sets per week
-- Priority muscles (if any) should receive ${params.prioritySetMin}–${params.prioritySetMax} sets per week
-- Do NOT exceed the max — overdosing a muscle group causes excessive fatigue
-- Do NOT go below the min — underdosing produces no adaptation
+- Do NOT exceed the weekly max above — overdosing a muscle group causes excessive fatigue
+- Do NOT go below the weekly min for major muscle groups — underdosing produces no adaptation
 - Count total sets across ALL workout days when distributing volume
+${advancedVolumePriorityBlock}
 
 ${structureTailInstructions}
 Training days: ${trainingDays.length > 0 ? trainingDays.join(', ') : 'not specified'}
@@ -903,13 +1122,20 @@ ${
     return new Response(JSON.stringify({ plan: normalized }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error) {
-    console.error('generate-plan error:', String(error));
+  } catch (error: unknown) {
+    console.error('[generate-plan] FATAL ERROR:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[generate-plan] Error message:', msg);
+    console.error('[generate-plan] Stack:', stack);
     return new Response(
-      JSON.stringify({ error: 'Plan generation failed', detail: String(error) }),
+      JSON.stringify({
+        error: msg || 'Unknown error',
+        detail: error instanceof Error ? error.stack : String(error),
+      }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );
   }

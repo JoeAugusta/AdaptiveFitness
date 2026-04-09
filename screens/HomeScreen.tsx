@@ -348,7 +348,8 @@ export default function HomeScreen() {
         supabase
           .from('workout_logs')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', uid),
+          .eq('user_id', uid)
+          .eq('plan_id', planId),
         supabase
           .from('workout_logs')
           .select('sets_json')
@@ -359,6 +360,7 @@ export default function HomeScreen() {
           .from('workout_logs')
           .select('logged_at')
           .eq('user_id', uid)
+          .eq('plan_id', planId)
           .order('logged_at', { ascending: false }),
       ]);
 

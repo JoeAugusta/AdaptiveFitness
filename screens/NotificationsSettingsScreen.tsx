@@ -28,8 +28,6 @@ defaultTime.setHours(9, 0, 0, 0);
 
 // ── Types ──
 
-type PermissionStatus = 'granted' | 'denied' | 'undetermined';
-
 interface NotificationPreferences {
   workoutReminders: boolean;
   prAlerts: boolean;
@@ -69,8 +67,7 @@ function SkeletonRows({ pulseAnim }: { pulseAnim: Animated.Value }) {
 export default function NotificationsSettingsScreen() {
   const navigation = useNavigation();
 
-  const [permissionStatus, setPermissionStatus] =
-    useState<PermissionStatus>('undetermined');
+  const [permissionGranted, setPermissionGranted] = useState(false);
   const [workoutRemindersEnabled, setWorkoutRemindersEnabled] = useState(false);
   const [prAlertsEnabled, setPrAlertsEnabled] = useState(false);
   const [weeklySummaryEnabled, setWeeklySummaryEnabled] = useState(false);
@@ -113,17 +110,18 @@ export default function NotificationsSettingsScreen() {
     }
   }, [loading, pulseAnim]);
 
-  // Load permission status + persisted preferences on mount
+  useEffect(() => {
+    (async () => {
+      if (Platform.OS === 'web') return;
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionGranted(status === 'granted');
+    })();
+  }, []);
+
+  // Load persisted preferences on mount
   useEffect(() => {
     const init = async () => {
       try {
-        // Permission check
-        if (Platform.OS !== 'web') {
-          const { status } = await Notifications.getPermissionsAsync();
-          setPermissionStatus(status as PermissionStatus);
-        }
-
-        // Hydrate preferences from AsyncStorage
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
           const prefs = JSON.parse(raw) as NotificationPreferences;

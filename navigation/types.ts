@@ -1,3 +1,5 @@
+import type { SessionDay } from '../utils/splitRecommendation';
+
 type GoalDetailParams = {
   targetLift?: string;
   current1RM?: string;
@@ -11,6 +13,20 @@ type GoalDetailParams = {
   recompFocus?: string;
   generalFocus?: string;
   planDuration?: string;
+  weakPoints?: string[];
+  /** Optional training history (GoalDetails) — passed through to generate-plan */
+  currentSplit?: string | null;
+  currentSplitOther?: string | null;
+  splitDuration?: string | null;
+  trainingBackground?: string | null;
+};
+
+/** Jordan-chosen split + weekly session template (S03 → generate-plan) */
+type PlanStructureParams = {
+  splitId: string;
+  splitName: string;
+  splitRationale: string;
+  sessionStructure: SessionDay[];
 };
 
 export type RootStackParamList = {
@@ -18,30 +34,40 @@ export type RootStackParamList = {
   Onboarding: undefined;
   GoalDetails: { goal: string };
   Experience: { goal: string } & GoalDetailParams;
+  RPEEducation: {
+    goal: string;
+    experience: string;
+    daysPerWeek: string;
+    trainingDays: string[];
+    sessionLength: string;
+  } & GoalDetailParams &
+    PlanStructureParams;
   Constraints: {
     goal: string;
     experience: string;
     daysPerWeek: string;
+    trainingDays: string[];
     sessionLength: string;
-    split: string;
-  } & GoalDetailParams;
+  } & GoalDetailParams &
+    PlanStructureParams;
   BodyMetrics: {
     goal: string;
     experience: string;
     daysPerWeek: string;
+    trainingDays: string[];
     sessionLength: string;
-    split: string;
     injuries: string[];
     equipment: string;
     weakPoints: string[];
     excludedExercises: string[];
-  } & GoalDetailParams;
+  } & GoalDetailParams &
+    PlanStructureParams;
   MacroSetup: {
     goal: string;
     experience: string;
     daysPerWeek: string;
+    trainingDays: string[];
     sessionLength: string;
-    split: string;
     injuries: string[];
     equipment: string;
     weakPoints: string[];
@@ -52,13 +78,14 @@ export type RootStackParamList = {
     heightIn: string;
     weightLbs: string;
     bodyFatPct: string | null;
-  } & GoalDetailParams;
+  } & GoalDetailParams &
+    PlanStructureParams;
   PlanPreview: {
     goal: string;
     experience: string;
     daysPerWeek: string;
+    trainingDays: string[];
     sessionLength: string;
-    split: string;
     injuries: string[];
     equipment: string;
     weakPoints: string[];
@@ -73,13 +100,14 @@ export type RootStackParamList = {
     proteinG: number;
     carbsG: number;
     fatsG: number;
-  } & GoalDetailParams;
+  } & GoalDetailParams &
+    PlanStructureParams;
   BuildingPlan: {
     goal: string;
     experience: string;
     daysPerWeek: string;
+    trainingDays: string[];
     sessionLength: string;
-    split: string;
     injuries: string[];
     equipment: string;
     weakPoints: string[];
@@ -94,7 +122,8 @@ export type RootStackParamList = {
     proteinG: number;
     carbsG: number;
     fatsG: number;
-  } & GoalDetailParams;
+  } & GoalDetailParams &
+    PlanStructureParams;
   Dashboard: undefined;
   ActiveWorkout: {
     planId: string;

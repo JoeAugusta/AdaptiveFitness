@@ -18,6 +18,7 @@ import Purchases from 'react-native-purchases';
 import type { PurchasesPackage, CustomerInfo } from 'react-native-purchases';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { formatSplitName } from '../../utils/splitRecommendation';
 
 const COLOR_PROTEIN = Colors.accent;
 const COLOR_CARBS = Colors.warning;
@@ -76,23 +77,6 @@ function formatGoal(goal: string): string {
 
 function formatExperience(exp: string): string {
   return exp.charAt(0).toUpperCase() + exp.slice(1);
-}
-
-function formatSplit(split: string): string {
-  switch (split) {
-    case 'ppl':
-      return 'Push/Pull/Legs';
-    case 'upper_lower':
-      return 'Upper/Lower';
-    case 'full_body':
-      return 'Full Body';
-    case 'bro_split':
-      return 'Bro Split';
-    case 'custom':
-      return 'Custom';
-    default:
-      return split.charAt(0).toUpperCase() + split.slice(1);
-  }
 }
 
 function formatLift(lift: string): string {
@@ -220,10 +204,19 @@ export default function PlanPreviewScreen() {
   const stats: { label: string; value: string }[] = [
     { label: 'Goal', value: formatGoal(params.goal) },
     { label: 'Experience', value: formatExperience(params.experience) },
-    { label: 'Training days', value: `${params.daysPerWeek} days / week` },
+    {
+      label: 'Training days',
+      value:
+        params.trainingDays?.length > 0
+          ? `${params.daysPerWeek} days/week (${params.trainingDays.join(', ')})`
+          : `${params.daysPerWeek} days / week`,
+    },
     { label: 'Session length', value: params.sessionLength },
     { label: 'Equipment', value: formatEquipment(params.equipment) },
-    { label: 'Split', value: formatSplit(params.split) },
+    {
+      label: 'Split',
+      value: params.splitName ?? formatSplitName(params.splitId),
+    },
   ];
 
   if (params.goal === 'strength' && params.targetLift) {
@@ -296,6 +289,15 @@ export default function PlanPreviewScreen() {
       >
         <Text style={styles.backArrow}>{'‹'}</Text>
       </TouchableOpacity>
+
+      <Text
+        style={[
+          styles.stepIndicatorAbsolute,
+          { top: insets.top + Spacing.sm },
+        ]}
+      >
+        8 of 8
+      </Text>
 
       <ScrollView
         contentContainerStyle={[
@@ -488,6 +490,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 28,
     color: Colors.accent,
+  },
+  stepIndicatorAbsolute: {
+    position: 'absolute',
+    right: Spacing.xl,
+    zIndex: 10,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
 
   scrollContent: {

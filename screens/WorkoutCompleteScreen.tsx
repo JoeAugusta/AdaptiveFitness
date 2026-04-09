@@ -74,6 +74,15 @@ export default function WorkoutCompleteScreen() {
     prsHit,
   } = route.params;
 
+  useEffect(() => {
+    if (__DEV__) {
+      console.log(
+        '[WorkoutComplete] workout_log keys (must match row inserted in ActiveWorkout)',
+        { planId, weekNumber, dayNumber },
+      );
+    }
+  }, [planId, weekNumber, dayNumber]);
+
   const fatigue = FATIGUE_MAP[fatigueRating] ?? FATIGUE_MAP[3];
   const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit);
 
@@ -462,7 +471,19 @@ export default function WorkoutCompleteScreen() {
         <TouchableOpacity
           style={styles.secondaryButton}
           activeOpacity={0.8}
-          onPress={() => navigation.navigate('PlanView')}
+          onPress={() =>
+            // PlanView lives under Dashboard → WorkoutTab stack (not root)
+            (navigation as { navigate: (a: string, b?: object) => void }).navigate(
+              'Dashboard',
+              {
+                screen: 'WorkoutTab',
+                params: {
+                  screen: 'PlanView',
+                  params: { planId, weekNumber },
+                },
+              },
+            )
+          }
         >
           <Text style={styles.secondaryButtonText}>View Full Plan</Text>
         </TouchableOpacity>

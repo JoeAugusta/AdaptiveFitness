@@ -13,11 +13,16 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import WorkoutResultsModal, {
+  type WorkoutLog,
+  type ExerciseObject,
+} from '../components/WorkoutResultsModal';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
 
 interface ExerciseSummary {
+  id?: string;
   name: string;
   sets: number;
   reps: string;
@@ -51,6 +56,10 @@ interface RawExercise {
   coachingNote?: string;
 }
 
+interface RawPlanJson {
+  weeks?: RawWeek[];
+}
+
 interface RawDay {
   dayNumber: number;
   type: 'workout' | 'rest';
@@ -65,6 +74,32 @@ interface RawWeek {
   days: RawDay[];
 }
 
+function findRawWeek(
+  weeks: RawWeek[] | undefined,
+  weekNumber: number,
+): RawWeek | undefined {
+  if (!weeks?.length) return undefined;
+  const wn = Number(weekNumber);
+  const match = weeks.find((w) => Number(w.weekNumber) === wn);
+  if (match) return match;
+  const idx = wn - 1;
+  if (idx >= 0 && idx < weeks.length) return weeks[idx];
+  return weeks[0];
+}
+
+function findRawDay(
+  days: RawDay[] | undefined,
+  dayNumber: number,
+): RawDay | undefined {
+  if (!days?.length) return undefined;
+  const dn = Number(dayNumber);
+  const match = days.find((d) => Number(d.dayNumber) === dn);
+  if (match) return match;
+  const idx = dn - 1;
+  if (idx >= 0 && idx < days.length) return days[idx];
+  return days[0];
+}
+
 interface LoadedPlan {
   title: string;
   currentWeek: number;
@@ -73,11 +108,47 @@ interface LoadedPlan {
   weeks: PlanWeek[];
 }
 
+function parseSetsJson(rawSets: unknown): { exerciseId?: string }[] {
+  if (typeof rawSets === 'string') {
+    try {
+      const parsed = JSON.parse(rawSets) as unknown;
+      return Array.isArray(parsed) ? (parsed as { exerciseId?: string }[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(rawSets) ? (rawSets as { exerciseId?: string }[]) : [];
+}
+
+function formatCompletedDate(dateString?: string | null): string {
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function getPhaseDisplay(
   phase: string | undefined,
   weekNumber: number,
   totalWeeks: number,
 ): { label: string; color: string; bg: string } {
+  const effectivePhase =
+    weekNumber === 1 && (!phase || phase === 'accumulation')
+      ? 'baseline'
+      : phase;
+
+  if (effectivePhase === 'baseline') {
+    return {
+      label: 'BASELINE',
+      color: Colors.accent,
+      bg: Colors.accentMuted,
+    };
+  }
+
   if (weekNumber % 4 === 0) {
     return {
       label: 'DELOAD',
@@ -85,14 +156,14 @@ function getPhaseDisplay(
       bg: Colors.successMuted,
     };
   }
-  if (phase === 'intensification') {
+  if (effectivePhase === 'intensification') {
     return {
       label: 'INTENSIFICATION',
       color: Colors.warning,
       bg: Colors.warningMuted,
     };
   }
-  if (phase === 'deload') {
+  if (effectivePhase === 'deload') {
     return {
       label: 'DELOAD',
       color: Colors.success,
@@ -117,21 +188,30 @@ function WorkoutDayCard({
   day,
   onStartWorkout,
   isNextWorkout,
+  onViewResults,
+  loadingResults,
 }: {
   day: PlanDay;
   onStartWorkout: (day: PlanDay) => void;
   isNextWorkout: boolean;
+  onViewResults: (day: PlanDay) => void;
+  loadingResults: boolean;
 }) {
   const PREVIEW_COUNT = 3;
   const visibleExercises = day.exercises.slice(0, PREVIEW_COUNT);
   const extraCount = day.exercises.length - PREVIEW_COUNT;
 
   return (
-    <View
+    <TouchableOpacity
       style={[
         styles.workoutDayCard,
         isNextWorkout && !day.completed && styles.workoutDayCardNext,
       ]}
+      activeOpacity={day.completed ? 0.75 : 1}
+      onPress={() => {
+        if (day.completed) onViewResults(day);
+      }}
+      disabled={!day.completed || loadingResults}
     >
       <View style={styles.workoutHeaderRow}>
         <View style={styles.workoutHeaderLeft}>
@@ -170,7 +250,16 @@ function WorkoutDayCard({
 
       {day.completed ? (
         <View style={styles.donePill}>
-          <Text style={styles.donePillText}>Done ✓</Text>
+          <Text style={styles.donePillText}>
+            {loadingResults ? 'Loading…' : 'Done ✓'}
+          </Text>
+          {loadingResults ? (
+            <ActivityIndicator
+              size="small"
+              color={Colors.success}
+              style={styles.donePillSpinner}
+            />
+          ) : null}
         </View>
       ) : isNextWorkout ? (
         <TouchableOpacity
@@ -181,7 +270,10 @@ function WorkoutDayCard({
           <Text style={styles.startButtonText}>Start Workout →</Text>
         </TouchableOpacity>
       ) : null}
-    </View>
+      {day.completed ? (
+        <Text style={styles.viewResultsHint}>View results →</Text>
+      ) : null}
+    </TouchableOpacity>
   );
 }
 
@@ -205,40 +297,86 @@ export default function PlanViewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const planId = route.params?.planId ?? '';
+  /** Canonical plan row UUID from Supabase (use for workout_logs / ActiveWorkout) */
+  const [resolvedPlanId, setResolvedPlanId] = useState('');
 
   const [planData, setPlanData] = useState<LoadedPlan | null>(null);
   const [, setCompletedSet] = useState<Set<string>>(new Set());
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [rawPlanJson, setRawPlanJson] = useState<RawPlanJson | null>(null);
+  const [resultsLoadingDayKey, setResultsLoadingDayKey] = useState<string | null>(null);
+  const [resultsVisible, setResultsVisible] = useState(false);
+  const [selectedWorkoutLog, setSelectedWorkoutLog] = useState<WorkoutLog | null>(null);
+  const [selectedExerciseMap, setSelectedExerciseMap] = useState<Record<string, string>>({});
+  const [selectedPlanExercises, setSelectedPlanExercises] = useState<ExerciseObject[]>([]);
+  const [selectedDayTitle, setSelectedDayTitle] = useState('');
+  const [selectedCompletedDate, setSelectedCompletedDate] = useState('—');
 
   const loadPlanData = useCallback(async () => {
     setLoading(true);
     setError(false);
+    setResolvedPlanId('');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId || !planId) throw new Error('No session or planId');
 
-      const [planResult, logsResult] = await Promise.all([
+      const trimmedPlanId = planId.trim();
+      if (
+        typeof trimmedPlanId !== 'string' ||
+        trimmedPlanId.length < 10
+      ) {
+        throw new Error('Invalid planId');
+      }
+
+      const [planResult, activePlanResult] = await Promise.all([
         supabase
           .from('plans')
           .select('id, plan_json, current_week, total_weeks, title')
-          .eq('id', planId)
+          .eq('id', trimmedPlanId)
           .single(),
         supabase
-          .from('workout_logs')
-          .select('week_number, day_number')
-          .eq('plan_id', planId)
-          .eq('user_id', userId),
+          .from('plans')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (planResult.error) throw planResult.error;
       const plan = planResult.data;
-      const planJson = plan.plan_json ?? {};
+      const idForLogs =
+        plan.id && String(plan.id).trim().length >= 10
+          ? String(plan.id).trim()
+          : trimmedPlanId;
+      setResolvedPlanId(idForLogs);
+
+      if (__DEV__) {
+        const activeId = activePlanResult.data?.id
+          ? String(activePlanResult.data.id).trim()
+          : '';
+        if (activeId && activeId !== idForLogs) {
+          console.warn('[PlanView] Opened plan is not the active plan row', {
+            openedPlanId: idForLogs,
+            activePlanId: activeId,
+          });
+        }
+      }
+
+      const { data: logRows } = await supabase
+        .from('workout_logs')
+        .select('week_number, day_number')
+        .eq('plan_id', idForLogs)
+        .eq('user_id', userId);
+
+      const planJson = (plan.plan_json ?? {}) as RawPlanJson;
 
       const logSet = new Set<string>(
-        (logsResult.data ?? []).map(
+        (logRows ?? []).map(
           (l: { week_number: number; day_number: number }) =>
             `${l.week_number}-${l.day_number}`,
         ),
@@ -254,6 +392,7 @@ export default function PlanViewScreen() {
           title: rd.title ?? (rd.type === 'rest' ? 'Rest Day' : 'Workout'),
           muscleGroups: rd.muscleGroups ?? [],
           exercises: (rd.exercises ?? []).map((ex) => ({
+            id: ex.id,
             name: ex.name,
             sets: ex.sets,
             reps: ex.reps,
@@ -272,9 +411,11 @@ export default function PlanViewScreen() {
         daysPerWeek: planJson.daysPerWeek ?? 4,
         weeks: mappedWeeks,
       });
+      setRawPlanJson(planJson);
       setCompletedSet(logSet);
       setSelectedWeek(currentWeek);
     } catch {
+      setResolvedPlanId('');
       setError(true);
     } finally {
       setLoading(false);
@@ -286,13 +427,144 @@ export default function PlanViewScreen() {
   }, [loadPlanData]);
 
   const handleStartWorkout = (day: PlanDay) => {
+    const pid =
+      resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
     navigation.navigate('ActiveWorkout', {
-      planId,
+      planId: pid,
       weekNumber: selectedWeek,
       dayNumber: day.dayNumber,
       workoutTitle: day.title,
     });
   };
+
+  const handleViewResults = useCallback(
+    async (day: PlanDay) => {
+      const dayKey = `${selectedWeek}-${day.dayNumber}`;
+      setResultsLoadingDayKey(dayKey);
+      try {
+        const tappedDayNumber = day.dayNumber;
+        const modalPlanId =
+          resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+
+        console.log('[PlanView modal fetch]', {
+          planId: modalPlanId,
+          weekNumber: selectedWeek,
+          dayNumber: tappedDayNumber,
+        });
+
+        if (
+          !modalPlanId ||
+          typeof modalPlanId !== 'string' ||
+          modalPlanId.length < 10
+        ) {
+          console.warn(
+            '[PlanView] Invalid planId — cannot fetch results:',
+            modalPlanId,
+          );
+          return;
+        }
+
+        if (__DEV__) {
+          console.log('[QUERY workout_log]', {
+            plan_id: modalPlanId,
+            week_number: selectedWeek,
+            day_number: tappedDayNumber,
+          });
+        }
+
+        const { data: workoutLog } = await supabase
+          .from('workout_logs')
+          .select('*')
+          .eq('plan_id', modalPlanId)
+          .eq('week_number', selectedWeek)
+          .eq('day_number', tappedDayNumber)
+          .order('logged_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const wl = workoutLog as
+          | { sets_json?: unknown; day_number?: number }
+          | null;
+        const setsParsed =
+          typeof wl?.sets_json === 'string'
+            ? (() => {
+                try {
+                  const p = JSON.parse(wl.sets_json as string) as unknown;
+                  return Array.isArray(p) ? p.length : 0;
+                } catch {
+                  return 0;
+                }
+              })()
+            : Array.isArray(wl?.sets_json)
+              ? wl.sets_json.length
+              : 0;
+
+        console.log('[PlanView workout_log result]', {
+          found: !!workoutLog,
+          setsCount: setsParsed,
+          dayNumberStored: wl?.day_number,
+        });
+
+        console.log('[workout_log fetch]', {
+          planId: modalPlanId,
+          weekNumber: selectedWeek,
+          dayNumber: tappedDayNumber,
+          logFound: !!workoutLog,
+          rawSetsJson: wl?.sets_json,
+          setsType: typeof wl?.sets_json,
+        });
+
+        const weekData = findRawWeek(rawPlanJson?.weeks, selectedWeek);
+        const dayData = findRawDay(weekData?.days, day.dayNumber);
+        let planExercises: ExerciseObject[] = (dayData?.exercises ?? []) as ExerciseObject[];
+
+        console.log('[modal open]', {
+          selectedWeek,
+          tappedDayNumber,
+          weekFound: !!weekData,
+          dayFound: !!dayData,
+          exerciseCount: planExercises.length,
+        });
+
+        if (planExercises.length === 0 && planData) {
+          const pw = planData.weeks.find((w) => w.weekNumber === selectedWeek);
+          const pd = pw?.days.find((d) => d.dayNumber === day.dayNumber);
+          if (pd?.exercises?.length) {
+            planExercises = pd.exercises.map((ex) => ({
+              id: ex.id,
+              name: ex.name,
+              sets: ex.sets,
+              reps: ex.reps,
+            }));
+          }
+        }
+
+        const exerciseMap: Record<string, string> = {};
+        planExercises.forEach((ex) => {
+          if (ex.id) exerciseMap[ex.id] = ex.name;
+        });
+        const setsJson = parseSetsJson((workoutLog as { sets_json?: unknown } | null)?.sets_json);
+        console.log('[sets_json debug]', {
+          totalSets: setsJson.length,
+          uniqueExerciseIds: [...new Set(setsJson.map((s) => s.exerciseId))],
+          planExerciseIds: planExercises.map((e) => e.id),
+          firstSet: setsJson[0] ?? null,
+        });
+
+        setSelectedWorkoutLog((workoutLog as WorkoutLog | null) ?? null);
+        setSelectedExerciseMap(exerciseMap);
+        setSelectedPlanExercises(planExercises);
+        setSelectedDayTitle(day.title);
+        setSelectedCompletedDate(
+          formatCompletedDate((workoutLog as { created_at?: string } | null)?.created_at),
+        );
+        setResultsVisible(true);
+      } finally {
+        setResultsLoadingDayKey(null);
+      }
+    },
+    [planId, planData, rawPlanJson, resolvedPlanId, selectedWeek],
+  );
 
   const headerRow = (
     <View style={styles.header}>
@@ -443,9 +715,11 @@ export default function PlanViewScreen() {
                   >
                     {wn % 4 === 0
                       ? 'DL'
-                      : wPhase.label === 'INTENSIFICATION'
-                        ? 'INT'
-                        : 'ACC'}
+                      : wPhase.label === 'BASELINE'
+                        ? 'BL'
+                        : wPhase.label === 'INTENSIFICATION'
+                          ? 'INT'
+                          : 'ACC'}
                   </Text>
                 ) : null}
               </TouchableOpacity>
@@ -461,6 +735,8 @@ export default function PlanViewScreen() {
                 day={day}
                 isNextWorkout={day.dayNumber === nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
+                onViewResults={handleViewResults}
+                loadingResults={resultsLoadingDayKey === `${selectedWeek}-${day.dayNumber}`}
               />
             ) : (
               <RestDayCard key={day.dayNumber} day={day} />
@@ -486,6 +762,15 @@ export default function PlanViewScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      <WorkoutResultsModal
+        visible={resultsVisible}
+        onClose={() => setResultsVisible(false)}
+        dayTitle={selectedDayTitle}
+        completedDate={selectedCompletedDate}
+        workoutLog={selectedWorkoutLog}
+        exerciseMap={selectedExerciseMap}
+        planExercises={selectedPlanExercises}
+      />
     </View>
   );
 }
@@ -751,6 +1036,8 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   donePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: Colors.successMuted,
     paddingHorizontal: Spacing.md,
@@ -761,6 +1048,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.bold,
     color: Colors.success,
+  },
+  donePillSpinner: {
+    marginLeft: Spacing.xs,
+  },
+  viewResultsHint: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
   },
   startButton: {
     height: 46,

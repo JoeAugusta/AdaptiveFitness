@@ -452,7 +452,7 @@ export default function GoalTrackerScreen() {
           .select('sets_json')
           .eq('user_id', userId)
           .eq('plan_id', activePlan.id)
-          .order('created_at', { ascending: false })
+          .order('logged_at', { ascending: false })
           .limit(10);
 
         let best1rm = 0;

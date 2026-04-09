@@ -46,8 +46,12 @@ export default function BodyMetricsScreen() {
     targetBodyFatPct,
     experience,
     daysPerWeek,
+    trainingDays,
     sessionLength,
-    split,
+    splitId,
+    splitName,
+    splitRationale,
+    sessionStructure,
     injuries,
     equipment,
     weakPoints,
@@ -82,8 +86,12 @@ export default function BodyMetricsScreen() {
       targetBodyFatPct,
       experience,
       daysPerWeek,
+      trainingDays,
       sessionLength,
-      split,
+      splitId,
+      splitName,
+      splitRationale,
+      sessionStructure,
       injuries,
       equipment,
       weakPoints,
@@ -107,7 +115,7 @@ export default function BodyMetricsScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>5 of 7</Text>
+        <Text style={styles.stepIndicator}>6 of 8</Text>
       </View>
 
       <ScrollView

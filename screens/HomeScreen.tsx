@@ -71,11 +71,33 @@ type SetItem = {
   swapped: boolean;
 };
 
+/** `plan_json.weeks` entries may use weekNumber, week_number, or number */
+function getPlanWeekNumber(w: unknown): number | undefined {
+  if (!w || typeof w !== 'object') return undefined;
+  const o = w as { weekNumber?: unknown; week_number?: unknown; number?: unknown };
+  const n = o.weekNumber ?? o.week_number ?? o.number;
+  return typeof n === 'number' && !Number.isNaN(n) ? n : undefined;
+}
+
 function getPhaseDisplay(
   phase: string | undefined,
   weekNumber: number,
   totalWeeks: number,
-): { label: string; color: string; bg: string } {
+): { label: string; color: string; bg: string; borderColor?: string } {
+  const effectivePhase =
+    weekNumber === 1 && (!phase || phase === 'accumulation')
+      ? 'baseline'
+      : phase;
+
+  if (effectivePhase === 'baseline') {
+    return {
+      label: 'BASELINE',
+      color: Colors.accent,
+      bg: Colors.accentMuted,
+      borderColor: Colors.accentBorder,
+    };
+  }
+
   if (weekNumber % 4 === 0) {
     return {
       label: 'DELOAD',
@@ -83,14 +105,14 @@ function getPhaseDisplay(
       bg: Colors.successMuted,
     };
   }
-  if (phase === 'intensification') {
+  if (effectivePhase === 'intensification') {
     return {
       label: 'INTENSIFICATION',
       color: Colors.warning,
       bg: Colors.warningMuted,
     };
   }
-  if (phase === 'deload') {
+  if (effectivePhase === 'deload') {
     return {
       label: 'DELOAD',
       color: Colors.success,
@@ -171,27 +193,28 @@ export default function HomeScreen() {
         setWeightLoggedToday(false);
       }
 
-      const { data: plan, error: planError } = await supabase
+      const { data: activePlan, error: planError } = await supabase
         .from('plans')
-        .select('*')
+        .select('id, plan_json, current_week, total_weeks, status, title')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (planError || !plan) {
+      if (planError || !activePlan) {
         setStatsLoading(false);
         return;
       }
 
+      const plan = activePlan;
       const planJson = plan.plan_json;
       const jordanWelcome: string | null =
         (planJson as { jordanWelcome?: string }).jordanWelcome ?? null;
 
       const currentWeekData =
         planJson.weeks?.find(
-          (w: { weekNumber: number }) => w.weekNumber === plan.current_week,
+          (w) => getPlanWeekNumber(w) === plan.current_week,
         ) ?? planJson.weeks?.[0];
 
       const currentWeekPhase: string | undefined = currentWeekData?.phase;
@@ -221,7 +244,7 @@ export default function HomeScreen() {
 
       const nextWeekData =
         planJson.weeks?.find(
-          (w: { weekNumber: number }) => w.weekNumber === plan.current_week + 1,
+          (w) => getPlanWeekNumber(w) === plan.current_week + 1,
         ) ?? null;
 
       const nextWeekWorkoutDays: WorkoutDay[] =
@@ -234,19 +257,47 @@ export default function HomeScreen() {
         todayWorkout = { ...nextWeekFirstWorkout, isNextWeek: true };
       }
 
-      const totalSessionsThisWeek = weekDays.filter((d) => d.type === 'workout').length;
-      const allSessionsComplete = completedSessions >= totalSessionsThisWeek && totalSessionsThisWeek > 0;
-      const nextWeekAlreadyGenerated: boolean =
-        (planJson.weeks as Array<{ weekNumber: number }>)
-          ?.some((w) => w.weekNumber === plan.current_week + 1) ?? false;
-      const showGenerateNextWeekCTA = allSessionsComplete && !nextWeekAlreadyGenerated;
+      const currentWeek = plan.current_week ?? 1;
+      const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
+      const distinctDays = completedSessions;
+      const isWeekComplete = distinctDays >= daysPerWeek && daysPerWeek > 0;
+
+      const pj = planJson as {
+        totalWeeks?: number;
+        weeks?: unknown[];
+      };
+      const dbCurrentWeek = plan.current_week ?? 1;
+      const totalWeeks = pj.totalWeeks ?? plan.total_weeks ?? 12;
+      const weeks = pj.weeks ?? [];
+      const uniqueWeeks = weeks.filter((w: any, index: number, self: any[]) =>
+        index === self.findIndex((t: any) => t.weekNumber === w.weekNumber),
+      );
+      const nextWeekNumber = dbCurrentWeek + 1;
+      const nextWeekExists = uniqueWeeks.some(
+        (w: any) => w.weekNumber === nextWeekNumber,
+      );
+      const showGenerateNextWeekCTA =
+        isWeekComplete && !nextWeekExists && dbCurrentWeek < totalWeeks;
+
+      if (__DEV__) {
+        console.log('[CTA check]', {
+          dbCurrentWeek,
+          weeksInPlan: weeks.map((w: any) => ({
+            weekNumber: w.weekNumber,
+            week_number: w.week_number,
+            allKeys: Object.keys(w),
+          })),
+          nextWeekExists,
+          showGenerateNextWeekCTA,
+        });
+      }
 
       setPlanData({
         planId: plan.id,
         planTitle: planJson.title ?? plan.title,
-        currentWeek: plan.current_week,
-        totalWeeks: plan.total_weeks,
-        daysPerWeek: plan.plan_json.daysPerWeek ?? 4,
+        currentWeek,
+        totalWeeks,
+        daysPerWeek,
         todayWorkout,
         weekDays,
         completedSessions,
@@ -366,6 +417,7 @@ export default function HomeScreen() {
         body: { userId, planId: planData.planId, completedWeekNumber: planData.currentWeek },
       });
       if (error) throw error;
+      setPlanData((prev) => (prev ? { ...prev, showGenerateNextWeekCTA: false } : prev));
       await loadDashboardData();
     } catch {
       Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
@@ -489,7 +541,13 @@ export default function HomeScreen() {
                     );
                     return (
                       <View
-                        style={[styles.workoutPhaseBadge, { backgroundColor: ph.bg }]}
+                        style={[
+                          styles.workoutPhaseBadge,
+                          { backgroundColor: ph.bg },
+                          ph.borderColor != null
+                            ? { borderWidth: 1, borderColor: ph.borderColor }
+                            : null,
+                        ]}
                       >
                         <Text style={[styles.workoutPhaseText, { color: ph.color }]}>
                           {ph.label}

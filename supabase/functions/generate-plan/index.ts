@@ -5,54 +5,224 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Goal-specific programming parameters
-const GOAL_PROGRAMMING: Record<string, {
-  repRange: string;
+interface SessionDay {
+  day: number;
+  dayLabel?: string;
+  type: 'workout' | 'rest';
+  focus: string;
+  primaryMuscles: string[];
+  sessionIntensity: 'heavy' | 'volume' | 'moderate';
+  liftDay?: 'heavy' | 'volume';
+}
+
+interface GeneratePlanBody {
+  goal?: string;
+  experience?: string;
+  daysPerWeek?: number | string;
+  trainingDays?: string[];
+  sessionLength?: string;
+  equipment?: string;
+  injuries?: string[];
+  excludedExercises?: string[];
+  weakPoints?: string[];
+  splitId?: string;
+  splitName?: string;
+  splitRationale?: string;
+  sessionStructure?: SessionDay[];
+  targetLift?: string;
+  current1RM?: number | string;
+  target1RM?: number | string;
+  liftFrequency?: number;
+  priorityMuscles?: string[];
+  currentSplit?: string | null;
+  currentSplitOther?: string | null;
+  splitDuration?: string | null;
+  trainingBackground?: string | null;
+  /** Legacy / extra fields not in the primary contract */
+  planDuration?: number | string;
+  split?: string;
+  targetWeightLbs?: number;
+}
+
+interface ProgrammingParams {
   sets: number;
+  reps: string;
   restSeconds: number;
   targetRpe: number;
-  intensity: string;
-  notes: string;
-}> = {
+  weeklySetMin: number;
+  weeklySetMax: number;
+  prioritySetMin: number;
+  prioritySetMax: number;
+}
+
+const GOAL_PROGRAMMING: Record<string, Record<string, ProgrammingParams>> = {
   strength: {
-    repRange: '3-5',
-    sets: 5,
-    restSeconds: 240,
-    targetRpe: 8,
-    intensity: 'heavy',
-    notes: 'Prioritise compound lifts. Linear progression. Work up to a heavy top set.',
+    beginner: {
+      sets: 3,
+      reps: '3-5',
+      restSeconds: 240,
+      targetRpe: 7,
+      weeklySetMin: 8,
+      weeklySetMax: 10,
+      prioritySetMin: 10,
+      prioritySetMax: 12,
+    },
+    intermediate: {
+      sets: 5,
+      reps: '3-5',
+      restSeconds: 240,
+      targetRpe: 8,
+      weeklySetMin: 10,
+      weeklySetMax: 16,
+      prioritySetMin: 14,
+      prioritySetMax: 18,
+    },
+    advanced: {
+      sets: 6,
+      reps: '1-5',
+      restSeconds: 300,
+      targetRpe: 9,
+      weeklySetMin: 12,
+      weeklySetMax: 20,
+      prioritySetMin: 16,
+      prioritySetMax: 22,
+    },
   },
   hypertrophy: {
-    repRange: '8-12',
-    sets: 4,
-    restSeconds: 90,
-    targetRpe: 7,
-    intensity: 'moderate-heavy',
-    notes: 'Volume-focused. Include compound + isolation work. Progressive overload via reps then weight.',
+    beginner: {
+      sets: 3,
+      reps: '8-12',
+      restSeconds: 90,
+      targetRpe: 7,
+      weeklySetMin: 8,
+      weeklySetMax: 10,
+      prioritySetMin: 10,
+      prioritySetMax: 12,
+    },
+    intermediate: {
+      sets: 4,
+      reps: '6-12',
+      restSeconds: 90,
+      targetRpe: 8,
+      weeklySetMin: 10,
+      weeklySetMax: 16,
+      prioritySetMin: 14,
+      prioritySetMax: 18,
+    },
+    advanced: {
+      sets: 5,
+      reps: '6-15',
+      restSeconds: 75,
+      targetRpe: 9,
+      weeklySetMin: 14,
+      weeklySetMax: 20,
+      prioritySetMin: 18,
+      prioritySetMax: 22,
+    },
   },
   recomp: {
-    repRange: '8-12',
-    sets: 3,
-    restSeconds: 75,
-    targetRpe: 7,
-    intensity: 'moderate',
-    notes: 'Balanced compound and isolation. Maintain muscle while in slight deficit.',
+    beginner: {
+      sets: 2,
+      reps: '10-15',
+      restSeconds: 60,
+      targetRpe: 6,
+      weeklySetMin: 6,
+      weeklySetMax: 10,
+      prioritySetMin: 8,
+      prioritySetMax: 12,
+    },
+    intermediate: {
+      sets: 3,
+      reps: '8-15',
+      restSeconds: 75,
+      targetRpe: 7,
+      weeklySetMin: 10,
+      weeklySetMax: 14,
+      prioritySetMin: 12,
+      prioritySetMax: 16,
+    },
+    advanced: {
+      sets: 4,
+      reps: '8-12',
+      restSeconds: 75,
+      targetRpe: 8,
+      weeklySetMin: 12,
+      weeklySetMax: 16,
+      prioritySetMin: 14,
+      prioritySetMax: 18,
+    },
   },
   fat_loss: {
-    repRange: '10-15',
-    sets: 3,
-    restSeconds: 60,
-    targetRpe: 7,
-    intensity: 'moderate',
-    notes: 'Higher rep ranges, shorter rest. Preserve muscle through caloric deficit.',
+    beginner: {
+      sets: 2,
+      reps: '12-15',
+      restSeconds: 45,
+      targetRpe: 6,
+      weeklySetMin: 6,
+      weeklySetMax: 8,
+      prioritySetMin: 8,
+      prioritySetMax: 10,
+    },
+    intermediate: {
+      sets: 3,
+      reps: '10-20',
+      restSeconds: 60,
+      targetRpe: 7,
+      weeklySetMin: 8,
+      weeklySetMax: 12,
+      prioritySetMin: 10,
+      prioritySetMax: 14,
+    },
+    advanced: {
+      sets: 4,
+      reps: '10-20',
+      restSeconds: 60,
+      targetRpe: 8,
+      weeklySetMin: 10,
+      weeklySetMax: 14,
+      prioritySetMin: 12,
+      prioritySetMax: 16,
+    },
   },
   general: {
-    repRange: '8-12',
-    sets: 3,
-    restSeconds: 90,
-    targetRpe: 6,
-    intensity: 'moderate',
-    notes: 'Full body focus. Balanced across all movement patterns.',
+    beginner: {
+      sets: 2,
+      reps: '8-12',
+      restSeconds: 90,
+      targetRpe: 6,
+      weeklySetMin: 6,
+      weeklySetMax: 8,
+      prioritySetMin: 8,
+      prioritySetMax: 10,
+    },
+    intermediate: {
+      sets: 3,
+      reps: '8-12',
+      restSeconds: 90,
+      targetRpe: 7,
+      weeklySetMin: 8,
+      weeklySetMax: 12,
+      prioritySetMin: 10,
+      prioritySetMax: 14,
+    },
+    advanced: {
+      sets: 4,
+      reps: '8-12',
+      restSeconds: 90,
+      targetRpe: 8,
+      weeklySetMin: 10,
+      weeklySetMax: 16,
+      prioritySetMin: 12,
+      prioritySetMax: 18,
+    },
+  },
+};
+
+const HYPERTROPHY_REP_GUIDANCE = {
+  advanced: {
+    compounds: '6-10',
+    secondaryCompounds: '8-12',
+    isolations: '10-15',
   },
 };
 
@@ -61,14 +231,22 @@ function calculateStartingWeight(oneRM: number, percentage: number): number {
   return Math.round((oneRM * percentage) / 2.5) * 2.5;
 }
 
-const VOLUME_LANDMARKS: Record<
-  string,
-  { minSets: number; maxSets: number; priorityMin: number; priorityMax: number }
-> = {
-  beginner: { minSets: 8, maxSets: 10, priorityMin: 10, priorityMax: 12 },
-  intermediate: { minSets: 10, maxSets: 16, priorityMin: 14, priorityMax: 18 },
-  advanced: { minSets: 12, maxSets: 20, priorityMin: 16, priorityMax: 20 },
-};
+function buildSessionBreakdown(sessionStructure: SessionDay[]): string {
+  return sessionStructure
+    .map((day) => {
+      const dow = day.dayLabel ? ` (${day.dayLabel})` : '';
+      if (day.type === 'rest') {
+        return `Day ${day.day}${dow}: Rest day`;
+      }
+      const muscles = Array.isArray(day.primaryMuscles) ? day.primaryMuscles.join(', ') : '';
+      const intensity = day.sessionIntensity;
+      const liftNote = day.liftDay
+        ? ` — this is the ${day.liftDay} day for the target lift`
+        : '';
+      return `Day ${day.day}${dow}: ${day.focus} — primary muscles: ${muscles}, intensity: ${intensity}${liftNote}`;
+    })
+    .join('\n');
+}
 
 const LIFT_ACCESSORIES: Record<
   string,
@@ -118,55 +296,128 @@ serve(async (req) => {
   }
 
   try {
-    const profile = await req.json();
+    const body = (await req.json()) as GeneratePlanBody;
 
-    const daysPerWeek = parseInt(profile.daysPerWeek ?? '4');
-    const totalWeeks = parseInt(profile.planDuration ?? '12');
-    const goal = profile.goal ?? 'general';
-    const programming = GOAL_PROGRAMMING[goal] ?? GOAL_PROGRAMMING.general;
+    const {
+      goal: goalIn = 'general',
+      experience: experienceIn = 'intermediate',
+      daysPerWeek: daysPerWeekIn = 4,
+      trainingDays: trainingDaysIn = [],
+      sessionLength = '60',
+      equipment = '',
+      injuries: injuriesIn = [],
+      excludedExercises: excludedExercisesIn = [],
+      weakPoints: weakPointsIn = [],
+      splitId: splitIdIn,
+      splitName: splitNameIn,
+      splitRationale = '',
+      sessionStructure,
+      targetLift,
+      current1RM,
+      target1RM,
+      liftFrequency,
+      priorityMuscles,
+    } = body;
 
-    const exclusions = [
-      ...(profile.injuries ?? []),
-      ...(profile.excludedExercises ?? []),
-    ].join(', ') || 'none';
+    const currentSplit: string | null = body.currentSplit ?? null;
+    const currentSplitOther: string | null = body.currentSplitOther ?? null;
+    const splitDuration: string | null = body.splitDuration ?? null;
+    const trainingBackground: string | null = body.trainingBackground ?? null;
 
-    let effectiveSplit = profile.split ?? 'ppl';
+    const goal = goalIn ?? 'general';
+    const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
+    const daysPerWeekParsed = parseInt(String(daysPerWeekIn ?? '4'), 10);
+    const totalWeeks = parseInt(String(body.planDuration ?? '12'), 10);
+    const expRaw = String(experienceIn ?? 'intermediate').toLowerCase();
+    const experience =
+      expRaw === 'beginner' || expRaw === 'intermediate' || expRaw === 'advanced'
+        ? expRaw
+        : 'intermediate';
+    const params =
+      GOAL_PROGRAMMING[goal]?.[experience] ??
+      GOAL_PROGRAMMING[goal]?.['intermediate'] ??
+      GOAL_PROGRAMMING.general['intermediate'];
+
+    const injuries = Array.isArray(injuriesIn) ? injuriesIn : [];
+    const excludedExercises = Array.isArray(excludedExercisesIn) ? excludedExercisesIn : [];
+    const weakPoints = Array.isArray(weakPointsIn) ? weakPointsIn : [];
+
+    const exclusions = [...injuries, ...excludedExercises].join(', ') || 'none';
+
+    const hasStructure = Array.isArray(sessionStructure) && sessionStructure.length > 0;
+    const structureArr = hasStructure ? (sessionStructure as SessionDay[]) : [];
+    const workoutDaysInStructure = structureArr.filter((d) => d.type === 'workout').length;
+    const actualDaysPerWeek =
+      workoutDaysInStructure > 0
+        ? workoutDaysInStructure
+        : trainingDays.length > 0
+          ? trainingDays.length
+          : daysPerWeekParsed;
+
+    let effectiveSplit = body.split ?? 'ppl';
     let splitOverrideNote = '';
 
-    if (goal === 'strength') {
-      const d = parseInt(profile.daysPerWeek ?? '4');
-      const chosenSplit = profile.split ?? 'ppl';
+    if (!hasStructure) {
+      if (goal === 'strength') {
+        const d = daysPerWeekParsed;
+        const chosenSplit = body.split ?? 'ppl';
 
-      if (chosenSplit === 'ppl' && d <= 3) {
-        effectiveSplit = 'upper_lower';
-        splitOverrideNote = `Note: The athlete selected PPL with ${d} days, but I've switched to Upper/Lower so ${profile.targetLift?.replace(/_/g, ' ') ?? 'the target lift'} appears twice per week. Mention this in your plan title or first coaching note.`;
-      } else if (chosenSplit === 'bro_split') {
-        effectiveSplit = 'upper_lower';
-        splitOverrideNote = `Note: The athlete selected Bro Split which doesn't suit 1RM progression. I've switched to Upper/Lower for better frequency on the target lift. Mention this briefly.`;
-      } else if (chosenSplit === 'full_body' && d >= 4) {
-        effectiveSplit = 'upper_lower';
-        splitOverrideNote = `Note: Switched from Full Body to Upper/Lower at ${d} days — better recovery between sessions at this frequency.`;
+        if (chosenSplit === 'ppl' && d <= 3) {
+          effectiveSplit = 'upper_lower';
+          splitOverrideNote = `Note: The athlete selected PPL with ${d} days, but I've switched to Upper/Lower so ${targetLift?.replace(/_/g, ' ') ?? 'the target lift'} appears twice per week. Mention this in your plan title or first coaching note.`;
+        } else if (chosenSplit === 'bro_split') {
+          effectiveSplit = 'upper_lower';
+          splitOverrideNote = `Note: The athlete selected Bro Split which doesn't suit 1RM progression. I've switched to Upper/Lower for better frequency on the target lift. Mention this briefly.`;
+        } else if (chosenSplit === 'full_body' && d >= 4) {
+          effectiveSplit = 'upper_lower';
+          splitOverrideNote = `Note: Switched from Full Body to Upper/Lower at ${d} days — better recovery between sessions at this frequency.`;
+        }
       }
     }
+
+    const splitId = hasStructure ? (splitIdIn ?? body.split ?? 'ppl') : effectiveSplit;
+    const splitName = hasStructure ? (splitNameIn ?? splitId) : effectiveSplit;
+    const sessionBreakdown = hasStructure ? buildSessionBreakdown(sessionStructure as SessionDay[]) : '';
+
+    const weeklyStructureBlock = hasStructure
+      ? `
+WEEKLY STRUCTURE (do not deviate from this):
+${sessionBreakdown}
+
+Split: ${splitName}
+Rationale: ${splitRationale || '—'}
+
+For each workout day, generate exercises that match the stated primary muscles and session intensity.
+
+sessionIntensity rules:
+- 'heavy': lower rep range (strength end), higher load, longer rest
+- 'volume': higher rep range, moderate load, standard rest
+- 'moderate': middle of the rep range, standard load and rest
+
+Do NOT add additional workout days or combine rest days with training.
+`
+      : '';
+
+    const splitForNormalized = hasStructure ? splitId : effectiveSplit;
 
     // Build goal-specific context for the prompt
     let goalContext = '';
     let weightAnchor = '';
     let exerciseSelectionSection = '';
 
-    if (goal === 'strength' && profile.current1RM && profile.targetLift) {
-      const current1RM = parseFloat(profile.current1RM ?? '0');
-      const target1RM = parseFloat(profile.target1RM ?? profile.current1RM ?? '0');
-      const week1Weight = calculateStartingWeight(current1RM, 0.75);
-      const liftName = profile.targetLift.replace(/_/g, ' ');
-      const liftKey = profile.targetLift?.replace(/_/g, ' ').toLowerCase() ?? '';
+    if (goal === 'strength' && current1RM != null && String(current1RM) !== '' && targetLift) {
+      const current1RMNum = parseFloat(String(current1RM ?? '0'));
+      const target1RMNum = parseFloat(String(target1RM ?? current1RM ?? '0'));
+      const week1Weight = calculateStartingWeight(current1RMNum, 0.75);
+      const liftName = targetLift.replace(/_/g, ' ');
+      const liftKey = targetLift.replace(/_/g, ' ').toLowerCase();
       const accessories = LIFT_ACCESSORIES[liftKey] ?? LIFT_ACCESSORIES['bench press'];
 
-      goalContext = `Primary lift: ${liftName}. Current 1RM: ${current1RM} lbs. Target 1RM: ${target1RM} lbs over ${totalWeeks} weeks.`;
+      goalContext = `Primary lift: ${liftName}. Current 1RM: ${current1RMNum} lbs. Target 1RM: ${target1RMNum} lbs over ${totalWeeks} weeks.`;
       weightAnchor = `
 CRITICAL WEIGHT RULES for strength goal:
-- ${liftName} Week 1 working sets MUST start at ${week1Weight} lbs (75% of ${current1RM} lb 1RM).
-- All other compound lifts: estimate based on the athlete's ${liftName} strength (they are ${profile.experience} level).
+- ${liftName} Week 1 working sets MUST start at ${week1Weight} lbs (75% of ${current1RMNum} lb 1RM).
+- All other compound lifts: estimate based on the athlete's ${liftName} strength (they are ${experience} level).
 - Week 1 is a baseline week. Do NOT start at their max. 75% 1RM is the starting point.
 - Use straight sets (same weight across all sets) for the primary lift.
 - Secondary lifts should be calibrated proportionally to their strength level.
@@ -181,11 +432,11 @@ STRENGTH FREQUENCY RULES:
 - If 4+ days/week: dedicate separate heavy and volume push days
 
 1RM PROGRESSION PATH over ${totalWeeks} weeks:
-- Week 1: ${calculateStartingWeight(current1RM, 0.75)} lbs (75% of ${current1RM} 1RM) — baseline
-- Week ${Math.round(totalWeeks * 0.25)}: ~${calculateStartingWeight(current1RM, 0.8)} lbs (80%) — accumulation
-- Week ${Math.round(totalWeeks * 0.5)}: ~${calculateStartingWeight(current1RM, 0.85)} lbs (85%) — intensification
-- Week ${Math.round(totalWeeks * 0.75)}: ~${calculateStartingWeight(current1RM, 0.9)} lbs (90%) — peak
-- Week ${totalWeeks}: ~${calculateStartingWeight(target1RM, 1.0)} lbs — target 1RM attempt
+- Week 1: ${calculateStartingWeight(current1RMNum, 0.75)} lbs (75% of ${current1RMNum} 1RM) — baseline
+- Week ${Math.round(totalWeeks * 0.25)}: ~${calculateStartingWeight(current1RMNum, 0.8)} lbs (80%) — accumulation
+- Week ${Math.round(totalWeeks * 0.5)}: ~${calculateStartingWeight(current1RMNum, 0.85)} lbs (85%) — intensification
+- Week ${Math.round(totalWeeks * 0.75)}: ~${calculateStartingWeight(current1RMNum, 0.9)} lbs (90%) — peak
+- Week ${totalWeeks}: ~${calculateStartingWeight(target1RMNum, 1.0)} lbs — target 1RM attempt
 Build Week 1 with this arc in mind. The weights should feel manageable now so there is room to add load each week.`;
 
       exerciseSelectionSection = `STRENGTH SPECIALISATION RULES for ${liftName.toUpperCase()} goal:
@@ -204,100 +455,325 @@ ${accessories.stability.join(', ')}
 Upper back / antagonist work — MANDATORY at least 1 per session:
 ${accessories.upperBack.join(', ')}
 
-For a PPL split targeting ${liftName}:
+${
+        hasStructure
+          ? `Using the WEEKLY STRUCTURE (focus, primary muscles, and liftDay when present) for ${liftName}:
+- Push / upper sessions that train chest, shoulders, or triceps: primary lift + 1-2 direct variations + lockout work when applicable
+- Pull sessions: upper back work + vertical pull + biceps
+- Leg sessions: full lower body — do NOT skip legs even on a bench specialisation program`
+          : `For a PPL split targeting ${liftName}:
 - Push days: primary lift + 1-2 direct variations + lockout work
 - Pull days: upper back work + vertical pull + biceps
-- Leg days: full lower body — do NOT skip legs even on a bench specialisation program
+- Leg days: full lower body — do NOT skip legs even on a bench specialisation program`
+      }
 
 ${MOVEMENT_PATTERN_BLOCK}`;
-    } else if (goal === 'hypertrophy' && profile.priorityMuscles?.length > 0) {
-      goalContext = `Priority muscle groups: ${profile.priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
-      weightAnchor = `
-WEIGHT RULES for hypertrophy goal:
-- Choose weights the athlete can complete ${programming.repRange} reps at RPE ${programming.targetRpe} given their ${profile.experience} level and ${profile.equipment} access.
-- ${profile.experience === 'beginner' ? 'Use conservative weights — beginners need to learn movement patterns first.' : ''}
-- ${profile.experience === 'intermediate' ? 'Use moderate-challenging weights. Rep targets should be achievable but require effort.' : ''}
-- ${profile.experience === 'advanced' ? 'Use challenging weights. Top of rep range should be near failure at target RPE.' : ''}`;
+    } else if (goal === 'hypertrophy' && priorityMuscles && priorityMuscles.length > 0) {
+      goalContext = `Priority muscle groups: ${priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
+      weightAnchor = `Rep and RPE targets follow PROGRAMMING PARAMETERS and exercise-type rules below. Week 1 prescribed load policy is in WEEK 1 STARTING WEIGHTS — targetWeight must be 0 for every exercise.`;
+    } else if (goal === 'hypertrophy') {
+      weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for every exercise; coachingNotes per that section.`;
     } else if (goal === 'fat_loss') {
-      goalContext = profile.targetWeightLbs
-        ? `Target weight: ${profile.targetWeightLbs} lbs. Plan duration: ${totalWeeks} weeks.`
+      goalContext = body.targetWeightLbs
+        ? `Target weight: ${body.targetWeightLbs} lbs. Plan duration: ${totalWeeks} weeks.`
         : '';
-      weightAnchor = `Weight selection: Choose weights that allow completion of ${programming.repRange} reps with ${programming.restSeconds}s rest. Slightly lighter than hypertrophy — density is the goal.`;
+      weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0; rep schemes, rest, and density as programmed below.`;
     } else {
-      weightAnchor = `Weight selection: Choose appropriate starting weights for a ${profile.experience} level athlete with access to ${profile.equipment}. Use standard percentage-based estimates.`;
+      weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for all exercises.`;
     }
+
+    const isNonStrengthGoal =
+      goal === 'hypertrophy' ||
+      goal === 'recomp' ||
+      goal === 'fat_loss' ||
+      goal === 'general';
+
+    if (isNonStrengthGoal) {
+      weightAnchor += `
+
+WEEK 1 STARTING WEIGHTS — NON-STRENGTH GOALS:
+
+Do NOT prescribe specific weights for Week 1 exercises.
+Set targetWeight to 0 for ALL exercises in Week 1.
+
+Instead, every exercise coachingNote in Week 1 must follow this pattern:
+
+'Choose a weight you can hit [rep target] reps at RPE [targetRpe]. Log exactly what you use — I'll programme Week 2 from your actual numbers.'
+
+The rep target and RPE should match the exercise's programmed parameters. Examples:
+
+Hypertrophy compound (6-10 reps, RPE 7-8):
+'Choose a weight you can hit 6-10 reps at RPE 7-8. Log what you use and I'll build Week 2 from there.'
+
+Hypertrophy isolation (10-15 reps, RPE 7):
+'Pick a weight you can control for 10-15 reps at RPE 7. Go lighter than you think — form matters more than load in Week 1.'
+
+Fat loss (10-20 reps, RPE 7):
+'Light to moderate weight — you should be able to hit 15+ reps. This week is about establishing your baseline.'
+
+RULES for Week 1 coachingNotes:
+- Always reference the specific rep range and RPE target
+- Never say 'go easy' or 'take it light'
+- Frame it as data collection, not a warmup week
+- Maximum 2 sentences
+- Never suggest a specific weight in lbs
+
+Week 2+ onwards: programme weights normally based on what the user logged in the previous week.
+
+EXCEPTION — STRENGTH GOAL: unchanged — use current1RM × 0.75 and prescribed targetWeights as in the strength section above.`;
+    }
+
+    const beginnerRpeBlock =
+      experience === 'beginner'
+        ? `
+BEGINNER RPE (movement quality):
+Target RPE is ${params.targetRpe}. For beginners, this ceiling exists to protect movement quality under fatigue — do not write coachingNotes that push for failure or max effort.
+`
+        : '';
+
+    const hypertrophyAdvancedBlock =
+      goal === 'hypertrophy' && experience === 'advanced'
+        ? `
+Rep ranges vary by exercise type within this session:
+- Primary and secondary compounds: ${HYPERTROPHY_REP_GUIDANCE.advanced.compounds} reps
+- Isolation exercises: ${HYPERTROPHY_REP_GUIDANCE.advanced.isolations} reps
+Do NOT apply a single rep range to every exercise.
+
+ADVANCED HYPERTROPHY SETS:
+Total sets per exercise: ${params.sets}. For advanced users, the final set of isolation exercises may include a technique note (e.g. rest-pause or slow eccentric) but only on isolation exercises — never on compounds.
+`
+        : '';
+
+    const splitDescriptor = hasStructure ? splitName : effectiveSplit;
 
     if (!exerciseSelectionSection) {
       exerciseSelectionSection = `EXERCISE SELECTION RULES:
-- Max 5 exercises per session for ${profile.sessionLength} minute sessions
-- For ${profile.split} split, ensure logical muscle group distribution across days
-- Use exercises appropriate for ${profile.equipment}
+- Max 5 exercises per session for ${sessionLength} minute sessions
+- For ${hasStructure ? `the "${splitName}" plan (follow WEEKLY STRUCTURE day-by-day)` : `the ${splitDescriptor} split`}, ensure logical muscle group distribution across days
+- Use exercises appropriate for ${equipment}
 - Week 1: focus on foundational movements. Save advanced variations for later weeks.
 - Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
 
 ${MOVEMENT_PATTERN_BLOCK}`;
     }
 
+    const athleteSplitLine = hasStructure
+      ? `- Split: ${splitName} (${splitId})`
+      : `- Split: ${effectiveSplit}${splitOverrideNote ? ` (overridden from ${body.split ?? 'unknown'})` : ''}`;
+
+    const weakPointsLine =
+      weakPoints.length > 0 ? `\n- Weak points / focus areas: ${weakPoints.join(', ')}` : '';
+
+    const liftFrequencyLine =
+      goal === 'strength' && liftFrequency != null && (liftFrequency === 2 || liftFrequency === 3)
+        ? `\n- Target lift frequency: ${liftFrequency}x per week`
+        : '';
+
+    const structureTailInstructions = hasStructure
+      ? `Follow the WEEKLY STRUCTURE exactly: ${(sessionStructure as SessionDay[]).length} calendar day entries with the day numbers shown. Each workout day must match its focus, primary muscles, and session intensity.`
+      : `Generate exactly ${actualDaysPerWeek} workout days plus rest days to fill all 7 days.`;
+
+    const splitHistoryOtherLine =
+      currentSplit === 'Other' && currentSplitOther
+        ? `
+TRAINING HISTORY: The user describes their current training structure as: "${currentSplitOther}".
+`
+        : '';
+
+    const structuralNoveltyBlock =
+      goal === 'hypertrophy' &&
+      splitDuration === '6+ months' &&
+      currentSplit != null &&
+      currentSplit !== '' &&
+      currentSplit !== 'Other'
+        ? `
+TRAINING HISTORY (hypertrophy):
+The user has been following ${currentSplit} for 6+ months. Jordan's sessionStructure already accounts for structural novelty. Reinforce this in the jordanWelcome message — mention that a structural change is intentional and will drive new adaptation.
+`
+        : '';
+
+    const current1RMLabel =
+      current1RM != null && String(current1RM).trim() !== ''
+        ? `${String(current1RM).trim()} lbs`
+        : null;
+
+    const strengthExperienceBlock =
+      goal === 'strength' &&
+      trainingBackground != null &&
+      (trainingBackground === 'Already doing a strength-specific program' ||
+        trainingBackground === 'Running a powerlifting program')
+        ? `
+TRAINING BACKGROUND (strength):
+This user is already strength-training. Week 1 baseline weights should reflect their current 1RM${current1RMLabel ? ` (${current1RMLabel})` : ''} × 0.75 as normal, but the jordanWelcome should acknowledge their existing base and frame this plan as a focused specialisation block (still within the 4-sentence jordanWelcome structure — fold this into Sentence 2).
+`
+        : '';
+
+    const liftNameForWelcome =
+      targetLift != null && String(targetLift).trim() !== ''
+        ? String(targetLift).replace(/_/g, ' ')
+        : null;
+    const target1RMNumWelcome = parseFloat(String(target1RM ?? current1RM ?? '0'));
+    const priorityMusclesList =
+      Array.isArray(priorityMuscles) && priorityMuscles.length > 0
+        ? priorityMuscles.join(', ')
+        : '';
+    const targetWeightLbsWelcome =
+      body.targetWeightLbs != null && String(body.targetWeightLbs).trim() !== ''
+        ? String(body.targetWeightLbs).trim()
+        : null;
+
+    let jordanWelcomeSentence2Instruction = '';
+    if (goal === 'strength' && liftNameForWelcome && target1RMNumWelcome > 0) {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (strength). Use this line (keep meaning; fix grammar only if needed):\n` +
+        `"You came in with a ${target1RMNumWelcome}lb ${liftNameForWelcome} target — I've built the entire program around getting you there."`;
+    } else if (goal === 'strength') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (strength): Use their target 1RM and lift from the athlete profile. Pattern:\n` +
+        `"You came in with a [N]lb [lift name] target — I've built the entire program around getting you there."`;
+    } else if (goal === 'hypertrophy' && priorityMusclesList !== '') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (hypertrophy + priority muscles). Use this line:\n` +
+        `"You want to bring up your ${priorityMusclesList} — I've structured your week so those muscles get trained fresh and with full focus, not as an afterthought."`;
+    } else if (goal === 'hypertrophy') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (hypertrophy, no priority muscles). Use this line:\n` +
+        `"Your goal is building size — I've programmed ${actualDaysPerWeek} days with the volume and frequency that actually drives hypertrophy."`;
+    } else if (goal === 'fat_loss' && targetWeightLbsWelcome != null) {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (fat loss). Use this line:\n` +
+        `"You want to drop to ${targetWeightLbsWelcome}lbs — I've set your training and macros to get you there at a rate that preserves your muscle."`;
+    } else if (goal === 'fat_loss') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (fat loss): Use their target weight in lbs from the profile. Pattern:\n` +
+        `"You want to drop to [N]lbs — I've set your training and macros to get you there at a rate that preserves your muscle."`;
+    } else if (goal === 'recomp') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (recomp). Use this line:\n` +
+        `"Body recomp is the hardest goal to program — you're asking your body to lose fat and build muscle at the same time. I've built this specifically to make that happen."`;
+    } else {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (general / other). Use this line:\n` +
+        `"You want to build a consistent fitness base — I've kept the program structured but manageable so you can build the habit first."`;
+    }
+
+    const jordanWelcomeSentence3Block = isNonStrengthGoal
+      ? `Sentence 3 — Week 1 baseline (non-strength — user-selected loads):
+  "Week 1 is your calibration week — you choose loads that match your effort targets, log them after every set, and I'll programme Week 2 from those exact numbers."`
+      : `Sentence 3 — Explain Week 1 baseline (prescribed loads):
+  "Week 1 is your calibration week — the weights are set conservatively so you can focus on form and give me honest effort ratings after each set."`;
+
+    const jordanWelcomeNonStrengthSentence2Addon = isNonStrengthGoal
+      ? `
+Non-strength — Sentence 2 (required addition): After or woven into the goal acknowledgement above, you MUST convey that Week 1 working weights are user-selected in the app (targetWeight 0 — Jordan does not prescribe lbs for Week 1).
+Example (adapt RPE band to match programming template, default target RPE ${params.targetRpe}): "Week 1 you choose your own starting weights — pick what feels like RPE 7-8 for each exercise and log it honestly. I build Week 2 from those exact numbers."
+This replaces any implication that Jordan has already set conservative working loads for you.`
+      : '';
+
+    const jordanWelcomeRpeRuleLine = isNonStrengthGoal
+      ? `- In Sentence 2 only, you may reference target RPE as a range (e.g. "RPE 7-8") when explaining self-selected loads. In Sentences 3–4 prefer "effort ratings" except the fixed Sentence 4 template may say "RPE data".`
+      : `- Never mention RPE as a number in the welcome (e.g. do not say "RPE 7") — the user just learned about RPE in onboarding; prefer "effort ratings" where it fits (Sentences 3–4 may use the phrase "RPE data" as in the template above, without numeric RPE)`;
+
+    const jordanWelcomeFieldSpec = `JORDAN WELCOME FIELD (top-level JSON key "jordanWelcome"):
+jordanWelcome is the user's FIRST introduction to Jordan, their AI coach. It must follow this exact structure:
+
+Sentence 1 — Self introduction:
+  Always start with "I'm Jordan, your AI coach for the next ${totalWeeks} weeks."
+  Never skip this. This is the user's first time meeting Jordan.
+
+Sentence 2 — Goal acknowledgement (specific to their inputs):
+${jordanWelcomeSentence2Instruction}
+${jordanWelcomeNonStrengthSentence2Addon}
+  If other TRAINING HISTORY instructions in this prompt ask you to mention structural change or an existing strength base, fold that into Sentence 2 without adding sentences or breaking the templates above.
+
+${jordanWelcomeSentence3Block}
+
+Sentence 4 — Forward looking (what Jordan will do with data):
+  "I'll use your RPE data from this week to dial in Week 2 specifically to you — the more honest you are, the better your plan gets."
+
+RULES:
+- Maximum 4 sentences total
+- Always starts with "I'm Jordan"
+- Always references at least one specific number or detail from the user's inputs (use the athlete profile and goal details in this prompt)
+- Always explains Week 1 as calibration (Sentence 3)
+- Never uses: "Great!", "Excited to", "Let's crush", "Let's go", "Amazing"
+- Tone: direct, knowledgeable, like a real coach talking to a new client for the first time — not a chatbot greeting
+${jordanWelcomeRpeRuleLine}
+- Do not end with a separate "call to action" sentence beyond Sentence 4; Sentence 4 is the close`;
+
     const prompt = `Create Week 1 of a ${totalWeeks}-week ${goal} training plan.
 
 ATHLETE PROFILE:
-- Experience: ${profile.experience}
-- Split: ${effectiveSplit}${splitOverrideNote ? ` (overridden from ${profile.split})` : ''}
-- Equipment: ${profile.equipment}
-- Session length: ${profile.sessionLength} minutes
-- Days per week: ${daysPerWeek}
-- Exercises to avoid: ${exclusions}
+- Experience: ${experience}
+${athleteSplitLine}
+- Equipment: ${equipment}
+- Session length: ${sessionLength} minutes
+- Days per week: ${actualDaysPerWeek}
+- Exercises to avoid: ${exclusions}${weakPointsLine}${liftFrequencyLine}
 ${goalContext ? `- Goal details: ${goalContext}` : ''}
+${weeklyStructureBlock}
+${splitHistoryOtherLine}${structuralNoveltyBlock}${strengthExperienceBlock}
+PROGRAMMING PARAMETERS for ${goal.toUpperCase()} (${experience}):
+- Rep range (default template): ${params.reps}
+- Sets per exercise: ${params.sets}
+- Rest between sets: ${params.restSeconds} seconds
+- Target RPE: ${params.targetRpe}
 
-PROGRAMMING PARAMETERS for ${goal.toUpperCase()}:
-- Rep range: ${programming.repRange}
-- Sets per exercise: ${programming.sets}
-- Rest between sets: ${programming.restSeconds} seconds
-- Target RPE: ${programming.targetRpe}
-- Intensity: ${programming.intensity}
-- Notes: ${programming.notes}
+WARMUP / WORKING WEIGHT (app behavior):
+Do NOT include warmup sets in the sets count or targetWeight. targetWeight is the WORKING weight only — the app generates warmup progressions automatically when a working weight is known.
+Example: 5 sets × 3-5 reps @ 265 lbs means 5 working sets at 265 lbs. The app will show warmup sets at 40/60/80% automatically before those working sets.
+${isNonStrengthGoal ? `Non-strength Week 1: targetWeight is 0 — the athlete enters their chosen load in the app; warmups appear once they have a working weight for that session.` : ''}
+Avoid coachingNote lines that tell the athlete to "start light and build up" — the UI handles warmup display.
 
+${beginnerRpeBlock}${hypertrophyAdvancedBlock}
 ${weightAnchor}
 
 ${exerciseSelectionSection}
-${splitOverrideNote ? `\nSPLIT OVERRIDE:\n${splitOverrideNote}\n` : ''}
+${!hasStructure && splitOverrideNote ? `\nSPLIT OVERRIDE:\n${splitOverrideNote}\n` : ''}
 
 VOLUME RULES (weekly sets per muscle group):
-- Experience level: ${profile.experience}
-- Each muscle group should receive ${VOLUME_LANDMARKS[profile.experience]?.minSets ?? 10}–${VOLUME_LANDMARKS[profile.experience]?.maxSets ?? 16} sets per week
-- Priority muscles (if any) should receive ${VOLUME_LANDMARKS[profile.experience]?.priorityMin ?? 14}–${VOLUME_LANDMARKS[profile.experience]?.priorityMax ?? 18} sets per week
+- Experience level: ${experience}
+- Each muscle group should receive ${params.weeklySetMin}–${params.weeklySetMax} sets per week
+- Priority muscles (if any) should receive ${params.prioritySetMin}–${params.prioritySetMax} sets per week
 - Do NOT exceed the max — overdosing a muscle group causes excessive fatigue
 - Do NOT go below the min — underdosing produces no adaptation
 - Count total sets across ALL workout days when distributing volume
 
-Generate exactly ${daysPerWeek} workout days plus rest days to fill all 7 days.
+${structureTailInstructions}
+Training days: ${trainingDays.length > 0 ? trainingDays.join(', ') : 'not specified'}
 Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "".
+
+Week 1 phase MUST be "baseline". Weeks 2 onward (when generated later) follow accumulation → intensification → deload periodisation. For this response, the week object's phase field MUST be exactly "baseline".
+
+${jordanWelcomeFieldSpec}
+
 Respond with ONLY this JSON, no other text:
 {
   "title": "descriptive plan name",
-  "jordanWelcome": "One sentence. References their specific goal, starting weight, and what Week 1 is about.",
+  "jordanWelcome": "Exactly 4 sentences per JORDAN WELCOME FIELD spec above.",
   "totalWeeks": ${totalWeeks},
-  "daysPerWeek": ${daysPerWeek},
+  "daysPerWeek": ${actualDaysPerWeek},
   "week": {
     "weekNumber": 1,
+    "phase": "baseline",
     "days": [
       {
         "dayNumber": 1,
         "type": "workout",
         "title": "workout name e.g. Push A",
-        "sessionFocus": "Bench starts at 275 — 75% of your 1RM, building baseline.",
+        "sessionFocus": "Baseline push — feel the weights out.",
         "muscleGroups": ["Chest", "Shoulders", "Triceps"],
         "exercises": [
           {
             "id": "e1",
             "name": "Exercise Name",
             "muscleGroup": "Chest",
-            "sets": ${programming.sets},
-            "reps": "${programming.repRange}",
-            "targetWeight": 135,
-            "restSeconds": ${programming.restSeconds},
-            "targetRpe": ${programming.targetRpe},
-            "coachingNote": "Jordan's specific note for this exercise referencing the athlete's goal and starting weight"
+            "sets": ${params.sets},
+            "reps": "${params.reps}",
+            "targetWeight": ${isNonStrengthGoal ? 0 : 135},
+            "restSeconds": ${params.restSeconds},
+            "targetRpe": ${params.targetRpe},
+            "coachingNote": "${isNonStrengthGoal ? `Choose a weight you can hit ${params.reps} reps at RPE ${params.targetRpe}. Log exactly what you use — I'll programme Week 2 from your actual numbers.` : 'Week 1 calibration — log your honest RPE so I can dial in Week 2.'}"
           }
         ]
       },
@@ -326,50 +802,57 @@ Include all 7 days. Workout days have exercises. Rest days have empty exercises 
         max_tokens: 4000,
         system: `You are Jordan, an expert personal coach building Week 1 of a training plan. 
 
-Your job: create a properly structured, goal-appropriate training week with realistic starting weights.
+Your job: create a properly structured, goal-appropriate training week.${
+  isNonStrengthGoal
+    ? ' For non-strength goals (hypertrophy, recomp, fat_loss, general), Week 1 targetWeight MUST be 0 on every exercise — the athlete self-selects loads in the app; follow WEEK 1 STARTING WEIGHTS in the user message.'
+    : ' Use realistic prescribed starting weights (especially strength: 1RM-based).'
+}
 
 For coachingNote fields:
 - Speak directly to the athlete as Jordan
-- Reference their goal and why this exercise/weight is appropriate
+- Reference their goal and why this exercise fits the plan
 - For strength athletes: explain the weight selection in context of their 1RM
 - Keep each note to 1-2 sentences
 - Never write generic form cues ("focus on good form")
 - Never use filler praise ("Great choice!", "This is perfect!")
 
+${
+  isNonStrengthGoal
+    ? `Week 1 coachingNote (non-strength goals):
+- targetWeight MUST be 0 on every exercise — never prescribe pounds in JSON.
+- Follow WEEK 1 STARTING WEIGHTS in the user message: rep range + RPE target, log exactly what you use, Week 2 from actual numbers.
+- Maximum 2 sentences. Never suggest a specific weight in lbs. Never say "go easy" or "take it light". Frame as data collection, not a warmup week.`
+    : `Week 1 coachingNote (strength / prescribed loads):
+- Must communicate calibration. Focus on: form, feeling the weight, and giving an honest RPE.
+- Do NOT say "go easy" or "light session".
+- Say something like: "Week 1 calibration — log your honest RPE so I can dial in Week 2" or similar. Keep it one sentence.`
+}
+
 For each workout day, include sessionFocus: one sentence (max 12 words) that tells the athlete exactly what today is about.
-This appears on the athlete's Dashboard before they start the workout. Week 1 has no prior performance data — anchor on starting loads, goals, and session intent (not last week's RPE).
+This appears on the athlete's Dashboard before they start the workout. Week 1 has no prior performance data — anchor on goals and session intent${
+  isNonStrengthGoal ? ' (reference sets, reps, or RPE targets when weights are self-selected)' : ' (and starting loads where prescribed)'
+}.
 
 sessionFocus rules (Week 1):
-- Always reference at least one specific number (weight, RPE, or sets) from that day's plan
-- Reference the most important exercise of the day
+- Week 1 sessionFocus lines should reference calibration (e.g. "Baseline push — feel the weights out" or "Calibration lower — log your effort honestly").
+- Reference at least one specific number (sets, reps, RPE, or prescribed weight when applicable) when it fits within 12 words
+- Reference the most important exercise of the day when possible
 - Never use filler like 'Great session ahead' or 'You've got this'
-- Examples:
-  'Bench starts at 275 — 75% of your 1RM, building your baseline.'
-  'First pull day — deadlift at 405, establishing your starting point.'
-  'Leg day: Back Squat at 315, focus on depth and control.'
 
 Rest days: sessionFocus must be an empty string "".
 
-JORDAN WELCOME MESSAGE:
-Write a jordanWelcome field at the top level of the JSON.
-This is the first thing the athlete reads from Jordan after their plan is built. It appears on their Dashboard before their first session.
+jordanWelcome (top-level JSON):
+Follow the JORDAN WELCOME FIELD specification in the user message exactly — 4 sentences, fixed intro, goal-specific Sentence 2 as given there, then calibration + how you'll use their data.${
+  isNonStrengthGoal
+    ? ' Non-strength: Sentence 2 may include numeric RPE bands per that spec.'
+    : ' In the welcome text, say "effort ratings" not numeric RPE except where the user-message spec allows.'
+} Never use chatbot openers or banned hype phrases from that spec.
 
-Rules:
-- 2 sentences maximum
-- Must reference at least 2 specific numbers from their plan (starting weight, 1RM, target, weeks, or days per week)
-- Must reference their goal specifically
-- Tone: direct and confident — Jordan has a plan
-- Never say "Welcome" or "Great to have you"
-- Never use filler praise
-- Must end with a clear action ("Your first session starts now." or "Week 1 begins today.")
-
-Examples by goal:
-  Strength: "You're targeting 405 on bench — we start at 275 today, 75% of your current 1RM, and build from there over 12 weeks. Your first session starts now."
-  Hypertrophy: "12 weeks, 4 days per week, chest and back as priority — the plan is built around adding real size where it matters to you. Week 1 begins today."
-  Fat Loss: "Your target is 165 lbs over 16 weeks — 0.75 lbs per week, which is aggressive but achievable with consistent training and hitting your 2,200 calorie target. Week 1 begins today."
-  General: "3 days per week, full body — this programme builds balanced fitness from the ground up over 12 weeks. Your first session starts now."
-
-Weight selection is CRITICAL. Under-programming (weights too light) destroys trust. Follow the weight rules in the prompt exactly.`,
+${
+  isNonStrengthGoal
+    ? 'For non-strength Week 1, targetWeight 0 everywhere — trust the user message.'
+    : 'Weight selection is CRITICAL. Under-programming (weights too light) destroys trust. Follow the weight rules in the prompt exactly.'
+}`,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -399,17 +882,16 @@ Weight selection is CRITICAL. Under-programming (weights too light) destroys tru
     }
 
     const week1Data = plan.week ?? plan.weeks?.[0] ?? { weekNumber: 1, days: [] };
-    if (!week1Data.phase) {
-      week1Data.phase = 'accumulation';
-    }
+    // Week 1 is always baseline (legacy plans used accumulation)
+    week1Data.phase = 'baseline';
 
     const normalized = {
       title: plan.title ?? 'Training Plan',
       jordanWelcome: plan.jordanWelcome ?? null,
       totalWeeks: plan.totalWeeks ?? totalWeeks,
-      daysPerWeek: plan.daysPerWeek ?? daysPerWeek,
+      daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
       goal: goal,
-      split: effectiveSplit,
+      split: splitForNormalized,
       currentWeek: 1,
       weeks: [week1Data],
     };

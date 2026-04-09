@@ -1,352 +1,569 @@
+# ADAPTIVE FITNESS COACH — CLAUDE CONTEXT
 <!-- DO NOT CHANGE THE FILENAME -->
-PROJECT CONTEXT
-App: Adaptive Fitness Coach — iOS/Android subscription SaaS
-Stack: React Native + Expo, Supabase, RevenueCat, Claude API, Zustand
-Supabase tables: users, user_profiles, goals, plans, workout_logs, macro_plans, weekly_summaries, macro_logs, weight_logs, meal_suggestions
-Config files: Lib/supabase.ts, Lib/Revenuecat.ts
-Edge Functions: supabase/functions/generate-plan, supabase/functions/coaching-feedback, supabase/functions/weekly-coach-summary, supabase/functions/generate-next-week, supabase/functions/adjust-macros, supabase/functions/generate-meals
-Other key files: constants/design.ts, constants/ingredientLibrary.ts, components/MealBuilderModal.tsx
+<!-- Last updated: April 2026 — Goal-First Programming + Workout Experience Sprint -->
 
-COMPLETED SCREENS
-Phase 1 — Foundation (✅ Complete)
+---
 
-S01 Splash ✅
-S02 Goal Selection ✅
-S02b Goal Details ✅
-S03 Experience & Schedule ✅
-S04 Constraints & Equipment ✅
-S05 Body Metrics ✅
-S06 Macro Setup ✅
-S07 Plan Preview + Paywall ✅ (RevenueCat wired — native only, web dev bypass active)
-S07b Building Plan ✅
-S08 Home Dashboard ✅
-S09 Active Workout ✅
-S10 Workout Complete ✅
-S11 Plan View ✅
+## PROJECT OVERVIEW
 
-Phase 2 — Core Loop (✅ Complete)
+**App:** Adaptive Fitness Coach — iOS/Android subscription SaaS  
+**Stack:** React Native + Expo, Supabase, RevenueCat, Claude API, Zustand  
+**Supabase tables:** users, user_profiles, goals, plans, workout_logs, macro_plans, weekly_summaries, macro_logs, weight_logs, meal_suggestions  
+**Config files:** Lib/supabase.ts, Lib/RevenueCat.ts  
+**Edge Functions:** generate-plan, coaching-feedback, weekly-coach-summary, generate-next-week, adjust-macros, generate-meals  
+**Key files:** constants/design.ts, constants/exerciseLibrary.ts, constants/ingredientLibrary.ts, components/MealBuilderModal.tsx, components/ExerciseCard.tsx, components/WorkoutResultsModal.tsx, navigation/types.ts, utils/splitRecommendation.ts
 
-S15 Weekly Coach Summary ✅
-Adaptive coaching engine ✅
-S13 Progress Charts ✅
-S16 Macro Tracker ✅
-S12 Exercise Library ✅
-S14 Goal Tracker ✅
-Tab navigation ✅
-S17 Profile & Settings ✅
-S18 Subscription Management ✅
+---
 
-Phase 3 — Engagement (✅ Complete)
+## BUILD STATUS
 
-S19 Notifications Settings ✅
-Real streak, session count, weekly volume on Dashboard ✅
-Jordan coach persona ✅
-Daily bodyweight logging ✅
-AI macro adjustment ✅
-Jordan meal suggestions ✅
-Meal builder ✅
-Weekly summary fixes ✅
-Dashboard polish ✅
+### Phase 1 — Foundation ✅ Complete
+S01 Splash, S02 Goal Selection, S02b Goal Details, S03 Experience & Schedule, S03b RPE Education, S04 Constraints & Equipment, S05 Body Metrics, S06 Macro Setup, S07 Plan Preview + Paywall, S07b Building Plan
 
-Design Upgrade — applying new design system across all screens (✅ Complete)
-Reference document: AdaptiveFitnessCoach_PRD_v1_6.md and AdaptiveFitness_DesignSpec_v1_0.md
+### Phase 2 — Core Loop ✅ Complete
+S15 Weekly Coach Summary, Adaptive coaching engine, S13 Progress Charts, S16 Macro Tracker, S12 Exercise Library, S14 Goal Tracker, Tab navigation, S17 Profile & Settings, S18 Subscription Management
 
+### Phase 3 — Engagement ✅ Complete
+S19 Notifications, Stats, Jordan persona, Bodyweight logging, AI macro adjustment, Meal suggestions, Meal builder, Dashboard polish
 
-CURRENT PHASE
-Phase 4 — Integrations (Apple Health, Google Fit, MyFitnessPal OAuth, wearable HR data)
-Pre-launch: TestFlight build + paywall conversion optimization
+### Design Upgrade ✅ Complete — April 2026
+### Coaching Engine Sprint ✅ Complete — April 2026
+### Onboarding Upgrade Sprint ✅ Complete — April 2026
 
+### Goal-First Programming Sprint ✅ Complete — April 2026
+- Split picker removed — Jordan prescribes structure based on goal + experience + days + priority muscles
+- utils/splitRecommendation.ts: full decision tree, 12-split library, session structure mapping
+- Programming matrix: 2D goal × experience (sets, reps, RPE, rest, volume)
+- Exercise library: movementPattern, category, secondaryMuscles, rotationGroup, usesWeight tags
+- S02b: training history + split history inputs
+- S03: Jordan structure card, split badge + info modal, Adjust mode with advanced splits
+- Priority muscle overrides: leg/arm/upper dominant routing
+- sessionStructure maps to selectedDays — count always matches
 
-DESIGN SYSTEM (✅ Implemented)
-constants/design.ts is the single source of truth for all tokens.
-All screens import from this file. Do not use hardcoded hex strings.
+### Workout Experience Sprint ✅ Complete — April 2026
+- Warmup sets auto-generated for compounds ≥95 lbs
+- Self-select Week 1: targetWeight=0, user picks own weight at RPE target
+- WorkoutResultsModal: completed day sets/RPE/volume/energy
+- Last week strip + trend indicator on ExerciseCard
+- Core/bodyweight/timed exercise support
+- Jordan welcome: 4-sentence "I'm Jordan…" introduction
+- Fatigue: 1=😴Wiped 2=😤Tired 3=😊Good 4=💪Strong 5=🔥Beast Mode
+- workout_logs uses logged_at (not created_at)
+- plans status: active / completed / paused (not inactive)
 
-Import pattern:
-import { Colors, Fonts, FontSizes, LineHeights, Spacing,
-         Radius, CommonStyles, Shadows } from '../constants/design';
-Adjust relative path: onboarding screens use '../../constants/design'
+### Current Phase
+TestFlight build + outstanding issues (see end of document)
 
-Font: DM Sans loaded in App.tsx via @expo-google-fonts/dm-sans
-  Fonts.regular   = 'DMSans_400Regular'
-  Fonts.medium    = 'DMSans_500Medium'
-  Fonts.semiBold  = 'DMSans_600SemiBold'
-  Fonts.bold      = 'DMSans_700Bold'
+---
 
-Key colors:
-  Colors.bgPrimary    = '#09090B'   // screen background
-  Colors.bgCard       = '#111113'   // card background
-  Colors.bgElevated   = '#1C1C1E'   // modals, bottom sheets
-  Colors.accent       = '#F97316'   // orange — primary brand
-  Colors.accentMuted  = 'rgba(249,115,22,0.12)'
-  Colors.accentBorder = 'rgba(249,115,22,0.4)'
-  Colors.textPrimary  = '#FAFAFA'
-  Colors.textSecondary = '#A1A1AA'
-  Colors.textTertiary  = '#52525B'
-  Colors.success      = '#22C55E'
-  Colors.successMuted = 'rgba(34,197,94,0.12)'
-  Colors.warning      = '#F59E0B'
-  Colors.warningMuted = 'rgba(245,158,11,0.12)'
-  Colors.danger       = '#EF4444'
-  Colors.dangerMuted  = 'rgba(239,68,68,0.12)'
-  Colors.divider      = '#27272A'
-  Colors.border       = '#3F3F46'
-  Colors.overlay      = 'rgba(0,0,0,0.7)'
+## DESIGN SYSTEM
 
-FontSizes: micro(10) label(11) caption(13) body(15) title(17)
-           heading2(20) heading1(26) display(32)
+`constants/design.ts` is the single source of truth.
 
+```ts
+// Import pattern
+import { Colors, Fonts, FontSizes, Spacing, Radius, CommonStyles } from '../constants/design';
+// Onboarding screens:
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+```
+
+### Colors
+```
+bgPrimary='#09090B'  bgCard='#111113'  bgElevated='#1C1C1E'
+accent='#F97316'  accentMuted='rgba(249,115,22,0.12)'  accentBorder='rgba(249,115,22,0.4)'
+textPrimary='#FAFAFA'  textSecondary='#A1A1AA'  textTertiary='#52525B'
+success='#22C55E'  successMuted='rgba(34,197,94,0.12)'
+warning='#F59E0B'  warningMuted='rgba(245,158,11,0.12)'
+danger='#EF4444'  dangerMuted='rgba(239,68,68,0.12)'
+divider='#27272A'  border='#3F3F46'  overlay='rgba(0,0,0,0.7)'
+```
+
+### Typography & Radius
+```
+FontSizes: micro(10) label(11) caption(13) body(15) title(17) heading2(20) heading1(26) display(32)
 Radius: sm(8) md(12) lg(16) xl(20) xxl(24) full(9999)
+```
 
-DESIGN UPGRADE PROGRESS (✅ All Complete — committed April 2026)
-Color pass ✅ — all screens use Colors.* from constants/design.ts
-Font pass ✅ — all screens use Fonts.* and FontSizes.* from constants/design.ts
+### Design Rules
+- StyleSheet.create only — no inline styles except dynamic values
+- No hardcoded hex — Colors.* exclusively
+- No fontWeight — Fonts.* fontFamily only
+- Primary buttons: height 56, Radius.lg, Colors.accent
+- Section headings: FontSizes.label, Fonts.bold, Colors.textSecondary, letterSpacing 1.5, uppercase
+- Cards: bgCard, Radius.lg, borderWidth 1, divider
+- Jordan cards: bgCard + borderLeftWidth 3 + borderLeftColor accent
+- Back chevrons: "‹" fontSize 28, Fonts.bold, Colors.accent
 
-Screen redesigns completed:
-✅ S02–S07b Onboarding screens (step counter replaces progress bar, full card selection pattern)
-✅ S08 Home Dashboard
-✅ S09 Active Workout (ExerciseCard.tsx, RPESelector.tsx)
-✅ S10 Workout Complete
-✅ S11 Plan View
-✅ S12 Exercise Library
-✅ S13 Progress Charts (bodyweight chart date fix + clip fix)
-✅ S14 Goal Tracker (lift name formatter, Expectations tooltip wired)
-✅ S15 Weekly Coach Summary
-✅ S16 Macro Tracker + MealBuilderModal
-✅ S17 Profile & Settings + NotificationsSettings
-✅ S18 Subscription Management
+---
 
+## NAVIGATION STRUCTURE
 
-DESIGN RULES FOR ALL REMAINING PROMPTS
-- Import Colors, Fonts, FontSizes, Radius from constants/design.ts
-- StyleSheet.create only — no inline styles (except dynamic DimensionValue widths)
-- No hardcoded hex strings anywhere — use Colors.* exclusively
-- Remove fontWeight — use fontFamily (Fonts.*) instead
-- All primary buttons: height 56, borderRadius Radius.lg, backgroundColor Colors.accent
-- All section headings: fontSize FontSizes.label, fontFamily Fonts.bold,
-  color Colors.textSecondary, letterSpacing 1.5, textTransform 'uppercase'
-- All cards: backgroundColor Colors.bgCard, borderRadius Radius.lg,
-  borderWidth 1, borderColor Colors.divider
-- Back chevrons: "‹" fontSize 28, fontFamily Fonts.bold, color Colors.accent
-- Screen background: Colors.bgPrimary always
-
-
-NAVIGATION STRUCTURE
-Tab Navigator (5 tabs)
-
+### Tab Navigator (5 tabs)
+```
 Home → HomeScreen, WeeklyCoachSummary
 Workout → WorkoutHomeScreen, PlanView, ActiveWorkout, WorkoutComplete, ExerciseLibrary
 Progress → ProgressCharts, GoalTracker
 Nutrition → MacroTracker
 Profile → ProfileSettings, SubscriptionManagement, NotificationsSettings
+```
 
-Root stack (above tabs — no tab bar)
-Splash → Onboarding → GoalDetails → Experience →
+### Root Stack
+```
+Splash → Onboarding → GoalDetails → Experience → RPEEducation →
 Constraints → BodyMetrics → MacroSetup → PlanPreview → BuildingPlan → MainTabs
-ActiveWorkout and WorkoutComplete live in root stack (full screen, no tab bar).
+```
 
-View Full Plan from HomeScreen:
-  navigation.navigate('WorkoutTab' as any, {
-    screen: 'PlanView', params: { planId, weekNumber }
-  })
+### Critical Navigation Patterns
+```ts
+// WeeklyCoachSummary (via reset — no back stack)
+navigation.reset({ index: 0, routes: [{ name: 'MainTabs',
+  state: { routes: [{ name: 'HomeTab',
+    state: { routes: [{ name: 'WeeklyCoachSummary', params: { planId, weekNumber } }] } }] } }] })
 
-SUPABASE EDGE FUNCTIONS
-generate-plan — JWT: DISABLED | Returns: { plan }
-coaching-feedback — JWT: DISABLED | Returns: { feedback: string }
-weekly-coach-summary — JWT: DISABLED | Model: claude-sonnet-4-6
-  Guard: only generates if weekNumber < currentWeek
-  Client saves result via upsert to weekly_summaries
-generate-next-week — JWT: DISABLED | Model: claude-sonnet-4-6
-  Saves directly to Supabase, increments current_week
-  Guards: plan_complete, already_advanced (idempotent)
-adjust-macros — JWT: DISABLED | Model: claude-sonnet-4-6
-  Requires 3+ weight_logs in last 14 days
-  Cap: ±200 cal, protein floor: weightLbs × 0.8g
-generate-meals — JWT: DISABLED | Model: claude-sonnet-4-6
-  Upserts single row per user in meal_suggestions
+// PlanView from WorkoutComplete — MUST go through tab navigator
+navigation.navigate('MainTabs', { screen: 'WorkoutTab', params: { screen: 'PlanView' } })
+// NOT: navigation.navigate('PlanView') ← broken
 
-Deploy all:
-supabase functions deploy generate-plan
-supabase functions deploy coaching-feedback
-supabase functions deploy weekly-coach-summary
-supabase functions deploy generate-next-week
-supabase functions deploy adjust-macros
-supabase functions deploy generate-meals
-⚠️ JWT verification must be DISABLED in dashboard after every deploy.
+// WeeklyCoachSummary back button
+navigation.navigate('MainTabs') // NOT goBack()
+```
 
-JORDAN COACH PERSONA
-Name: Jordan (gender-neutral)
-Voice: Direct, data-driven, no filler praise
-Always references actual numbers (weights, reps, RPE, week number)
-Signs off weekly summaries with "— Jordan"
-In UI: "JORDAN" label style — fontSize FontSizes.label, fontFamily Fonts.bold,
-color Colors.accent, letterSpacing 1.5
+---
 
-CRITICAL DATA NOTES
-sets_json shape (workout_logs):
-  exerciseId: string     // resolve name via exerciseMap from plan_json.weeks
-  setNumber: number
-  weightLbs: number      // ⚠️ field is weightLbs not weight
-  reps: number
-  rpe: number | null
+## ONBOARDING — KEY BEHAVIOURS
+
+**Step counter:** S02=1, S02b=2, S03=3, S03b=4, S04=5, S05=6, S06=7, S07=8. BuildingPlan has no step.
+
+### S02b GoalDetailsScreen
+**Strength additions:**
+- Training background chips (optional): New / Following general / Already strength / Powerlifting
+- New to training → strength_3x (3× lift frequency), existing strength → strength_2x
+
+**Hypertrophy additions:**
+- Current split chips (optional) + duration chips (< 3mo / 3–6mo / 6+ months)
+- 6+ months on same split → structural novelty flag
+- "Other" → text input, no novelty override
+
+### S03 ExperienceScreen
+- Day-of-week picker: 7 pills Mon–Sun, min 2, sorted Mon→Sun
+- daysPerWeek = selectedDays.length (derived)
+- Jordan structure card replaces split chips:
+  - Split name badge + ⓘ info modal
+  - Session list: day label + title + muscle chips
+  - Jordan rationale in italic quotes
+  - "Looks good →" → structureConfirmed = true → Continue enabled
+  - "Adjust" → context chips based on experience + days
+  - structureConfirmed resets on selectedDays/experience change
+- Adjust options by experience:
+  - Advanced 6d: PPL / Arnold Split / Batman Split / Let Jordan decide
+  - Advanced 4d: PHUL / Upper/Lower / Let Jordan decide
+  - Advanced 5d: PPL + Upper / Upper/Lower / Let Jordan decide
+  - Intermediate 6d: PPL / Upper/Lower / Let Jordan decide
+  - Beginner: More upper / More lower / More full body / Let Jordan decide
+- Params out: all prior + splitId, splitName, splitRationale, sessionStructure, currentSplit, splitDuration, trainingBackground
+
+### S03b RPEEducationScreen
+- Read-only, step 4 of 8
+- RPE 6 (Too Easy/success), RPE 8 (Working Hard/warning), RPE 10 (Max Effort/danger)
+- "Got It →" → navigate('Constraints', { ...route.params })
+
+### Split Recommendation (utils/splitRecommendation.ts)
+**Decision order:**
+1. Strength → early return (strength_2x/3x based on experience/background)
+2. Beginner → early return (full_body_beginner ≤3d, upper_lower 4+d)
+3. Base from experience × days matrix
+4. Priority muscle overrides (arm > leg > upper dominant)
+5. Structural novelty (6+ months same split → force different structure)
+
+**Priority muscle overrides:**
+- isArmDominant (≥2 arm muscles) + 6d advanced → batman
+- isArmDominant + 5d → ppl_upper (arm focus)
+- isArmDominant + 4d → upper_lower (arm focus upper day)
+- isLegDominant (≥2 leg muscles) + 5d → ppl_leg_focus
+- isLegDominant + 4d → leg_focus
+- isLegDominant + 6d → base split + leg note appended
+- isUpperDominant (≥3 upper, not leg/arm) + 4d → upper_focus
+- isUpperDominant + 5d → ppl_upper
+
+**sessionStructure + selectedDays:**
+mapSessionsToDays() assigns workout sessions to actual selected days. Workout count always equals selectedDays.length. Rest days fill gaps.
+
+---
+
+## PLAN_JSON STRUCTURE
+
+```
+plan_json (top level):
+  title, totalWeeks, daysPerWeek, goal, split, currentWeek
+  jordanWelcome: string
+  weeks: WeekObject[]
+
+WeekObject:
+  weekNumber
+  phase: 'baseline' | 'accumulation' | 'intensification' | 'deload'
+  days: DayObject[]
+
+DayObject:
+  dayNumber, type: 'workout' | 'rest', title, sessionFocus
+  muscleGroups: string[], exercises: ExerciseObject[]
+
+ExerciseObject:
+  id, name, muscleGroup (Capitalised — .toLowerCase() for lookups)
+  sets, reps (string), targetWeight (0 = self-select Week 1)
+  restSeconds, targetRpe, coachingNote
+  plateaued?, plateauResponse?, plateauWeeks?
+
+sets_json (workout_logs):
+  exerciseId, setNumber
+  weightLbs ⚠️ NOT weight. 0 = bodyweight
+  reps
+  rpe ⚠️ 0 = not logged
   swapped: boolean
+```
 
-plan_json exercise shape:
-  id, name, muscleGroup (⚠️ Capitalised — use .toLowerCase() for color lookup),
-  sets, reps (string e.g. "8-10"), targetWeight, restSeconds, targetRpe,
-  coachingNote?
+### Phase Rules
+- Week 1: always 'baseline' — forced in normalize step
+- effectivePhase fallback: week 1 + missing/accumulation → 'baseline'
+- Phase badge colors: baseline=accent, accumulation=success, intensification/deload=warning
 
-Upsert conflict keys:
-  macro_logs: 'user_id,log_date,meal_name'
-  weekly_summaries: 'user_id,plan_id,week_number'
-  weight_logs: 'user_id,log_date'
-  meal_suggestions: 'user_id'
+### Week 1 Self-Select (non-strength)
+- targetWeight: 0 for all Week 1 exercises
+- ExerciseCard: editable "Choose weight" input (NOT "Bodyweight" static text)
+- Jordan strip: "Choose a weight at RPE [X] — log it and I'll build Week 2 from there."
+- Warmup hint when enteredWeight===0: "💡 Enter your weight above to see warm-up sets"
+- Warmup appears dynamically as user types
+- generate-next-week: priorTargetWeight===0 → use avgLoggedWeight as baseline
 
-DATABASE — ADDITIONAL COLUMNS
-sql-- User profiles extras (run if missing)
-ALTER TABLE user_profiles
-  ADD COLUMN IF NOT EXISTS injuries text[],
-  ADD COLUMN IF NOT EXISTS height_ft integer,
-  ADD COLUMN IF NOT EXISTS height_in integer,
-  ADD COLUMN IF NOT EXISTS weight_lbs float,
-  ADD COLUMN IF NOT EXISTS dietary_style text DEFAULT 'omnivore',
-  ADD COLUMN IF NOT EXISTS food_allergies text[] DEFAULT '{}',
-  ADD COLUMN IF NOT EXISTS meal_prefs_set boolean DEFAULT false;
+### jordanWelcome (4 sentences always)
+1. "I'm Jordan, your AI coach for the next X weeks."
+2. Goal-specific with user's exact numbers/muscles
+3. Week 1 calibration explanation
+4. Forward action — RPE data → Week 2 personalisation
+- Muscles: lowercase with "and" not comma-separated caps
+- Never: Great / Excited / Crush it / Amazing
 
--- Goals table extras (run if missing)
-ALTER TABLE goals
-  ADD COLUMN IF NOT EXISTS recomp_focus text,
-  ADD COLUMN IF NOT EXISTS general_focus text,
-  ADD COLUMN IF NOT EXISTS starting_weight_lbs float,
-  ADD COLUMN IF NOT EXISTS secondary_lift text,
-  ADD COLUMN IF NOT EXISTS projection_text text,
-  ADD COLUMN IF NOT EXISTS projection_metrics jsonb;
+---
 
--- New tables (run if missing)
-CREATE TABLE IF NOT EXISTS weight_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  log_date DATE NOT NULL,
-  weight_lbs FLOAT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, log_date)
-);
+## EXERCISE LIBRARY (constants/exerciseLibrary.ts)
 
-CREATE TABLE IF NOT EXISTS meal_suggestions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  generated_at TIMESTAMPTZ DEFAULT now(),
-  suggestions_json JSONB NOT NULL,
-  calories_target INTEGER NOT NULL,
-  UNIQUE(user_id)
-);
+```ts
+interface Exercise {
+  id: string
+  name: string
+  muscleGroup: string
+  secondaryMuscles: string[]
+  movementPattern: MovementPattern
+  category: 'primary_compound' | 'secondary_compound' | 'isolation'
+  equipment: string[]
+  difficulty: 'beginner' | 'intermediate' | 'advanced'
+  usesWeight: boolean
+  rotationGroup: string
+  rotationPriority: number
+}
+```
 
-DATABASE — ACTIVE PLAN QUERY PATTERN
-⚠️ Always use created_at ordering when querying active plans/goals to guarantee
-the most recent record wins (multiple records may be marked active from test runs):
+**usesWeight: false:** Plank, Ab Wheel, Pallof Press, Push-up variants, Hanging Leg Raise, bodyweight pull-up/dip  
+**usesWeight: true:** all loaded exercises including cable/machine
 
-supabase
-  .from('plans')
-  .select(...)
-  .eq('user_id', uid)
-  .eq('status', 'active')
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .maybeSingle()
+### Exercise Enrichment (ActiveWorkoutScreen)
+Plan_json exercises must be enriched with library data at load time. Without enrichment: category/movementPattern=undefined → warmup never shows.
 
-Same pattern for goals table. Run this SQL once to clean up stale active records:
+```ts
+function enrichExerciseWithLibraryData(planExercise: any) {
+  const lib = EXERCISES.find(e => e.name.toLowerCase() === planExercise.name.toLowerCase())
+  return { ...planExercise, ...lib,
+    // plan data takes priority:
+    name: planExercise.name, targetWeight: planExercise.targetWeight,
+    sets: planExercise.sets, reps: planExercise.reps, id: planExercise.id }
+}
+```
 
--- Keep only the most recent active plan per user
-UPDATE plans SET status = 'inactive'
-WHERE status = 'active'
-  AND id NOT IN (
-    SELECT DISTINCT ON (user_id) id FROM plans
-    WHERE status = 'active'
-    ORDER BY user_id, created_at DESC
-  );
+---
 
--- Same for goals
-UPDATE goals SET status = 'inactive'
-WHERE status = 'active'
-  AND id NOT IN (
-    SELECT DISTINCT ON (user_id) id FROM goals
-    WHERE status = 'active'
-    ORDER BY user_id, created_at DESC
-  );
+## EXERCISECARD — KEY BEHAVIOURS
 
-ADAPTIVE ENGINE LOGIC
-Completion tiers:
-  full ≥80%: +2.5 compound / +1 isolation if RPE≤7 and reps exceeded
-  partial 60-79%: hold all weights
-  low <60%: decrease -2.5 all exercises
+### Warmup Sets
+- Shows for: primary_compound / secondary_compound (or horizontal/vertical/squat/hinge movementPattern) with effectiveWeight ≥ 95 lbs
+- effectiveWeight = enteredWeight (self-select) OR exercise.targetWeight (normal)
+- W1: 40%×10, W2: 60%×5, W3: 80%×3. Min 45 lbs, round to 5 lbs
+- Display only — not logged. Collapsible (AsyncStorage, resets per session)
 
-Phase cycle (4-week):
-  week % 4 === 0 → deload (weights ×0.8, sets -1 min 2)
-  first half → accumulation
-  second half → intensification
+### usesWeight vs Self-Select vs Bodyweight
+```
+usesWeight=false → "Bodyweight" static text, no weight input (Plank, Push-up etc)
+usesWeight=true + targetWeight=0 + week===1 + goal!=='strength' → "Choose weight" editable input
+usesWeight=true + targetWeight>0 → normal pre-filled weight input
+```
 
-MACRO ADJUSTMENT LOGIC
-Target rates: fat_loss -0.75/wk, hypertrophy +0.25/wk,
-  strength +0.25/wk, recomp 0.0/wk, general 0.0/wk
-Thresholds: |delta| < 0.3 → on_track, |delta| > 1.5 → anomaly
-Cap: ±200 cal, protein floor weightLbs × 0.8g
+### Timed Exercises
+- Detected: reps string matches /second|sec|s$|\d+s\b/i
+- "Done" button logs fixed duration as reps, weightLbs=0
+- Display: "45 sec" (abbreviated, not "45 seconds")
 
-MEAL BUILDER
-Files: constants/ingredientLibrary.ts + components/MealBuilderModal.tsx
-50 hardcoded ingredients across 4 categories
-getFilteredIngredients(category, slot, dietaryStyle, allergies): Ingredient[]
-Accessed via "Customise →" on Jordan meal cards
-Ingredient selection is per-serving (− / count / +) not single toggle
+### Inline RPE Row
+- 1-10 below active set, appears on RPE badge tap
+- 1–4: success, 5–7: warning, 8–10: danger
 
-KNOWN ISSUES / NOTES
+### Last Week Strip
+- Shows when previousSets.length > 0
+- "LAST WEEK" + best set + all sets inline ("225×8  225×8  RPE 7.2 avg")
+- BW×N for zero weight, "(swapped)" if any swapped
+
+### Trend Indicator (2s ephemeral)
+- ↑ more weight → success green
+- ↑ more reps same weight → success green
+- = same → textSecondary
+- ↓ less weight → warning
+- last=0, current>0 → "First weighted session — baseline set at X lbs" (accent)
+
+### Set Completion Circle
+- Same style for all: idle=bgElevated+border+"✓"textTertiary, complete=accent+"✓"textPrimary
+
+---
+
+## WORKOUT RESULTS MODAL (components/WorkoutResultsModal.tsx)
+
+### Summary Strip
+- AVG RPE: avg of rpe>0. Color: <6=success, 6-8=warning, >8=danger
+- VOLUME: sum(weightLbs×reps). ≥1000 → "X.Xk lbs"
+- ENERGY (not FATIGUE): session_fatigue_rating
+  - 1=😴Wiped, 2=😤Tired, 3=😊Good, 4=💪Strong, 5=🔥Beast Mode
+
+### Exercise Grouping
+Primary: by exerciseId → fallback: name match → raw fallback: all sets ungrouped  
+Empty state: "📋 No data yet / Complete this workout to see your results here."
+
+### Set Display
+```ts
+weightLbs===0 && reps>20 → "${reps} sec"
+weightLbs===0 → "Bodyweight × ${reps}"
+else → "${weightLbs} lbs × ${reps}"
+```
+
+---
+
+## DASHBOARD — KEY BEHAVIOURS
+
+- useFocusEffect (not useEffect)
+- Generate Next Week CTA logic:
+  ```ts
+  const nextWeekExists = weeks.some(w => w.weekNumber === nextWeekNumber)
+  const weekHasAdvanced = dbCurrentWeek > planJsonCurrentWeek
+  showCTA = isWeekComplete && !nextWeekExists && !weekHasAdvanced && currentWeek < totalWeeks
+  ```
+
+---
+
+## SUPABASE EDGE FUNCTIONS
+
+All: JWT **DISABLED**, Model: `claude-sonnet-4-6`. Disable JWT after every deploy.
+
+### generate-plan — JWT: DISABLED
+**New request body fields (v1.9):**
+```ts
+splitId, splitName, splitRationale,
+sessionStructure: SessionDay[],  // Claude fills exercises, never determines structure
+weightLbs,                       // for bodyweight-based estimation
+currentSplit?, splitDuration?, trainingBackground?
+```
+
+**Week 1 weights:**
+- Strength: current1RM × 0.75
+- Non-strength: targetWeight=0 (self-select). Never guess specific weights.
+
+**actualDaysPerWeek:**
+```ts
+sessionStructure.filter(d => d.type === 'workout').length
+```
+Always use this, not the daysPerWeek param.
+
+### generate-next-week — JWT: DISABLED
+**Self-select Week 1 → Week 2:**
+```ts
+if (priorTargetWeight === 0) {
+  avgLoggedWeight = calculateAvgLoggedWeight(sets)
+  // Use as new baseline, increase if rpeIsLow
+}
+```
+
+---
+
+## PROGRAMMING MATRIX (Goal × Experience)
+
+| Goal | Beg Sets | Int Sets | Adv Sets | Rep Range | Beg RPE | Int RPE | Adv RPE |
+|---|---|---|---|---|---|---|---|
+| Strength | 3 | 4–5 | 5–6 | 1–5 | 6–7 | 7–8 | 8–9 |
+| Hypertrophy | 3 | 4 | 4–5 | 6–15 | 6–7 | 7–8 | 8–9 |
+| Recomp | 2–3 | 3 | 3–4 | 8–15 | 6 | 7 | 7–8 |
+| Fat Loss | 2–3 | 3 | 3–4 | 10–20 | 6 | 7 | 7–8 |
+| General | 2–3 | 3 | 3–4 | 8–12 | 6 | 7 | 7–8 |
+
+Rest: Strength 180–300s, Hypertrophy 60–90s, Recomp 45–75s, Fat Loss 30–60s, General 60–90s
+
+Volume landmarks: Beginner 6–12 sets/muscle/week, Intermediate 10–18, Advanced 14–22
+
+---
+
+## SPLIT LIBRARY
+
+| splitId | Display | Days | Best For |
+|---|---|---|---|
+| full_body_beginner | Full Body | 3 | True beginners |
+| full_body_advanced | Full Body | 3 | Advanced, low days |
+| upper_lower | Upper / Lower | 4 | Intermediate all goals |
+| phul | PHUL | 4 | Advanced intermediate hypertrophy |
+| ppl_upper | PPL + Upper | 5 | Intermediate-Advanced |
+| ppl | PPL | 6 | Intermediate-Advanced |
+| ppl_leg_focus | PPL + Leg Focus | 5 | Leg-dominant |
+| leg_focus | Leg Focus | 4 | Leg-dominant |
+| upper_focus | Upper Focus | 4 | Upper-dominant |
+| arnold | Arnold Split | 6 | Advanced hypertrophy |
+| batman | Batman Split | 6 | Advanced, lagging arms |
+| strength_2x | Strength Focus | 3–5 | Strength intermediate/advanced |
+| strength_3x | Strength Focus | 5–6 | Strength beginner |
+
+---
+
+## DATABASE SCHEMA
+
+### workout_logs
+| Column | Notes |
+|---|---|
+| logged_at | timestamptz — ⚠️ use in .order(), NOT created_at |
+| day_number | from plan_json dayNumber (1-indexed, resets per week) |
+| session_fatigue_rating | 1=Wiped 2=Tired 3=Good 4=Strong 5=Beast Mode |
+| sets_json | jsonb — weightLbs (not weight), rpe=0 means not logged |
+
+⚠️ Always: `.order('logged_at', { ascending: false })` on workout_logs  
+⚠️ Never: `.order('created_at')` on workout_logs — column doesn't exist
+
+### plans
+⚠️ Status constraint: active / completed / paused ONLY ('inactive' is invalid)  
+⚠️ Cleanup: `UPDATE plans SET status='paused' WHERE status='active' AND id NOT IN (...)`
+
+### planId source
+⚠️ Always derive planId from fresh Supabase query — never from route.params or cached values. Stale planId = previous week fetch returns empty.
+
+### SQL Migrations
+```sql
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS training_days text[] DEFAULT '{}';
+
+CREATE POLICY "Users can view own workout logs" ON workout_logs
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own plans" ON plans
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own weekly summaries" ON weekly_summaries
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- Cleanup duplicate active plans
+UPDATE plans SET status='paused' WHERE status='active' AND id NOT IN (
+  SELECT DISTINCT ON (user_id) id FROM plans
+  WHERE status='active' ORDER BY user_id, created_at DESC);
+```
+
+---
+
+## KNOWN ISSUES / NOTES
+
 - Lib/ uses capital L — imports must be 'Lib/supabase'
-- RevenueCat entitlement key: 'pro'
-- RevenueCat web bypass: Platform.OS === 'web' in PlanPreviewScreen
-- ALL Edge Functions JWT: DISABLED
-- Edge Function model: 'claude-sonnet-4-6'
-- Deno VS Code warnings: harmless
-- S10 duration shows 0 min on web (correct on device)
-- require('react').useState on line ~101 of WorkoutCompleteScreen — pre-existing, non-blocking
-- Weekly summary only generates if weekNumber < currentWeek
-- Coach card on Dashboard only shows if summary is for currentWeek-1 or newer
-- user_profiles may have duplicate rows from test runs — always query with
-  .order('id', { ascending: false }).limit(1).maybeSingle()
-- Weight log date display: always parse log_date as local time using
-  new Date(log_date + 'T00:00:00') to prevent UTC timezone offset shifting
-  the date back by one day in US timezones
-- Lift names stored as snake_case in DB (e.g. bench_press) — use formatLiftName()
-  helper to display: lift.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-- Sign out uses navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
-  via getParent().getParent() to reach the root navigator from tab screens
-- DEV: Restart Onboarding button visible in ProfileSettings when __DEV__ === true
+- RevenueCat entitlement: 'pro' | web bypass: Platform.OS === 'web'
+- ALL Edge Functions JWT: DISABLED | Model: 'claude-sonnet-4-6'
+- user_profiles: always query with .order('id',{ascending:false}).limit(1).maybeSingle()
+- Weight log dates: new Date(log_date + 'T00:00:00')
+- Lift names: snake_case in DB → formatLiftName() for display
+- jordanWelcome/sessionFocus/phase: only in plans post-April 2026, older plans fallback gracefully
+- DEV button in ProfileSettings when __DEV__ === true
 
-RULES FOR THIS PROJECT
+---
+
+## RULES FOR THIS PROJECT
+
 - React Native + Expo only, TypeScript everywhere
 - All DB calls through Lib/supabase.ts
 - All Claude API calls through Edge Functions only
 - Never hardcode API keys or hex color strings
 - Screens in /screens, components in /components
-- Register every new screen in navigation/index.tsx
+- Register every new screen in navigation/index.tsx AND navigation/types.ts
+- planId always from fresh Supabase query, never from route.params
 
-HOW WE WORK
+---
+
+## HOW WE WORK
+
 - Claude writes Cursor/Composer prompts, developer pastes
 - Opus 4.6 for complex screens and prompt engineering
 - Sonnet 4.6 for fixes, Edge Functions, simple screens
 - Composer 2 for all multi-file tasks and screen redesigns
-- Commit after every completed screen
+- Commit after every completed feature
 
-PHASE 4 PRIORITIES (next)
-- Apple Health integration (HealthKit)
-- Google Fit integration (Android)
-- MyFitnessPal nutrition sync (OAuth)
-- Wearable heart rate data
-- TestFlight build + paywall conversion optimization
+---
 
-DEFERRED FEATURES
-- Bodyweight goal in onboarding with healthy rate guardrails
-- Metric unit toggle (imperial only in v1 — deferred to v1.2)
-- Social features, in-app chat, cardio plans, web app
-- Nutrition trend chart on Progress screen (redundant with Nutrition tab weekly chart)
+## PHASE 4 PRIORITIES
 
-DO NOT CHANGE
-The filename — it must remain CLAUDE_CONTEXT.md
-Any other files in the project
+- TestFlight build (after outstanding issues resolved)
+- Post-Week-1 Jordan message in weekly-coach-summary
+- Apple Health / Google Fit / MyFitnessPal integrations
+- Plan graduation + cross-plan memory
+- Transparent adaptation reasoning (tap weight → see why)
+- Pyramid/wave loading for advanced users
+- Beginner exercise education (cue cards + difficulty gating)
+
+---
+
+## DEFERRED FEATURES
+
+- Bodyweight goal in onboarding
+- Metric unit toggle (v1.2)
+- Social features, cardio plans, web app
+- Nutrition trend chart
+- Multiple Jordan tone settings
+- Missed session check-in / Readiness score
+- Current lifts input in BodyMetrics
+
+---
+
+## OUTSTANDING ISSUES (April 8 2026)
+
+### 🔴 Not yet addressed
+
+**1. Lagging Areas in S04 is redundant**
+S02b already collects priority muscles. Remove the Lagging Areas section from ConstraintsScreen entirely. Keep: Equipment, Current Injuries, Exercises to Avoid.
+
+**2. Session length not wired to generate-plan prompt**
+Collected in onboarding but Claude receives no instruction on what to do with it.
+Add to prompt:
+- 30–45 mins → max 4 exercises per session, shorter rest, supersets where possible
+- 45–60 mins → standard 5–6 exercises, normal rest
+- 60–90 mins → full exercise list, standard rest
+- 90+ mins → full volume, longer rest for strength, additional isolation work
+
+**3. Pyramid/wave loading for advanced users**
+Straight sets correct for beginner/intermediate. Advanced users benefit from pyramid (ramp to top set + back-off). Requires generate-plan, generate-next-week, and ExerciseCard changes. Deferred post-TestFlight.
+
+**4. Beginner exercise education**
+- Cue cards: `cues: string[]` on each exercise (3-bullet "how to"), shown by default for beginners
+- Beginner coachingNote: form cues first not load instructions
+- Difficulty gating: beginners only get beginner/intermediate exercises
+
+**5. Post-Week-1 Jordan summary message**
+weekly-coach-summary after Week 1 should close the calibration loop. "Baseline week done — here's what I learned from your RPE and how Week 2 differs."
+
+### 🟡 Submitted but needs verification
+
+**6. Generate Week 2 CTA persisting**
+Fix submitted (nextWeekExists + weekHasAdvanced check). Verify after duplicate plans resolved.
+
+**7. Last week strip on Week 2**
+Verify after SQL cleanup that previousSetsMap populates correctly when single active plan exists.
+
+**8. daysPerWeek showing wrong count**
+sessionStructure now maps to selectedDays. Verify with fresh plan that plan info shows correct day count.
+
+### 🟢 Fixed this session
+workout_logs logged_at ✅ | Results modal ✅ | Fatigue emoji ✅ | Warmup sets ✅ | Self-select Week 1 ✅ | Core/bodyweight/timed ✅ | Jordan welcome intro ✅ | Split recommendation by experience + priority muscles ✅ | Arnold/Batman/PHUL ✅ | Structural novelty ✅ | Split info modal ✅ | Adjust menu ✅ | Duplicate active plans SQL ✅ | plans status constraint documented ✅
+
+---
+
+## DO NOT CHANGE
+
+The filename — it must remain `CLAUDE_CONTEXT.md`

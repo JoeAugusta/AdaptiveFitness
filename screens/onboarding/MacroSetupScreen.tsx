@@ -162,7 +162,7 @@ export default function MacroSetupScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>6 of 7</Text>
+        <Text style={styles.stepIndicator}>7 of 8</Text>
       </View>
 
       <ScrollView

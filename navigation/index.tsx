@@ -8,6 +8,7 @@ import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import GoalDetailsScreen from '../screens/onboarding/GoalDetailsScreen';
 import ExperienceScreen from '../screens/onboarding/ExperienceScreen';
+import RPEEducationScreen from '../screens/onboarding/RPEEducationScreen';
 import ConstraintsScreen from '../screens/onboarding/ConstraintsScreen';
 import BodyMetricsScreen from '../screens/onboarding/BodyMetricsScreen';
 import MacroSetupScreen from '../screens/onboarding/MacroSetupScreen';
@@ -165,8 +166,9 @@ export default function RootNavigator() {
       <Root.Screen name="Splash"       component={SplashScreen} />
       <Root.Screen name="Onboarding"   component={OnboardingScreen} />
       <Root.Screen name="GoalDetails"  component={GoalDetailsScreen} />
-      <Root.Screen name="Experience"   component={ExperienceScreen} />
-      <Root.Screen name="Constraints"  component={ConstraintsScreen} />
+      <Root.Screen name="Experience"    component={ExperienceScreen} />
+      <Root.Screen name="RPEEducation"  component={RPEEducationScreen} />
+      <Root.Screen name="Constraints"   component={ConstraintsScreen} />
       <Root.Screen name="BodyMetrics"  component={BodyMetricsScreen} />
       <Root.Screen name="MacroSetup"   component={MacroSetupScreen} />
       <Root.Screen name="PlanPreview"  component={PlanPreviewScreen} />

@@ -42,7 +42,7 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.stepHeader}>
-        <Text style={styles.stepIndicator}>1 of 7</Text>
+        <Text style={styles.stepIndicator}>1 of 8</Text>
       </View>
 
       <ScrollView

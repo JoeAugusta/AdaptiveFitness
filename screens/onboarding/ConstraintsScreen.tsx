@@ -92,8 +92,12 @@ export default function ConstraintsScreen() {
     targetBodyFatPct,
     experience,
     daysPerWeek,
+    trainingDays,
     sessionLength,
-    split,
+    splitId,
+    splitName,
+    splitRationale,
+    sessionStructure,
   } = route.params;
 
   const [injuries, setInjuries] = useState<string[]>([]);
@@ -167,8 +171,12 @@ export default function ConstraintsScreen() {
       targetBodyFatPct,
       experience,
       daysPerWeek,
+      trainingDays,
       sessionLength,
-      split,
+      splitId,
+      splitName,
+      splitRationale,
+      sessionStructure,
       injuries,
       equipment: equipment!,
       weakPoints,
@@ -186,7 +194,7 @@ export default function ConstraintsScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>4 of 7</Text>
+        <Text style={styles.stepIndicator}>5 of 8</Text>
       </View>
 
       <ScrollView

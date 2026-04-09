@@ -211,13 +211,23 @@ export default function BuildingPlanScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No user session after anonymous sign in');
 
+      const sessionStructureForProfile = params.sessionStructure ?? [];
+      const profileWorkoutDayCount = sessionStructureForProfile.filter(
+        (d: { type: string }) => d.type === 'workout',
+      ).length;
+      const daysPerWeekForProfile =
+        profileWorkoutDayCount > 0
+          ? profileWorkoutDayCount
+          : parseInt(String(params.daysPerWeek), 10);
+
       // Save user profile
       await supabase.from('user_profiles').upsert({
         user_id: userId,
         training_age: params.experience,
-        days_per_week: parseInt(params.daysPerWeek),
+        days_per_week: daysPerWeekForProfile,
+        training_days: params.trainingDays ?? [],
         session_duration_mins: parseDuration(params.sessionLength),
-        preferred_split: params.split,
+        preferred_split: params.splitId,
         equipment: params.equipment,
         excluded_exercises: params.excludedExercises ?? [],
         injuries: params.injuries ?? [],
@@ -263,13 +273,45 @@ export default function BuildingPlanScreen() {
         fats_g: params.fatsG,
       });
 
+      // Pause any existing active plans for this user — avoids duplicate active plans
+      const { error: pauseError } = await supabase
+        .from('plans')
+        .update({ status: 'paused' })
+        .eq('user_id', userId)
+        .eq('status', 'active');
+
+      if (pauseError) {
+        console.warn('[BuildingPlan] Could not pause existing plans:', pauseError);
+        // Non-fatal — continue with plan generation
+      } else {
+        console.log('[BuildingPlan] Existing active plans paused');
+      }
+
       // Call the Edge Function to generate the training plan
       const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+      const sessionStructure = params.sessionStructure ?? [];
+      const structureWorkoutCount = sessionStructure.filter(
+        (d: { type: string }) => d.type === 'workout',
+      ).length;
+      const daysPerWeekResolved =
+        structureWorkoutCount > 0
+          ? String(structureWorkoutCount)
+          : params.daysPerWeek;
+
+      console.log('[generate-plan body] daysPerWeek:', daysPerWeekResolved);
+      console.log('[generate-plan body] trainingDays:', params.trainingDays);
+      console.log('[generate-plan body] sessionStructure length:', structureWorkoutCount);
+
+      const generatePlanBody = {
+        ...params,
+        daysPerWeek: daysPerWeekResolved,
+      };
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'generate-plan',
         {
-          body: params,
+          body: generatePlanBody,
           headers: {
             Authorization: `Bearer ${currentSession?.access_token}`,
           },

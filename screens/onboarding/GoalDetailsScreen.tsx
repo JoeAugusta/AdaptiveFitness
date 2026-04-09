@@ -136,6 +136,28 @@ const GENERAL_EXPECTATIONS: Record<string, string> = {
   '12w': '12 weeks transforms your baseline fitness. Expect meaningful strength gains and improved body composition.',
 };
 
+const HYPERTROPHY_CURRENT_SPLIT_OPTIONS: string[] = [
+  'Not following a program',
+  'Full Body',
+  'Upper / Lower',
+  'Push / Pull / Legs',
+  'Bro Split',
+  'Other',
+];
+
+const HYPERTROPHY_SPLIT_DURATION_OPTIONS: string[] = [
+  'Less than 3 months',
+  '3–6 months',
+  '6+ months',
+];
+
+const STRENGTH_TRAINING_BACKGROUND_OPTIONS: string[] = [
+  'New to structured training',
+  'Following a general program',
+  'Already doing a strength-specific program',
+  'Running a powerlifting program',
+];
+
 function StrengthContent({
   onContinue,
 }: {
@@ -149,6 +171,7 @@ function StrengthContent({
   const [planDuration, setPlanDuration] = useState('12w');
   const [durationManuallySet, setDurationManuallySet] = useState(false);
   const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(null);
+  const [trainingBackground, setTrainingBackground] = useState<string | null>(null);
 
   const canContinue = !!targetLift && current1RM.trim() !== '' && target1RM.trim() !== '';
 
@@ -196,6 +219,10 @@ function StrengthContent({
           target1RM: target1RM.trim(),
           secondaryLift,
           planDuration,
+          currentSplit: null,
+          currentSplitOther: null,
+          splitDuration: null,
+          trainingBackground: trainingBackground ?? null,
         })
       }
     >
@@ -313,6 +340,50 @@ function StrengthContent({
         </View>
       )}
 
+      <View style={styles.trainingHistoryBlock}>
+        <Text style={styles.trainingSectionHeading}>Your training background</Text>
+        <Text style={styles.trainingQuestion}>
+          How have you been training recently?
+        </Text>
+        <View style={styles.chipRow}>
+          {STRENGTH_TRAINING_BACKGROUND_OPTIONS.map((label) => {
+            const selected = trainingBackground === label;
+            return (
+              <TouchableOpacity
+                key={label}
+                activeOpacity={0.7}
+                style={[styles.chip, selected && styles.chipSelected]}
+                onPress={() => setTrainingBackground(label)}
+              >
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextSelected]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {(trainingBackground === 'Already doing a strength-specific program' ||
+          trainingBackground === 'Running a powerlifting program') && (
+          <View style={styles.jordanInsightCard}>
+            <Text style={styles.jordanInsightText}>
+              Jordan will build on your existing strength base and focus specifically
+              on breaking through your current plateau.
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setTrainingBackground(null)}
+          style={styles.skipLinkHit}
+          accessibilityRole="button"
+          accessibilityLabel="Skip training background"
+        >
+          <Text style={styles.skipLinkText}>Skip — I&apos;ll let Jordan decide</Text>
+        </TouchableOpacity>
+      </View>
+
       <Text style={styles.sectionHeading}>
         Secondary Lift (Optional)
       </Text>
@@ -355,6 +426,18 @@ function HypertrophyContent({
 }) {
   const [priorityMuscles, setPriorityMuscles] = useState<string[]>([]);
   const [planDuration, setPlanDuration] = useState('12w');
+  const [currentSplit, setCurrentSplit] = useState<string | null>(null);
+  const [splitDuration, setSplitDuration] = useState<string | null>(null);
+  const [currentSplitOther, setCurrentSplitOther] = useState('');
+
+  useEffect(() => {
+    if (currentSplit === 'Not following a program') {
+      setSplitDuration(null);
+    }
+    if (currentSplit !== 'Other') {
+      setCurrentSplitOther('');
+    }
+  }, [currentSplit]);
 
   const toggleMuscle = (muscle: string) => {
     setPriorityMuscles((prev) => {
@@ -370,7 +453,19 @@ function HypertrophyContent({
       subtitle="Select up to 3 muscle groups you want to prioritise. Your plan will give these extra volume."
       canContinue
       buttonLabel={priorityMuscles.length > 0 ? 'Continue' : 'Skip'}
-      onContinue={() => onContinue({ priorityMuscles, planDuration })}
+      onContinue={() =>
+        onContinue({
+          priorityMuscles,
+          planDuration,
+          currentSplit: currentSplit ?? null,
+          currentSplitOther:
+            currentSplit === 'Other' && currentSplitOther.trim()
+              ? currentSplitOther.trim()
+              : null,
+          splitDuration: splitDuration ?? null,
+          trainingBackground: null,
+        })
+      }
     >
       <View style={styles.chipRow}>
         {MUSCLE_OPTIONS.map((muscle) => {
@@ -402,6 +497,97 @@ function HypertrophyContent({
           These muscles will receive priority volume in your program.
         </Text>
       )}
+
+      <View style={styles.trainingHistoryBlock}>
+        <Text style={styles.trainingSectionHeading}>Current training</Text>
+        <Text style={styles.trainingHistorySubtext}>
+          Helps Jordan recommend a fresh structure if needed
+        </Text>
+        <Text style={styles.trainingQuestion}>
+          What split have you been following?
+        </Text>
+        <View style={styles.chipRow}>
+          {HYPERTROPHY_CURRENT_SPLIT_OPTIONS.map((label) => {
+            const selected = currentSplit === label;
+            return (
+              <TouchableOpacity
+                key={label}
+                activeOpacity={0.7}
+                style={[styles.chip, selected && styles.chipSelected]}
+                onPress={() => setCurrentSplit(label)}
+              >
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextSelected]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {currentSplit === 'Other' ? (
+          <TextInput
+            style={styles.splitOtherInput}
+            placeholder="Briefly describe your current structure"
+            placeholderTextColor={Colors.textTertiary}
+            value={currentSplitOther}
+            onChangeText={setCurrentSplitOther}
+            maxLength={80}
+          />
+        ) : null}
+        {currentSplit != null &&
+          currentSplit !== '' &&
+          currentSplit !== 'Not following a program' && (
+            <>
+              <Text style={[styles.trainingQuestion, styles.trainingQuestionFollow]}>
+                How long on this structure?
+              </Text>
+              <View style={styles.chipRow}>
+                {HYPERTROPHY_SPLIT_DURATION_OPTIONS.map((label) => {
+                  const selected = splitDuration === label;
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      activeOpacity={0.7}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                      onPress={() => setSplitDuration(label)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          selected && styles.chipTextSelected,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        {splitDuration === '6+ months' && (
+          <View style={styles.jordanInsightCard}>
+            <Text style={styles.jordanInsightText}>
+              Your body has adapted to this structure. Jordan will recommend a
+              different approach to reignite your progress.
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            setCurrentSplit(null);
+            setSplitDuration(null);
+            setCurrentSplitOther('');
+          }}
+          style={styles.skipLinkHit}
+          accessibilityRole="button"
+          accessibilityLabel="Skip current training questions"
+        >
+          <Text style={styles.skipLinkText}>Skip — I&apos;ll let Jordan decide</Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
@@ -794,7 +980,7 @@ function ScreenShell({
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>2 of 7</Text>
+        <Text style={styles.stepIndicator}>2 of 8</Text>
       </View>
 
       <ScrollView
@@ -1027,6 +1213,71 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
+  },
+
+  trainingHistoryBlock: {
+    marginTop: Spacing.xl,
+  },
+  trainingSectionHeading: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    marginTop: 0,
+  },
+  trainingHistorySubtext: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  trainingQuestion: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginBottom: 12,
+    marginTop: 0,
+  },
+  trainingQuestionFollow: {
+    marginTop: Spacing.md,
+  },
+  jordanInsightCard: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  jordanInsightText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    lineHeight: 18,
+  },
+  skipLinkHit: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  skipLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
+  },
+  splitOtherInput: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 
   inputFieldBlock: {

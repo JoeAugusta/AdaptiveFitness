@@ -35,6 +35,47 @@ function roundTo2_5(value: number): number {
   return Math.round(value / 2.5) * 2.5;
 }
 
+type LogSetLike = {
+  exerciseId?: string;
+  exerciseName?: string;
+  name?: string;
+  weightLbs?: number;
+  weight?: number;
+  reps?: number;
+  rpe?: number | null;
+};
+
+function collectSetsForExercise(
+  logs: { sets_json?: LogSetLike[] | null }[],
+  exerciseMap: Record<string, string>,
+  targetName: string,
+): LogSetLike[] {
+  const out: LogSetLike[] = [];
+  for (const log of logs) {
+    const setsJson = log.sets_json ?? [];
+    if (!Array.isArray(setsJson)) continue;
+    for (const set of setsJson) {
+      const resolvedName: string =
+        (set.exerciseId ? exerciseMap[set.exerciseId] : '') ||
+        String(set.exerciseName ?? '') ||
+        String(set.name ?? '');
+      if (resolvedName !== targetName) continue;
+      out.push(set);
+    }
+  }
+  return out;
+}
+
+/** Average of logged working weights (sets_json uses weightLbs). */
+function calculateAvgLoggedWeight(sets: LogSetLike[]): number {
+  if (!sets || sets.length === 0) return 0;
+  const weights = sets
+    .filter((s) => s.weightLbs != null && Number(s.weightLbs) > 0)
+    .map((s) => Number(s.weightLbs));
+  if (weights.length === 0) return 0;
+  return weights.reduce((a, b) => a + b, 0) / weights.length;
+}
+
 function calculateIncrease(
   currentWeight: number,
   avgRpe: number,
@@ -81,6 +122,48 @@ function calculateIncrease(
   // Cap at 12% of current weight — safety ceiling
   const cap = Math.round((currentWeight * 0.12) / 2.5) * 2.5;
   return Math.min(withMinimum, cap);
+}
+
+/** Keep day numbers, rest/workout layout, titles, muscleGroups from the week that was completed. */
+function mergeNextWeekWithPreviousStructure(
+  previousWeek: { days?: any[] } | undefined,
+  claudeWeek: any,
+  weekNumber: number,
+  phase: string,
+): any {
+  const prevDays = previousWeek?.days ?? [];
+  if (prevDays.length === 0) {
+    return { ...claudeWeek, weekNumber, phase };
+  }
+  const aiDays = Array.isArray(claudeWeek?.days) ? claudeWeek.days : [];
+  const mergedDays = prevDays.map((prevDay: any, i: number) => {
+    const aiDay = aiDays[i] ?? {};
+    if (prevDay.type === 'rest') {
+      return {
+        ...prevDay,
+        dayNumber: prevDay.dayNumber,
+        type: 'rest',
+        sessionFocus: '',
+        exercises: [],
+      };
+    }
+    return {
+      ...prevDay,
+      dayNumber: prevDay.dayNumber,
+      type: 'workout',
+      sessionFocus:
+        typeof aiDay.sessionFocus === 'string'
+          ? aiDay.sessionFocus
+          : (prevDay.sessionFocus ?? ''),
+      exercises: Array.isArray(aiDay.exercises) ? aiDay.exercises : (prevDay.exercises ?? []),
+    };
+  });
+  return {
+    ...claudeWeek,
+    weekNumber,
+    phase,
+    days: mergedDays,
+  };
 }
 
 serve(async (req) => {
@@ -280,9 +363,102 @@ serve(async (req) => {
       const avgRpe = actual && actual.count > 0 ? actual.totalRpe / actual.count : 0;
       const compound = isCompound(name);
       const hasRpeData = avgRpe > 0;
+      const priorTargetWeight = prescribed.targetWeight ?? 0;
+      const isNonStrengthGoal = goalType !== 'strength';
+      const priorWasSelfSelect = isNonStrengthGoal && priorTargetWeight === 0;
 
       let weightAction: 'increase' | 'decrease' | 'hold';
       let weightDelta: number;
+      let newTargetWeight: number;
+      let selfSelectCoachingNote: string | undefined;
+      let effectiveOldWeight = prescribed.targetWeight;
+
+      if (priorWasSelfSelect) {
+        const exerciseSets = collectSetsForExercise(logs, exerciseMap, name);
+        const avgLoggedWeight = calculateAvgLoggedWeight(exerciseSets);
+        const rawPrior = prescribed.targetWeight;
+
+        console.log('[weight adaptation]', {
+          exerciseName: name,
+          priorTargetWeight: rawPrior ?? 0,
+          avgLoggedWeight,
+          hasRpeData,
+          setsCount: exerciseSets.length,
+          rawSets: exerciseSets.map((s) => ({
+            w: s.weightLbs,
+            r: s.reps,
+            rpe: s.rpe,
+          })),
+        });
+
+        const rpeIsLow = hasRpeData && avgRpe <= 6;
+        const rpeIsHigh = hasRpeData && avgRpe >= 9;
+        const tr = prescribed.targetRpe;
+        const baseWeight = roundTo2_5(avgLoggedWeight);
+        const avgWDisplay = Math.round(avgLoggedWeight);
+
+        if (avgLoggedWeight === 0) {
+          newTargetWeight = 0;
+          weightAction = 'hold';
+          weightDelta = 0;
+          effectiveOldWeight = 0;
+          selfSelectCoachingNote =
+            `No weight logged last week — choose your working weight at RPE ${tr} this session.`;
+        } else if (!hasRpeData) {
+          newTargetWeight = baseWeight;
+          weightAction = 'hold';
+          weightDelta = 0;
+          effectiveOldWeight = avgWDisplay;
+          selfSelectCoachingNote =
+            `Set at ${newTargetWeight} lbs from last week. Log your RPE this session so I can start adjusting your progression.`;
+        } else if (rpeIsLow) {
+          const inc = calculateIncrease(
+            avgLoggedWeight,
+            avgRpe,
+            prescribed.targetRpe,
+            trainingAge,
+            compound,
+          );
+          newTargetWeight = Math.max(0, roundTo2_5(avgLoggedWeight + inc));
+          weightAction = 'increase';
+          weightDelta = newTargetWeight - avgLoggedWeight;
+          effectiveOldWeight = avgWDisplay;
+          selfSelectCoachingNote =
+            `Your ${avgLoggedWeight} lbs felt light — moving to ${newTargetWeight} lbs this week.`;
+        } else if (rpeIsHigh) {
+          newTargetWeight = Math.max(0, roundTo2_5(avgLoggedWeight * 0.95));
+          weightAction = 'decrease';
+          weightDelta = newTargetWeight - avgLoggedWeight;
+          effectiveOldWeight = avgWDisplay;
+          selfSelectCoachingNote =
+            `${avgLoggedWeight} lbs was tough — dropping to ${newTargetWeight} lbs for better quality reps.`;
+        } else {
+          newTargetWeight = baseWeight;
+          weightAction = 'hold';
+          weightDelta = 0;
+          effectiveOldWeight = avgWDisplay;
+          selfSelectCoachingNote =
+            `${newTargetWeight} lbs confirmed as your working weight. Keep rating your RPE so I can keep dialling it in.`;
+        }
+
+        exerciseAdaptations.push({
+          name,
+          oldWeight: effectiveOldWeight,
+          newTargetWeight,
+          weightAction,
+          rpeGap: Math.round((avgRpe - prescribed.targetRpe) * 10) / 10,
+          avgRpe: Math.round(avgRpe * 10) / 10,
+          hasRpeData,
+          avgReps: Math.round(avgReps * 10) / 10,
+          targetRpe: prescribed.targetRpe,
+          targetReps: prescribed.targetReps,
+          minReps: prescribed.minReps,
+          oldReps: prescribed.reps,
+          sets: prescribed.sets,
+          selfSelectCoachingNote,
+        });
+        continue;
+      }
 
       if (completionTier === 'full') {
         const rpeIsLow = hasRpeData && avgRpe <= 6;
@@ -322,7 +498,7 @@ serve(async (req) => {
         weightDelta = -2.5;
       }
 
-      const newTargetWeight = Math.max(0, prescribed.targetWeight + weightDelta);
+      newTargetWeight = Math.max(0, prescribed.targetWeight + weightDelta);
 
       exerciseAdaptations.push({
         name,
@@ -391,6 +567,24 @@ serve(async (req) => {
     // Step 6 — Call Claude API
     const split = planJson.split ?? weekData?.title ?? 'mixed';
     const equipment = profile?.equipment ?? 'full gym';
+    const templateDays = weekData?.days ?? [];
+    const dayCount = templateDays.length;
+    const structureLines = templateDays
+      .map((d: any) =>
+        d.type === 'rest'
+          ? `Day ${d.dayNumber}: Rest`
+          : `Day ${d.dayNumber}: ${d.title ?? 'Workout'} (${(d.muscleGroups ?? []).join(', ')})`,
+      )
+      .join('\n');
+    const preserveBlock =
+      dayCount > 0
+        ? `PRESERVE THIS EXACT DAY STRUCTURE for Week ${nextWeekNumber}:
+${structureLines}
+
+Do NOT add, remove, or reorder days. Return exactly ${dayCount} days in the same order: same dayNumber and type (workout/rest) for each slot. For each workout slot, provide exercises, sessionFocus, and fields as specified. Only update exercise weights, reps, and coaching notes based on performance data.
+
+`
+        : '';
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -459,7 +653,7 @@ Return ONLY valid JSON with no prose, preamble, or markdown.`,
         messages: [
           {
             role: 'user',
-            content: `Generate Week ${nextWeekNumber} of a ${totalWeeks}-week ${goalType} training plan.
+            content: `${preserveBlock}Generate Week ${nextWeekNumber} of a ${totalWeeks}-week ${goalType} training plan.
 
 Phase: ${phase}
 Training split: ${split}
@@ -477,11 +671,12 @@ Rules:
 - If phase is 'deload': sets are already reduced in the data above, keep reps in lower range
 - If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
 - If hasRpeData is false for an exercise: the coachingNote MUST ask the user to log RPE next session. Weight is held. Example: "I'm holding 225 lbs here — I need your RPE to know where to take this. Rate every set next session."
+- If selfSelectCoachingNote is present on an adaptation: use it as the core of that exercise's coachingNote (you may tighten wording slightly but keep the numbers).
 - Never decrease weight solely because RPE was not logged.
 - Exercises with plateaued: true require special handling per the system prompt. Do not ignore this field.
 - Each exercise must have: id (new uuid), name, muscleGroup, sets, reps (string e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote
 - Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "" (empty string).
-- Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type 'rest'.
+- Include exactly ${dayCount || 7} days in the same order as the structure above. Workout slots have exercises; rest slots have empty exercises array and type 'rest'.
 
 Return ONLY this exact JSON structure:
 {
@@ -547,9 +742,10 @@ Return ONLY this exact JSON structure:
       throw new Error('JSON parse failed: ' + String(e));
     }
 
-    // Ensure weekNumber and phase are set correctly
+    // Ensure weekNumber and phase are set correctly; lock layout to completed week
     nextWeekData.weekNumber = nextWeekNumber;
     nextWeekData.phase = phase;
+    nextWeekData = mergeNextWeekWithPreviousStructure(weekData, nextWeekData, nextWeekNumber, phase);
 
     // Step 8 — Save to Supabase atomically (fresh read to avoid race)
     const { data: freshPlan, error: freshErr } = await supabase
@@ -562,7 +758,22 @@ Return ONLY this exact JSON structure:
 
     const updatedPlanJson = { ...freshPlan.plan_json };
     if (!Array.isArray(updatedPlanJson.weeks)) updatedPlanJson.weeks = [];
-    updatedPlanJson.weeks.push(nextWeekData);
+
+    const existingWeeks = updatedPlanJson.weeks ?? [];
+    const nextWeekAlreadyExists = existingWeeks.some(
+      (w: any) => w.weekNumber === nextWeekNumber,
+    );
+
+    if (nextWeekAlreadyExists) {
+      console.log('[generate-next-week] Week already exists — skipping', nextWeekNumber);
+      return new Response(
+        JSON.stringify({ status: 'already_exists', weekNumber: nextWeekNumber }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      );
+    }
+
+    const updatedWeeks = [...existingWeeks, nextWeekData];
+    updatedPlanJson.weeks = updatedWeeks;
     updatedPlanJson.currentWeek = nextWeekNumber;
 
     const { error: updateErr } = await supabase

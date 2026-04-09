@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -14,6 +13,17 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import {
+  getRecommendedSplit,
+  getSessionStructure,
+  getSessionTitle,
+  getAdjustOptions,
+  getSplitInfoDescription,
+  badgeNameForSplit,
+  type SplitRecommendation,
+  type SessionDay,
+  type AdjustMenuOption,
+} from '../../utils/splitRecommendation';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -30,12 +40,12 @@ const EXPERIENCE_OPTIONS: Option[] = [
   { id: 'advanced', label: 'Advanced', detail: '3+ years' },
 ];
 
-const DAYS_OPTIONS: Option[] = [
-  { id: '3', label: '3 days' },
-  { id: '4', label: '4 days' },
-  { id: '5', label: '5 days' },
-  { id: '6', label: '6 days' },
-];
+const TRAINING_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+function sortTrainingDays(days: string[]): string[] {
+  const order = TRAINING_DAY_LABELS as readonly string[];
+  return [...days].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
 
 const DURATION_OPTIONS: Option[] = [
   { id: '30-45', label: '30–45 mins' },
@@ -44,129 +54,8 @@ const DURATION_OPTIONS: Option[] = [
   { id: '90+', label: '90+ mins' },
 ];
 
-const SPLIT_OPTIONS: Option[] = [
-  { id: 'ppl', label: 'Push / Pull / Legs' },
-  { id: 'upper_lower', label: 'Upper / Lower' },
-  { id: 'full_body', label: 'Full Body' },
-  { id: 'bro_split', label: 'Bro Split' },
-  { id: 'custom', label: 'Custom' },
-];
-
-const SPLIT_INFO_TITLE = "What's a training split?";
-const SPLIT_INFO_BODY =
-  'A training split defines how you divide muscle groups across your weekly sessions. Push/Pull/Legs is the most popular for intermediate lifters. Upper/Lower suits those training 4 days. Full Body works best for 3 days/week.';
-
-interface SplitRecommendation {
-  splitId: string;
-  reason: string;
-  warning?: string;
-}
-
-function getRecommendedSplit(
-  goal: string,
-  days: string,
-  targetLift?: string,
-): SplitRecommendation {
-  const d = parseInt(days);
-  const lift = targetLift?.replace(/_/g, ' ') ?? 'your target lift';
-
-  if (goal === 'strength') {
-    if (d <= 3) {
-      return {
-        splitId: 'upper_lower',
-        reason: `Upper/Lower lets ${lift} appear twice per week — essential for 1RM progression.`,
-        warning: `PPL with 3 days means ${lift} only appears once per week. Upper/Lower gives you twice the practice on your target lift.`,
-      };
-    }
-    if (d === 4) {
-      return {
-        splitId: 'upper_lower',
-        reason: `Upper/Lower A/B gives you two ${lift} sessions per week at different intensities — heavy and volume.`,
-        warning: `PPL works at 4 days but Upper/Lower puts ${lift} on both upper days, giving you twice the weekly exposure to your target movement.`,
-      };
-    }
-    // 5-6 days
-    return {
-      splitId: 'ppl',
-      reason: `PPL at ${d} days gives you two push sessions per week — one heavy, one volume — ideal for ${lift} progression.`,
-      warning: `Upper/Lower works well too at ${d} days. PPL is slightly better for strength specialisation as it dedicates full sessions to your target movement pattern.`,
-    };
-  }
-
-  if (goal === 'hypertrophy') {
-    if (d <= 3) {
-      return {
-        splitId: 'full_body',
-        reason: 'Full Body hits every muscle group 3x per week — optimal frequency for muscle growth at 3 days.',
-        warning: 'PPL with 3 days means each muscle only gets hit once per week. Full Body gives 3x the weekly stimulus for the same number of sessions.',
-      };
-    }
-    if (d === 4) {
-      return {
-        splitId: 'upper_lower',
-        reason: 'Upper/Lower gives each muscle 2x weekly frequency — the sweet spot for hypertrophy at 4 days.',
-        warning: 'PPL works well at 4 days too — slightly less weekly frequency per muscle but higher volume per session. Both are solid choices.',
-      };
-    }
-    // 5-6 days
-    return {
-      splitId: 'ppl',
-      reason: `PPL at ${d} days gives high volume per muscle group with full recovery between sessions — ideal for hypertrophy.`,
-      warning: 'Upper/Lower at this frequency can work but PPL keeps volume per session higher, which is better for hypertrophy stimulus.',
-    };
-  }
-
-  if (goal === 'recomp') {
-    if (d <= 3) {
-      return {
-        splitId: 'full_body',
-        reason: 'Full Body sessions maximise caloric burn while hitting every muscle — ideal for recomposition at 3 days.',
-        warning: 'PPL means each muscle only gets hit once per week. Full Body keeps frequency high while burning more calories per session.',
-      };
-    }
-    return {
-      splitId: 'upper_lower',
-      reason: 'Upper/Lower keeps intensity high and frequency balanced — effective for building muscle while in a slight deficit.',
-      warning: 'PPL is a reasonable choice. Upper/Lower gives slightly more weekly frequency per muscle which helps maintain muscle during a deficit.',
-    };
-  }
-
-  if (goal === 'fat_loss') {
-    if (d <= 3) {
-      return {
-        splitId: 'full_body',
-        reason: 'Full Body sessions burn significantly more calories and keep muscle stimulus high across fewer days.',
-        warning: 'PPL means each muscle only trains once per week. Full Body burns more calories per session and preserves more muscle during fat loss.',
-      };
-    }
-    return {
-      splitId: 'upper_lower',
-      reason: 'Upper/Lower balances muscle preservation with caloric expenditure — each muscle trains twice weekly.',
-      warning: 'PPL can work for fat loss but Full Body or Upper/Lower burns more calories per session and preserves more muscle.',
-    };
-  }
-
-  // general
-  if (d <= 3) {
-    return {
-      splitId: 'full_body',
-      reason: 'Full Body is the most efficient way to build balanced fitness at 3 days — every session hits everything.',
-      warning: 'PPL with 3 days means each muscle only trains once per week. Full Body gives more balanced stimulus for general fitness.',
-    };
-  }
-  if (d === 4) {
-    return {
-      splitId: 'upper_lower',
-      reason: 'Upper/Lower is the most balanced split for general fitness at 4 days — each muscle trains twice weekly.',
-      warning: 'PPL works well at 4 days too. Upper/Lower is slightly more balanced for general fitness as it hits everything twice per week.',
-    };
-  }
-  // 5-6 days
-  return {
-    splitId: 'ppl',
-    reason: `PPL at ${d} days gives great volume distribution and recovery — solid for building overall fitness.`,
-    warning: 'Upper/Lower works too at this frequency. PPL gives slightly more volume per session which can be better for strength and size.',
-  };
+function formatMuscleLabel(m: string): string {
+  return m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export default function ExperienceScreen() {
@@ -182,35 +71,214 @@ export default function ExperienceScreen() {
     targetWeightLbs,
     targetDate,
     targetBodyFatPct,
+    weakPoints,
+    currentSplit,
+    splitDuration,
+    trainingBackground,
+    currentSplitOther,
   } = route.params;
 
   const [experience, setExperience] = useState<string | null>(null);
-  const [daysPerWeek, setDaysPerWeek] = useState<string | null>(null);
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [sessionLength, setSessionLength] = useState<string | null>(null);
-  const [split, setSplit] = useState<string | null>(null);
-  const [recommendation, setRecommendation] = useState<SplitRecommendation | null>(
+  const [recommendedSplit, setRecommendedSplit] = useState<SplitRecommendation | null>(
     null,
   );
-  const [splitInfoVisible, setSplitInfoVisible] = useState(false);
+  const [sessionStructure, setSessionStructure] = useState<SessionDay[]>([]);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [showSplitInfo, setShowSplitInfo] = useState(false);
+  const [structureConfirmed, setStructureConfirmed] = useState(false);
+  const [cardHighlight, setCardHighlight] = useState(false);
+  const [showConfirmHint, setShowConfirmHint] = useState(false);
 
-  const allSelected = experience && daysPerWeek && sessionLength && split;
+  const scrollRef = useRef<ScrollView>(null);
+  const structureLayoutYRef = useRef(0);
+  const originalStructureRef = useRef<SessionDay[]>([]);
+  const originalRecRef = useRef<SplitRecommendation | null>(null);
+
+  const daysPerWeek = selectedDays.length > 0 ? String(selectedDays.length) : null;
+
+  useEffect(() => {
+    setStructureConfirmed(false);
+    setShowConfirmHint(false);
+  }, [selectedDays, experience]);
+
+  useEffect(() => {
+    if (selectedDays.length >= 2 && experience) {
+      const rec = getRecommendedSplit(
+        goal,
+        String(selectedDays.length),
+        targetLift ?? null,
+        experience,
+        currentSplit ?? null,
+        splitDuration ?? null,
+        trainingBackground ?? null,
+        weakPoints ?? [],
+        priorityMuscles ?? [],
+      );
+      const structure = getSessionStructure(
+        rec.splitId,
+        selectedDays.length,
+        goal,
+        targetLift ?? null,
+        priorityMuscles ?? [],
+        weakPoints ?? [],
+        sortTrainingDays(selectedDays),
+        undefined,
+        experience,
+      );
+      setRecommendedSplit(rec);
+      setSessionStructure(structure);
+      originalStructureRef.current = structure;
+      originalRecRef.current = rec;
+    } else {
+      setRecommendedSplit(null);
+      setSessionStructure([]);
+      originalStructureRef.current = [];
+      originalRecRef.current = null;
+    }
+  }, [
+    selectedDays,
+    experience,
+    goal,
+    targetLift,
+    priorityMuscles,
+    weakPoints,
+    currentSplit,
+    splitDuration,
+    trainingBackground,
+  ]);
+
+  const baseReady =
+    !!experience &&
+    selectedDays.length >= 2 &&
+    !!sessionLength &&
+    !!recommendedSplit &&
+    sessionStructure.length > 0;
 
   const handleContinue = () => {
-    if (!allSelected) return;
-    navigation.navigate('Constraints', {
-      goal,
-      targetLift,
-      current1RM,
-      target1RM,
-      priorityMuscles,
-      targetWeightLbs,
-      targetDate,
-      targetBodyFatPct,
+    if (!baseReady || !recommendedSplit || !daysPerWeek) return;
+    if (!structureConfirmed) {
+      setShowConfirmHint(true);
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, structureLayoutYRef.current - 24),
+        animated: true,
+      });
+      setCardHighlight(true);
+      setTimeout(() => setCardHighlight(false), 300);
+      return;
+    }
+    navigation.navigate('RPEEducation', {
+      ...route.params,
       experience: experience!,
-      daysPerWeek: daysPerWeek!,
+      daysPerWeek: String(selectedDays.length),
+      trainingDays: selectedDays,
       sessionLength: sessionLength!,
-      split: split!,
+      splitId: recommendedSplit.splitId,
+      splitName: recommendedSplit.splitName,
+      splitRationale: recommendedSplit.reason,
+      sessionStructure,
+      currentSplitOther: currentSplitOther ?? null,
     });
+  };
+
+  const toggleTrainingDay = (label: string) => {
+    setSelectedDays((prev) => {
+      const next = prev.includes(label)
+        ? prev.filter((d) => d !== label)
+        : [...prev, label];
+      return sortTrainingDays(next);
+    });
+  };
+
+  const workoutsOrdered = sessionStructure
+    .filter((d) => d.type === 'workout')
+    .sort((a, b) => a.day - b.day);
+  const sortedSelected = sortTrainingDays(selectedDays);
+
+  const adjustOptions: AdjustMenuOption[] =
+    experience && selectedDays.length >= 2
+      ? getAdjustOptions(experience, selectedDays.length)
+      : [];
+
+  const handleAdjustOption = (opt: AdjustMenuOption) => {
+    if (!recommendedSplit) return;
+    if (opt.kind === 'reset') {
+      const oRec = originalRecRef.current;
+      const oStruct = originalStructureRef.current;
+      if (oRec && oStruct.length > 0) {
+        setRecommendedSplit(oRec);
+        setSessionStructure([...oStruct]);
+      }
+      setShowAdjust(false);
+      setStructureConfirmed(false);
+      return;
+    }
+    if (opt.kind === 'force_split') {
+      setSessionStructure(
+        getSessionStructure(
+          opt.splitId,
+          selectedDays.length,
+          goal,
+          targetLift ?? null,
+          priorityMuscles ?? [],
+          weakPoints ?? [],
+          sortTrainingDays(selectedDays),
+          undefined,
+          experience ?? 'intermediate',
+        ),
+      );
+      setRecommendedSplit({
+        ...recommendedSplit,
+        splitId: opt.splitId,
+        splitName: opt.label,
+      });
+      setShowAdjust(false);
+      setStructureConfirmed(false);
+      return;
+    }
+    if (opt.kind === 'hint') {
+      if (opt.hint === 'more_full_body') {
+        const sid = experience === 'beginner' ? 'full_body_beginner' : 'full_body_advanced';
+        setRecommendedSplit({
+          ...recommendedSplit,
+          splitId: sid,
+          splitName: badgeNameForSplit(sid),
+          reason:
+            recommendedSplit.reason +
+            ' Sessions skew full-body for more frequency each week.',
+        });
+        setSessionStructure(
+          getSessionStructure(
+            sid,
+            selectedDays.length,
+            goal,
+            targetLift ?? null,
+            priorityMuscles ?? [],
+            weakPoints ?? [],
+            sortTrainingDays(selectedDays),
+            undefined,
+            experience ?? 'intermediate',
+          ),
+        );
+      } else {
+        setSessionStructure(
+          getSessionStructure(
+            recommendedSplit.splitId,
+            selectedDays.length,
+            goal,
+            targetLift ?? null,
+            priorityMuscles ?? [],
+            weakPoints ?? [],
+            sortTrainingDays(selectedDays),
+            opt.hint,
+            experience ?? 'intermediate',
+          ),
+        );
+      }
+      setShowAdjust(false);
+      setStructureConfirmed(false);
+    }
   };
 
   return (
@@ -223,10 +291,11 @@ export default function ExperienceScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>3 of 7</Text>
+        <Text style={styles.stepIndicator}>3 of 8</Text>
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -257,34 +326,34 @@ export default function ExperienceScreen() {
           })}
         </View>
 
-        <Text style={styles.sectionHeading}>Days per week</Text>
-        <Text style={styles.sectionSubtitle}>
-          How many days can you train?
+        <Text style={styles.sectionHeading}>Training days</Text>
+        <Text style={styles.trainingDaysSubtext}>
+          Tap the days you train each week
         </Text>
-        <View style={styles.chipRow}>
-          {DAYS_OPTIONS.map((opt) => {
-            const selected = daysPerWeek === opt.id;
+        <View style={styles.dayPillRow}>
+          {TRAINING_DAY_LABELS.map((label) => {
+            const selected = selectedDays.includes(label);
             return (
               <TouchableOpacity
-                key={opt.id}
+                key={label}
                 activeOpacity={0.7}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => {
-                  setDaysPerWeek(opt.id);
-                  const rec = getRecommendedSplit(goal, opt.id, targetLift);
-                  setRecommendation(rec);
-                  setSplit(rec.splitId);
-                }}
+                style={[styles.dayPill, selected && styles.dayPillSelected]}
+                onPress={() => toggleTrainingDay(label)}
               >
                 <Text
-                  style={[styles.chipText, selected && styles.chipTextSelected]}
+                  style={[styles.dayPillText, selected && styles.dayPillTextSelected]}
                 >
-                  {opt.label}
+                  {label}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
+        {selectedDays.length < 2 ? (
+          <Text style={styles.trainingDaysValidation}>
+            Select at least 2 training days
+          </Text>
+        ) : null}
 
         <Text style={styles.sectionHeading}>Session length</Text>
         <Text style={styles.sectionSubtitle}>
@@ -310,66 +379,154 @@ export default function ExperienceScreen() {
           })}
         </View>
 
-        <View style={styles.splitHeadingRow}>
-          <Text style={styles.sectionHeadingLabel}>Training Split</Text>
-          <TouchableOpacity
-            onPress={() => setSplitInfoVisible(true)}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <Text style={styles.structureSectionLabel}>Your training structure</Text>
+
+        {recommendedSplit && sessionStructure.length > 0 ? (
+          <View
+            onLayout={(e) => {
+              structureLayoutYRef.current = e.nativeEvent.layout.y;
+            }}
+            style={[
+              styles.jordanCard,
+              cardHighlight && styles.jordanCardHighlight,
+            ]}
           >
-            <Text style={styles.splitInfoIcon}>ⓘ</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.sectionSubtitle}>
-          How do you prefer to structure your training?
-        </Text>
-        <View style={styles.chipRow}>
-          {SPLIT_OPTIONS.map((opt) => {
-            const selected = split === opt.id;
-            return (
-              <TouchableOpacity
-                key={opt.id}
-                activeOpacity={0.7}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => setSplit(opt.id)}
-              >
-                <Text
-                  style={[styles.chipText, selected && styles.chipTextSelected]}
+            <View style={styles.jordanStripe} />
+            <View style={styles.jordanCardInner}>
+              <View style={styles.jordanHeaderRow}>
+                <View style={styles.jordanAvatar}>
+                  <Text style={styles.jordanAvatarText}>J</Text>
+                </View>
+                <Text style={styles.jordanName}>Jordan</Text>
+              </View>
+
+              <View style={styles.splitBadgeRow}>
+                <View style={styles.splitNamePill}>
+                  <Text style={styles.splitNamePillText}>
+                    {recommendedSplit.splitName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowSplitInfo(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
                 >
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        {recommendation && split ? (
-          split === recommendation.splitId ? (
-            <View style={styles.recommendCard}>
-              <Text style={styles.recommendLabel}>JORDAN</Text>
-              <Text style={styles.recommendText}>{recommendation.reason}</Text>
+                  <Text style={styles.splitInfoIcon}>ⓘ</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.sessionList}>
+                {workoutsOrdered.map((session, idx) => (
+                  <View
+                    key={`${session.day}-${session.focus}-${idx}`}
+                    style={styles.sessionBlock}
+                  >
+                    <View style={styles.sessionRow}>
+                      <Text style={styles.sessionDayLabel}>
+                        {session.dayLabel ??
+                          sortedSelected[idx] ??
+                          `D${session.day}`}
+                      </Text>
+                      <Text style={styles.sessionTitleText}>
+                        {getSessionTitle(session.focus)}
+                      </Text>
+                    </View>
+                    <View style={styles.muscleChipRow}>
+                      {session.primaryMuscles.map((m) => (
+                        <View key={m} style={styles.muscleChip}>
+                          <Text style={styles.muscleChipText}>
+                            {formatMuscleLabel(m)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.jordanRationale}>
+                &ldquo;{recommendedSplit.reason}&rdquo;
+              </Text>
+
+              {showAdjust ? (
+                <View style={styles.adjustSection}>
+                  <View style={styles.adjustChipRow}>
+                    {adjustOptions.map((opt, idx) => (
+                      <TouchableOpacity
+                        key={
+                          opt.kind === 'force_split'
+                            ? `f-${opt.splitId}-${idx}`
+                            : opt.kind === 'hint'
+                              ? `h-${opt.hint}-${idx}`
+                              : `r-${idx}`
+                        }
+                        activeOpacity={0.7}
+                        style={styles.adjustChip}
+                        onPress={() => handleAdjustOption(opt)}
+                      >
+                        <Text style={styles.adjustChipText}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setShowAdjust(false)}
+                    style={styles.adjustBackHit}
+                  >
+                    <Text style={styles.adjustBackText}>← Back</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.cardButtonColumn}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                      styles.looksGoodBtn,
+                      structureConfirmed && styles.looksGoodBtnConfirmed,
+                    ]}
+                    onPress={() => {
+                      setStructureConfirmed(true);
+                      setShowConfirmHint(false);
+                    }}
+                    disabled={structureConfirmed}
+                  >
+                    <Text
+                      style={[
+                        styles.looksGoodBtnText,
+                        structureConfirmed && styles.looksGoodBtnTextConfirmed,
+                      ]}
+                    >
+                      {structureConfirmed ? '✓ Structure confirmed' : 'Looks good →'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.adjustBtn}
+                    onPress={() => setShowAdjust(true)}
+                  >
+                    <Text style={styles.adjustBtnText}>Adjust</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-          ) : recommendation.warning ? (
-            <View style={styles.warningCard}>
-              <Text style={styles.warningLabel}>JORDAN</Text>
-              <Text style={styles.warningText}>{recommendation.warning}</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setSplit(recommendation.splitId)}
-                style={styles.warningRevertBtn}
-              >
-                <Text style={styles.warningRevertText}>
-                  Switch to{' '}
-                  {SPLIT_OPTIONS.find((s) => s.id === recommendation.splitId)
-                    ?.label}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null
-        ) : (
-          <Text style={styles.splitHint}>
-            Select days per week to get Jordan's recommendation.
+          </View>
+        ) : null}
+        {recommendedSplit && sessionStructure.length > 0 && baseReady && !structureConfirmed ? (
+          <Text
+            style={[
+              styles.confirmStructureHint,
+              showConfirmHint && styles.confirmStructureHintUrgent,
+            ]}
+          >
+            Tap &apos;Looks good&apos; to confirm your training structure
           </Text>
-        )}
+        ) : null}
+        {!(recommendedSplit && sessionStructure.length > 0) ? (
+          <Text style={styles.structureHint}>
+            Select your experience level and at least 2 training days to see
+            Jordan&apos;s structure.
+          </Text>
+        ) : null}
       </ScrollView>
 
       <View
@@ -380,39 +537,45 @@ export default function ExperienceScreen() {
       >
         <TouchableOpacity
           activeOpacity={0.8}
-          style={[styles.button, !allSelected && styles.buttonDisabled]}
+          style={[styles.button, !baseReady && styles.buttonDisabled]}
           onPress={handleContinue}
-          disabled={!allSelected}
+          disabled={!baseReady}
         >
           <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
 
       <Modal
-        visible={splitInfoVisible}
-        animationType="fade"
+        visible={showSplitInfo && !!recommendedSplit}
         transparent
-        onRequestClose={() => setSplitInfoVisible(false)}
+        animationType="fade"
+        onRequestClose={() => setShowSplitInfo(false)}
       >
-        <View style={styles.modalRoot}>
-          <TouchableWithoutFeedback
-            onPress={() => setSplitInfoVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
+        <View style={styles.splitInfoBackdrop}>
+          <ScrollView
+            contentContainerStyle={styles.splitInfoScroll}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.modalBackdrop} />
-          </TouchableWithoutFeedback>
-          <View style={styles.modalCard} pointerEvents="box-none">
-            <Text style={styles.modalTitle}>{SPLIT_INFO_TITLE}</Text>
-            <Text style={styles.modalBody}>{SPLIT_INFO_BODY}</Text>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.modalButton}
-              onPress={() => setSplitInfoVisible(false)}
-            >
-              <Text style={styles.modalButtonLabel}>Got it</Text>
-            </TouchableOpacity>
-          </View>
+            {recommendedSplit ? (
+              <View style={styles.splitInfoCard}>
+                <Text style={styles.splitInfoTitle}>
+                  {recommendedSplit.splitName}
+                </Text>
+                <Text style={styles.splitInfoBody}>
+                  {getSplitInfoDescription(recommendedSplit.splitId)}
+                </Text>
+                <TouchableOpacity
+                  style={styles.splitInfoBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setShowSplitInfo(false)}
+                >
+                  <Text style={styles.splitInfoBtnText}>Got it</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </ScrollView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -479,26 +642,14 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 12,
   },
-  sectionHeadingLabel: {
+  structureSectionLabel: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
     color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  splitHeadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: 28,
     marginBottom: 12,
-  },
-  splitInfoIcon: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
   },
   sectionSubtitle: {
     fontFamily: Fonts.regular,
@@ -506,6 +657,48 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 12,
     marginTop: 0,
+  },
+  trainingDaysSubtext: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+    marginTop: 0,
+  },
+  dayPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: Spacing.xs,
+  },
+  dayPill: {
+    flex: 1,
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayPillSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  dayPillText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  dayPillTextSelected: {
+    color: Colors.accent,
+  },
+  trainingDaysValidation: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.danger,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
   },
 
   cardsContainer: {
@@ -564,65 +757,248 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
 
-  splitHint: {
+  structureHint: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
   },
 
-  recommendCard: {
-    marginTop: Spacing.md,
+  jordanCard: {
+    flexDirection: 'row',
     backgroundColor: Colors.bgCard,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.divider,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
-    padding: Spacing.md,
+    borderColor: Colors.accentBorder,
+    overflow: 'hidden',
   },
-  recommendLabel: {
-    fontFamily: Fonts.bold,
+  jordanCardHighlight: {
+    borderColor: Colors.accent,
+    borderWidth: 2,
+  },
+  jordanStripe: {
+    width: 3,
+    backgroundColor: Colors.accent,
+  },
+  jordanCardInner: {
+    flex: 1,
+    padding: Spacing.lg,
+  },
+  jordanHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  splitBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  splitNamePill: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  splitNamePillText: {
+    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  recommendText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    lineHeight: 18,
   },
-  warningCard: {
+  splitInfoIcon: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+  },
+  splitInfoBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+  },
+  splitInfoScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xl,
+  },
+  splitInfoCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+  },
+  splitInfoTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
+  splitInfoBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
     marginTop: Spacing.md,
-    backgroundColor: Colors.warningMuted,
+    lineHeight: 22,
+  },
+  splitInfoBtn: {
+    marginTop: Spacing.lg,
+    height: 44,
     borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.warning,
-    padding: Spacing.md,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  warningLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.warning,
-    letterSpacing: 1.5,
-    marginBottom: 4,
+  splitInfoBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
-  warningText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    lineHeight: 18,
+  jordanAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accentMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  warningRevertBtn: {
-    marginTop: Spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  warningRevertText: {
+  jordanAvatarText: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.caption,
-    color: Colors.warning,
+    color: Colors.accent,
+  },
+  jordanName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  sessionList: {
+    gap: Spacing.md,
+  },
+  sessionBlock: {
+    gap: Spacing.xs,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  sessionDayLabel: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    width: 36,
+  },
+  sessionTitleText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  muscleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginLeft: 36 + Spacing.sm,
+  },
+  muscleChip: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  muscleChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.textSecondary,
+  },
+  jordanRationale: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: Spacing.lg,
+    lineHeight: 22,
+  },
+  cardButtonColumn: {
+    marginTop: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  looksGoodBtn: {
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  looksGoodBtnConfirmed: {
+    backgroundColor: Colors.successMuted,
+    borderWidth: 1,
+    borderColor: Colors.success,
+  },
+  looksGoodBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  looksGoodBtnTextConfirmed: {
+    color: Colors.success,
+    fontFamily: Fonts.semiBold,
+  },
+  confirmStructureHint: {
+    marginTop: 8,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  confirmStructureHintUrgent: {
+    color: Colors.danger,
+  },
+  adjustBtn: {
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adjustBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  adjustSection: {
+    marginTop: Spacing.lg,
+    gap: Spacing.md,
+  },
+  adjustChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  adjustChip: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  adjustChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  adjustBackHit: {
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.xs,
+  },
+  adjustBackText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
 
   footer: {
@@ -646,46 +1022,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-  },
-
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xl,
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.overlay,
-  },
-  modalCard: {
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.xl,
-    padding: Spacing.xxl,
-  },
-  modalTitle: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
-    color: Colors.textPrimary,
-  },
-  modalBody: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    lineHeight: 22,
-    marginTop: 12,
-  },
-  modalButton: {
-    height: 48,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  modalButtonLabel: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
 });

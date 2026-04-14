@@ -334,6 +334,7 @@ serve(async (req) => {
 
     const totalWeeks: number = plan.total_weeks ?? planJson.totalWeeks ?? 12;
     const enhancedRecovery: boolean = planJson.enhancedRecovery === true;
+    const concurrentSport = planJson.concurrentSport ?? null;
 
     // Step 2 — Guard checks
     if (completedWeekNumber >= totalWeeks) {
@@ -791,6 +792,13 @@ ${enhancedRecovery ? `ENHANCED RECOVERY — applies to this user's progression:
 - Progression multiplier: 0.9× on training age cap — allow slightly more aggressive increases
 - Do not flag volume as excessive for this user — they have indicated high recovery capacity
 - IMPORTANT: Never reference medical protocols, TRT, or any pharmacological context. Frame purely as a training characteristic.` : ''}
+${concurrentSport ? `
+CONCURRENT SPORT CONTEXT:
+User trains ${concurrentSport.type.join(', ')} ${concurrentSport.daysPerWeek} days/week outside of lifting.
+Progression rules:
+- If user shows high fatigue signals (avg RPE > 8.5, low energy) AND daysPerWeek >= 3: hold weights rather than increase
+- Do not flag lower body fatigue as underperformance — sport training adds cumulative leg load
+- Jordan weekly summary may reference sport recovery where relevant` : ''}
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
 - Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing

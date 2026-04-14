@@ -71,7 +71,7 @@ const PACE_CONFIG = {
 } as const;
 
 const MIN_CALORIES = 1200;
-const MAX_CALORIES = 5000;
+const MAX_CALORIES = 5500;
 const CALORIE_STEP = 50;
 
 const MACRO_INFO_BODY =
@@ -125,7 +125,28 @@ function computeTdee(params: RouteType['params']): number {
     activityMultiplier = 1.9;
   }
 
-  return bmr * activityMultiplier;
+  let tdee = bmr * activityMultiplier;
+
+  // GAP-1: Concurrent sport TDEE adjustment
+  const concurrentSport = params.concurrentSport;
+  if (concurrentSport) {
+    const intensityCal: Record<string, number> = {
+      martial_arts: 150,
+      team_sports: 150,
+      running: 120,
+      cycling: 120,
+      swimming: 130,
+      other: 100,
+    };
+    const avgIntensity =
+      concurrentSport.type.reduce(
+        (sum, t) => sum + (intensityCal[t] ?? 100),
+        0,
+      ) / concurrentSport.type.length;
+    tdee += avgIntensity * concurrentSport.daysPerWeek;
+  }
+
+  return tdee;
 }
 
 function getGoalAdjustment(goal: string): number {

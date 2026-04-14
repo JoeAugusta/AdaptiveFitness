@@ -69,6 +69,8 @@ export type RootStackParamList = {
     injuries: string[];
     equipment: string;
     excludedExercises: string[];
+    /** GAP-1: Concurrent sport training context */
+    concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
   MacroSetup: {
@@ -86,6 +88,7 @@ export type RootStackParamList = {
     heightIn: string;
     weightLbs: string;
     bodyFatPct: string | null;
+    concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
   PlanPreview: {
@@ -109,6 +112,7 @@ export type RootStackParamList = {
     fatsG: number;
     /** fat_loss / hypertrophy calorie tier from MacroSetup; default balanced */
     caloriePace?: string;
+    concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
   BuildingPlan: {
@@ -131,6 +135,7 @@ export type RootStackParamList = {
     carbsG: number;
     fatsG: number;
     caloriePace?: string;
+    concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
   Dashboard: undefined;

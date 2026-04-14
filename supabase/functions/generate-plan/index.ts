@@ -59,6 +59,8 @@ interface GeneratePlanBody {
   } | null;
   /** GAP-2: Enhanced recovery flag — user indicates exceptional recovery capacity */
   enhancedRecovery?: boolean;
+  /** GAP-1: Concurrent sport training context */
+  concurrentSport?: { type: string[]; daysPerWeek: number } | null;
 }
 
 interface ProgrammingParams {
@@ -506,6 +508,7 @@ serve(async (req) => {
     const trainingBackground: string | null = body.trainingBackground ?? null;
     const currentLifts = body.currentLifts ?? null;
     const enhancedRecovery = body.enhancedRecovery === true;
+    const concurrentSport = body.concurrentSport ?? null;
 
     const goal = goalIn ?? 'general';
     const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
@@ -1103,6 +1106,16 @@ ENHANCED RECOVERY — USER HAS INDICATED EXCEPTIONAL RECOVERY:
 - coachingNotes may reference recovery capacity where relevant: example: "Given your recovery rate, I've pushed your volume higher than I normally would here — keep an eye on joint fatigue."
 - IMPORTANT: Never reference medical protocols, TRT, or any pharmacological context. Frame purely as a training characteristic.
 ` : ''}
+${concurrentSport ? `
+CONCURRENT SPORT TRAINING:
+User also trains ${concurrentSport.type.join(', ')} ${concurrentSport.daysPerWeek} days per week alongside lifting.
+Scheduling rules:
+- Do NOT schedule heavy leg days adjacent to high-intensity sport training days (martial arts, running, team sports)
+- Reduce leg volume on weeks with 3+ sport sessions per week
+- Swimming and cycling have lower leg impact — standard leg scheduling applies unless daysPerWeek >= 4
+- Jordan notes in sessionFocus or coachingNotes may reference sport training where relevant to recovery context
+- TDEE note: Calories already adjusted for sport load — no additional calorie modification needed in prompt.
+` : ''}
 ${structureTailInstructions}
 Training days: ${trainingDays.length > 0 ? trainingDays.join(', ') : 'not specified'}
 Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "".
@@ -1277,6 +1290,7 @@ ${
       goal: goal,
       split: splitForNormalized,
       enhancedRecovery,
+      concurrentSport,
       currentWeek: 1,
       weeks: [week1Data],
     };

@@ -72,6 +72,23 @@ const DEFAULT_EXCLUDED: string[] = [
 
 const WARNING_BORDER = `${Colors.warning}40`;
 
+// GAP-1: Concurrent sport training options
+const SPORT_OPTIONS: { id: string; label: string }[] = [
+  { id: 'martial_arts', label: 'Martial Arts' },
+  { id: 'running', label: 'Running' },
+  { id: 'cycling', label: 'Cycling' },
+  { id: 'swimming', label: 'Swimming' },
+  { id: 'team_sports', label: 'Team Sports' },
+  { id: 'other', label: 'Other' },
+];
+
+const SPORT_DAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: '1 day' },
+  { value: 2, label: '2 days' },
+  { value: 3, label: '3 days' },
+  { value: 4, label: '4+ days' },
+];
+
 export default function ConstraintsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -83,6 +100,8 @@ export default function ConstraintsScreen() {
   const [availableExcluded, setAvailableExcluded] = useState<string[]>(DEFAULT_EXCLUDED);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customExercise, setCustomExercise] = useState('');
+  const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [sportDaysPerWeek, setSportDaysPerWeek] = useState<number | null>(null);
 
   const canContinue = !!equipment;
 
@@ -128,6 +147,21 @@ export default function ConstraintsScreen() {
     setShowCustomInput(false);
   };
 
+  const toggleSport = (id: string) => {
+    setSelectedSports((prev) => {
+      const updated = prev.includes(id)
+        ? prev.filter((s) => s !== id)
+        : [...prev, id];
+      if (updated.length === 0) setSportDaysPerWeek(null);
+      return updated;
+    });
+  };
+
+  const concurrentSport =
+    selectedSports.length > 0 && sportDaysPerWeek !== null
+      ? { type: selectedSports, daysPerWeek: sportDaysPerWeek }
+      : null;
+
   const handleContinue = () => {
     if (!canContinue) return;
     console.log('[Constraints] duration in params:', {
@@ -140,6 +174,7 @@ export default function ConstraintsScreen() {
       injuries,
       equipment: equipment!,
       excludedExercises,
+      concurrentSport,
     });
   };
 
@@ -296,6 +331,64 @@ export default function ConstraintsScreen() {
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
+        )}
+
+        <Text style={styles.sectionHeading}>Concurrent Sport Training</Text>
+        <Text style={styles.sectionCaption}>
+          Do you train any other sports alongside your lifting?
+        </Text>
+        <View style={styles.sportChipRow}>
+          {SPORT_OPTIONS.map((opt) => {
+            const selected = selectedSports.includes(opt.id);
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.7}
+                style={[styles.sportChip, selected && styles.sportChipSelected]}
+                onPress={() => toggleSport(opt.id)}
+              >
+                <Text
+                  style={[
+                    styles.sportChipText,
+                    selected && styles.sportChipTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {selectedSports.length > 0 && (
+          <>
+            <Text style={styles.sportDaysLabel}>How many days per week?</Text>
+            <View style={styles.sportChipRow}>
+              {SPORT_DAY_OPTIONS.map((opt) => {
+                const selected = sportDaysPerWeek === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.sportChip,
+                      selected && styles.sportChipSelected,
+                    ]}
+                    onPress={() => setSportDaysPerWeek(opt.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.sportChipText,
+                        selected && styles.sportChipTextSelected,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
       </ScrollView>
 
@@ -531,6 +624,39 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
+  },
+
+  sportChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  sportChip: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  sportChipSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+  },
+  sportChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  sportChipTextSelected: {
+    color: Colors.accent,
+  },
+  sportDaysLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
   },
 
   footer: {

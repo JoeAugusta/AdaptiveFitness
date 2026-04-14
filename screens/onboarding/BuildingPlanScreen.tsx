@@ -393,6 +393,7 @@ export default function BuildingPlanScreen() {
           weight_lbs: parseFloat(params.weightLbs),
           body_fat_pct: params.bodyFatPct ? parseFloat(params.bodyFatPct) : null,
           enhanced_recovery: params.enhancedRecovery ?? false,
+          concurrent_sport: params.concurrentSport ?? null,
         });
 
         planWeeksResolved = resolvePlanWeeksFromParams(params);

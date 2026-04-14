@@ -540,6 +540,8 @@ serve(async (req) => {
         const baseWeight = roundTo2_5(baselineWeight);
         const baselineWDisplay = Math.round(baselineWeight);
 
+        let effectiveOldWeight: number;
+
         if (baselineWeight === 0) {
           newTargetWeight = 0;
           weightAction = 'hold';

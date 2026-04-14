@@ -26,6 +26,7 @@ import {
   CommonStyles,
 } from '../constants/design';
 import { deleteUserAccount } from '../utils/deleteAccount';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Label maps ──
 
@@ -333,6 +334,21 @@ export default function ProfileSettingsScreen() {
     );
   };
 
+  const clearSummaryViewedKeys = () => {
+    void (async () => {
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const toRemove = keys.filter((k) => k.startsWith('summary_viewed_'));
+        if (toRemove.length > 0) {
+          await AsyncStorage.multiRemove(toRemove);
+        }
+        Alert.alert('', 'Summary banner keys cleared — reload dashboard to see banners');
+      } catch (e) {
+        Alert.alert('Error', e instanceof Error ? e.message : String(e));
+      }
+    })();
+  };
+
   const resetToSplash = () => {
     const rootNav = navigation.getParent()?.getParent();
     rootNav?.dispatch(
@@ -605,13 +621,22 @@ export default function ProfileSettingsScreen() {
         </TouchableOpacity>
 
         {__DEV__ ? (
-          <TouchableOpacity
-            style={styles.devButton}
-            onPress={() => resetToOnboarding()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.devButtonText}>🛠 DEV: Restart Onboarding</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={styles.devButton}
+              onPress={() => resetToOnboarding()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.devButtonText}>🛠 DEV: Restart Onboarding</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.devButton, styles.devButtonAfter]}
+              onPress={clearSummaryViewedKeys}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.devButtonText}>Clear Summary Banners</Text>
+            </TouchableOpacity>
+          </>
         ) : null}
 
         {/* ── 8. Version footer ── */}
@@ -841,6 +866,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  devButtonAfter: {
+    marginTop: 12,
   },
 
   versionText: {

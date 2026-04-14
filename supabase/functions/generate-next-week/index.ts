@@ -335,6 +335,8 @@ serve(async (req) => {
     const totalWeeks: number = plan.total_weeks ?? planJson.totalWeeks ?? 12;
     const enhancedRecovery: boolean = planJson.enhancedRecovery === true;
     const concurrentSport = planJson.concurrentSport ?? null;
+    // GAP-8: Sex-aware progression — read from plan_json where it was stored at plan creation
+    const biologicalSex: string = planJson.biologicalSex ?? 'male';
 
     // Step 2 — Guard checks
     if (completedWeekNumber >= totalWeeks) {
@@ -689,7 +691,8 @@ serve(async (req) => {
 
     // Step 5 — Determine next week phase
     const nextWeekNumber = completedWeekNumber + 1;
-    const deloadCadence = enhancedRecovery ? 5 : 4;
+    // Female and enhanced recovery both use 5-week deload cadence
+    const deloadCadence = (enhancedRecovery || biologicalSex === 'female') ? 5 : 4;
     const weekInCycle = nextWeekNumber % deloadCadence;
     let phase: string;
     if (weekInCycle === 0) {
@@ -799,6 +802,13 @@ Progression rules:
 - If user shows high fatigue signals (avg RPE > 8.5, low energy) AND daysPerWeek >= 3: hold weights rather than increase
 - Do not flag lower body fatigue as underperformance — sport training adds cumulative leg load
 - Jordan weekly summary may reference sport recovery where relevant` : ''}
+${biologicalSex === 'female' ? `
+SEX-AWARE PROGRESSION — FEMALE:
+- Rep ranges: maintain the +2 rep adjustment from Week 1 programming. Do not revert to standard rep ranges. Example: if Week 1 was 10-14 reps, keep 10-14 as the target range for progression assessment — do not assess against 8-12.
+- Volume ceiling: 10-15% above male equivalent — do not reduce volume unless fatigue signals are severe (avg RPE > 9.0 AND energy <= 1)
+- Plateau threshold: require 4 consecutive weeks at same weight before rotation (vs 3 weeks for male) — females have higher volume tolerance and may need more time at a given load
+- Never reference sex in Jordan coaching notes or weekly summary` : ''}
+${(biologicalSex === 'female' || enhancedRecovery) ? `DELOAD CADENCE: Week 5 (not week 4). If this is week 4, do NOT generate a deload week — generate a normal accumulation or intensification week instead.` : `DELOAD CADENCE: Week 4 standard.`}
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
 - Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing

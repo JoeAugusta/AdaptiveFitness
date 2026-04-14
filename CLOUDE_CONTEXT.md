@@ -603,6 +603,8 @@ Supabase will return a 400 error on the write.
 20. **P3-F9** — Body measurement tracking (waist/chest/hip/arm + progress chart)
 21. **P3-F12** — Sex-aware programming (generate-plan + generate-next-week prompt changes)
 22. **P2-N2** — Meal Builder search bar
+23. **GAP-11** — Sport session logging: When user has concurrentSport in profile, show a sport log card on the dashboard alongside the weigh-in card. Single tap: "Did you train [sport] today?" Yes / No / Partial. Logs to sport_logs table (user_id, plan_id, log_date, sport_type, completed: boolean, intensity: 'full'|'partial'|'none'). Week 3.
+24. **GAP-12** — Dynamic sport calorie adjustment: weekly-coach-summary reads sport_logs for the week, compares actual sessions to concurrentSport.daysPerWeek. If actual < expected, Jordan notes the lighter week in summary and triggers adjust-macros to reduce next week's calorie target proportionally. Formula: missed_sessions × avgIntensityCal = deficit to remove from next week TDEE. Jordan copy is forward-looking, never accusatory. Example: "You had 1 Martial Arts session instead of your usual 2 — I've trimmed next week's calories slightly to match." Week 3, depends on GAP-11.
 23. **Free Session Mode** — basic version
 24. **Workout History Screen**
 

@@ -61,6 +61,8 @@ interface GeneratePlanBody {
   enhancedRecovery?: boolean;
   /** GAP-1: Concurrent sport training context */
   concurrentSport?: { type: string[]; daysPerWeek: number } | null;
+  /** GAP-8: Biological sex for sex-aware rep range and volume adjustments */
+  biologicalSex?: 'male' | 'female' | 'prefer_not_to_say' | null;
 }
 
 interface ProgrammingParams {
@@ -320,6 +322,123 @@ const HYPERTROPHY_REP_GUIDANCE = {
   },
 };
 
+const FEMALE_REP_MAP: Record<string, string> = {
+  '3-5': '5-7',
+  '3-6': '5-8',
+  '4-6': '6-8',
+  '5-8': '7-10',
+  '6-8': '8-10',
+  '6-10': '8-12',
+  '8-10': '10-12',
+  '8-12': '10-14',
+  '10-12': '12-14',
+  '10-14': '12-16',
+  '10-15': '12-17',
+  '12-15': '14-17',
+  '12-16': '14-18',
+  '15-20': '17-22',
+};
+
+function adjustRepRange(repRange: string, biologicalSex: string): string {
+  if (biologicalSex !== 'female') return repRange;
+
+  // Strip suffix for lookup (e.g. " each side")
+  const match = repRange.match(/^([\d]+-[\d]+)(.*)/);
+  if (!match) return repRange;
+
+  const baseRange = match[1];
+  const suffix = match[2] ?? '';
+
+  // Use lookup table first
+  if (FEMALE_REP_MAP[baseRange]) {
+    return `${FEMALE_REP_MAP[baseRange]}${suffix}`;
+  }
+
+  // Fallback: parse and add +2 to both ends
+  const parts = baseRange.split('-');
+  if (parts.length === 2) {
+    const low = parseInt(parts[0], 10);
+    const high = parseInt(parts[1], 10);
+    if (!isNaN(low) && !isNaN(high)) {
+      return `${low + 2}-${high + 2}${suffix}`;
+    }
+  }
+
+  return repRange;
+}
+
+console.log('[adjustRepRange] tests:',
+  adjustRepRange('3-6', 'female'),   // 5-8
+  adjustRepRange('5-8', 'female'),   // 7-10 (if Claude drifts on Phase 1)
+  adjustRepRange('8-12', 'female'),  // 10-14
+  adjustRepRange('10-12', 'female'), // 12-14 (if Claude uses 10-12)
+  adjustRepRange('6-8', 'female'),   // 8-10
+  adjustRepRange('8-12', 'male'),    // 8-12
+);
+
+// GAP-8: Post-processing enforcement — Claude is non-compliant for certain exercises
+// (e.g. Bench Press, Barbell Row revert to standard ranges). Female: rep buckets + lookup.
+// Male power_hypertrophy: Phase 2 minimum rep floor (hypertrophy tag must not use strength ranges).
+// deno-lint-ignore no-explicit-any
+function enforceRepRanges(planJson: any, bSex: string): any {
+  return {
+    ...planJson,
+    // deno-lint-ignore no-explicit-any
+    weeks: (planJson.weeks ?? []).map((week: any) => ({
+      ...week,
+      // deno-lint-ignore no-explicit-any
+      days: (week.days ?? []).map((day: any) => ({
+        ...day,
+        // deno-lint-ignore no-explicit-any
+        exercises: (day.exercises ?? []).map((exercise: any) => {
+          let adjustedReps = exercise.reps;
+
+          if (bSex === 'female') {
+            if (exercise.phase === 'strength') {
+              // Phase 1: always force 5-8 regardless of Claude output
+              adjustedReps = '5-8';
+            } else if (exercise.phase === 'hypertrophy') {
+              // Phase 2: bucket by the LOW end of Claude's range
+              const raw = String(exercise.reps ?? '');
+              const lowEnd = parseInt(raw.split('-')[0] ?? '', 10);
+              const suffix = raw.includes('each') ? ' each side' : '';
+
+              if (Number.isNaN(lowEnd)) {
+                adjustedReps = adjustRepRange(raw, bSex);
+              } else if (lowEnd <= 9) {
+                adjustedReps = `10-14${suffix}`; // ≤9 → 10-14 (was 8-12 for ≤6; pull-ups etc.)
+              } else if (lowEnd <= 11) {
+                adjustedReps = `12-16${suffix}`; // 10-12, 10-15 → 12-16
+              } else if (lowEnd <= 13) {
+                adjustedReps = `14-18${suffix}`; // 12-15, 12-16 → 14-18
+              } else {
+                adjustedReps = `17-22${suffix}`; // 15-20 → 17-22
+              }
+            } else {
+              // Non-phase exercises (non power_hypertrophy plans)
+              adjustedReps = adjustRepRange(exercise.reps ?? '', bSex);
+            }
+          } else if (bSex === 'male' || !bSex) {
+            // Male PH: enforce minimum 8 reps on Phase 2 (Claude sometimes outputs 6-8)
+            if (planJson.goal === 'power_hypertrophy' && exercise.phase === 'hypertrophy') {
+              const raw = String(exercise.reps ?? '');
+              const lowEnd = parseInt(raw.split('-')[0] ?? '', 10);
+              if (!Number.isNaN(lowEnd) && lowEnd < 8) {
+                adjustedReps = '8-12';
+                console.log(
+                  `[enforce] Male Phase 2 rep correction: ${exercise.name} ${exercise.reps} → 8-12`,
+                );
+              }
+            }
+          }
+
+          return { ...exercise, reps: adjustedReps };
+        }),
+      })),
+    })),
+  };
+}
+
 // Calculate starting weight from 1RM percentage
 function calculateStartingWeight(oneRM: number, percentage: number): number {
   return Math.round((oneRM * percentage) / 2.5) * 2.5;
@@ -509,6 +628,11 @@ serve(async (req) => {
     const currentLifts = body.currentLifts ?? null;
     const enhancedRecovery = body.enhancedRecovery === true;
     const concurrentSport = body.concurrentSport ?? null;
+    // GAP-8: Sex-aware programming — read from body (collected at S05 BodyMetrics as 'sex')
+    const biologicalSex: string = body.biologicalSex ?? body.sex ?? 'male';
+
+    // GAP-8: Prompt always uses base (male-equivalent) rep ranges; enforceRepRanges()
+    // post-processes female +2 after Claude — single source of truth, no double application.
 
     const goal = goalIn ?? 'general';
     const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
@@ -767,7 +891,7 @@ FAILURE MODES TO AVOID:
 - Do NOT output exercises without a "phase" field
 - Do NOT output day objects without "sessionPhase"
 - Do NOT set targetRpe: 7 on Phase 1 — minimum is 8
-- Do NOT mix phase tags (a 3-5 rep compound must be "strength", an 8-12 rep accessory must be "hypertrophy")
+- Do NOT mix phase tags (a 3-6 rep compound must be "strength", an 8-12 rep accessory must be "hypertrophy")
 - Do NOT output more than 2 Phase 1 exercises per session
 
 CURRENT 1RM DATA (use for Phase 1 Week 1 targetWeight):
@@ -1116,6 +1240,10 @@ Scheduling rules:
 - Jordan notes in sessionFocus or coachingNotes may reference sport training where relevant to recovery context
 - TDEE note: Calories already adjusted for sport load — no additional calorie modification needed in prompt.
 ` : ''}
+${biologicalSex === 'female' ? `
+SEX-AWARE PROGRAMMING — FEMALE:
+Volume ceiling: 10-15% above the male equivalent for this experience level. Do not reference biological sex in any coachingNote or Jordan copy — adjustments are invisible to the user.
+` : ''}
 ${structureTailInstructions}
 Training days: ${trainingDays.length > 0 ? trainingDays.join(', ') : 'not specified'}
 Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "".
@@ -1291,6 +1419,7 @@ ${
       split: splitForNormalized,
       enhancedRecovery,
       concurrentSport,
+      biologicalSex,
       currentWeek: 1,
       weeks: [week1Data],
     };
@@ -1321,7 +1450,23 @@ ${
       }
     }
 
-    return new Response(JSON.stringify({ plan: normalized }), {
+    // GAP-8: Enforce female rep range adjustments post-Claude — Claude reverts some exercises
+    const processedPlanJson = enforceRepRanges(normalized, biologicalSex);
+
+    if (biologicalSex === 'female') {
+      // deno-lint-ignore no-explicit-any
+      const sampleExercises = processedPlanJson.weeks[0]?.days
+        // deno-lint-ignore no-explicit-any
+        ?.filter((d: any) => d.type === 'workout')
+        ?.slice(0, 2)
+        // deno-lint-ignore no-explicit-any
+        ?.flatMap((d: any) => d.exercises?.slice(0, 3))
+        // deno-lint-ignore no-explicit-any
+        ?.map((e: any) => `${e.name}: ${e.reps}`);
+      console.log('[generate-plan] Female rep range check:', JSON.stringify(sampleExercises));
+    }
+
+    return new Response(JSON.stringify({ plan: processedPlanJson }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {

@@ -990,6 +990,12 @@ export default function ActiveWorkoutScreen() {
   const displayWorkoutTitle =
     workout?.title ?? params.workoutTitle ?? 'Workout';
 
+  const workoutExercises = workout?.exercises ?? [];
+  const phase1Exercise = workoutExercises.find((e) => e.phase === 'strength');
+  const phase1Reps = phase1Exercise?.reps ?? '3–6';
+  const phase2Exercise = workoutExercises.find((e) => e.phase === 'hypertrophy');
+  const phase2Reps = phase2Exercise?.reps ?? '8–12';
+
   const restProgressWidth: DimensionValue =
     restDurationTotal > 0
       ? `${Math.max(0, Math.min(100, (restSeconds / restDurationTotal) * 100))}%`
@@ -1037,13 +1043,17 @@ export default function ActiveWorkoutScreen() {
                   {exercise.phase === 'strength' && exerciseIdx === 0 && (
                     <View style={styles.phaseHeader}>
                       <Text style={styles.phaseHeaderText}>PHASE 1 — STRENGTH</Text>
-                      <Text style={styles.phaseHeaderSub}>Heavy compounds · 3–6 reps · RPE 8–9</Text>
+                      <Text style={styles.phaseHeaderSub}>
+                        Heavy compounds · {phase1Reps} reps · RPE 8–9
+                      </Text>
                     </View>
                   )}
                   {exercise.phase === 'hypertrophy' && prevExercise?.phase === 'strength' && (
                     <View style={styles.phaseHeader}>
                       <Text style={styles.phaseHeaderText}>PHASE 2 — HYPERTROPHY</Text>
-                      <Text style={styles.phaseHeaderSub}>Accessories · 8–12 reps · RPE 7–8</Text>
+                      <Text style={styles.phaseHeaderSub}>
+                        Accessories · {phase2Reps} reps · RPE 7–8
+                      </Text>
                     </View>
                   )}
                   <ExerciseCard

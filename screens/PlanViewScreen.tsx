@@ -66,6 +66,8 @@ interface RawPlanJson {
   totalWeeks?: number;
   /** GAP-2: Enhanced recovery flag — deload cadence is every 5th week instead of 4th */
   enhancedRecovery?: boolean;
+  /** GAP-8: Biological sex — female also uses 5-week deload cadence */
+  biologicalSex?: string;
 }
 
 interface RawDay {
@@ -116,6 +118,7 @@ interface LoadedPlan {
   daysPerWeek: number;
   weeks: PlanWeek[];
   enhancedRecovery: boolean;
+  biologicalSex: string;
 }
 
 function parseSetsJson(rawSets: unknown): { exerciseId?: string }[] {
@@ -146,6 +149,7 @@ function getPhaseDisplay(
   weekNumber: number,
   totalWeeks: number,
   enhancedRecovery: boolean = false,
+  biologicalSex?: string,
 ): { label: string; color: string; bg: string } {
   const effectivePhase =
     weekNumber === 1 && (!phase || phase === 'accumulation')
@@ -160,7 +164,9 @@ function getPhaseDisplay(
     };
   }
 
-  const deloadCadence = enhancedRecovery ? 5 : 4;
+  // Female and enhanced recovery both use 5-week deload cadence
+  const useExtendedCadence = enhancedRecovery || biologicalSex === 'female';
+  const deloadCadence = useExtendedCadence ? 5 : 4;
   if (weekNumber % deloadCadence === 0) {
     return {
       label: 'DELOAD',
@@ -432,6 +438,7 @@ export default function PlanViewScreen() {
         daysPerWeek: planJson.daysPerWeek ?? 4,
         weeks: mappedWeeks,
         enhancedRecovery: planJson.enhancedRecovery === true,
+        biologicalSex: planJson.biologicalSex ?? 'male',
       });
       setRawPlanJson(planJson);
       setCompletedSet(logSet);
@@ -640,6 +647,7 @@ export default function PlanViewScreen() {
     selectedWeek,
     planData.totalWeeks,
     planData.enhancedRecovery,
+    planData.biologicalSex,
   );
   const weekData = selectedWeekData;
   const nextWorkoutDayNumber =
@@ -693,7 +701,7 @@ export default function PlanViewScreen() {
             const isLocked = wn > planData.currentWeek;
             const isCompletedWeek = wn < planData.currentWeek;
             const weekEntry = planData.weeks.find((w) => w.weekNumber === wn);
-            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery);
+            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery, planData.biologicalSex);
 
             const tabStyles = [
               styles.weekTabCircle,

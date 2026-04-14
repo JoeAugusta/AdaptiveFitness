@@ -19,6 +19,21 @@ function isCompound(name: string): boolean {
   return COMPOUND_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
+// BUG-5: Unilateral exercise handling — name-based heuristic for Edge Function context
+const UNILATERAL_NAMES = new Set([
+  'bulgarian split squat', 'walking lunge', 'reverse lunge', 'forward lunge',
+  'dumbbell row', 'dumbbell curl', 'hammer curl', 'incline dumbbell curl',
+  'cable kickback', 'cable lateral raise', 'pallof press',
+  'dumbbell tricep kickback', 'step-up',
+]);
+function isUnilateralExercise(name: string): boolean {
+  const n = name.toLowerCase().trim();
+  if (UNILATERAL_NAMES.has(n)) return true;
+  if (/single[- ]?(arm|leg)/i.test(n)) return true;
+  if (/\b(lunge|split squat|step[- ]?up|pistol|cossack|meadows)\b/i.test(n)) return true;
+  return false;
+}
+
 function parseMidReps(reps: string): number {
   const parts = reps.split('-');
   if (parts.length === 2) {
@@ -67,14 +82,102 @@ function collectSetsForExercise(
   return out;
 }
 
-/** Average of logged working weights (sets_json uses weightLbs). */
-function calculateAvgLoggedWeight(sets: LogSetLike[]): number {
-  if (!sets || sets.length === 0) return 0;
-  const weights = sets
-    .filter((s) => s.weightLbs != null && Number(s.weightLbs) > 0)
-    .map((s) => Number(s.weightLbs));
-  if (weights.length === 0) return 0;
-  return weights.reduce((a, b) => a + b, 0) / weights.length;
+function normalizeLogSetWeightLbs(s: LogSetLike): number {
+  const w = s.weightLbs ?? s.weight;
+  if (w == null) return 0;
+  const n = Number(w);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function normalizeLogSetRpe(s: LogSetLike): number {
+  const r = s.rpe;
+  if (r == null) return 0;
+  const n = Number(r);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Week 1 baseline: if the athlete ramped weight across sets (e.g. 50→60→70),
+ * use peak weight as baseline instead of averaging (which underestimates).
+ */
+function getWeek1Baseline(setsJson: LogSetLike[]): {
+  baselineWeight: number;
+  baselineRpe: number;
+  isRampPattern: boolean;
+} {
+  if (!setsJson || setsJson.length === 0) {
+    return { baselineWeight: 0, baselineRpe: 0, isRampPattern: false };
+  }
+
+  const weights = setsJson.map(normalizeLogSetWeightLbs).filter((w) => w > 0);
+  if (weights.length === 0) {
+    return { baselineWeight: 0, baselineRpe: 0, isRampPattern: false };
+  }
+
+  const isAscending = weights.every((w, i) => i === 0 || w >= weights[i - 1]);
+  const hasIncrease = weights[weights.length - 1] > weights[0];
+  const isRampPattern = isAscending && hasIncrease;
+
+  if (isRampPattern) {
+    const peakWeight = Math.max(...weights);
+    const peakSets = setsJson.filter(
+      (s) => normalizeLogSetWeightLbs(s) === peakWeight && normalizeLogSetRpe(s) > 0,
+    );
+    let baselineRpe = 0;
+    if (peakSets.length > 0) {
+      baselineRpe =
+        peakSets.reduce((sum, s) => sum + normalizeLogSetRpe(s), 0) /
+        peakSets.length;
+    } else {
+      const rpeVals = setsJson.map(normalizeLogSetRpe).filter((r) => r > 0);
+      baselineRpe =
+        rpeVals.length > 0
+          ? rpeVals.reduce((a, b) => a + b, 0) / rpeVals.length
+          : 0;
+    }
+    return { baselineWeight: peakWeight, baselineRpe, isRampPattern: true };
+  }
+
+  const avgWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
+  const rpeValues = setsJson.map(normalizeLogSetRpe).filter((r) => r > 0);
+  const avgRpe =
+    rpeValues.length > 0
+      ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length
+      : 0;
+  return { baselineWeight: avgWeight, baselineRpe: avgRpe, isRampPattern: false };
+}
+
+/** Per workout log, then take strongest session baseline (avoids breaking ramp across days). */
+function getWeek1BaselineFromLogs(
+  logs: { sets_json?: LogSetLike[] | null }[],
+  exerciseMap: Record<string, string>,
+  targetName: string,
+): { baselineWeight: number; baselineRpe: number; isRampPattern: boolean } {
+  let best: {
+    baselineWeight: number;
+    baselineRpe: number;
+    isRampPattern: boolean;
+  } = { baselineWeight: 0, baselineRpe: 0, isRampPattern: false };
+
+  for (const log of logs) {
+    const setsJson = log.sets_json ?? [];
+    if (!Array.isArray(setsJson)) continue;
+    const forEx: LogSetLike[] = [];
+    for (const set of setsJson) {
+      const resolvedName: string =
+        (set.exerciseId ? exerciseMap[set.exerciseId] : '') ||
+        String(set.exerciseName ?? '') ||
+        String(set.name ?? '');
+      if (resolvedName !== targetName) continue;
+      forEx.push(set);
+    }
+    if (forEx.length === 0) continue;
+    const b = getWeek1Baseline(forEx);
+    if (b.baselineWeight > best.baselineWeight) {
+      best = b;
+    }
+  }
+  return best;
 }
 
 function calculateIncrease(
@@ -251,6 +354,28 @@ serve(async (req) => {
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
 
+    const weeksArr = planJson.weeks ?? [];
+    const isCompletedWeekDeload =
+      String(weekData?.phase ?? '').toLowerCase() === 'deload';
+    let baselineWeekForWeights: typeof weekData = weekData;
+    if (isCompletedWeekDeload && completedWeekNumber >= 2) {
+      baselineWeekForWeights =
+        weeksArr.find(
+          (w: any) => Number(w.weekNumber) === completedWeekNumber - 1,
+        ) ?? weekData;
+    }
+    const baselineWorkoutDays = (baselineWeekForWeights?.days ?? []).filter(
+      (d: any) => d.type === 'workout',
+    );
+    const preDeloadTargetWeightByName: Record<string, number> = {};
+    for (const day of baselineWorkoutDays) {
+      for (const ex of day.exercises ?? []) {
+        if (ex?.name) {
+          preDeloadTargetWeightByName[ex.name] = ex.targetWeight ?? 0;
+        }
+      }
+    }
+
     const priorWeeksData = (planJson.weeks ?? [])
       .filter(
         (w: any) =>
@@ -307,7 +432,11 @@ serve(async (req) => {
 
     for (const [name, prescribed] of Object.entries(prescribedMap)) {
       if (!weightHistoryMap[name]) weightHistoryMap[name] = [];
-      weightHistoryMap[name].push(prescribed.targetWeight);
+      const histWeight =
+        isCompletedWeekDeload && completedWeekNumber >= 2
+          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
+          : prescribed.targetWeight;
+      weightHistoryMap[name].push(histWeight);
     }
 
     // Step 4 — Compute performance metrics
@@ -365,25 +494,34 @@ serve(async (req) => {
       const compound = isCompound(name);
       const hasRpeData = avgRpe > 0;
       const priorTargetWeight = prescribed.targetWeight ?? 0;
-      const isNonStrengthGoal = goalType !== 'strength';
+      const isNonStrengthGoal = goalType !== 'strength' && goalType !== 'power_hypertrophy';
       const priorWasSelfSelect = isNonStrengthGoal && priorTargetWeight === 0;
 
       let weightAction: 'increase' | 'decrease' | 'hold';
       let weightDelta: number;
       let newTargetWeight: number;
       let selfSelectCoachingNote: string | undefined;
-      let effectiveOldWeight = prescribed.targetWeight;
+      const progressionBaseWeight =
+        isCompletedWeekDeload && completedWeekNumber >= 2
+          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
+          : prescribed.targetWeight;
 
       if (priorWasSelfSelect) {
         const exerciseSets = collectSetsForExercise(logs, exerciseMap, name);
-        const avgLoggedWeight = calculateAvgLoggedWeight(exerciseSets);
+        const week1Baseline = getWeek1BaselineFromLogs(logs, exerciseMap, name);
+        const baselineWeight = week1Baseline.baselineWeight;
+        const rpeForAdaptation =
+          week1Baseline.baselineRpe > 0 ? week1Baseline.baselineRpe : avgRpe;
+        const hasRpeForSelfSelect = rpeForAdaptation > 0;
         const rawPrior = prescribed.targetWeight;
 
         console.log('[weight adaptation]', {
           exerciseName: name,
           priorTargetWeight: rawPrior ?? 0,
-          avgLoggedWeight,
-          hasRpeData,
+          baselineWeight,
+          isRampPattern: week1Baseline.isRampPattern,
+          rpeForAdaptation,
+          hasRpeData: hasRpeForSelfSelect,
           setsCount: exerciseSets.length,
           rawSets: exerciseSets.map((s) => ({
             w: s.weightLbs,
@@ -392,52 +530,52 @@ serve(async (req) => {
           })),
         });
 
-        const rpeIsLow = hasRpeData && avgRpe <= 6;
-        const rpeIsHigh = hasRpeData && avgRpe >= 9;
+        const rpeIsLow = hasRpeForSelfSelect && rpeForAdaptation <= 6;
+        const rpeIsHigh = hasRpeForSelfSelect && rpeForAdaptation >= 9;
         const tr = prescribed.targetRpe;
-        const baseWeight = roundTo2_5(avgLoggedWeight);
-        const avgWDisplay = Math.round(avgLoggedWeight);
+        const baseWeight = roundTo2_5(baselineWeight);
+        const baselineWDisplay = Math.round(baselineWeight);
 
-        if (avgLoggedWeight === 0) {
+        if (baselineWeight === 0) {
           newTargetWeight = 0;
           weightAction = 'hold';
           weightDelta = 0;
           effectiveOldWeight = 0;
           selfSelectCoachingNote =
             `No weight logged last week — choose your working weight at RPE ${tr} this session.`;
-        } else if (!hasRpeData) {
+        } else if (!hasRpeForSelfSelect) {
           newTargetWeight = baseWeight;
           weightAction = 'hold';
           weightDelta = 0;
-          effectiveOldWeight = avgWDisplay;
+          effectiveOldWeight = baselineWDisplay;
           selfSelectCoachingNote =
             `Set at ${newTargetWeight} lbs from last week. Log your RPE this session so I can start adjusting your progression.`;
         } else if (rpeIsLow) {
           const inc = calculateIncrease(
-            avgLoggedWeight,
-            avgRpe,
+            baselineWeight,
+            rpeForAdaptation,
             prescribed.targetRpe,
             trainingAge,
             compound,
           );
-          newTargetWeight = Math.max(0, roundTo2_5(avgLoggedWeight + inc));
+          newTargetWeight = Math.max(0, roundTo2_5(baselineWeight + inc));
           weightAction = 'increase';
-          weightDelta = newTargetWeight - avgLoggedWeight;
-          effectiveOldWeight = avgWDisplay;
+          weightDelta = newTargetWeight - baselineWeight;
+          effectiveOldWeight = baselineWDisplay;
           selfSelectCoachingNote =
-            `Your ${avgLoggedWeight} lbs felt light — moving to ${newTargetWeight} lbs this week.`;
+            `Your ${baselineWDisplay} lbs felt light — moving to ${newTargetWeight} lbs this week.`;
         } else if (rpeIsHigh) {
-          newTargetWeight = Math.max(0, roundTo2_5(avgLoggedWeight * 0.95));
+          newTargetWeight = Math.max(0, roundTo2_5(baselineWeight * 0.95));
           weightAction = 'decrease';
-          weightDelta = newTargetWeight - avgLoggedWeight;
-          effectiveOldWeight = avgWDisplay;
+          weightDelta = newTargetWeight - baselineWeight;
+          effectiveOldWeight = baselineWDisplay;
           selfSelectCoachingNote =
-            `${avgLoggedWeight} lbs was tough — dropping to ${newTargetWeight} lbs for better quality reps.`;
+            `${baselineWDisplay} lbs was tough — dropping to ${newTargetWeight} lbs for better quality reps.`;
         } else {
           newTargetWeight = baseWeight;
           weightAction = 'hold';
           weightDelta = 0;
-          effectiveOldWeight = avgWDisplay;
+          effectiveOldWeight = baselineWDisplay;
           selfSelectCoachingNote =
             `${newTargetWeight} lbs confirmed as your working weight. Keep rating your RPE so I can keep dialling it in.`;
         }
@@ -447,9 +585,9 @@ serve(async (req) => {
           oldWeight: effectiveOldWeight,
           newTargetWeight,
           weightAction,
-          rpeGap: Math.round((avgRpe - prescribed.targetRpe) * 10) / 10,
-          avgRpe: Math.round(avgRpe * 10) / 10,
-          hasRpeData,
+          rpeGap: Math.round((rpeForAdaptation - prescribed.targetRpe) * 10) / 10,
+          avgRpe: Math.round(rpeForAdaptation * 10) / 10,
+          hasRpeData: hasRpeForSelfSelect,
           avgReps: Math.round(avgReps * 10) / 10,
           targetRpe: prescribed.targetRpe,
           targetReps: prescribed.targetReps,
@@ -457,6 +595,8 @@ serve(async (req) => {
           oldReps: prescribed.reps,
           sets: prescribed.sets,
           selfSelectCoachingNote,
+          isRampPattern: week1Baseline.isRampPattern,
+          isUnilateral: isUnilateralExercise(name),
         });
         continue;
       }
@@ -477,7 +617,7 @@ serve(async (req) => {
         } else if (rpeIsLow || repsExceeded) {
           weightAction = 'increase';
           weightDelta = calculateIncrease(
-            prescribed.targetWeight,
+            progressionBaseWeight,
             avgRpe,
             prescribed.targetRpe,
             trainingAge,
@@ -499,11 +639,11 @@ serve(async (req) => {
         weightDelta = -2.5;
       }
 
-      newTargetWeight = Math.max(0, prescribed.targetWeight + weightDelta);
+      newTargetWeight = Math.max(0, progressionBaseWeight + weightDelta);
 
       exerciseAdaptations.push({
         name,
-        oldWeight: prescribed.targetWeight,
+        oldWeight: progressionBaseWeight,
         newTargetWeight,
         weightAction,
         rpeGap: Math.round((avgRpe - prescribed.targetRpe) * 10) / 10,
@@ -515,6 +655,7 @@ serve(async (req) => {
         minReps: prescribed.minReps,
         oldReps: prescribed.reps,
         sets: prescribed.sets,
+        isUnilateral: isUnilateralExercise(name),
       });
     }
 
@@ -587,6 +728,17 @@ Do NOT add, remove, or reorder days. Return exactly ${dayCount} days in the same
 `
         : '';
 
+    const weightProgressionBaselineSection =
+      isCompletedWeekDeload && completedWeekNumber >= 2
+        ? `
+WEIGHT PROGRESSION BASELINE:
+IMPORTANT: Last week (Week ${completedWeekNumber}) was a DELOAD week. DO NOT use deload weights as the progression baseline. Use Week ${completedWeekNumber - 1} weights (pre-deload) as the starting point for all weight targets this week. The exerciseAdaptations JSON already encodes oldWeight and newTargetWeight stepped forward from pre-deload loads using normal RPE-based progression; deload-week logs informed RPE/fatigue only. Use deload week RPE and energy data ONLY to assess fatigue/recovery state in coaching notes — not to reduce working weights below the prescribed newTargetWeight values.
+`
+        : `
+WEIGHT PROGRESSION BASELINE:
+Use last week's logged performance and the exerciseAdaptations (oldWeight, newTargetWeight, weightAction) as the baseline for this week's targets.
+`;
+
     const claudeResponse = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -599,7 +751,7 @@ Do NOT add, remove, or reorder days. Return exactly ${dayCount} days in the same
         model: 'claude-sonnet-4-6',
         max_tokens: 4000,
         system: `You are Jordan, the athlete's personal coach. You have their last week of performance data and you are writing their next week plan. Generate the training plan as structured JSON with varied exercise selection, smart ordering, and coaching notes that reference the user's actual performance.
-
+${weightProgressionBaselineSection}
 RPE INTERPRETATION — read this carefully:
 - avgRpe is the athlete's ACTUAL RPE for that exercise last week
 - targetRpe is what was programmed
@@ -607,6 +759,30 @@ RPE INTERPRETATION — read this carefully:
 - If avgRpe > targetRpe: the weight was HEAVY. High effort.
 - weightAction field tells you exactly what to do: 'increase', 'hold', 'decrease', or 'deload'
 
+RAMP-UP WORKING SETS (Week 1 self-select and similar):
+- If an exercise adaptation has isRampPattern: true, the user ramped up to their working weight across sets within a session (e.g. lighter early sets, heaviest working sets at the end). The baselineWeight and newTargetWeight in the data already use their PEAK working weight, not an average across ramp sets.
+- For isRampPattern: true: use that peak as their true baseline for Week 2. Do not argue for a lower working weight because earlier sets in the log were lighter.
+
+UNILATERAL RULE: For exercises flagged isUnilateral, reps in sets_json are per-side.
+When assessing whether a user hit their rep target (e.g. target 10 reps, logged 10),
+that means 10 each side — this IS hitting the target. Do not penalise or hold weight
+based on interpreting per-side reps as bilateral total.
+
+${goalType === 'power_hypertrophy' ? `POWER-HYPERTROPHY PROGRESSION:
+This plan has two-phase sessions. Track Phase 1 (strength) and Phase 2 (hypertrophy) separately — they progress independently.
+
+Phase 1 (strength compounds):
+- Use strength goal progression multipliers (aggressive)
+- A plateau in Phase 1 → rotate compound variation (e.g. Barbell Bench → Incline Barbell Bench)
+- Phase 1 plateau does NOT affect Phase 2
+
+Phase 2 (hypertrophy accessories):
+- Use hypertrophy goal progression multipliers (moderate)
+- A plateau in Phase 2 → rotate accessory variation (prefer same muscleEmphasis)
+- Phase 2 plateau does NOT affect Phase 1
+
+UNILATERAL RULE applies to Phase 2 accessories as before.
+Each exercise MUST include a "phase" field with value "strength" or "hypertrophy".` : ''}
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
 - Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing
@@ -673,10 +849,13 @@ Rules:
 - If phase is 'deload': sets are already reduced in the data above, keep reps in lower range
 - If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
 - If hasRpeData is false for an exercise: the coachingNote MUST ask the user to log RPE next session. Weight is held. Example: "I'm holding 225 lbs here — I need your RPE to know where to take this. Rate every set next session."
+- If isUnilateral is true for an exercise: reps logged in sets_json are per-side. Do not treat as bilateral total. Volume is already adjusted ×2 externally.
 - If selfSelectCoachingNote is present on an adaptation: use it as the core of that exercise's coachingNote (you may tighten wording slightly but keep the numbers).
+- If isRampPattern is true for an exercise: the user ramped up to their working weight across sets. The baselineWeight / newTargetWeight already reflect their PEAK working weight, not a session average. Do not reduce prescribed weight for that reason.
+- If the completed week was a deload: exerciseAdaptations already progress from pre-deload weights — do not anchor coaching or loads to deload (×0.8) numbers.
 - Never decrease weight solely because RPE was not logged.
 - Exercises with plateaued: true require special handling per the system prompt. Do not ignore this field.
-- Each exercise must have: id (new uuid), name, muscleGroup, sets, reps (string e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote
+- Each exercise must have: id (new uuid), name, muscleGroup, sets, reps (string e.g. '8-10'), targetWeight (number), restSeconds, targetRpe, coachingNote${goalType === 'power_hypertrophy' ? ', phase ("strength" or "hypertrophy")' : ''}
 - Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "" (empty string).
 - Include exactly ${dayCount || 7} days in the same order as the structure above. Workout slots have exercises; rest slots have empty exercises array and type 'rest'.
 

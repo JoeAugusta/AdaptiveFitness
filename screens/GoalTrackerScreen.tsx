@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../constants/design';
+import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import type { CaloriePace } from '../utils/projections';
 import {
   getFatLossProjection,
@@ -711,7 +712,9 @@ export default function GoalTrackerScreen() {
     for (const s of (log.sets_json ?? [])) {
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? s.loggedReps ?? 0);
-      weeklyVolumes[wk] = (weeklyVolumes[wk] ?? 0) + w * r;
+      // Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
+      const repMultiplier = isExerciseUnilateral(String(s.exerciseName ?? '')) ? 2 : 1;
+      weeklyVolumes[wk] = (weeklyVolumes[wk] ?? 0) + w * r * repMultiplier;
     }
   }
   const volumeWeeks = Object.keys(weeklyVolumes).map(Number).sort((a, b) => a - b);

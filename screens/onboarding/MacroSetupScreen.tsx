@@ -131,6 +131,7 @@ function computeTdee(params: RouteType['params']): number {
 function getGoalAdjustment(goal: string): number {
   switch (goal) {
     case 'strength':
+    case 'power_hypertrophy':
       return 200;
     case 'hypertrophy':
       return 300;
@@ -171,6 +172,8 @@ function formatGoalLabel(goal: string): string {
       return 'Hypertrophy';
     case 'strength':
       return 'Strength';
+    case 'power_hypertrophy':
+      return 'Strength & Size';
     case 'recomp':
       return 'Recomp';
     case 'general':

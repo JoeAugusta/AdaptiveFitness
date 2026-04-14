@@ -20,6 +20,13 @@ type GoalDetailParams = {
   currentSplitOther?: string | null;
   splitDuration?: string | null;
   trainingBackground?: string | null;
+  /** GAP-5: Power-hypertrophy optional multi-lift current 1RM estimates */
+  currentLifts?: {
+    benchPress: number | null;
+    backSquat: number | null;
+    deadlift: number | null;
+    overheadPress: number | null;
+  } | null;
 };
 
 /** Jordan-chosen split + weekly session template (S03 → generate-plan) */

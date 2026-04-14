@@ -1,4 +1,4 @@
-import { useState, Fragment, useRef, useEffect, useMemo } from 'react';
+import { useState, Fragment, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TextInput,
   Modal,
   TouchableWithoutFeedback,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
@@ -65,6 +66,7 @@ export interface Exercise {
   name: string;
   muscleGroup: string;
   usesWeight?: boolean;
+  isUnilateral?: boolean;
   /** Plan / library: compound vs isolation */
   planCategory?: 'compound' | 'isolation';
   /** From exercise library tier — drives warmup eligibility */
@@ -94,11 +96,12 @@ export interface LoggedSet {
   swapped: boolean;
 }
 
-function getLastWeekPills(sets: LoggedSet[]): string[] {
+function getLastWeekPills(sets: LoggedSet[], isUnilateral = false): string[] {
   const sortedSets = [...sets].sort((a, b) => a.setNumber - b.setNumber);
+  const suffix = isUnilateral ? ' ea' : '';
   return sortedSets.map((s) => {
     const w = s.weightLbs === 0 ? 'BW' : `${s.weightLbs}`;
-    return `${w}×${s.reps ?? 0}`;
+    return `${w}×${s.reps ?? 0}${suffix}`;
   });
 }
 
@@ -148,6 +151,13 @@ interface ExerciseCardProps {
   swappedName: string | null;
   coachingNote: string | null;
   coachingLoading: boolean;
+  /**
+   * True only when this card is the first exercise across the whole session
+   * that still has unlogged sets. Controlled by ActiveWorkoutScreen — never
+   * derived per-card — so the green active highlight cannot bleed onto
+   * subsequent cards before preceding exercises are complete.
+   */
+  isActiveCard?: boolean;
   /** Plan week — affects self-select coach copy when no prescribed weight */
   weekNumber?: number;
   /** From plan_json.goal */
@@ -174,6 +184,7 @@ export default function ExerciseCard({
   swappedName,
   coachingNote,
   coachingLoading,
+  isActiveCard = false,
   weekNumber = 1,
   goal = 'strength',
   warmupCollapsedCompound = false,
@@ -205,10 +216,67 @@ export default function ExerciseCard({
 
   const [showCueCard, setShowCueCard] = useState(false);
 
+  const coachingSkelOpacity = useRef(new Animated.Value(0)).current;
+  const coachingContentOpacity = useRef(new Animated.Value(0)).current;
+  const coachingPulseOpacity = useRef(new Animated.Value(1)).current;
+  const coachingPulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
   useEffect(() => {
     setEnteredWeight(0);
     setShowCueCard(false);
   }, [exercise.id]);
+
+  useLayoutEffect(() => {
+    if (coachingLoading) {
+      coachingSkelOpacity.setValue(1);
+      coachingContentOpacity.setValue(0);
+    }
+  }, [coachingLoading, coachingSkelOpacity, coachingContentOpacity]);
+
+  useEffect(() => {
+    if (!coachingLoading) {
+      coachingPulseLoopRef.current?.stop();
+      coachingPulseLoopRef.current = null;
+      return;
+    }
+    coachingPulseOpacity.setValue(1);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coachingPulseOpacity, {
+          toValue: 0.4,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(coachingPulseOpacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    coachingPulseLoopRef.current = loop;
+    loop.start();
+    return () => {
+      loop.stop();
+      coachingPulseLoopRef.current = null;
+    };
+  }, [coachingLoading, coachingPulseOpacity]);
+
+  useEffect(() => {
+    if (coachingLoading || !coachingNote) return;
+    Animated.parallel([
+      Animated.timing(coachingSkelOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(coachingContentOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [coachingLoading, coachingNote, coachingSkelOpacity, coachingContentOpacity]);
 
   const effectiveWeight = isSelfSelectMode
     ? enteredWeight
@@ -314,6 +382,31 @@ export default function ExerciseCard({
   const getLoggedSet = (setNumber: number) =>
     loggedSets.find((s) => s.setNumber === setNumber);
 
+  const activeWorkingSetIndex = useMemo(() => {
+    const inputFor = (setNumber: number) =>
+      inputValues[setNumber] || getDefaultInput(setNumber);
+
+    const matchesActiveSlot = (setNumber: number) => {
+      const input = inputFor(setNumber);
+      const wStr = String(input.weight ?? '').trim();
+      const weightLbs = isBodyweightExercise
+        ? 0
+        : wStr === ''
+          ? 0
+          : parseFloat(wStr) || 0;
+      const rpe = input.rpe ?? 0;
+      return rpe === 0 && weightLbs === 0;
+    };
+
+    const strictIdx = exercise.sets.findIndex((t) => {
+      if (isSetLogged(t.setNumber)) return false;
+      return matchesActiveSlot(t.setNumber);
+    });
+    if (strictIdx >= 0) return strictIdx;
+
+    return exercise.sets.findIndex((t) => !isSetLogged(t.setNumber));
+  }, [exercise.sets, loggedSets, inputValues, isBodyweightExercise]);
+
   const canLogSet = (setNumber: number) => {
     if (isSetLogged(setNumber)) return false;
     const input = getInputForSet(setNumber);
@@ -379,9 +472,11 @@ export default function ExerciseCard({
     weekNumber === 1
       ? `Choose a weight at RPE ${firstTargetRpe} and log it — I'll set Week 2 from your numbers.`
       : `No weight was set for this exercise — choose a weight at RPE ${firstTargetRpe} and log it.`;
+  const rawReps = exercise.reps ?? firstTarget?.targetReps ?? '';
+  const eachSideSuffix = exercise.isUnilateral ? ' each side' : '';
   const repsSubtitlePart = firstTargetIsTimed
     ? `${firstTargetDuration} sec`
-    : (exercise.reps ?? firstTarget?.targetReps ?? '');
+    : `${rawReps}${eachSideSuffix}`;
   const targetSummary =
     firstTarget != null
       ? isSelfSelectMode
@@ -398,7 +493,12 @@ export default function ExerciseCard({
 
   const showCoachingBlock =
     loggedSets.length > 0 && (coachingNote != null || coachingLoading);
-  const lastWeekPillLabels = getLastWeekPills(previousSets);
+  useEffect(() => {
+    if (!showCoachingBlock && showCoachingSheet) {
+      setShowCoachingSheet(false);
+    }
+  }, [showCoachingBlock, showCoachingSheet]);
+  const lastWeekPillLabels = getLastWeekPills(previousSets, exercise.isUnilateral);
   const lastWeekBestStr = getLastWeekBestSet(previousSets);
   const lastWeekAvgRpeStr = getLastWeekAvgRpe(previousSets);
   const lastWeekVisiblePills = lastWeekPillLabels.slice(0, 5);
@@ -599,6 +699,13 @@ export default function ExerciseCard({
         const timedDuration = parseTimedDuration(set.targetReps);
         const isFirstWorkingAfterWarmup =
           setIdx === 0 && needsWarmup && warmupSets.length > 0;
+        // BUG-7: Active highlight now derived from first exercise with remaining
+        // unlogged sets. Cannot bleed onto next exercise until previous is complete.
+        const isActiveRow =
+          isActiveCard &&
+          !logged &&
+          activeWorkingSetIndex >= 0 &&
+          setIdx === activeWorkingSetIndex;
 
         return (
           <Fragment key={set.setNumber}>
@@ -606,6 +713,7 @@ export default function ExerciseCard({
               style={[
                 styles.setRow,
                 logged && styles.setRowLogged,
+                isActiveRow && styles.setRowActive,
                 isFirstWorkingAfterWarmup && styles.setRowFirstWorking,
               ]}
             >
@@ -771,16 +879,32 @@ export default function ExerciseCard({
 
       {showCoachingBlock ? (
         <TouchableOpacity
-          style={styles.coachingNoteBox}
+          style={[
+            styles.coachingCardBase,
+            coachingLoading ? styles.coachingCardLoading : styles.coachingCardReady,
+          ]}
           activeOpacity={0.85}
           onPress={() => setShowCoachingSheet(true)}
         >
           <Text style={styles.coachingJordan}>JORDAN</Text>
-          {coachingLoading ? (
-            <View style={styles.coachingSkeleton} />
-          ) : (
-            <Text style={styles.coachingNoteText}>{coachingNote}</Text>
-          )}
+          <View style={styles.coachingBodySlot}>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.coachingSkelAbs, { opacity: coachingSkelOpacity }]}
+            >
+              <Animated.View style={{ opacity: coachingPulseOpacity }}>
+                <View style={styles.coachingSkelLine1} />
+                <View style={styles.coachingSkelLine2} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.View
+              style={[styles.coachingContentWrap, { opacity: coachingContentOpacity }]}
+            >
+              {coachingNote ? (
+                <Text style={styles.coachingNoteText}>{coachingNote}</Text>
+              ) : null}
+            </Animated.View>
+          </View>
         </TouchableOpacity>
       ) : null}
 
@@ -804,15 +928,30 @@ export default function ExerciseCard({
         <View style={styles.coachSheet}>
           <View style={styles.sheetDragHandle} />
           <Text style={styles.coachSheetBrand}>JORDAN</Text>
-          {coachingLoading ? (
-            <View style={styles.coachingSkeletonWide} />
-          ) : coachingNote ? (
-            <Text style={styles.coachSheetBody}>{coachingNote}</Text>
-          ) : (
-            <Text style={styles.coachSheetBody}>
-              Complete a set to receive coaching feedback.
-            </Text>
-          )}
+          <View style={styles.coachSheetBodyArea}>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.coachingSkelAbs, { opacity: coachingSkelOpacity }]}
+            >
+              <View style={styles.coachSheetSkelCard}>
+                <Animated.View style={{ opacity: coachingPulseOpacity }}>
+                  <View style={styles.coachingSkelLine1} />
+                  <View style={styles.coachingSkelLine2} />
+                </Animated.View>
+              </View>
+            </Animated.View>
+            <Animated.View
+              style={[styles.coachSheetContentWrap, { opacity: coachingContentOpacity }]}
+            >
+              {coachingNote ? (
+                <Text style={styles.coachSheetBody}>{coachingNote}</Text>
+              ) : !coachingLoading ? (
+                <Text style={styles.coachSheetBody}>
+                  Complete a set to receive coaching feedback.
+                </Text>
+              ) : null}
+            </Animated.View>
+          </View>
           <TouchableOpacity
             activeOpacity={0.8}
             style={styles.coachSheetBtn}
@@ -1212,6 +1351,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
   },
+  setRowActive: {
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.success,
+    paddingHorizontal: 0,
+  },
   setRowLogged: {
     backgroundColor: Colors.successMuted,
     borderRadius: Radius.sm,
@@ -1400,13 +1546,48 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.semiBold,
   },
-  coachingNoteBox: {
-    backgroundColor: Colors.accentMuted,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
+  coachingCardBase: {
     marginTop: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
     borderLeftWidth: 3,
+    overflow: 'hidden',
+  },
+  coachingCardLoading: {
+    backgroundColor: Colors.bgCard,
+    borderLeftColor: Colors.accentBorder,
+  },
+  coachingCardReady: {
+    backgroundColor: Colors.accentMuted,
     borderLeftColor: Colors.accent,
+  },
+  coachingBodySlot: {
+    position: 'relative',
+    minHeight: 40,
+  },
+  coachingSkelAbs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+  },
+  coachingContentWrap: {
+    minHeight: 40,
+  },
+  coachingSkelLine1: {
+    width: '80%',
+    height: 12,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  coachingSkelLine2: {
+    width: '55%',
+    height: 12,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
   coachingJordan: {
     fontSize: FontSizes.label,
@@ -1420,13 +1601,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     lineHeight: 18,
-  },
-  coachingSkeleton: {
-    height: 12,
-    width: '80%',
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
   },
   swapButton: {
     marginTop: Spacing.md,
@@ -1461,20 +1635,26 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     letterSpacing: 1.5,
   },
-  coachSheetBody: {
+  coachSheetBodyArea: {
     marginTop: Spacing.md,
+    position: 'relative',
+    minHeight: 56,
+  },
+  coachSheetSkelCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    padding: Spacing.md,
+  },
+  coachSheetContentWrap: {
+    minHeight: 40,
+  },
+  coachSheetBody: {
     fontSize: FontSizes.body,
     fontFamily: Fonts.regular,
     color: Colors.textPrimary,
     lineHeight: 22,
-  },
-  coachingSkeletonWide: {
-    marginTop: Spacing.md,
-    height: 12,
-    width: '80%',
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
   },
   coachSheetBtn: {
     marginTop: Spacing.xl,

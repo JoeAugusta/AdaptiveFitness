@@ -20,6 +20,24 @@ function parseMidReps(reps: string): number {
   return parseInt(reps) || 0;
 }
 
+/** Session-wide average RPE from all logged sets (for deload interpretation). */
+function calculateAvgRpeFromLogs(logs: any[]): number {
+  let sum = 0;
+  let n = 0;
+  for (const log of logs) {
+    const setsJson = log.sets_json ?? [];
+    if (!Array.isArray(setsJson)) continue;
+    for (const set of setsJson) {
+      const r = Number(set.rpe ?? set.loggedRpe ?? 0);
+      if (r > 0) {
+        sum += r;
+        n++;
+      }
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -208,7 +226,9 @@ serve(async (req) => {
         : 0;
 
     const rpeDataRecorded = rpeDeltas.length > 0;
-    const isDeloadWeek = weekNumber % 4 === 0;
+    const isDeloadWeek =
+      String(weekData?.phase ?? '').toLowerCase() === 'deload';
+    const avgLoggedRpe = calculateAvgRpeFromLogs(logs);
 
     // Determine performance rating correctly
     // Negative avgRpeVsTarget = weights were too light = NOT a tough week
@@ -238,8 +258,23 @@ serve(async (req) => {
       avgRpeVsTarget: Math.round(avgRpeVsTarget * 10) / 10,
       rpeDataRecorded, // true = user logged RPE, false = no RPE data
       isDeloadWeek,
+      avgLoggedRpe: Math.round(avgLoggedRpe * 10) / 10,
       derivedRating, // pre-calculated — Claude should use this as the basis
     };
+
+    const deloadPerformanceOverrideBlock = isDeloadWeek
+      ? `
+
+DELOAD WEEK PERFORMANCE OVERRIDE:
+THIS WAS A DELOAD WEEK (phase on plan). Override all normal completion-based performance rating logic for deload weeks.
+
+Rate deload execution using avgLoggedRpe from the metrics (average RPE across all logged sets this week):
+- avgLoggedRpe <= 7: Deload executed well — recovery is on track for next week. Appropriate headline and performanceRating.
+- avgLoggedRpe > 7: Deload ran too hot — effort was higher than intended. The point of a deload is to let the body recover. High RPE in a deload week means the recovery benefit is reduced. performanceSummary must reflect this honestly; do NOT praise "consistency" or completion if sets were crushed at RPE 9.
+
+Do NOT reference session completion rate as a positive when avgLoggedRpe > 7 in a deload week. Completing every set at RPE 9 in a deload is poor execution, not good consistency.
+`
+      : '';
 
     // Step 4 — Call Claude API
     const claudeResponse = await fetchAnthropicMessagesWithRetry(() =>
@@ -279,7 +314,7 @@ Tone rules:
 Goal type: ${goalType}
 Performance metrics:
 ${JSON.stringify(metrics, null, 2)}
-
+${deloadPerformanceOverrideBlock}
 CRITICAL INTERPRETATION RULES — you must follow this exactly:
 
 RPE deltas (only when rpeDataRecorded is true):
@@ -307,11 +342,12 @@ RPE deltas (only when rpeDataRecorded is true):
   logging RPE each set will improve the accuracy of next week's plan.
   Base the rating on completion rate and fatigue only.
 
-- isDeloadWeek: if true, this was a planned deload week. The summary
-  should acknowledge this explicitly. "Strong Week" is appropriate 
-  for a completed deload. The performanceSummary should mention that
-  reduced loads were intentional and the body is recovering. 
-  nextWeekChanges should reference that full loads resume next week.
+- isDeloadWeek: if true, this was a planned deload week (see plan phase).
+  Follow DELOAD WEEK PERFORMANCE OVERRIDE above when present — it takes
+  precedence over this bullet and over derivedRating for how to judge the week.
+  When avgLoggedRpe <= 7: acknowledge reduced loads were intentional and
+  recovery is on track; nextWeekChanges can reference full loads resuming.
+  When avgLoggedRpe > 7: do not treat completion rate or "showing up" as the win.
 
 - stagnantExercises: exercises where weight matched target exactly
   and RPE was on target. If this list has 3+ exercises, mention in

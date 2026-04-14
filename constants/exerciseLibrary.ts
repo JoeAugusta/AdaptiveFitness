@@ -40,9 +40,25 @@ export interface Exercise {
   rotationGroup: string;
   rotationPriority: number;
   usesWeight: boolean;
+  /** True when exercise is performed one side at a time (reps are per-side). */
+  isUnilateral: boolean;
   /** Three setup / execution bullets for in-workout coaching */
   cues: string[];
 }
+
+// BUG-5: Unilateral exercise handling — IDs of exercises performed one side at a time.
+const UNILATERAL_IDS = new Set([
+  'q06', // Bulgarian Split Squat
+  'q08', // Walking Lunge
+  'b06', // Dumbbell Row (ambiguous → unilateral per safety rule)
+  'g05', // Cable Kickback
+  's04', // Cable Lateral Raise (single-arm cable)
+  'bi02', // Dumbbell Curl
+  'bi03', // Hammer Curl
+  'bi06', // Incline Dumbbell Curl
+  'tr05', // Dumbbell Tricep Kickback
+  'co06', // Pallof Press
+]);
 
 const E = (
   base: Omit<
@@ -53,6 +69,7 @@ const E = (
     | 'rotationGroup'
     | 'rotationPriority'
     | 'usesWeight'
+    | 'isUnilateral'
     | 'cues'
   >,
   arg2: { usesWeight?: boolean } | Pick<
@@ -75,6 +92,7 @@ const E = (
     ...base,
     ...meta,
     usesWeight: opts?.usesWeight ?? base.equipment !== 'bodyweight',
+    isUnilateral: UNILATERAL_IDS.has(base.id),
     cues: [...cueTuple],
   };
 };
@@ -431,6 +449,18 @@ export function getCuesForExerciseName(name: string): string[] {
     (x) => x.name.toLowerCase().trim() === String(name).toLowerCase().trim(),
   );
   return e ? [...e.cues] : [...DEFAULT_EXERCISE_CUES];
+}
+
+/** Lookup by name — handles AI-generated names not in library via keyword heuristics. */
+export function isExerciseUnilateral(name: string): boolean {
+  const match = EXERCISES.find(
+    (x) => x.name.toLowerCase().trim() === String(name).toLowerCase().trim(),
+  );
+  if (match) return match.isUnilateral;
+  const n = name.toLowerCase();
+  if (/single[- ]?(arm|leg)/i.test(n)) return true;
+  if (/\b(lunge|split squat|step[- ]?up|pistol|cossack|meadows)\b/i.test(n)) return true;
+  return false;
 }
 
 export function getRotationCandidates(

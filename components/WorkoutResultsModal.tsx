@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 
 export interface SetLog {
   exerciseId: string;
@@ -31,6 +32,7 @@ export interface ExerciseObject {
   sets?: number;
   reps?: string;
   targetRpe?: number;
+  phase?: 'strength' | 'hypertrophy';
 }
 
 interface WorkoutResultsModalProps {
@@ -49,8 +51,12 @@ function calculateAvgRpe(sets: SetLog[]): number | null {
   return Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10;
 }
 
+// Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
 function calculateTotalVolume(sets: SetLog[]): number {
-  return sets.reduce((total, s) => total + ((s.weightLbs ?? 0) * (s.reps ?? 0)), 0);
+  return sets.reduce((total, s) => {
+    const repMultiplier = isExerciseUnilateral(s.exerciseName ?? '') ? 2 : 1;
+    return total + (s.weightLbs ?? 0) * (s.reps ?? 0) * repMultiplier;
+  }, 0);
 }
 
 function formatVolume(lbs: number): string {
@@ -218,6 +224,17 @@ export default function WorkoutResultsModal({
   const hasData = exerciseIds.length > 0;
   const showNoDataYet = !workoutLog || sets.length === 0;
 
+  // GAP-5: Determine if this is a two-phase session
+  const hasPhasedExercises = planExercises.some((ex) => ex.phase === 'strength' || ex.phase === 'hypertrophy');
+
+  const phaseForExercise = useMemo(() => {
+    const map: Record<string, 'strength' | 'hypertrophy' | undefined> = {};
+    planExercises.forEach((ex) => {
+      if (ex.id) map[ex.id] = ex.phase;
+    });
+    return map;
+  }, [planExercises]);
+
   if (__DEV__) {
     console.log('[WorkoutResultsModal]', {
       totalSets: sets.length,
@@ -274,7 +291,9 @@ export default function WorkoutResultsModal({
                 Complete this workout to see your results here.
               </Text>
             </View>
-          ) : hasData ? exerciseIds.map((exerciseId) => {
+          ) : hasData ? (() => {
+            let lastPhase: string | undefined;
+            return exerciseIds.map((exerciseId) => {
             const exerciseSets = [...groupedSets[exerciseId]].sort(
               (a, b) => a.setNumber - b.setNumber,
             );
@@ -301,12 +320,41 @@ export default function WorkoutResultsModal({
               return currentWeight > bestWeight ? current : best;
             }, exerciseSets[0]);
             const hasSwap = exerciseSets.some((s) => s.swapped);
+            const exTopWeight = exerciseSets.reduce(
+              (max, s) => Math.max(max, s.weightLbs ?? 0), 0,
+            );
+            const exVolume = calculateTotalVolume(exerciseSets);
+            const exAvgRpe = calculateAvgRpe(exerciseSets);
+
+            const currentPhase = phaseForExercise[exerciseId];
+            const showPhaseHeader = hasPhasedExercises && currentPhase && currentPhase !== lastPhase;
+            if (currentPhase) lastPhase = currentPhase;
 
             return (
-              <View key={exerciseId} style={styles.exerciseCard}>
+              <View key={exerciseId}>
+                {showPhaseHeader && currentPhase === 'strength' ? (
+                  <View style={styles.phaseHeader}>
+                    <Text style={styles.phaseHeaderText}>PHASE 1 — STRENGTH</Text>
+                    <Text style={styles.phaseHeaderSub}>Heavy compounds · top set weight</Text>
+                  </View>
+                ) : null}
+                {showPhaseHeader && currentPhase === 'hypertrophy' ? (
+                  <View style={styles.phaseHeader}>
+                    <Text style={styles.phaseHeaderText}>PHASE 2 — HYPERTROPHY</Text>
+                    <Text style={styles.phaseHeaderSub}>Accessories · total volume</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.exerciseCard}>
                 <View style={styles.exerciseHeader}>
                   <Text style={styles.exerciseName}>{exerciseName}</Text>
                   {targetLabel ? <Text style={styles.targetText}>{targetLabel}</Text> : null}
+                  {hasPhasedExercises && currentPhase === 'strength' ? (
+                    <Text style={styles.phaseMetricText}>Top: {exTopWeight} lbs · RPE {exAvgRpe?.toFixed(1) ?? '—'}</Text>
+                  ) : null}
+                  {hasPhasedExercises && currentPhase === 'hypertrophy' ? (
+                    <Text style={styles.phaseMetricText}>Vol: {formatVolume(exVolume)} · RPE {exAvgRpe?.toFixed(1) ?? '—'}</Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.setRowsContainer}>
@@ -370,9 +418,11 @@ export default function WorkoutResultsModal({
                     {formatSetDisplay(bestSet, planExercise)}
                   </Text>
                 </View>
+                </View>
               </View>
             );
-          }) : (
+          });
+          })() : (
             <View style={styles.rawFallbackWrap}>
               <Text style={styles.rawFallbackLabel}>Raw session data</Text>
               {sets.map((set, idx) => (
@@ -392,6 +442,31 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
+  },
+  phaseHeader: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  phaseHeaderText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  phaseHeaderSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  phaseMetricText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
   },
   header: {
     flexDirection: 'row',

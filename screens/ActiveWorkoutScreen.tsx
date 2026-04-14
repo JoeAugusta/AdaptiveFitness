@@ -12,6 +12,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Animated,
+  Easing,
+  AppState,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,10 +29,13 @@ import ExerciseCard, {
   WARMUP_COLLAPSED_STORAGE_KEY,
 } from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier } from '../components/ExerciseCard';
-import { EXERCISES, getCuesForExerciseName } from '../constants/exerciseLibrary';
+import { EXERCISES, getCuesForExerciseName, isExerciseUnilateral } from '../constants/exerciseLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
-
-const REST_DURATION = 90;
+import {
+  cancelRestTimerNotification,
+  playRestCompleteSound,
+  scheduleRestCompleteNotification,
+} from '../utils/restTimerAlerts';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
@@ -54,6 +60,7 @@ type WorkoutExercise = {
   name: string;
   muscleGroup: string;
   usesWeight: boolean;
+  isUnilateral: boolean;
   planCategory: 'compound' | 'isolation';
   compoundTier: CompoundTier;
   /** Passed to ExerciseCard warmup logic (library / plan tier) */
@@ -64,6 +71,10 @@ type WorkoutExercise = {
   sets: ExerciseSet[];
   alternatives: string[];
   cues: string[];
+  /** From plan_json exercise; rest timer uses this when set */
+  restSeconds?: number;
+  /** GAP-5: Power-hypertrophy session phase tagging */
+  phase?: 'strength' | 'hypertrophy';
 };
 
 type WorkoutData = {
@@ -78,6 +89,7 @@ const MOCK_WORKOUT_EXERCISES_BASE: Omit<WorkoutExercise, 'cues'>[] = [
     name: 'Barbell Bench Press',
     muscleGroup: 'Chest',
     usesWeight: true,
+    isUnilateral: false,
     planCategory: 'compound',
     compoundTier: 'primary_compound',
     category: 'primary_compound',
@@ -96,6 +108,7 @@ const MOCK_WORKOUT_EXERCISES_BASE: Omit<WorkoutExercise, 'cues'>[] = [
     name: 'Overhead Press',
     muscleGroup: 'Shoulders',
     usesWeight: true,
+    isUnilateral: false,
     planCategory: 'compound',
     compoundTier: 'primary_compound',
     category: 'primary_compound',
@@ -114,6 +127,7 @@ const MOCK_WORKOUT_EXERCISES_BASE: Omit<WorkoutExercise, 'cues'>[] = [
     name: 'Tricep Pushdown',
     muscleGroup: 'Triceps',
     usesWeight: true,
+    isUnilateral: false,
     planCategory: 'isolation',
     compoundTier: 'isolation',
     category: 'isolation',
@@ -154,6 +168,7 @@ type PlanJsonExercise = {
   compoundTier?: CompoundTier;
   restSeconds?: number;
   coachingNote?: string;
+  phase?: 'strength' | 'hypertrophy';
 };
 
 type EnrichedPlanExercise = {
@@ -162,6 +177,7 @@ type EnrichedPlanExercise = {
   movementPatternResolved: string | undefined;
   planCategoryResolved: 'compound' | 'isolation';
   usesWeightFromLibrary: boolean;
+  isUnilateral: boolean;
   cuesResolved: string[];
 };
 
@@ -183,6 +199,7 @@ function enrichExerciseWithLibraryData(
       planCategoryResolved: 'compound',
       // Default weighted when unknown; targetWeight === 0 is self-select, not BW
       usesWeightFromLibrary: true,
+      isUnilateral: isExerciseUnilateral(planExercise.name),
       cuesResolved: getCuesForExerciseName(planExercise.name),
     };
   }
@@ -195,6 +212,7 @@ function enrichExerciseWithLibraryData(
     planCategoryResolved:
       planExercise.category ?? libraryExercise.category,
     usesWeightFromLibrary: libraryExercise.usesWeight,
+    isUnilateral: libraryExercise.isUnilateral,
     cuesResolved: [...libraryExercise.cues],
   };
 }
@@ -239,6 +257,25 @@ const formatTime = (seconds: number): string => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
+/** MM:SS for rest countdown display */
+function formatRestCountdown(seconds: number): string {
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  const s = Math.max(0, seconds) % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function resolveRestDurationSeconds(exercise: WorkoutExercise): number {
+  // GAP-5: Phase 1 strength compounds always get 240s (within 180-300s range)
+  if (exercise.phase === 'strength') return 240;
+  const n = exercise.restSeconds;
+  if (typeof n === 'number' && Number.isFinite(n) && n > 0) {
+    return Math.round(n);
+  }
+  if (exercise.planCategory === 'compound') return 180;
+  if (exercise.planCategory === 'isolation') return 90;
+  return 120;
+}
+
 export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -269,11 +306,28 @@ export default function ActiveWorkoutScreen() {
   // Timers
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [restSeconds, setRestSeconds] = useState(0);
+  const [restDurationTotal, setRestDurationTotal] = useState(90);
   const [isRestActive, setIsRestActive] = useState(false);
+  const restSubtextOpacity = useRef(new Animated.Value(0)).current;
 
   // Fatigue check-in
   const [showFatigueSheet, setShowFatigueSheet] = useState(false);
   const [fatigueRating, setFatigueRating] = useState<number | null>(null);
+  const fatigueEmojiScales = useRef(
+    FATIGUE_OPTIONS.map(() => new Animated.Value(1)),
+  ).current;
+
+  useEffect(() => {
+    const anims = FATIGUE_OPTIONS.map((opt, i) =>
+      Animated.timing(fatigueEmojiScales[i], {
+        toValue: fatigueRating === opt.rating ? 1.15 : 1,
+        duration: 150,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    Animated.parallel(anims).start();
+  }, [fatigueRating]);
   const [sessionNotes, setSessionNotes] = useState('');
   const [showPreSessionModal, setShowPreSessionModal] = useState(
     () => !!preSessionMessage,
@@ -567,6 +621,7 @@ export default function ActiveWorkoutScreen() {
           movementPatternResolved,
           planCategoryResolved,
           usesWeightFromLibrary,
+          isUnilateral: unilateral,
           cuesResolved,
         }) => {
           const usesWeight = usesWeightFromLibrary;
@@ -575,6 +630,7 @@ export default function ActiveWorkoutScreen() {
             name: ex.name,
             muscleGroup: ex.muscleGroup,
             usesWeight,
+            isUnilateral: unilateral,
             planCategory: planCategoryResolved,
             compoundTier: compoundTierResolved,
             category: compoundTierResolved,
@@ -589,6 +645,8 @@ export default function ActiveWorkoutScreen() {
             })),
             alternatives: getAlternatives(ex.muscleGroup),
             cues: cuesResolved,
+            restSeconds: ex.restSeconds,
+            phase: ex.phase,
           };
         },
       );
@@ -631,6 +689,12 @@ export default function ActiveWorkoutScreen() {
   );
   const allSetsLogged = sets.length >= totalSetsCount;
 
+  // BUG-7: Active highlight now derived from first exercise with remaining
+  // unlogged sets. Cannot bleed onto next exercise until previous is complete.
+  const activeExerciseIndex = (workout?.exercises ?? []).findIndex(
+    (ex) => sets.filter((s) => s.exerciseId === ex.id).length < ex.sets.length,
+  );
+
   // Elapsed session timer
   useEffect(() => {
     const interval = setInterval(
@@ -644,7 +708,11 @@ export default function ActiveWorkoutScreen() {
   useEffect(() => {
     if (!isRestActive) return;
     if (restSeconds <= 0) {
+      void cancelRestTimerNotification();
       setIsRestActive(false);
+      if (AppState.currentState === 'active') {
+        void playRestCompleteSound();
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return;
     }
@@ -654,6 +722,22 @@ export default function ActiveWorkoutScreen() {
     );
     return () => clearTimeout(timeout);
   }, [isRestActive, restSeconds]);
+
+  useEffect(() => {
+    return () => {
+      void cancelRestTimerNotification();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRestActive) return;
+    restSubtextOpacity.setValue(1);
+    Animated.timing(restSubtextOpacity, {
+      toValue: 0,
+      duration: 1200,
+      useNativeDriver: true,
+    }).start();
+  }, [isRestActive, restSubtextOpacity]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -670,10 +754,11 @@ export default function ActiveWorkoutScreen() {
     loggedReps: number,
     loggedWeight: number,
     loggedRpe: number | null,
+    isUnilateral = false,
   ) => {
     setCoachingLoading((prev) => ({ ...prev, [exerciseId]: true }));
     try {
-      const { data } = await supabase.functions.invoke('coaching-feedback', {
+      const { data, error } = await supabase.functions.invoke('coaching-feedback', {
         body: {
           exerciseName,
           targetReps,
@@ -682,15 +767,25 @@ export default function ActiveWorkoutScreen() {
           loggedReps,
           loggedWeight,
           loggedRpe: loggedRpe ?? 'not rated',
+          isUnilateral,
         },
       });
-      const text = data?.feedback ?? 'Good work — keep it up.';
-      setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
+      if (error) {
+        setCoachingNotes((prev) => {
+          const next = { ...prev };
+          delete next[exerciseId];
+          return next;
+        });
+      } else {
+        const text = data?.feedback ?? 'Good work — keep it up.';
+        setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
+      }
     } catch {
-      setCoachingNotes((prev) => ({
-        ...prev,
-        [exerciseId]: 'Good work — keep it up.',
-      }));
+      setCoachingNotes((prev) => {
+        const next = { ...prev };
+        delete next[exerciseId];
+        return next;
+      });
     } finally {
       setCoachingLoading((prev) => ({ ...prev, [exerciseId]: false }));
     }
@@ -722,8 +817,13 @@ export default function ActiveWorkoutScreen() {
     setSets(newSets);
 
     if (newSets.length < totalSetsCount) {
-      setRestSeconds(REST_DURATION);
+      const duration = exercise
+        ? resolveRestDurationSeconds(exercise)
+        : 120;
+      setRestDurationTotal(duration);
+      setRestSeconds(duration);
       setIsRestActive(true);
+      void scheduleRestCompleteNotification(duration);
     }
     if (exercise) {
       const target = exercise.sets.find((s) => s.setNumber === setNumber);
@@ -738,6 +838,7 @@ export default function ActiveWorkoutScreen() {
           reps,
           weight,
           rpe,
+          exercise.isUnilateral,
         );
       }
     }
@@ -749,6 +850,7 @@ export default function ActiveWorkoutScreen() {
   };
 
   const skipRest = () => {
+    void cancelRestTimerNotification();
     setIsRestActive(false);
     setRestSeconds(0);
   };
@@ -826,6 +928,8 @@ export default function ActiveWorkoutScreen() {
         });
       }
 
+      // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.
+      // Do NOT double the value before storing — store exactly what the user entered.
       await supabase.from('workout_logs').insert({
         user_id: userId,
         plan_id: planIdForLog,
@@ -887,7 +991,9 @@ export default function ActiveWorkoutScreen() {
     workout?.title ?? params.workoutTitle ?? 'Workout';
 
   const restProgressWidth: DimensionValue =
-    `${Math.max(0, Math.min(100, (restSeconds / REST_DURATION) * 100))}%`;
+    restDurationTotal > 0
+      ? `${Math.max(0, Math.min(100, (restSeconds / restDurationTotal) * 100))}%`
+      : '0%';
 
   if (isLoading) {
     return (
@@ -923,38 +1029,64 @@ export default function ActiveWorkoutScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {(workout?.exercises ?? []).map((exercise) => (
-              <ExerciseCard
-                key={exercise.id}
-                exercise={exercise}
-                loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
-                previousSets={getPreviousSetsForExercise(
-                  previousSetsMap,
-                  exercise.id,
-                  exercise.name,
-                )}
-                swappedName={exerciseSwaps[exercise.id] ?? null}
-                coachingNote={coachingNotes[exercise.id] ?? null}
-                coachingLoading={coachingLoading[exercise.id] ?? false}
-                weekNumber={params.weekNumber}
-                goal={workout?.goal ?? 'strength'}
-                warmupCollapsedCompound={warmupCollapsedCompound}
-                onWarmupCollapsedCompoundChange={setWarmupCollapsedCompound}
-                onLogSet={handleLogSet}
-                onSwapExercise={handleSwapExercise}
-                experience={workoutExperience}
-              />
-            ))}
+            {(workout?.exercises ?? []).map((exercise, exerciseIdx) => {
+              const exercises = workout?.exercises ?? [];
+              const prevExercise = exerciseIdx > 0 ? exercises[exerciseIdx - 1] : null;
+              return (
+                <View key={exercise.id}>
+                  {exercise.phase === 'strength' && exerciseIdx === 0 && (
+                    <View style={styles.phaseHeader}>
+                      <Text style={styles.phaseHeaderText}>PHASE 1 — STRENGTH</Text>
+                      <Text style={styles.phaseHeaderSub}>Heavy compounds · 3–6 reps · RPE 8–9</Text>
+                    </View>
+                  )}
+                  {exercise.phase === 'hypertrophy' && prevExercise?.phase === 'strength' && (
+                    <View style={styles.phaseHeader}>
+                      <Text style={styles.phaseHeaderText}>PHASE 2 — HYPERTROPHY</Text>
+                      <Text style={styles.phaseHeaderSub}>Accessories · 8–12 reps · RPE 7–8</Text>
+                    </View>
+                  )}
+                  <ExerciseCard
+                    exercise={exercise}
+                    loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
+                    previousSets={getPreviousSetsForExercise(
+                      previousSetsMap,
+                      exercise.id,
+                      exercise.name,
+                    )}
+                    isActiveCard={exerciseIdx === activeExerciseIndex}
+                    swappedName={exerciseSwaps[exercise.id] ?? null}
+                    coachingNote={coachingNotes[exercise.id] ?? null}
+                    coachingLoading={coachingLoading[exercise.id] ?? false}
+                    weekNumber={params.weekNumber}
+                    goal={workout?.goal ?? 'strength'}
+                    warmupCollapsedCompound={warmupCollapsedCompound}
+                    onWarmupCollapsedCompoundChange={setWarmupCollapsedCompound}
+                    onLogSet={handleLogSet}
+                    onSwapExercise={handleSwapExercise}
+                    experience={workoutExperience}
+                  />
+                </View>
+              );
+            })}
           </ScrollView>
 
           {isRestActive && !allSetsLogged ? (
             <View style={styles.restTimerFixed} pointerEvents="box-none">
             <View style={styles.restBannerRow}>
               <View>
-                <Text style={styles.restBannerLabel}>REST</Text>
+                <Animated.Text
+                  style={[
+                    styles.restBannerSubtext,
+                    { opacity: restSubtextOpacity },
+                  ]}
+                >
+                  Rest · {formatRestCountdown(restDurationTotal)}
+                </Animated.Text>
                 <Text style={styles.restBannerCountdown}>
-                  {formatTime(restSeconds)}
+                  {formatRestCountdown(restSeconds)}
                 </Text>
+                <Text style={styles.restBannerLabel}>REST</Text>
               </View>
               <TouchableOpacity onPress={skipRest} activeOpacity={0.7}>
                 <Text style={styles.restBannerSkip}>Skip →</Text>
@@ -1011,20 +1143,25 @@ export default function ActiveWorkoutScreen() {
           </Text>
 
           <View style={styles.emojiRow}>
-            {FATIGUE_OPTIONS.map((opt) => {
+            {FATIGUE_OPTIONS.map((opt, i) => {
               const isSelected = fatigueRating === opt.rating;
               return (
                 <TouchableOpacity
                   key={opt.rating}
-                  activeOpacity={0.7}
-                  style={[
-                    styles.emojiCard,
-                    isSelected && styles.emojiCardSelected,
-                  ]}
+                  activeOpacity={0.92}
+                  style={styles.emojiCardWrap}
                   onPress={() => setFatigueRating(opt.rating)}
                 >
-                  <Text style={styles.emoji}>{opt.emoji}</Text>
-                  <Text style={styles.emojiLabel}>{opt.label}</Text>
+                  <Animated.View
+                    style={[
+                      styles.emojiCard,
+                      isSelected && styles.emojiCardSelected,
+                      { transform: [{ scale: fatigueEmojiScales[i] }] },
+                    ]}
+                  >
+                    <Text style={styles.emoji}>{opt.emoji}</Text>
+                    <Text style={styles.emojiLabel}>{opt.label}</Text>
+                  </Animated.View>
                 </TouchableOpacity>
               );
             })}
@@ -1155,6 +1292,26 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
+  phaseHeader: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  phaseHeaderText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  phaseHeaderSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+
   scrollView: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
@@ -1182,11 +1339,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  restBannerSubtext: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
   restBannerLabel: {
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
     letterSpacing: 1.5,
+    marginTop: 4,
   },
   restBannerCountdown: {
     fontSize: FontSizes.display,
@@ -1287,15 +1451,22 @@ const styles = StyleSheet.create({
   emojiRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
+    overflow: 'visible',
+    paddingVertical: 4,
+  },
+  emojiCardWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emojiCard: {
-    flex: 1,
+    width: '100%',
     alignItems: 'center',
     paddingVertical: 14,
     borderRadius: Radius.md,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 1,
-    borderColor: Colors.divider,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   emojiCardSelected: {
     backgroundColor: Colors.accentMuted,
@@ -1334,7 +1505,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: Colors.divider,
+    backgroundColor: Colors.bgElevated,
   },
   saveButtonText: {
     fontSize: FontSizes.title,
@@ -1342,7 +1513,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   saveButtonTextDisabled: {
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
   },
 
   preSessionModalRoot: {

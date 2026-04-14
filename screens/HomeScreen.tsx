@@ -27,6 +27,8 @@ import {
   CommonStyles,
 } from '../constants/design';
 import { getSessionIntent } from '../utils/getSessionIntent';
+import { isExerciseUnilateral } from '../constants/exerciseLibrary';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -169,6 +171,19 @@ function getPhaseDisplay(
   };
 }
 
+function calculateSessionDuration(exercises: Exercise[]): number {
+  const SET_DURATION_SECONDS = 45;
+  let totalSeconds = 0;
+  for (const exercise of exercises) {
+    const restSeconds = exercise.restSeconds ?? 90;
+    totalSeconds += exercise.sets * SET_DURATION_SECONDS;
+    totalSeconds += (exercise.sets - 1) * restSeconds;
+    totalSeconds += 60; // transition between exercises
+  }
+  if (exercises.length > 0) totalSeconds -= 60; // remove last transition
+  return Math.round(totalSeconds / 60);
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
 
@@ -186,6 +201,10 @@ export default function HomeScreen() {
     week_number: number;
   } | null>(null);
   const [jordanWelcome, setJordanWelcome] = useState<string | null>(null);
+  /** Prior week (currentWeek - 1) has a DB summary but user has not opened WeeklyCoachSummary for that week. */
+  const [unviewedSummaryWeekNumber, setUnviewedSummaryWeekNumber] = useState<
+    number | null
+  >(null);
   const [workoutLogs, setWorkoutLogs] = useState<
     Array<{
       id?: string;
@@ -218,6 +237,7 @@ export default function HomeScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) {
+        setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         return;
       }
@@ -250,6 +270,7 @@ export default function HomeScreen() {
         .maybeSingle();
 
       if (planError || !activePlan) {
+        setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         return;
       }
@@ -267,6 +288,7 @@ export default function HomeScreen() {
       const currentWeekPhase: string | undefined = currentWeekData?.phase;
 
       if (!currentWeekData) {
+        setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         return;
       }
@@ -380,6 +402,26 @@ export default function HomeScreen() {
         setCoachSummary(null);
       }
 
+      const planId = plan.id;
+      const { data: summaries } = await supabase
+        .from('weekly_summaries')
+        .select('week_number')
+        .eq('user_id', userId)
+        .eq('plan_id', planId)
+        .order('week_number', { ascending: false })
+        .limit(10);
+
+      let unviewedWeek: number | null = null;
+      for (const summary of summaries ?? []) {
+        const viewedKey = `summary_viewed_${planId}_week${summary.week_number}`;
+        const viewed = await AsyncStorage.getItem(viewedKey);
+        if (viewed !== 'true') {
+          unviewedWeek = summary.week_number;
+          break;
+        }
+      }
+      setUnviewedSummaryWeekNumber(unviewedWeek);
+
       // Fire stats in background — dashboard renders immediately
       loadStats(userId, plan.id, plan.current_week);
     } catch (e) {
@@ -438,38 +480,45 @@ export default function HomeScreen() {
             session_fatigue_rating?: number;
             id?: string;
           }>;
-        let volume = 0;
+        let volumeLbs = 0;
         for (const row of planWeekRows) {
-          if (Array.isArray(row.sets_json)) {
-            volume += row.sets_json.length;
+          if (!Array.isArray(row.sets_json)) continue;
+          for (const raw of row.sets_json) {
+            const s = raw as {
+              weightLbs?: number;
+              weight?: number;
+              reps?: number;
+              exerciseName?: string;
+            };
+            const w = Number(s.weightLbs ?? s.weight ?? 0);
+            const r = Number(s.reps ?? 0);
+            if (w > 0 && r > 0) {
+              // Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
+              const repMultiplier = isExerciseUnilateral(s.exerciseName ?? '') ? 2 : 1;
+              volumeLbs += w * r * repMultiplier;
+            }
           }
         }
-        setWeeklyVolume(volume);
+        setWeeklyVolume(volumeLbs);
         setWorkoutLogs(planWeekRows);
       }
 
-      // 3. Current streak — consecutive training days up to today
+      // Current streak — consecutive local calendar days with ≥1 log (active plan)
       const sessionDates = new Set<string>();
-      const toDateStr = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
       for (const row of (allLogsRes.data ?? []) as { logged_at: string }[]) {
-        sessionDates.add(toDateStr(new Date(row.logged_at)));
+        if (!row.logged_at) continue;
+        sessionDates.add(new Date(row.logged_at).toLocaleDateString());
       }
 
-      const now = new Date();
-      const todayStr = toDateStr(now);
-
-      // If today has no session yet, start counting from yesterday
-      const cursor = new Date(now);
-      if (!sessionDates.has(todayStr)) {
-        cursor.setDate(cursor.getDate() - 1);
+      const check = new Date();
+      if (!sessionDates.has(check.toLocaleDateString())) {
+        check.setDate(check.getDate() - 1);
       }
 
       let streak = 0;
-      while (sessionDates.has(toDateStr(cursor))) {
+      while (sessionDates.has(check.toLocaleDateString())) {
         streak++;
-        cursor.setDate(cursor.getDate() - 1);
+        check.setDate(check.getDate() - 1);
       }
       setCurrentStreak(streak);
     } catch (err) {
@@ -593,7 +642,9 @@ export default function HomeScreen() {
   const showGenerateNextWeekCTA = planData?.showGenerateNextWeekCTA ?? false;
   const exerciseCount = today?.exercises?.length ?? 0;
   const totalSets = today?.exercises?.reduce((sum, ex) => sum + ex.sets, 0) ?? 0;
-  const estMins = totalSets > 0 ? Math.round(totalSets * 2.5) : 45;
+  const estMins = today?.exercises && today.exercises.length > 0
+    ? calculateSessionDuration(today.exercises)
+    : 45;
   const displayName = userEmail
     ? userEmail.split('@')[0].charAt(0).toUpperCase() +
       userEmail.split('@')[0].slice(1)
@@ -608,10 +659,11 @@ export default function HomeScreen() {
 
   const streakDisplay = statsLoading ? '—' : String(currentStreak);
   const sessionsDisplay = statsLoading ? '—' : String(totalSessions);
+  const weeklySessionCount = workoutLogs?.length ?? 0;
   let volumeDisplay: string;
   if (statsLoading) {
     volumeDisplay = '—';
-  } else if (weeklyVolume === 0) {
+  } else if (weeklySessionCount === 0) {
     volumeDisplay = '—';
   } else if (weeklyVolume >= 1000) {
     volumeDisplay = `${Math.round((weeklyVolume / 1000) * 10) / 10}k`;
@@ -972,17 +1024,39 @@ export default function HomeScreen() {
               <Text
                 style={[
                   styles.quickStatValue,
-                  weeklyVolume > 0 && !statsLoading
+                  weeklySessionCount > 0 &&
+                    weeklyVolume > 0 &&
+                    !statsLoading
                     ? styles.quickStatValueAccent
                     : null,
                 ]}
               >
                 {volumeDisplay}
               </Text>
-              <Text style={styles.quickStatLabel}>Vol. this week</Text>
+              <Text style={styles.quickStatLabel}>lbs</Text>
             </View>
           </View>
         )}
+
+        {unviewedSummaryWeekNumber != null && planData ? (
+          <TouchableOpacity
+            style={styles.summaryUnreadBanner}
+            activeOpacity={0.85}
+            onPress={() =>
+              navigation.navigate('WeeklyCoachSummary', {
+                planId: planData.planId,
+                weekNumber: unviewedSummaryWeekNumber,
+              })
+            }
+          >
+            <View style={styles.summaryUnreadAvatar}>
+              <Text style={styles.summaryUnreadAvatarText}>J</Text>
+            </View>
+            <Text style={styles.summaryUnreadText}>
+              {`Jordan reviewed your Week ${unviewedSummaryWeekNumber} — tap to read`}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* ── 8. Coach Card ── */}
         <View style={styles.coachCard}>
@@ -1448,6 +1522,40 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
     textAlign: 'center',
+  },
+
+  summaryUnreadBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.accentMuted,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    borderRadius: Radius.md,
+  },
+  summaryUnreadAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryUnreadAvatarText: {
+    color: Colors.textPrimary,
+    fontFamily: Fonts.bold,
+    fontSize: 14,
+  },
+  summaryUnreadText: {
+    flex: 1,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium,
+    color: Colors.textPrimary,
   },
 
   coachCard: {

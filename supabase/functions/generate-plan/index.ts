@@ -50,6 +50,13 @@ interface GeneratePlanBody {
   split?: string;
   targetWeightLbs?: number;
   caloriePace?: string;
+  /** GAP-5: Power-hypertrophy optional multi-lift current 1RM estimates */
+  currentLifts?: {
+    benchPress: number | null;
+    backSquat: number | null;
+    deadlift: number | null;
+    overheadPress: number | null;
+  } | null;
 }
 
 interface ProgrammingParams {
@@ -167,6 +174,40 @@ const GOAL_PROGRAMMING: Record<string, Record<string, ProgrammingParams>> = {
       weeklySetMax: 20,
       prioritySetMin: 18,
       prioritySetMax: 22,
+    },
+  },
+  // GAP-5: Power-Hypertrophy uses strength params for Phase 1 and hypertrophy params
+  // for Phase 2. The prompt handles the two-phase split; these are the Phase 2 defaults.
+  power_hypertrophy: {
+    beginner: {
+      sets: 3,
+      reps: '6-12',
+      restSeconds: 90,
+      targetRpe: 7,
+      weeklySetMin: 10,
+      weeklySetMax: 14,
+      prioritySetMin: 12,
+      prioritySetMax: 16,
+    },
+    intermediate: {
+      sets: 4,
+      reps: '6-12',
+      restSeconds: 90,
+      targetRpe: 8,
+      weeklySetMin: 12,
+      weeklySetMax: 18,
+      prioritySetMin: 14,
+      prioritySetMax: 20,
+    },
+    advanced: {
+      sets: 5,
+      reps: '6-12',
+      restSeconds: 90,
+      targetRpe: 8,
+      weeklySetMin: 14,
+      weeklySetMax: 22,
+      prioritySetMin: 18,
+      prioritySetMax: 24,
     },
   },
   recomp: {
@@ -461,6 +502,7 @@ serve(async (req) => {
     const currentSplitOther: string | null = body.currentSplitOther ?? null;
     const splitDuration: string | null = body.splitDuration ?? null;
     const trainingBackground: string | null = body.trainingBackground ?? null;
+    const currentLifts = body.currentLifts ?? null;
 
     const goal = goalIn ?? 'general';
     const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
@@ -648,6 +690,89 @@ ${
       }
 
 ${MOVEMENT_PATTERN_BLOCK}`;
+    } else if (goal === 'power_hypertrophy') {
+      goalContext = `Goal: power_hypertrophy — build compound strength AND muscle size simultaneously.`;
+
+      // Pre-calculate Week 1 target weights from currentLifts (75% 1RM, rounded to 2.5 lbs)
+      const liftTargets: { name: string; provided: boolean; week1Weight: number }[] = [];
+      const clMap: Record<string, string> = {
+        benchPress: 'Barbell Bench Press',
+        backSquat: 'Back Squat',
+        deadlift: 'Conventional Deadlift',
+        overheadPress: 'Overhead Press',
+      };
+      for (const [key, name] of Object.entries(clMap)) {
+        const rm = currentLifts ? (currentLifts as Record<string, number | null>)[key] : null;
+        if (rm != null && Number.isFinite(rm) && rm > 0) {
+          liftTargets.push({ name, provided: true, week1Weight: Math.round(rm * 0.75 / 5) * 5 });
+        } else {
+          liftTargets.push({ name, provided: false, week1Weight: 0 });
+        }
+      }
+      const currentLiftsBlock = liftTargets.map((lt) =>
+        lt.provided
+          ? `- ${lt.name}: 1RM provided → Phase 1 Week 1 targetWeight = ${lt.week1Weight}`
+          : `- ${lt.name}: not provided → targetWeight = 0`
+      ).join('\n');
+
+      weightAnchor = `
+POWER-HYPERTROPHY REQUIRED OUTPUT FIELDS:
+Every day object with workout type MUST include:
+  "sessionPhase": "power_hypertrophy"
+Every exercise object MUST include a "phase" field:
+  Phase 1 exercises (heavy compounds, 3-6 reps): "phase": "strength"
+  Phase 2 exercises (accessories, 8-12 reps):    "phase": "hypertrophy"
+Every exercise object MUST include "setStructure":
+  Phase 1: "setStructure": "pyramid"
+  Phase 2: "setStructure": "straight"
+
+EXERCISE COUNT BY SESSION LENGTH (Intermediate):
+  30-45 mins: 4 exercises total (1-2 Phase 1 + 2-3 Phase 2)
+  45-60 mins: 5 exercises total (1-2 Phase 1 + 3-4 Phase 2)
+  60-90 mins: 6 exercises total (2 Phase 1 + 4 Phase 2)
+  90+ mins:   7-8 exercises total (2 Phase 1 + 5-6 Phase 2)
+User selected session length: ${sessionLength}
+Generate the appropriate exercise count for this session length.
+Do NOT generate fewer exercises than the minimum for the selected session length.
+
+PHASE 1 RULES (tag these first in each session):
+- Count: exactly 1-2 exercises per session (see EXERCISE COUNT above)
+- Exercises: barbell/compound only (Bench Press, Squat, Deadlift, Row, OHP, Pull-up)
+- Reps: 3-6
+- Sets: 4-5
+- targetRpe: 8-9 (NOT 7 — this is heavy work)
+- restSeconds: 240 (4 minutes)
+- setStructure: "pyramid"
+- phase: "strength"
+- coachingNote: must reference 1RM context
+
+PHASE 2 RULES (list after Phase 1 in each session):
+- Count: 3-5 exercises per session
+- Exercises: machines, cables, dumbbells (accessory movements)
+- Reps: 8-12 (isolation), 6-10 (secondary compounds)
+- Sets: 3-4
+- targetRpe: 7-8
+- restSeconds: 90-120
+- setStructure: "straight"
+- phase: "hypertrophy"
+- coachingNote: must reference size/feel context
+
+FAILURE MODES TO AVOID:
+- Do NOT output exercises without a "phase" field
+- Do NOT output day objects without "sessionPhase"
+- Do NOT set targetRpe: 7 on Phase 1 — minimum is 8
+- Do NOT mix phase tags (a 3-5 rep compound must be "strength", an 8-12 rep accessory must be "hypertrophy")
+- Do NOT output more than 2 Phase 1 exercises per session
+
+CURRENT 1RM DATA (use for Phase 1 Week 1 targetWeight):
+${currentLiftsBlock}
+INSTRUCTION: Use these exact targetWeight values for the corresponding Phase 1 exercises in Week 1. Do not use 0 for lifts where a value is provided. Round to nearest 5 lbs. For Phase 2 exercises: targetWeight = 0 — the athlete self-selects loads in the app.
+
+SESSION COUNT CONTRACT: workoutDayCount must equal exactly sessionStructure.filter(d => d.type === 'workout').length. This is non-negotiable.
+
+Each ExerciseObject must include: "phase": "strength" | "hypertrophy"
+Each DayObject with type "workout" must include: "sessionPhase": "power_hypertrophy"`;
+
     } else if (goal === 'hypertrophy' && priorityMuscles && priorityMuscles.length > 0) {
       goalContext = `Priority muscle groups: ${priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
       weightAnchor = `Rep and RPE targets follow PROGRAMMING PARAMETERS and exercise-type rules below. Week 1 prescribed load policy is in WEEK 1 STARTING WEIGHTS — targetWeight must be 0 for every exercise.`;
@@ -821,7 +946,11 @@ This user is already strength-training. Week 1 baseline weights should reflect t
         : null;
 
     let jordanWelcomeSentence2Instruction = '';
-    if (goal === 'strength' && liftNameForWelcome && target1RMNumWelcome > 0) {
+    if (goal === 'power_hypertrophy') {
+      jordanWelcomeSentence2Instruction =
+        `Sentence 2 — Goal acknowledgement (power_hypertrophy). Use this line (keep meaning; fix grammar only if needed):\n` +
+        `"You want strength and size — every session starts heavy on the big compounds, then we shift into accessory work to build muscle on top."`;
+    } else if (goal === 'strength' && liftNameForWelcome && target1RMNumWelcome > 0) {
       jordanWelcomeSentence2Instruction =
         `Sentence 2 — Goal acknowledgement (strength). Use this line (keep meaning; fix grammar only if needed):\n` +
         `"You came in with a ${target1RMNumWelcome}lb ${liftNameForWelcome} target — I've built the entire program around getting you there."`;
@@ -984,7 +1113,7 @@ Respond with ONLY this JSON, no other text:
       {
         "dayNumber": 1,
         "type": "workout",
-        "title": "workout name e.g. Push A",
+        "title": "workout name e.g. Push A",${goal === 'power_hypertrophy' ? '\n        "sessionPhase": "power_hypertrophy",' : ''}
         "sessionFocus": "Baseline push — feel the weights out.",
         "muscleGroups": ["Chest", "Shoulders", "Triceps"],
         "exercises": [
@@ -997,7 +1126,7 @@ Respond with ONLY this JSON, no other text:
             "targetWeight": ${isNonStrengthGoal ? 0 : 135},
             "restSeconds": ${params.restSeconds},
             "targetRpe": ${params.targetRpe},
-            "coachingNote": "${isNonStrengthGoal ? `Choose a weight you can hit ${params.reps} reps at RPE ${params.targetRpe}. Log exactly what you use — I'll programme Week 2 from your actual numbers.` : 'Week 1 calibration — log your honest RPE so I can dial in Week 2.'}"
+            "coachingNote": "${isNonStrengthGoal ? `Choose a weight you can hit ${params.reps} reps at RPE ${params.targetRpe}. Log exactly what you use — I'll programme Week 2 from your actual numbers.` : 'Week 1 calibration — log your honest RPE so I can dial in Week 2.'}"${goal === 'power_hypertrophy' ? ',\n            "phase": "strength",\n            "setStructure": "pyramid"' : ''}
           }
         ]
       },
@@ -1012,7 +1141,7 @@ Respond with ONLY this JSON, no other text:
     ]
   }
 }
-Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".`;
+Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".${goal === 'power_hypertrophy' ? ' Each exercise MUST include "phase": "strength" or "hypertrophy" AND "setStructure": "pyramid" or "straight". Each workout day MUST include "sessionPhase": "power_hypertrophy". Missing any of these fields is a critical error.' : ''}`;
 
     const response = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
@@ -1024,7 +1153,7 @@ Include all 7 days. Workout days have exercises. Rest days have empty exercises 
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 16000,
         system: `You are Jordan, an expert personal coach building Week 1 of a training plan. 
 
 Your job: create a properly structured, goal-appropriate training week.${
@@ -1104,7 +1233,12 @@ ${
     }
 
     const text = data.content?.[0]?.text ?? '';
-    console.log('Claude response length:', text.length);
+    console.log('[generate-plan] Claude response length:', text.length);
+
+    const trimmed = text.trimEnd();
+    if (!trimmed.endsWith('}') && !trimmed.endsWith('}```')) {
+      console.error('[generate-plan] WARNING: Response may be truncated. Last 50 chars:', trimmed.slice(-50));
+    }
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -1137,6 +1271,28 @@ ${
 
     if (normalized.weeks[0] && !normalized.weeks[0].weekNumber) {
       normalized.weeks[0].weekNumber = 1;
+    }
+
+    // deno-lint-ignore no-explicit-any
+    if (goal === 'power_hypertrophy' && normalized.weeks[0]?.days) {
+      // deno-lint-ignore no-explicit-any
+      const workoutDays = (normalized.weeks[0].days as any[]).filter((d: any) => d.type === 'workout');
+      for (const day of workoutDays) {
+        if (!day.sessionPhase) {
+          console.error('[generate-plan] Missing sessionPhase on day:', day.title);
+        }
+        // deno-lint-ignore no-explicit-any
+        const missingPhase = (day.exercises ?? []).filter((e: any) => !e.phase);
+        if (missingPhase.length > 0) {
+          // deno-lint-ignore no-explicit-any
+          console.error('[generate-plan] Exercises missing phase tag:', missingPhase.map((e: any) => e.name));
+        }
+        // deno-lint-ignore no-explicit-any
+        const phase1 = (day.exercises ?? []).filter((e: any) => e.phase === 'strength');
+        // deno-lint-ignore no-explicit-any
+        const phase2 = (day.exercises ?? []).filter((e: any) => e.phase === 'hypertrophy');
+        console.log(`[generate-plan] ${day.title}: Phase1=${phase1.length}, Phase2=${phase2.length}`);
+      }
     }
 
     return new Response(JSON.stringify({ plan: normalized }), {

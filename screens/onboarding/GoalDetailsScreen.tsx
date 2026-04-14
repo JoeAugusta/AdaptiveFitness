@@ -1031,6 +1031,162 @@ function GeneralContent({
   );
 }
 
+function PowerHypertrophyContent({
+  onContinue,
+}: {
+  onContinue: (params: Record<string, unknown>) => void;
+}) {
+  const [planDuration, setPlanDuration] = useState('12w');
+  const [currentLifts, setCurrentLifts] = useState<{
+    benchPress: number | null;
+    backSquat: number | null;
+    deadlift: number | null;
+    overheadPress: number | null;
+  }>({
+    benchPress: null,
+    backSquat: null,
+    deadlift: null,
+    overheadPress: null,
+  });
+
+  const selectedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
+
+  const projLow = (selectedWeeks * 0.4).toFixed(0);
+  const projHigh = (selectedWeeks * 3.0).toFixed(0);
+  const leanLow = (selectedWeeks * 0.25).toFixed(1);
+  const leanHigh = (selectedWeeks * 0.5).toFixed(1);
+
+  const buildCurrentLifts = () => {
+    const hasAny = Object.values(currentLifts).some((v) => v !== null);
+    return hasAny ? currentLifts : null;
+  };
+
+  return (
+    <ScreenShell
+      title="Strength & Size"
+      subtitle="Build serious strength on the big lifts while adding muscle everywhere else. Heavy compounds first, hypertrophy work second — the best of both."
+      canContinue
+      buttonLabel="Continue"
+      onContinue={() =>
+        onContinue({
+          planDuration,
+          recommendedWeeks: selectedWeeks,
+          currentLifts: buildCurrentLifts(),
+          currentSplit: null,
+          currentSplitOther: null,
+          splitDuration: null,
+          trainingBackground: null,
+        })
+      }
+    >
+      <Text style={styles.sectionHeadingFirst}>CURRENT 1RM ESTIMATES</Text>
+      <Text style={styles.phSubLabel}>
+        Optional — rough estimates are fine. Jordan will calibrate from your Week 1 lifts.
+      </Text>
+
+      <View style={styles.phLiftBlock}>
+        <Text style={styles.phLiftLabel}>BENCH PRESS</Text>
+        <TextInput
+          style={styles.phLiftInput}
+          placeholder="Optional"
+          placeholderTextColor={Colors.textTertiary}
+          keyboardType="numeric"
+          value={currentLifts.benchPress?.toString() ?? ''}
+          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, benchPress: v ? parseInt(v, 10) : null }))}
+        />
+      </View>
+
+      <View style={styles.phLiftBlock}>
+        <Text style={styles.phLiftLabel}>BACK SQUAT</Text>
+        <TextInput
+          style={styles.phLiftInput}
+          placeholder="Optional"
+          placeholderTextColor={Colors.textTertiary}
+          keyboardType="numeric"
+          value={currentLifts.backSquat?.toString() ?? ''}
+          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, backSquat: v ? parseInt(v, 10) : null }))}
+        />
+      </View>
+
+      <View style={styles.phLiftBlock}>
+        <Text style={styles.phLiftLabel}>DEADLIFT</Text>
+        <TextInput
+          style={styles.phLiftInput}
+          placeholder="Optional"
+          placeholderTextColor={Colors.textTertiary}
+          keyboardType="numeric"
+          value={currentLifts.deadlift?.toString() ?? ''}
+          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, deadlift: v ? parseInt(v, 10) : null }))}
+        />
+      </View>
+
+      <View style={styles.phLiftBlock}>
+        <Text style={styles.phLiftLabel}>OVERHEAD PRESS</Text>
+        <TextInput
+          style={styles.phLiftInput}
+          placeholder="Optional"
+          placeholderTextColor={Colors.textTertiary}
+          keyboardType="numeric"
+          value={currentLifts.overheadPress?.toString() ?? ''}
+          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, overheadPress: v ? parseInt(v, 10) : null }))}
+        />
+      </View>
+
+      <Text style={styles.sectionHeading}>Plan Duration</Text>
+      <View style={styles.chipRow}>
+        {PLAN_DURATION_OPTIONS.map((opt) => {
+          const selected = planDuration === opt.id;
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              activeOpacity={0.7}
+              style={[styles.chip, styles.chipDuration, selected && styles.chipSelected]}
+              onPress={() => setPlanDuration(opt.id)}
+            >
+              <Text style={[styles.chipText, styles.chipTextCentered, selected && styles.chipTextSelected]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={styles.phProjectionCard}>
+        <View style={styles.phProjectionRow}>
+          <Text style={styles.phProjectionLabel}>1RM GAIN</Text>
+          <View style={styles.phProjectionRight}>
+            <Text style={[styles.phProjectionValue, { color: Colors.warning }]}>
+              +{projLow}–{projHigh} lbs
+            </Text>
+            <Text style={styles.phProjectionSub}>across your main lifts</Text>
+          </View>
+        </View>
+        <View style={styles.phProjectionRow}>
+          <Text style={styles.phProjectionLabel}>LEAN MASS</Text>
+          <View style={styles.phProjectionRight}>
+            <Text style={[styles.phProjectionValue, { color: Colors.success }]}>
+              +{leanLow}–{leanHigh} lbs
+            </Text>
+            <Text style={styles.phProjectionSub}>estimated</Text>
+          </View>
+        </View>
+        <Text style={styles.phProjectionDisclaimer}>
+          Your exact results depend on your experience level and consistency.
+        </Text>
+      </View>
+
+      <View style={styles.phJordanCard}>
+        <Text style={styles.phJordanLabel}>JORDAN</Text>
+        <Text style={styles.phJordanBody}>
+          {
+            "I'll programme your compounds to get progressively heavier each week — both the weights and your technique. The size comes from the accessory work we stack on top."
+          }
+        </Text>
+      </View>
+    </ScreenShell>
+  );
+}
+
 function ScreenShell({
   title,
   subtitle,
@@ -1110,6 +1266,8 @@ export default function GoalDetailsScreen() {
   switch (goal) {
     case 'strength':
       return <StrengthContent onContinue={handleContinue} />;
+    case 'power_hypertrophy':
+      return <PowerHypertrophyContent onContinue={handleContinue} />;
     case 'hypertrophy':
       return <HypertrophyContent onContinue={handleContinue} />;
     case 'fat_loss':
@@ -1154,7 +1312,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 120,
+    paddingBottom: 200,
   },
 
   titleBlock: {
@@ -1437,5 +1595,101 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
+  },
+
+  phSubLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    marginTop: 4,
+  },
+  phLiftBlock: {
+    marginBottom: Spacing.md,
+  },
+  phLiftLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  phLiftInput: {
+    height: 48,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    paddingHorizontal: Spacing.md,
+  },
+  phProjectionCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  phProjectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  phProjectionDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+  },
+  phProjectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  phProjectionRight: {
+    alignItems: 'flex-end',
+  },
+  phProjectionValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+  },
+  phProjectionSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  phProjectionDisclaimer: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: Spacing.md,
+  },
+  phJordanCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  phJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  phJordanBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: 22,
   },
 });

@@ -16,6 +16,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -126,6 +127,11 @@ export default function WeeklyCoachSummaryScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const { planId, weekNumber } = route.params;
+
+  useEffect(() => {
+    const key = `summary_viewed_${planId}_week${weekNumber}`;
+    void AsyncStorage.setItem(key, 'true');
+  }, [planId, weekNumber]);
 
   const [currentSummary, setCurrentSummary] = useState<WeeklySummaryData | null>(null);
   const [history, setHistory] = useState<WeeklySummaryRow[]>([]);

@@ -19,6 +19,8 @@ export interface SplitRecommendation {
   splitName: string;
   reason: string;
   warning?: string;
+  /** Actual training days used by this split — may be less than the user's selected day count (e.g. PHUL = 4, PPL = 6) */
+  workoutDays?: number;
 }
 
 /** Optional layout tweak from Experience "Adjust" — does not change recommended splitId in all cases */
@@ -174,6 +176,8 @@ export function formatGoalName(goalType: string): string {
   switch (goalType) {
     case 'hypertrophy':
       return 'muscle building';
+    case 'power_hypertrophy':
+      return 'strength and size';
     case 'fat_loss':
       return 'fat loss';
     case 'recomp':
@@ -362,6 +366,45 @@ export function getRecommendedSplit(
       reason: isBeginnerStrength
         ? `Hitting ${liftName} three times per week builds the movement pattern fastest at this stage.`
         : `Heavy day + volume day for ${liftName} — the structure that drives 1RM progress.`,
+    };
+  }
+
+  if (goal === 'power_hypertrophy') {
+    if (d <= 2) {
+      console.log('[splitRec] power_hypertrophy branch:', d, 'days → upper_lower');
+      return {
+        splitId: 'upper_lower',
+        splitName: getSplitLabel('upper_lower'),
+        workoutDays: d,
+        reason: `Two days means we make every session count twice — heavy work up front, accessories to finish. You'll build strength and size each time you train.`,
+      };
+    }
+    if (d === 3) {
+      console.log('[splitRec] power_hypertrophy branch:', d, 'days → full_body_advanced');
+      return {
+        splitId: 'full_body_advanced',
+        splitName: getSplitLabel('full_body_advanced'),
+        workoutDays: d,
+        reason: `Three days is perfect for a hybrid approach — each session starts heavy on a compound, then we shift into hypertrophy work. You'll train your strength and your size in the same session.`,
+      };
+    }
+    if (d >= 4 && d <= 5) {
+      console.log('[splitRec] power_hypertrophy branch:', d, 'days → phul');
+      return {
+        splitId: 'phul',
+        splitName: getSplitLabel('phul'),
+        workoutDays: 4,
+        reason: `I'll have you going heavy on the big lifts to build real strength, then switching gears to higher reps on accessories — you'll get both the 1RM gains and the size that comes with volume.`,
+      };
+    }
+    // 6 or 7 days — PPL caps at 6 workout sessions
+    const workoutDays = Math.min(d, 6);
+    console.log('[splitRec] power_hypertrophy branch:', d, 'days → ppl (workoutDays:', workoutDays, ')');
+    return {
+      splitId: 'ppl',
+      splitName: getSplitLabel('ppl'),
+      workoutDays,
+      reason: `With ${workoutDays} days of training, we'll run a Push/Pull/Legs structure — compounds go heavy on their dedicated day, then we layer in the hypertrophy accessory work. High frequency, full coverage.`,
     };
   }
 

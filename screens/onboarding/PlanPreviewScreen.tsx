@@ -214,6 +214,43 @@ function buildProjectionBundle(params: RootStackParamList['PlanPreview']): {
     };
   }
 
+  // GAP-5: Power-Hypertrophy — experience-based projection (no target 1RM)
+  if (goal === 'power_hypertrophy') {
+    const projLow = (weeks * 0.4).toFixed(0);
+    const projHigh = (weeks * 3.0).toFixed(0);
+    const hypertrophyLow = (weeks * 0.25).toFixed(1);
+    const hypertrophyHigh = (weeks * 0.5).toFixed(1);
+    // Use a generic upward strength curve for the chart (no specific 1RM needed)
+    const experience = params.experience ?? 'intermediate';
+    const BASE_STRENGTH = 185;
+    const data = getStrengthProjection(BASE_STRENGTH, experience, weeks);
+    const yMin = BASE_STRENGTH - 20;
+    const yMax = data[data.length - 1] + 20;
+    const lines: ProjectionChartLine[] = [
+      { data, color: CHART_AMBER, strokeWidth: 2.5, animate: true },
+    ];
+    return {
+      weeks,
+      lines,
+      yMin,
+      yMax,
+      yLabel: 'lbs',
+      callout: {
+        col1: {
+          label: '1RM gain',
+          value: `+${projLow}–${projHigh} lbs`,
+          sub: 'across main lifts',
+        },
+        col2: {
+          label: 'Lean mass',
+          value: `+${hypertrophyLow}–${hypertrophyHigh} lbs`,
+          sub: 'estimated',
+        },
+        col3: { label: 'Plan length', value: `${weeks} wks` },
+      },
+    };
+  }
+
   if (goal === 'recomp') {
     const w = Number(params.weightLbs ?? 180);
     const bfStart = Number(
@@ -312,6 +349,8 @@ type PlanOption = 'monthly' | 'annual';
 
 function formatGoal(goal: string): string {
   switch (goal) {
+    case 'power_hypertrophy':
+      return 'Strength & Size';
     case 'fat_loss':
       return 'Fat Loss';
     case 'hypertrophy':
@@ -752,6 +791,15 @@ export default function PlanPreviewScreen() {
             <Text style={styles.jordanContextLabel}>JORDAN</Text>
             <Text style={styles.jordanContextText}>
               {`Advanced lifters gain lean mass slowly — that's the biology, not the plan.\n+${projectedGain.toFixed(1)} lbs of lean mass is visible, meaningful change at your level. This is what separates advanced training from wasted effort.`}
+            </Text>
+          </View>
+        ) : null}
+
+        {params.goal === 'power_hypertrophy' ? (
+          <View style={styles.jordanContextCard}>
+            <Text style={styles.jordanContextLabel}>JORDAN</Text>
+            <Text style={styles.jordanContextText}>
+              {"You'll see real strength gains on your compounds and size from the accessory work — both tracked as your plan progresses."}
             </Text>
           </View>
         ) : null}

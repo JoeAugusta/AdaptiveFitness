@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { NavigationContainer } from '@react-navigation/native';
 import {
   useFonts,
@@ -9,6 +10,15 @@ import {
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
 import RootNavigator from './navigation';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({

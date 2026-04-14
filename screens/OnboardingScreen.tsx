@@ -19,8 +19,10 @@ interface Goal {
   subtitle: string;
 }
 
+// GAP-5: Added power_hypertrophy as a first-class goal
 const GOALS: Goal[] = [
   { id: 'strength', emoji: '🏋️', title: 'Strength Focus', subtitle: 'Hit a new 1RM on a specific lift' },
+  { id: 'power_hypertrophy', emoji: '🏋️‍♂️', title: 'Strength & Size', subtitle: 'Build serious strength on the big lifts while adding muscle everywhere else' },
   { id: 'hypertrophy', emoji: '💪', title: 'Hypertrophy', subtitle: 'Build muscle size and definition' },
   { id: 'recomp', emoji: '🔄', title: 'Body Recomposition', subtitle: 'Lose fat while gaining muscle' },
   { id: 'fat_loss', emoji: '🔥', title: 'Fat Loss', subtitle: 'Lose weight while preserving muscle' },

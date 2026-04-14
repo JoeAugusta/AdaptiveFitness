@@ -58,6 +58,18 @@ function formatMuscleLabel(m: string): string {
   return m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function getSplitDayNote(splitId: string, workoutDays: number, selectedDays: number): string {
+  const restDays = selectedDays - workoutDays;
+  const restLabel = restDays === 1 ? 'day' : 'days';
+  if (splitId === 'phul') {
+    return `PHUL is a ${workoutDays}-day split — your other ${restDays === 1 ? 'day' : `${restDays} days`} become active recovery.`;
+  }
+  if (splitId === 'ppl') {
+    return `PPL runs ${workoutDays} training days — your remaining ${restDays} ${restLabel} become rest or active recovery.`;
+  }
+  return `This split uses ${workoutDays} training days — your remaining ${restDays} ${restLabel} become rest days.`;
+}
+
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -352,7 +364,10 @@ export default function ExperienceScreen() {
             );
           })}
         </View>
-        {selectedDays.length < 2 ? (
+        {/* Root cause: selectedDays starts as [], so length < 2 was true on mount,
+            rendering red validation text before any interaction. Guard with length > 0
+            so the message only appears after the user has begun selecting days. */}
+        {selectedDays.length > 0 && selectedDays.length < 2 ? (
           <Text style={styles.trainingDaysValidation}>
             Select at least 2 training days
           </Text>
@@ -381,6 +396,15 @@ export default function ExperienceScreen() {
             );
           })}
         </View>
+
+        {goal === 'power_hypertrophy' &&
+         (sessionLength === '30-45' || sessionLength === '45-60') ? (
+          <View style={styles.sessionLengthWarning}>
+            <Text style={styles.sessionLengthWarningText}>
+              Strength & Size sessions typically run 75–90 minutes — you'll need time for both the strength and accessory phases. Consider 60–90 mins or more.
+            </Text>
+          </View>
+        ) : null}
 
         <Text style={styles.structureSectionLabel}>Your training structure</Text>
 
@@ -450,6 +474,13 @@ export default function ExperienceScreen() {
               <Text style={styles.jordanRationale}>
                 &ldquo;{recommendedSplit.reason}&rdquo;
               </Text>
+
+              {recommendedSplit.workoutDays !== undefined &&
+                recommendedSplit.workoutDays < selectedDays.length && (
+                  <Text style={styles.structureDiscrepancyNote}>
+                    {getSplitDayNote(recommendedSplit.splitId, recommendedSplit.workoutDays, selectedDays.length)}
+                  </Text>
+                )}
 
               {showAdjust ? (
                 <View style={styles.adjustSection}>
@@ -617,7 +648,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
 
   titleBlock: {
@@ -644,6 +675,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 28,
     marginBottom: 12,
+  },
+  sessionLengthWarning: {
+    backgroundColor: Colors.warningMuted,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  sessionLengthWarningText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.warning,
   },
   structureSectionLabel: {
     fontFamily: Fonts.bold,
@@ -923,6 +965,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: Spacing.lg,
     lineHeight: 22,
+  },
+  structureDiscrepancyNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.sm,
+    fontStyle: 'italic',
   },
   cardButtonColumn: {
     marginTop: Spacing.lg,

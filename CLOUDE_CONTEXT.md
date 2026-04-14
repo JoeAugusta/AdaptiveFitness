@@ -499,6 +499,45 @@ Week 1 weights:
 
 ---
 
+## DEPLOYMENT RULES
+
+### Edge Functions — must deploy manually after every change
+Supabase Edge Functions do not hot-reload. After editing any 
+function, run:
+supabase functions deploy <function-name>
+
+Functions in this project:
+supabase functions deploy generate-plan
+supabase functions deploy generate-next-week
+supabase functions deploy coaching-feedback
+supabase functions deploy weekly-coach-summary
+supabase functions deploy adjust-macros
+supabase functions deploy generate-meals
+supabase functions deploy generate-final-review
+
+Only deploy functions that were actually changed — no need to 
+redeploy untouched functions.
+
+### Expo client — hot-reloads automatically
+Screen and component changes apply immediately via Expo hot-reload.
+No action needed.
+
+### Navigation type changes — may need cache clear
+After editing navigation/types.ts, if you see stale type errors:
+npx expo start --clear
+
+### Supabase schema changes — run migration first
+Any new column must be added via SQL Editor before the app 
+writes to it. Pattern:
+```sql
+ALTER TABLE table_name 
+ADD COLUMN IF NOT EXISTS column_name type DEFAULT value;
+```
+Never add a column in app code before adding it in Supabase — 
+Supabase will return a 400 error on the write.
+
+---
+
 ## RULES FOR THIS PROJECT
 
 - React Native + Expo only, TypeScript everywhere

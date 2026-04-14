@@ -35,6 +35,8 @@ type PlanStructureParams = {
   splitName: string;
   splitRationale: string;
   sessionStructure: SessionDay[];
+  /** GAP-2: Enhanced recovery flag — user indicates exceptional recovery capacity */
+  enhancedRecovery?: boolean;
 };
 
 export type RootStackParamList = {

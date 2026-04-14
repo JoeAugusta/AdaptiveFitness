@@ -333,6 +333,7 @@ serve(async (req) => {
     }
 
     const totalWeeks: number = plan.total_weeks ?? planJson.totalWeeks ?? 12;
+    const enhancedRecovery: boolean = planJson.enhancedRecovery === true;
 
     // Step 2 — Guard checks
     if (completedWeekNumber >= totalWeeks) {
@@ -687,7 +688,8 @@ serve(async (req) => {
 
     // Step 5 — Determine next week phase
     const nextWeekNumber = completedWeekNumber + 1;
-    const weekInCycle = nextWeekNumber % 4;
+    const deloadCadence = enhancedRecovery ? 5 : 4;
+    const weekInCycle = nextWeekNumber % deloadCadence;
     let phase: string;
     if (weekInCycle === 0) {
       phase = 'deload';
@@ -783,6 +785,12 @@ Phase 2 (hypertrophy accessories):
 
 UNILATERAL RULE applies to Phase 2 accessories as before.
 Each exercise MUST include a "phase" field with value "strength" or "hypertrophy".` : ''}
+${enhancedRecovery ? `ENHANCED RECOVERY — applies to this user's progression:
+- Deload triggers on week ${deloadCadence} cadence, not week 4
+- Volume ceiling is 28-36 sets/muscle/week — do not reduce volume prematurely
+- Progression multiplier: 0.9× on training age cap — allow slightly more aggressive increases
+- Do not flag volume as excessive for this user — they have indicated high recovery capacity
+- IMPORTANT: Never reference medical protocols, TRT, or any pharmacological context. Frame purely as a training characteristic.` : ''}
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
 - Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing
@@ -897,7 +905,7 @@ Return ONLY this exact JSON structure:
           },
         ],
       }),
-    });
+    })
     );
 
     if (claudeResponse.status === 503) {

@@ -64,6 +64,8 @@ interface RawPlanJson {
   daysPerWeek?: number;
   title?: string;
   totalWeeks?: number;
+  /** GAP-2: Enhanced recovery flag — deload cadence is every 5th week instead of 4th */
+  enhancedRecovery?: boolean;
 }
 
 interface RawDay {
@@ -113,6 +115,7 @@ interface LoadedPlan {
   totalWeeks: number;
   daysPerWeek: number;
   weeks: PlanWeek[];
+  enhancedRecovery: boolean;
 }
 
 function parseSetsJson(rawSets: unknown): { exerciseId?: string }[] {
@@ -142,6 +145,7 @@ function getPhaseDisplay(
   phase: string | undefined,
   weekNumber: number,
   totalWeeks: number,
+  enhancedRecovery: boolean = false,
 ): { label: string; color: string; bg: string } {
   const effectivePhase =
     weekNumber === 1 && (!phase || phase === 'accumulation')
@@ -156,7 +160,8 @@ function getPhaseDisplay(
     };
   }
 
-  if (weekNumber % 4 === 0) {
+  const deloadCadence = enhancedRecovery ? 5 : 4;
+  if (weekNumber % deloadCadence === 0) {
     return {
       label: 'DELOAD',
       color: Colors.success,
@@ -426,6 +431,7 @@ export default function PlanViewScreen() {
         totalWeeks: plan.total_weeks ?? planJson.totalWeeks ?? 12,
         daysPerWeek: planJson.daysPerWeek ?? 4,
         weeks: mappedWeeks,
+        enhancedRecovery: planJson.enhancedRecovery === true,
       });
       setRawPlanJson(planJson);
       setCompletedSet(logSet);
@@ -633,6 +639,7 @@ export default function PlanViewScreen() {
     selectedWeekData?.phase,
     selectedWeek,
     planData.totalWeeks,
+    planData.enhancedRecovery,
   );
   const weekData = selectedWeekData;
   const nextWorkoutDayNumber =
@@ -686,7 +693,7 @@ export default function PlanViewScreen() {
             const isLocked = wn > planData.currentWeek;
             const isCompletedWeek = wn < planData.currentWeek;
             const weekEntry = planData.weeks.find((w) => w.weekNumber === wn);
-            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks);
+            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery);
 
             const tabStyles = [
               styles.weekTabCircle,
@@ -729,7 +736,7 @@ export default function PlanViewScreen() {
                       },
                     ]}
                   >
-                    {wn % 4 === 0
+                    {wPhase.label === 'DELOAD'
                       ? 'DL'
                       : wPhase.label === 'BASELINE'
                         ? 'BL'

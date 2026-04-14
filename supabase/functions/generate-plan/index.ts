@@ -57,6 +57,8 @@ interface GeneratePlanBody {
     deadlift: number | null;
     overheadPress: number | null;
   } | null;
+  /** GAP-2: Enhanced recovery flag — user indicates exceptional recovery capacity */
+  enhancedRecovery?: boolean;
 }
 
 interface ProgrammingParams {
@@ -503,6 +505,7 @@ serve(async (req) => {
     const splitDuration: string | null = body.splitDuration ?? null;
     const trainingBackground: string | null = body.trainingBackground ?? null;
     const currentLifts = body.currentLifts ?? null;
+    const enhancedRecovery = body.enhancedRecovery === true;
 
     const goal = goalIn ?? 'general';
     const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
@@ -1091,7 +1094,15 @@ For ${actualDaysPerWeek} days: distribute volume realistically across available 
 - Do NOT go below the weekly min for major muscle groups — underdosing produces no adaptation
 - Count total sets across ALL workout days when distributing volume
 ${advancedVolumePriorityBlock}
-
+${enhancedRecovery ? `
+ENHANCED RECOVERY — USER HAS INDICATED EXCEPTIONAL RECOVERY:
+- Apply volume at the upper end of range + 30-40% above standard advanced ceiling
+- MRV ceiling: 28-36 sets per muscle group per week (standard advanced: 16-22 sets)
+- Deload frequency: every 5th week instead of every 4th week
+- Progression: apply 0.9× multiplier to training age cap — allows slightly faster progression
+- coachingNotes may reference recovery capacity where relevant: example: "Given your recovery rate, I've pushed your volume higher than I normally would here — keep an eye on joint fatigue."
+- IMPORTANT: Never reference medical protocols, TRT, or any pharmacological context. Frame purely as a training characteristic.
+` : ''}
 ${structureTailInstructions}
 Training days: ${trainingDays.length > 0 ? trainingDays.join(', ') : 'not specified'}
 Each workout day must include sessionFocus (one sentence, max 12 words — see system prompt). Rest days must have sessionFocus: "".
@@ -1265,6 +1276,7 @@ ${
       daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
       goal: goal,
       split: splitForNormalized,
+      enhancedRecovery,
       currentWeek: 1,
       weeks: [week1Data],
     };

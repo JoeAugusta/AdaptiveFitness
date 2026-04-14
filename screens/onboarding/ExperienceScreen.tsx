@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
+  Switch,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -101,6 +102,7 @@ export default function ExperienceScreen() {
   const [structureConfirmed, setStructureConfirmed] = useState(false);
   const [cardHighlight, setCardHighlight] = useState(false);
   const [showConfirmHint, setShowConfirmHint] = useState(false);
+  const [enhancedRecovery, setEnhancedRecovery] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const structureLayoutYRef = useRef(0);
@@ -112,7 +114,13 @@ export default function ExperienceScreen() {
   useEffect(() => {
     setStructureConfirmed(false);
     setShowConfirmHint(false);
-  }, [selectedDays, experience]);
+  }, [selectedDays, experience, enhancedRecovery]);
+
+  useEffect(() => {
+    if (experience === 'beginner' || experience === null) {
+      setEnhancedRecovery(false);
+    }
+  }, [experience]);
 
   useEffect(() => {
     if (selectedDays.length >= 2 && experience) {
@@ -194,6 +202,7 @@ export default function ExperienceScreen() {
       splitRationale: recommendedSplit.reason,
       sessionStructure,
       currentSplitOther: currentSplitOther ?? null,
+      enhancedRecovery,
     });
   };
 
@@ -341,6 +350,21 @@ export default function ExperienceScreen() {
           })}
         </View>
 
+        {(experience === 'intermediate' || experience === 'advanced') ? (
+          <View style={styles.recoveryToggleCard}>
+            <Text style={styles.recoveryToggleLabel}>
+              I recover quickly between sessions and can handle high training volume.
+            </Text>
+            <Switch
+              value={enhancedRecovery}
+              onValueChange={setEnhancedRecovery}
+              trackColor={{ false: Colors.border, true: Colors.accentBorder }}
+              thumbColor={enhancedRecovery ? Colors.accent : Colors.textTertiary}
+              ios_backgroundColor={Colors.border}
+            />
+          </View>
+        ) : null}
+
         <Text style={styles.sectionHeading}>Training days</Text>
         <Text style={styles.trainingDaysSubtext}>
           Tap the days you train each week
@@ -472,7 +496,7 @@ export default function ExperienceScreen() {
               </View>
 
               <Text style={styles.jordanRationale}>
-                &ldquo;{recommendedSplit.reason}&rdquo;
+                &ldquo;{recommendedSplit.reason}{enhancedRecovery ? ' Given your recovery rate, I\'ve pushed your volume a bit higher than normal — you can handle it.' : ''}&rdquo;
               </Text>
 
               {recommendedSplit.workoutDays !== undefined &&
@@ -686,6 +710,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.warning,
+  },
+  recoveryToggleCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  recoveryToggleLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    maxWidth: '80%',
   },
   structureSectionLabel: {
     fontFamily: Fonts.bold,

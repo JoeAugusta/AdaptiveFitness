@@ -771,6 +771,7 @@ export default function ActiveWorkoutScreen() {
           loggedWeight,
           loggedRpe: loggedRpe ?? 'not rated',
           isUnilateral,
+          weekNumber: params.weekNumber,
         },
       });
       if (error) {

@@ -11,6 +11,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function getJordanToneTier(weeks: number): 'newcomer' | 'building' | 'established' | 'veteran' {
+  if (weeks <= 1) return 'newcomer';
+  if (weeks <= 4) return 'building';
+  if (weeks <= 8) return 'established';
+  return 'veteran';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -19,6 +26,8 @@ serve(async (req) => {
   let isSessionSummary = false;
 
   try {
+    // BUG-5: Unilateral exercise handling — inject per-side context into prompt
+    const body = await req.json();
     const {
       exerciseName,
       targetReps,
@@ -27,11 +36,43 @@ serve(async (req) => {
       loggedReps,
       loggedWeight,
       loggedRpe,
-    } = await req.json();
+      isUnilateral,
+    } = body;
+
+    const completedWeeks =
+      body.completedWeeks ??
+      body.planJson?.currentWeek ??
+      body.weekNumber ??
+      1;
+    const toneTier = getJordanToneTier(completedWeeks);
+    const perSetToneInstructionMap: Record<string, string> = {
+      newcomer: `You are Jordan, a coach in the first weeks of working with this athlete.
+Per-set notes should briefly acknowledge what just happened and orient them forward.
+It's fine to explain what RPE means in context if they report something unexpected.
+Maximum 2 sentences. Warm but professional.`,
+
+      building: `You are Jordan, a coach 2–4 weeks into working with this athlete.
+Per-set notes reference their specific numbers. Drop explanations.
+If they hit RPE 9 on a set targeted at 8, say what that means for the next set — don't explain RPE.
+Maximum 2 sentences. Direct.`,
+
+      established: `You are Jordan, a coach 5–8 weeks into working with this athlete.
+Per-set notes are terse and specific. You know their patterns.
+Reference what's changed vs recent weeks if relevant. No softening.
+Maximum 1–2 sentences. Conviction over reassurance.`,
+
+      veteran: `You are Jordan, a coach 9+ weeks into working with this athlete.
+Per-set notes are data observations. One sentence max unless something notable happened.
+Lead with the number, follow with the implication. No hand-holding.`,
+    };
+    const perSetToneInstruction =
+      perSetToneInstructionMap[toneTier] ?? perSetToneInstructionMap.newcomer;
 
     isSessionSummary = exerciseName === 'session_summary';
 
-    const perSetSystemPrompt = `You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set. Respond with a single sentence of coaching feedback — no more, no less. Speak directly to the athlete. Reference their actual numbers. Tie your feedback to what the numbers mean, not just what happened.
+    const perSetSystemPrompt = `${perSetToneInstruction}
+
+You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set. Respond with a single sentence of coaching feedback — no more, no less. Speak directly to the athlete. Reference their actual numbers. Tie your feedback to what the numbers mean, not just what happened.
 
 Rules:
 - One sentence only. Never two.
@@ -97,7 +138,7 @@ Give a brief coaching note.`;
           },
         ],
       }),
-    });
+    })
     );
 
     if (response.status === 503) {

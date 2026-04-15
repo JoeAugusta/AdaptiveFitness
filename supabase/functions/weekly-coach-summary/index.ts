@@ -12,6 +12,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function getJordanToneTier(weeks: number): 'newcomer' | 'building' | 'established' | 'veteran' {
+  if (weeks <= 1) return 'newcomer';
+  if (weeks <= 4) return 'building';
+  if (weeks <= 8) return 'established';
+  return 'veteran';
+}
+
 function parseMidReps(reps: string): number {
   const parts = reps.split('-');
   if (parts.length === 2) {
@@ -262,6 +269,42 @@ serve(async (req) => {
       derivedRating, // pre-calculated — Claude should use this as the basis
     };
 
+    const completedWeeks =
+      (planJson as { currentWeek?: number }).currentWeek ?? weekNumber ?? 1;
+    const toneTier = getJordanToneTier(completedWeeks);
+    const summaryToneInstructionMap: Record<string, string> = {
+      newcomer: `JORDAN SUMMARY TONE — NEW:
+This is one of the athlete's first weekly reviews. Be clear and encouraging.
+- Explain what the data means in plain terms (what does avg RPE 7.2 tell us?)
+- Acknowledge that Week 1-2 is calibration — variability is expected
+- End with a specific, concrete forward action for next week
+- Warm tone. This is the review that determines whether they trust the system.`,
+
+      building: `JORDAN SUMMARY TONE — BUILDING:
+The athlete is starting to see results. Reference their actual numbers freely.
+- Compare this week to last week with specific figures
+- Acknowledge momentum if it exists — or name the stall if it doesn't
+- Less explanation, more observation
+- End with a specific adaptation and why it's happening`,
+
+      established: `JORDAN SUMMARY TONE — ESTABLISHED:
+The athlete has enough history to see patterns. Reference them.
+- Lead with the most significant data point of the week
+- Reference multi-week trends where they exist
+- No boilerplate — every sentence should contain information specific to this athlete
+- Tone: a coach who knows their athlete well and respects their time`,
+
+      veteran: `JORDAN SUMMARY TONE — VETERAN:
+Data-first, peer-level review. This athlete doesn't need hand-holding.
+- Open with the most important number of the week, no preamble
+- Reference the full arc of their training where relevant
+- Observations over encouragement — they've earned directness
+- If something went wrong, say it plainly and say what changes
+- Maximum density. Every sentence earns its place.`,
+    };
+    const summaryToneInstruction =
+      summaryToneInstructionMap[toneTier] ?? summaryToneInstructionMap.newcomer;
+
     const deloadPerformanceOverrideBlock = isDeloadWeek
       ? `
 
@@ -288,7 +331,9 @@ Do NOT reference session completion rate as a positive when avgLoggedRpe > 7 in 
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1000,
-        system: `You are Jordan, the athlete's personal coach. You have their full week of training data. Write their weekly debrief.
+        system: `${summaryToneInstruction}
+
+You are Jordan, the athlete's personal coach. You have their full week of training data. Write their weekly debrief.
 
 Your response must be a JSON object with these exact fields:
 {
@@ -368,7 +413,7 @@ Return ONLY this exact JSON structure with no other text:
           },
         ],
       }),
-    });
+    })
     );
 
     if (claudeResponse.status === 503) {

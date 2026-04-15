@@ -422,6 +422,7 @@ export default function WorkoutCompleteScreen() {
             loggedReps: totalSets,
             loggedWeight: 0,
             loggedRpe: avgRpe > 0 ? Math.round(avgRpe * 10) / 10 : 0,
+            weekNumber,
             sessionContext: {
               totalSets,
               totalExercises,

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,12 @@ import {
   type SessionSignal,
   PRE_SESSION_COPY,
 } from '../utils/sessionSignal';
+import {
+  checkMissedSession,
+  markSessionSkipped,
+  rescheduleSession,
+  type MissedSessionResult,
+} from '../utils/missedSession';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
 function sessionSignalFromLastLog(
@@ -424,11 +430,38 @@ export default function HomeScreen() {
   /** BUG-8: DEV — persisted; skip day-of-week gating and use next-unlogged session */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
 
+  const [missedSessionResult, setMissedSessionResult] =
+    useState<MissedSessionResult | null>(null);
+  const [missedCardDismissed, setMissedCardDismissed] = useState(false);
+  const [planSnapshotForMissed, setPlanSnapshotForMissed] = useState<{
+    planId: string;
+    currentWeek: number;
+    planJson: Record<string, unknown>;
+  } | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
     }, []),
   );
+
+  useEffect(() => {
+    setMissedCardDismissed(false);
+  }, [planSnapshotForMissed?.planId, planSnapshotForMissed?.currentWeek]);
+
+  useEffect(() => {
+    if (!planSnapshotForMissed?.planId || !planSnapshotForMissed.planJson) {
+      setMissedSessionResult(null);
+      return;
+    }
+    if (missedCardDismissed) return;
+
+    checkMissedSession(
+      planSnapshotForMissed.planId,
+      planSnapshotForMissed.currentWeek,
+      planSnapshotForMissed.planJson,
+    ).then(setMissedSessionResult);
+  }, [planSnapshotForMissed, missedCardDismissed]);
 
   const loadDashboardData = async () => {
     try {
@@ -440,6 +473,7 @@ export default function HomeScreen() {
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         setDevBypassDayGate(false);
+        setPlanSnapshotForMissed(null);
         return;
       }
       uidRef.current = userId;
@@ -476,6 +510,7 @@ export default function HomeScreen() {
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
+        setPlanSnapshotForMissed(null);
         return;
       }
 
@@ -497,6 +532,7 @@ export default function HomeScreen() {
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
+        setPlanSnapshotForMissed(null);
         return;
       }
 
@@ -637,6 +673,11 @@ export default function HomeScreen() {
         postWeekHeroAllowed,
         planSplit: (planJson as { split?: string }).split,
         nextWeekPhase: nextWeekData?.phase,
+      });
+      setPlanSnapshotForMissed({
+        planId: plan.id,
+        currentWeek: plan.current_week ?? 1,
+        planJson: planJson as Record<string, unknown>,
       });
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
@@ -984,6 +1025,115 @@ export default function HomeScreen() {
             <Text style={styles.profileInitial}>{profileInitial}</Text>
           </View>
         </View>
+
+        {missedSessionResult?.isMissed && !missedCardDismissed && planSnapshotForMissed ? (
+          <View style={styles.missedCard}>
+            <View style={styles.missedCardHeader}>
+              <Text style={styles.missedCardLabel}>MISSED SESSION</Text>
+              <Text style={styles.missedCardTitle}>
+                {missedSessionResult.missedSession?.title}
+              </Text>
+              {(missedSessionResult.missedSession?.muscleGroups?.length ?? 0) > 0 ? (
+                <View style={styles.missedMuscleRow}>
+                  {(missedSessionResult.missedSession?.muscleGroups ?? []).map((mg) => (
+                    <View key={mg} style={styles.missedMuscleBadge}>
+                      <Text style={styles.missedMuscleBadgeText}>{mg}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.missedJordanRow}>
+              <View style={styles.jordanAvatar}>
+                <Text style={styles.jordanAvatarText}>J</Text>
+              </View>
+              <Text style={styles.missedJordanText}>
+                {missedSessionResult.canReschedule
+                  ? `You missed today's session — but ${missedSessionResult.tomorrowDayLabel} is free. Want to move it?`
+                  : "You missed today's session. It happens — next session we push forward and make it count."}
+              </Text>
+            </View>
+
+            {missedSessionResult.canReschedule ? (
+              <View style={styles.missedActions}>
+                <TouchableOpacity
+                  style={styles.missedActionPrimary}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    const uid = uidRef.current;
+                    if (!uid) return;
+                    try {
+                      await rescheduleSession(
+                        planSnapshotForMissed.planId,
+                        planSnapshotForMissed.currentWeek,
+                        missedSessionResult.missedSession!.dayNumber,
+                        missedSessionResult.tomorrowDayLabel,
+                        planSnapshotForMissed.planJson,
+                      );
+                      setMissedCardDismissed(true);
+                      loadDashboardData();
+                    } catch (e) {
+                      console.error('[missed] rescheduleSession', e);
+                      Alert.alert('Error', 'Could not reschedule. Please try again.');
+                    }
+                  }}
+                >
+                  <Text style={styles.missedActionPrimaryText}>
+                    {`Move to ${missedSessionResult.tomorrowDayLabel} →`}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.missedActionSecondary}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    const uid = uidRef.current;
+                    if (!uid) return;
+                    try {
+                      await markSessionSkipped(
+                        planSnapshotForMissed.planId,
+                        planSnapshotForMissed.currentWeek,
+                        missedSessionResult.missedSession!.dayNumber,
+                        uid,
+                      );
+                      setMissedCardDismissed(true);
+                      loadDashboardData();
+                    } catch (e) {
+                      console.error('[missed] markSessionSkipped', e);
+                      Alert.alert('Error', 'Could not update. Please try again.');
+                    }
+                  }}
+                >
+                  <Text style={styles.missedActionSecondaryText}>Skip it</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.missedActionSecondary}
+                activeOpacity={0.8}
+                onPress={async () => {
+                  const uid = uidRef.current;
+                  if (!uid) return;
+                  try {
+                    await markSessionSkipped(
+                      planSnapshotForMissed.planId,
+                      planSnapshotForMissed.currentWeek,
+                      missedSessionResult.missedSession!.dayNumber,
+                      uid,
+                    );
+                    setMissedCardDismissed(true);
+                    loadDashboardData();
+                  } catch (e) {
+                    console.error('[missed] markSessionSkipped', e);
+                    Alert.alert('Error', 'Could not update. Please try again.');
+                  }
+                }}
+              >
+                <Text style={styles.missedActionSecondaryText}>Got it</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
 
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
@@ -1488,6 +1638,89 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
+  },
+
+  missedCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.warning,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  missedCardHeader: {
+    marginBottom: Spacing.sm,
+  },
+  missedCardLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.warning,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  missedCardTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  missedMuscleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  missedMuscleBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+  },
+  missedMuscleBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  missedJordanRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  missedJordanText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  missedActions: {
+    gap: Spacing.sm,
+  },
+  missedActionPrimary: {
+    height: 48,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  missedActionPrimaryText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  missedActionSecondary: {
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  missedActionSecondaryText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
   },
 
   workoutCard: {

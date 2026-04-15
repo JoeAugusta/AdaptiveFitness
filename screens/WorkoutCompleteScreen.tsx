@@ -15,6 +15,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { getSessionSignal } from '../utils/sessionSignal';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -103,6 +104,27 @@ export default function WorkoutCompleteScreen() {
       );
     }
   }, [planId, weekNumber, dayNumber]);
+
+  const triggerNextSessionAdjustment = useCallback(async () => {
+    try {
+      const signalResult = await getSessionSignal(planId, weekNumber);
+      if (!signalResult?.signal || signalResult.signal === 'on_target') return;
+
+      await supabase.functions.invoke('adjust-next-session', {
+        body: { planId, weekNumber, signal: signalResult.signal },
+      });
+
+      if (__DEV__) {
+        console.log('[P3-C1] adjust-next-session triggered:', signalResult.signal);
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[P3-C1] adjust-next-session failed silently:', err);
+    }
+  }, [planId, weekNumber]);
+
+  useEffect(() => {
+    void triggerNextSessionAdjustment();
+  }, [triggerNextSessionAdjustment]);
 
   const fatigue = FATIGUE_MAP[fatigueRating] ?? FATIGUE_MAP[3];
   const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit);

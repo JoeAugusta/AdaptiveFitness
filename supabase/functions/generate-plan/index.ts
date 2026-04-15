@@ -244,17 +244,40 @@ function stampMuscleEmphasis(exercises: any[]): any[] {
 }
 
 // deno-lint-ignore no-explicit-any
+function enforceWeek1Rpe(exercises: any[]): any[] {
+  return exercises.map((ex) => {
+    // Use rep range low end as compound/isolation proxy.
+    // plan_json does not store compoundTier — rep range is the reliable signal.
+    // "3-5", "4-6", "6-8" → compound (cap 8)
+    // "8-10", "10-12", "12-15" → isolation (cap 7)
+    const repsStr = String(ex.reps ?? '');
+    const lowEnd = parseInt(repsStr.split('-')[0], 10);
+
+    // If rep range starts at 9 or higher → isolation cap, otherwise compound cap
+    const cap = (!isNaN(lowEnd) && lowEnd >= 9) ? 7 : 8;
+    const currentRpe = ex.targetRpe ?? 8;
+
+    if (currentRpe <= cap) return ex;
+    return { ...ex, targetRpe: cap };
+  });
+}
+
+// deno-lint-ignore no-explicit-any
 function stampMuscleEmphasisOnPlan(planJson: any): any {
   return {
     ...planJson,
     weeks: (planJson.weeks ?? []).map((week: any) => ({
       ...week,
-      days: (week.days ?? []).map((day: any) => ({
-        ...day,
-        exercises: Array.isArray(day.exercises) && day.exercises.length
-          ? stampMuscleEmphasis(day.exercises)
-          : day.exercises,
-      })),
+      days: (week.days ?? []).map((day: any) => {
+        if (!Array.isArray(day.exercises) || !day.exercises.length) {
+          return day;
+        }
+        let exercises = stampMuscleEmphasis(day.exercises);
+        if (week.weekNumber === 1) {
+          exercises = enforceWeek1Rpe(exercises);
+        }
+        return { ...day, exercises };
+      }),
     })),
   };
 }

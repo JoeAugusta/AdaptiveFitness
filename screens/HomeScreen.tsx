@@ -35,6 +35,41 @@ import {
   isLastScheduledTrainingDayToday,
   isTodayTrainingDay,
 } from '../utils/dateUtils';
+import {
+  type SessionSignal,
+  PRE_SESSION_COPY,
+} from '../utils/sessionSignal';
+
+/** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
+function sessionSignalFromLastLog(
+  lastSession: {
+    sets_json?: unknown;
+    session_fatigue_rating?: number;
+  } | null | undefined,
+): SessionSignal {
+  if (!lastSession) return null;
+  const raw = lastSession.sets_json;
+  const sets: { rpe?: number }[] = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(raw) as { rpe?: number }[];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+  const loggedRpes = sets.map((s) => Number(s.rpe ?? 0)).filter((r) => r > 0);
+  if (loggedRpes.length === 0) return null;
+  const avgRpe = loggedRpes.reduce((a, b) => a + b, 0) / loggedRpes.length;
+  const fatigueRating = lastSession.session_fatigue_rating ?? 3;
+  let signal: SessionSignal = null;
+  if (avgRpe > 8.5 && fatigueRating <= 2) signal = 'high_fatigue';
+  else if (avgRpe < 6.0 && fatigueRating >= 4) signal = 'low_fatigue';
+  else if (avgRpe >= 7.0 && avgRpe <= 8.5) signal = 'on_target';
+  return signal;
+}
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -88,36 +123,6 @@ type SetItem = {
   rpe: number | null;
   swapped: boolean;
 };
-
-type SessionSignal = 'high_fatigue' | 'low_fatigue' | 'on_target';
-
-const PRE_SESSION_COPY: Record<SessionSignal, string> = {
-  high_fatigue:
-    'Your last session ran hot — execute clean today. Focus on form and hit your rep targets without chasing extra load.',
-  low_fatigue:
-    'You had plenty left in the tank last session — today we use it. Push the top of your rep ranges.',
-  on_target: 'Last session dialled in well. Same approach today — trust the targets.',
-};
-
-function calculateAvgRpe(setsJson: unknown[]): number {
-  if (!setsJson?.length) return 0;
-  const rpeValues = setsJson
-    .map((s) => (s as { rpe?: number }).rpe)
-    .filter((r): r is number => typeof r === 'number' && r > 0);
-  if (!rpeValues.length) return 0;
-  return rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length;
-}
-
-function getSessionSignal(
-  avgRpe: number,
-  energyRating: number,
-): SessionSignal | null {
-  if (avgRpe === 0) return null;
-  if (avgRpe > 8.5 && energyRating <= 2) return 'high_fatigue';
-  if (avgRpe < 6.0 && energyRating >= 4) return 'low_fatigue';
-  if (avgRpe >= 7.0 && avgRpe <= 8.5) return 'on_target';
-  return null;
-}
 
 /** `plan_json.weeks` entries may use weekNumber, week_number, or number */
 function getPlanWeekNumber(w: unknown): number | undefined {
@@ -844,21 +849,16 @@ export default function HomeScreen() {
     if (!todayWorkout) return;
     const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
     const weeklyLogsLocal = workoutLogs ?? [];
-    const lastSessionLocal = weeklyLogsLocal[0] ?? null;
-    const lastSessionSetsLocal = lastSessionLocal?.sets_json;
-    const avgRpeLocal = calculateAvgRpe(
-      Array.isArray(lastSessionSetsLocal) ? lastSessionSetsLocal : [],
-    );
-    const energyRatingLocal = lastSessionLocal?.session_fatigue_rating ?? 3;
-    const sessionSignalLocal = getSessionSignal(avgRpeLocal, energyRatingLocal);
     const sessionsThisWeekLocal = weeklyLogsLocal.length;
     const isWeekCompleteLocal =
       sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
+    const lastSessionLocal = weeklyLogsLocal[0] ?? null;
+    const lastSignalLocal = sessionSignalFromLastLog(lastSessionLocal);
     const preSessionCopyLocal =
+      lastSignalLocal != null &&
       sessionsThisWeekLocal >= 1 &&
-      !isWeekCompleteLocal &&
-      sessionSignalLocal !== null
-        ? PRE_SESSION_COPY[sessionSignalLocal]
+      !isWeekCompleteLocal
+        ? PRE_SESSION_COPY[lastSignalLocal]
         : null;
     navigation.navigate('ActiveWorkout', {
       planId: planData?.planId ?? 'mock',
@@ -953,22 +953,15 @@ export default function HomeScreen() {
 
   const weeklyLogs = workoutLogs ?? [];
 
-  const lastSession = weeklyLogs[0] ?? null;
-  const lastSessionSets = lastSession?.sets_json;
-  const avgRpe = calculateAvgRpe(
-    Array.isArray(lastSessionSets) ? lastSessionSets : [],
-  );
-  const energyRating = lastSession?.session_fatigue_rating ?? 3;
-
-  const sessionSignal = getSessionSignal(avgRpe, energyRating);
-
   const sessionsThisWeek = weeklyLogs.length;
   const isWeekComplete = sessionsThisWeek >= (daysPerWeek ?? 2);
+  const lastSession = weeklyLogs[0] ?? null;
+  const lastSessionSignal = sessionSignalFromLastLog(lastSession);
   const preSessionCopy =
+    lastSessionSignal != null &&
     sessionsThisWeek >= 1 &&
-    !isWeekComplete &&
-    sessionSignal !== null
-      ? PRE_SESSION_COPY[sessionSignal]
+    !isWeekComplete
+      ? PRE_SESSION_COPY[lastSessionSignal]
       : null;
 
   return (

@@ -12,6 +12,13 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getCuesForExerciseName } from '../constants/exerciseLibrary';
+import {
+  deriveAdaptationReason,
+  type AdaptationReason,
+  SIGNAL_COLOR_KEY,
+  SIGNAL_ICON,
+  type LastWeekData,
+} from '../utils/adaptationReason';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 
 export const WARMUP_COLLAPSED_STORAGE_KEY = 'warmup_collapsed_compound';
@@ -85,6 +92,8 @@ export interface Exercise {
   alternatives: string[];
   /** From plan / library — three form cues; optional for legacy payloads */
   cues?: string[];
+  /** P3-C1 fatigue adjustment — drives adaptation copy */
+  adjustedBySignal?: string;
 }
 
 export interface LoggedSet {
@@ -131,6 +140,23 @@ function rpeValueColor(rpe: number) {
 
 function isTimedExercise(repsString: string): boolean {
   return /second|sec|s$|\d+s\b/i.test(repsString.trim());
+}
+
+function getAdaptationSignalColor(signal: AdaptationReason['signal']) {
+  switch (SIGNAL_COLOR_KEY[signal]) {
+    case 'success':
+      return Colors.success;
+    case 'danger':
+      return Colors.danger;
+    case 'warning':
+      return Colors.warning;
+    case 'accent':
+      return Colors.accent;
+    case 'textSecondary':
+      return Colors.textSecondary;
+    default:
+      return Colors.accent;
+  }
 }
 
 function parseTimedDuration(repsString: string): number {
@@ -329,6 +355,8 @@ export default function ExerciseCard({
   const [showRpeReference, setShowRpeReference] = useState(false);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
   const [showSwapSheet, setShowSwapSheet] = useState(false);
+  const [showAdaptationSheet, setShowAdaptationSheet] = useState(false);
+  const [adaptationReason, setAdaptationReason] = useState<AdaptationReason | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [trendBySet, setTrendBySet] = useState<Record<number, { text: string; color: string }>>({});
   const trendTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
@@ -484,6 +512,63 @@ export default function ExerciseCard({
           : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${exercise.targetWeight ?? firstTarget.targetWeight} lbs`
       : '';
 
+  const prescribedDisplayWeight =
+    exercise.targetWeight ?? firstTarget?.targetWeight ?? 0;
+
+  useEffect(() => {
+    if (!prescribedDisplayWeight || prescribedDisplayWeight === 0) {
+      setAdaptationReason(null);
+      return;
+    }
+
+    let lastWeekData: LastWeekData | null = null;
+    if (previousSets.length > 0) {
+      const weights = previousSets
+        .map((s) => Number(s.weightLbs ?? 0))
+        .filter((w) => w > 0);
+      const rpes = previousSets
+        .map((s) => Number(s.rpe ?? 0))
+        .filter((r) => r > 0);
+      if (weights.length > 0) {
+        lastWeekData = {
+          avgWeightLbs: weights.reduce((a, b) => a + b, 0) / weights.length,
+          avgRpe:
+            rpes.length > 0
+              ? rpes.reduce((a, b) => a + b, 0) / rpes.length
+              : 0,
+          targetRpe: firstTarget?.targetRpe ?? 8,
+          targetWeightLbs: prescribedDisplayWeight,
+        };
+      }
+    }
+
+    setAdaptationReason(
+      deriveAdaptationReason(
+        exercise.name,
+        prescribedDisplayWeight,
+        firstTarget?.targetRpe ?? 8,
+        weekNumber,
+        lastWeekData,
+        exercise.adjustedBySignal,
+      ),
+    );
+  }, [
+    previousSets,
+    exercise.targetWeight,
+    exercise.name,
+    exercise.adjustedBySignal,
+    exercise.sets,
+    weekNumber,
+    firstTarget?.targetRpe,
+    prescribedDisplayWeight,
+  ]);
+
+  const showTappableTargetWeight =
+    !isSelfSelectMode &&
+    !isBodyweightExercise &&
+    prescribedDisplayWeight > 0 &&
+    firstTarget != null;
+
   const showSelfSelectWarmupHint =
     isSelfSelectMode &&
     enteredWeight <= 0 &&
@@ -589,9 +674,28 @@ export default function ExerciseCard({
 
       <View style={styles.targetLineRow}>
         {targetSummary ? (
-          <Text style={[styles.targetLine, styles.targetLineFlex]} numberOfLines={3}>
-            {targetSummary}
-          </Text>
+          showTappableTargetWeight ? (
+            <View style={[styles.targetLineFlex, styles.targetLineTappableRow]}>
+              <Text style={styles.targetLine} numberOfLines={3}>
+                {exercise.sets.length} sets × {repsSubtitlePart} @{' '}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowAdaptationSheet(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Why this target weight"
+              >
+                <Text style={styles.targetWeightTappable}>
+                  {prescribedDisplayWeight} lbs ⓘ
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={[styles.targetLine, styles.targetLineFlex]} numberOfLines={3}>
+              {targetSummary}
+            </Text>
+          )
         ) : (
           <View style={styles.targetLineFlex} />
         )}
@@ -1002,6 +1106,67 @@ export default function ExerciseCard({
         </View>
       </Modal>
 
+      <Modal
+        visible={showAdaptationSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAdaptationSheet(false)}
+      >
+        <View style={styles.adaptSheetRoot}>
+          <TouchableOpacity
+            style={styles.adaptSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowAdaptationSheet(false)}
+          />
+          <View style={styles.sheetContainer}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetJordanRow}>
+              <View style={styles.sheetJordanAvatar}>
+                <Text style={styles.sheetJordanAvatarText}>J</Text>
+              </View>
+              <Text style={styles.sheetJordanLabel}>JORDAN</Text>
+            </View>
+
+            {adaptationReason ? (
+              <>
+                <View style={styles.sheetHeadlineRow}>
+                  <Text
+                    style={[
+                      styles.sheetSignalIcon,
+                      { color: getAdaptationSignalColor(adaptationReason.signal) },
+                    ]}
+                  >
+                    {SIGNAL_ICON[adaptationReason.signal]}
+                  </Text>
+                  <Text style={styles.sheetHeadline}>
+                    {adaptationReason.headline}
+                  </Text>
+                </View>
+
+                <Text style={styles.sheetDetail}>{adaptationReason.detail}</Text>
+              </>
+            ) : null}
+
+            <View style={styles.sheetContextRow}>
+              <Text style={styles.sheetContextLabel}>THIS SESSION</Text>
+              <Text style={styles.sheetContextValue}>
+                {prescribedDisplayWeight} lbs × {rawReps} reps @ RPE{' '}
+                {firstTarget?.targetRpe ?? '—'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.sheetCloseButton}
+              onPress={() => setShowAdaptationSheet(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sheetCloseText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <RPEReferenceSheet
         visible={showRpeReference}
         onClose={() => setShowRpeReference(false)}
@@ -1131,6 +1296,119 @@ const styles = StyleSheet.create({
   targetLineFlex: {
     flex: 1,
     marginRight: Spacing.sm,
+  },
+  targetLineTappableRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  targetWeightTappable: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+    textDecorationLine: 'underline',
+  },
+  adaptSheetRoot: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+  },
+  adaptSheetBackdrop: {
+    flex: 1,
+  },
+  sheetContainer: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.full,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  sheetJordanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  sheetJordanAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetJordanAvatarText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textPrimary,
+  },
+  sheetJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  sheetHeadlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  sheetSignalIcon: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+  },
+  sheetHeadline: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  sheetDetail: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
+  },
+  sheetContextRow: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  sheetContextLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  sheetContextValue: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  sheetCloseButton: {
+    height: 48,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  sheetCloseText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
   rpeHelpLink: {
     fontSize: FontSizes.label,

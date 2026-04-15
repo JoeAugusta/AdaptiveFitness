@@ -36,6 +36,45 @@ const MUSCLE_OPTIONS: string[] = [
   'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps',
 ];
 
+const SUB_MUSCLE_OPTIONS: Record<string, { label: string; value: string; description: string }[]> = {
+  Biceps: [
+    { label: 'Balanced', value: 'balanced', description: 'Hits all heads equally — great starting point' },
+    { label: 'Short head', value: 'short_head', description: 'Width and peak from the front' },
+    { label: 'Long head', value: 'long_head', description: 'Outer thickness and length' },
+    { label: 'Brachialis', value: 'brachialis', description: 'Pushes the bicep up — adds side thickness' },
+  ],
+  Triceps: [
+    { label: 'Balanced', value: 'balanced', description: 'Full tricep development' },
+    { label: 'Long head', value: 'long_head', description: 'Overhead size — the biggest head by mass' },
+    { label: 'Lateral head', value: 'lateral_head', description: 'Horseshoe shape visible from the side' },
+  ],
+  Chest: [
+    { label: 'Balanced', value: 'balanced', description: 'Full chest development across all regions' },
+    { label: 'Upper', value: 'upper', description: 'Shelf and fullness at the clavicle' },
+    { label: 'Lower', value: 'lower', description: 'Separation and definition below the pec' },
+  ],
+  Shoulders: [
+    { label: 'Balanced', value: 'balanced', description: 'Full shoulder roundness' },
+    { label: 'Front', value: 'front', description: 'Pressing power and anterior fullness' },
+    { label: 'Lateral', value: 'lateral', description: 'Width — the capped shoulder look' },
+    { label: 'Rear', value: 'rear', description: 'Thickness from behind and posture correction' },
+  ],
+  Back: [
+    { label: 'Balanced', value: 'balanced', description: 'Full back development' },
+    { label: 'Lats', value: 'lats', description: 'Width and V-taper — the pull-up look' },
+    { label: 'Upper back', value: 'upper_back', description: 'Thickness and 3D depth from behind' },
+  ],
+  Quads: [
+    { label: 'Balanced', value: 'balanced', description: 'Full quad development' },
+    { label: 'Outer sweep', value: 'outer_sweep', description: 'Width and sweep visible from the side' },
+    { label: 'Teardrop', value: 'vmo', description: 'The VMO above your inner knee — a physique standout detail' },
+  ],
+};
+
+const getDefaultSubMuscle = (muscle: string): string => {
+  return SUB_MUSCLE_OPTIONS[muscle] ? 'balanced' : '';
+};
+
 const TIMELINE_OPTIONS: Option[] = [
   { id: '8w', label: '8 Weeks' },
   { id: '12w', label: '12 Weeks' },
@@ -463,6 +502,9 @@ function HypertrophyContent({
   const route = useRoute<RouteType>();
   const [planDurationChipsReady, setPlanDurationChipsReady] = useState(false);
   const [priorityMuscles, setPriorityMuscles] = useState<string[]>([]);
+  const [subMusclePreferences, setSubMusclePreferences] = useState<
+    Record<string, string>
+  >({});
   const [planDuration, setPlanDuration] = useState('12w');
   const [currentSplit, setCurrentSplit] = useState<string | null>(null);
   const [splitDuration, setSplitDuration] = useState<string | null>(null);
@@ -478,11 +520,23 @@ function HypertrophyContent({
   }, [currentSplit]);
 
   const toggleMuscle = (muscle: string) => {
-    setPriorityMuscles((prev) => {
-      if (prev.includes(muscle)) return prev.filter((m) => m !== muscle);
-      if (prev.length >= 3) return prev;
-      return [...prev, muscle];
-    });
+    if (priorityMuscles.includes(muscle)) {
+      setPriorityMuscles((prev) => prev.filter((m) => m !== muscle));
+      setSubMusclePreferences((prev) => {
+        const next = { ...prev };
+        delete next[muscle];
+        return next;
+      });
+      return;
+    }
+    if (priorityMuscles.length >= 3) return;
+    setPriorityMuscles((prev) => [...prev, muscle]);
+    if (SUB_MUSCLE_OPTIONS[muscle]) {
+      setSubMusclePreferences((prev) => ({
+        ...prev,
+        [muscle]: getDefaultSubMuscle(muscle),
+      }));
+    }
   };
 
   const recommendedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
@@ -492,6 +546,7 @@ function HypertrophyContent({
     navigation.navigate('Experience', {
       ...route.params,
       priorityMuscles: [],
+      subMusclePreferences: {},
       currentSplit: undefined,
       splitDuration: undefined,
       recommendedWeeks,
@@ -507,9 +562,16 @@ function HypertrophyContent({
       subtitle="Select up to 3 muscle groups you want to prioritise. Your plan will give these extra volume."
       canContinue
       buttonLabel="Continue"
-      onContinue={() =>
+      onContinue={() => {
+        const subMusclePreferencesPayload: Record<string, string> = {};
+        for (const m of priorityMuscles) {
+          if (!SUB_MUSCLE_OPTIONS[m]) continue;
+          const v = subMusclePreferences[m] ?? 'balanced';
+          if (v !== '') subMusclePreferencesPayload[m] = v;
+        }
         onContinue({
           priorityMuscles,
+          subMusclePreferences: subMusclePreferencesPayload,
           planDuration,
           recommendedWeeks,
           currentSplit: currentSplit ?? null,
@@ -519,8 +581,8 @@ function HypertrophyContent({
               : null,
           splitDuration: splitDuration ?? null,
           trainingBackground: null,
-        })
-      }
+        });
+      }}
     >
       <View style={styles.chipRow}>
         {MUSCLE_OPTIONS.map((muscle) => {
@@ -547,6 +609,53 @@ function HypertrophyContent({
           );
         })}
       </View>
+      {priorityMuscles
+        .filter((m) => SUB_MUSCLE_OPTIONS[m])
+        .map((muscle) => {
+          const options = SUB_MUSCLE_OPTIONS[muscle];
+          const activeValue = subMusclePreferences[muscle] || 'balanced';
+          const activeOption = options.find((o) => o.value === activeValue);
+
+          return (
+            <View key={muscle} style={styles.subMuscleSection}>
+              <Text style={styles.subMuscleLabel}>
+                {muscle.toUpperCase()} FOCUS
+              </Text>
+              <View style={styles.subMuscleChips}>
+                {options.map((option) => {
+                  const isSelected = activeValue === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.subMuscleChip,
+                        isSelected && styles.subMuscleChipSelected,
+                      ]}
+                      onPress={() =>
+                        setSubMusclePreferences((prev) => ({
+                          ...prev,
+                          [muscle]: option.value,
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.subMuscleChipText,
+                          isSelected && styles.subMuscleChipTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.subMuscleTooltip}>
+                {activeOption?.description ?? ''}
+              </Text>
+            </View>
+          );
+        })}
       {priorityMuscles.length > 0 && (
         <Text style={styles.chipHint}>
           These muscles will receive priority volume in your program.
@@ -1179,7 +1288,7 @@ function PowerHypertrophyContent({
         <Text style={styles.phJordanLabel}>JORDAN</Text>
         <Text style={styles.phJordanBody}>
           {
-            "I'll programme your compounds to get progressively heavier each week — both the weights and your technique. The size comes from the accessory work we stack on top."
+            "I'll program your compounds to get progressively heavier each week — both the weights and your technique. The size comes from the accessory work we stack on top."
           }
         </Text>
       </View>
@@ -1455,6 +1564,53 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
+  },
+
+  subMuscleSection: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    paddingLeft: Spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.accentBorder,
+  },
+  subMuscleLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  subMuscleChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginBottom: 4,
+  },
+  subMuscleChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+  },
+  subMuscleChipSelected: {
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentMuted,
+  },
+  subMuscleChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  subMuscleChipTextSelected: {
+    color: Colors.accent,
+  },
+  subMuscleTooltip: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
   },
 
   trainingHistoryBlock: {

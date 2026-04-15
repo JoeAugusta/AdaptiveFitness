@@ -474,6 +474,8 @@ export default function BuildingPlanScreen() {
           daysPerWeek: daysPerWeekResolved,
           totalWeeks: planWeeksResolved,
           recommendedWeeks: planWeeksResolved,
+          scheduledDays: params.trainingDays ?? [],
+          subMusclePreferences: params.subMusclePreferences ?? {},
         };
 
         console.log(

@@ -77,6 +77,8 @@ export interface Exercise {
   movementPattern?: string;
   /** Denormalized working weight (usually matches first set) */
   targetWeight?: number;
+  /** Selection reasoning from plan_json (GAP-6) */
+  coachingNote?: string;
   /** Denormalized rep prescription (usually matches first set) */
   reps?: string;
   sets: SetTarget[];
@@ -468,10 +470,6 @@ export default function ExerciseCard({
   const firstTargetIsTimed = firstTarget ? isTimedExercise(firstTarget.targetReps) : false;
   const firstTargetDuration = firstTarget ? parseTimedDuration(firstTarget.targetReps) : 0;
   const firstTargetRpe = firstTarget?.targetRpe ?? 0;
-  const selfSelectText =
-    weekNumber === 1
-      ? `Choose a weight at RPE ${firstTargetRpe} and log it — I'll set Week 2 from your numbers.`
-      : `No weight was set for this exercise — choose a weight at RPE ${firstTargetRpe} and log it.`;
   const rawReps = exercise.reps ?? firstTarget?.targetReps ?? '';
   const eachSideSuffix = exercise.isUnilateral ? ' each side' : '';
   const repsSubtitlePart = firstTargetIsTimed
@@ -573,7 +571,18 @@ export default function ExerciseCard({
             <View style={styles.selfSelectJCircle}>
               <Text style={styles.selfSelectJLetter}>J</Text>
             </View>
-            <Text style={styles.selfSelectStripText}>{selfSelectText}</Text>
+            <View style={styles.jordanNoteTextColumn}>
+              <Text style={styles.jordanNoteText}>
+                {exercise.coachingNote ||
+                  'Week 1 baseline — log your honest effort after each set.'}
+              </Text>
+              {weekNumber === 1 &&
+                (!exercise.targetWeight || exercise.targetWeight === 0) && (
+                  <Text style={styles.jordanNoteSubtext}>
+                    {`Pick a weight that lands at RPE ${firstTargetRpe} — I'll program Week 2 from your actual numbers.`}
+                  </Text>
+                )}
+            </View>
           </View>
         </View>
       ) : null}
@@ -1239,11 +1248,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.accent,
   },
-  selfSelectStripText: {
+  jordanNoteTextColumn: {
     flex: 1,
+  },
+  jordanNoteText: {
     fontSize: FontSizes.caption,
     fontFamily: Fonts.regular,
     color: Colors.textPrimary,
+  },
+  jordanNoteSubtext: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
   warmupEntryHint: {
     fontSize: FontSizes.caption,

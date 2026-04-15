@@ -75,6 +75,8 @@ type WorkoutExercise = {
   restSeconds?: number;
   /** GAP-5: Power-hypertrophy session phase tagging */
   phase?: 'strength' | 'hypertrophy';
+  /** Selection reasoning from plan_json (GAP-6) */
+  coachingNote?: string;
 };
 
 type WorkoutData = {
@@ -647,6 +649,7 @@ export default function ActiveWorkoutScreen() {
             cues: cuesResolved,
             restSeconds: ex.restSeconds,
             phase: ex.phase,
+            coachingNote: ex.coachingNote,
           };
         },
       );

@@ -10,6 +10,7 @@ import {
   Animated,
   Modal,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -222,6 +223,9 @@ export default function ProfileSettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  /** BUG-8: DEV-only — dashboard always shows workout card when true */
+  const [devBypassDayGate, setDevBypassDayGate] = useState(false);
+
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -239,6 +243,14 @@ export default function ProfileSettingsScreen() {
       pulseLoop.current?.stop();
     }
   }, [loading, pulseAnim]);
+
+  useEffect(() => {
+    if (__DEV__) {
+      AsyncStorage.getItem('dev_bypass_day_gate').then((val) => {
+        setDevBypassDayGate(val === 'true');
+      });
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -621,7 +633,7 @@ export default function ProfileSettingsScreen() {
         </TouchableOpacity>
 
         {__DEV__ ? (
-          <>
+          <View style={styles.devSection}>
             <TouchableOpacity
               style={styles.devButton}
               onPress={() => resetToOnboarding()}
@@ -636,7 +648,31 @@ export default function ProfileSettingsScreen() {
             >
               <Text style={styles.devButtonText}>Clear Summary Banners</Text>
             </TouchableOpacity>
-          </>
+
+            <View style={styles.devToggleRow}>
+              <Text style={styles.devToggleLabel}>
+                Bypass Day Gate (test any session)
+              </Text>
+              <Switch
+                value={devBypassDayGate}
+                onValueChange={async (val) => {
+                  setDevBypassDayGate(val);
+                  await AsyncStorage.setItem(
+                    'dev_bypass_day_gate',
+                    val ? 'true' : 'false',
+                  );
+                }}
+                trackColor={{ false: Colors.border, true: Colors.accentBorder }}
+                thumbColor={devBypassDayGate ? Colors.accent : Colors.textTertiary}
+                ios_backgroundColor={Colors.border}
+              />
+            </View>
+
+            <Text style={styles.devToggleHint}>
+              When ON: dashboard always shows workout card regardless of day. OFF =
+              production behaviour.
+            </Text>
+          </View>
         ) : null}
 
         {/* ── 8. Version footer ── */}
@@ -851,6 +887,29 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.danger,
     textAlign: 'center',
+  },
+
+  devSection: {
+    marginTop: 0,
+  },
+  devToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  devToggleLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  devToggleHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+    marginBottom: Spacing.sm,
   },
 
   devButton: {

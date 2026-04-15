@@ -837,6 +837,9 @@ PLATEAU HANDLING:
 
 - If no plateau: handle as normal.
 
+PLATEAU ROTATION — SUB-MUSCLE RULE: When substituting a plateaued exercise, you will receive the current exercise's muscleEmphasis in the plan_json. Select a substitute that matches that exact muscleEmphasis tag. Example: if the plateaued exercise has muscleEmphasis: 'lats', the substitute must also be a lats-dominant movement. Do not rotate to a different sub-muscle even if the broad muscleGroup matches.
+After selecting the substitute, set the new exercise's muscleEmphasis to the same value as the exercise it replaced.
+
 For each workout day, include a sessionFocus field: one sentence (max 12 words) that tells the athlete exactly what today is about.
 Reference real numbers from the exercise adaptations where possible.
 This appears on the athlete's Dashboard before they start the workout.

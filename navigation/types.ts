@@ -6,6 +6,8 @@ type GoalDetailParams = {
   target1RM?: string;
   secondaryLift?: string;
   priorityMuscles?: string[];
+  /** S02b sub-muscle focus chips (hypertrophy); e.g. { Biceps: 'long_head', Chest: 'upper' } */
+  subMusclePreferences?: Record<string, string>;
   startingWeightLbs?: string;
   targetWeightLbs?: string;
   targetDate?: string;
@@ -42,7 +44,8 @@ type PlanStructureParams = {
 export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
-  GoalDetails: { goal: string };
+  /** S02b — optional experience for sub-muscle defaults (advanced = no pre-select); usually set only when re-entering flow */
+  GoalDetails: { goal: string; experience?: string };
   Experience: { goal: string } & GoalDetailParams;
   RPEEducation: {
     goal: string;

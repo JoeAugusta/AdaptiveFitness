@@ -6,6 +6,259 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/** GAP-7: name → muscleEmphasis lookup. Keys are lowercase-trimmed exercise names. */
+const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
+  // Chest
+  'barbell bench press': 'mid_chest',
+  'dumbbell bench press': 'mid_chest',
+  'machine chest press': 'mid_chest',
+  'push-up': 'mid_chest',
+  'cable chest fly': 'mid_chest',
+  'dumbbell chest fly': 'mid_chest',
+  'incline barbell bench press': 'upper_chest',
+  'incline dumbbell press': 'upper_chest',
+  'decline bench press': 'lower_chest',
+  // Back
+  'barbell row': 'mid_back',
+  'seated cable row': 'mid_back',
+  'machine row': 'mid_back',
+  't-bar row': 'mid_back',
+  'barbell shrug': 'mid_back',
+  'dumbbell shrug': 'mid_back',
+  'cable shrug': 'mid_back',
+  'kettlebell shrug': 'mid_back',
+  'farmer carry': 'mid_back',
+  'plate pinch hold': 'mid_back',
+  deadlift: 'lats',
+  'pull-up': 'lats',
+  'lat pulldown': 'lats',
+  'dumbbell row': 'lats',
+  'chin-up': 'lats',
+  'face pull': 'upper_back',
+  'reverse dumbbell fly': 'rear_delt',
+  // Shoulders
+  'overhead press': 'front_delt',
+  'dumbbell shoulder press': 'front_delt',
+  'arnold press': 'front_delt',
+  'machine shoulder press': 'front_delt',
+  'dumbbell lateral raise': 'lateral_delt',
+  'cable lateral raise': 'lateral_delt',
+  'upright row': 'lateral_delt',
+  // Biceps
+  'barbell curl': 'short_head_bicep',
+  'preacher curl': 'short_head_bicep',
+  'dumbbell curl': 'long_head_bicep',
+  'hammer curl': 'long_head_bicep',
+  'cable curl': 'long_head_bicep',
+  'incline dumbbell curl': 'long_head_bicep',
+  // Triceps
+  'tricep pushdown': 'lateral_head_tricep',
+  'close-grip bench press': 'lateral_head_tricep',
+  'dumbbell tricep kickback': 'lateral_head_tricep',
+  dips: 'lateral_head_tricep',
+  'overhead tricep extension': 'long_head_tricep',
+  'skull crushers': 'long_head_tricep',
+  // Legs
+  'back squat': 'quads',
+  'front squat': 'quads',
+  'leg press': 'quads',
+  'leg extension': 'quads',
+  'hack squat': 'quads',
+  'goblet squat': 'quads',
+  'walking lunge': 'quads',
+  'bulgarian split squat': 'glutes',
+  'romanian deadlift': 'hamstrings',
+  'stiff-leg deadlift': 'hamstrings',
+  'dumbbell romanian deadlift': 'hamstrings',
+  'leg curl': 'hamstrings',
+  'nordic hamstring curl': 'hamstrings',
+  'hip thrust': 'glutes',
+  'glute bridge': 'glutes',
+  'sumo deadlift': 'glutes',
+  'cable kickback': 'glutes',
+  'banded hip thrust': 'glutes',
+  'kettlebell swing': 'glutes',
+  'cable pull-through': 'adductors',
+  'standing calf raise': 'gastrocnemius',
+  'dumbbell calf raise': 'gastrocnemius',
+  'leg press calf raise': 'gastrocnemius',
+  'bodyweight calf raise': 'gastrocnemius',
+  'smith machine calf raise': 'gastrocnemius',
+  'seated calf raise': 'soleus',
+  // Core
+  plank: 'transverse_abs',
+  'ab wheel rollout': 'transverse_abs',
+  'pallof press': 'transverse_abs',
+  'dead bug': 'transverse_abs',
+  'hanging leg raise': 'rectus_abdominis',
+  'cable crunch': 'rectus_abdominis',
+  'russian twist': 'obliques',
+};
+
+/** GAP-7: Alias map — catches common Claude name variants that differ from library keys. */
+const MUSCLE_EMPHASIS_ALIASES: Record<string, string> = {
+  // Chest variants
+  'incline barbell press': 'upper_chest',
+  'incline press': 'upper_chest',
+  'decline press': 'lower_chest',
+  'weighted push-up': 'mid_chest',
+  'cable fly': 'mid_chest',
+  'pec deck': 'mid_chest',
+  // Back variants
+  'face pulls': 'upper_back',
+  'bent-over row': 'mid_back',
+  'bent over row': 'mid_back',
+  'pendlay row': 'mid_back',
+  'chest-supported row': 'mid_back',
+  'chest supported row': 'mid_back',
+  'single-arm row': 'lats',
+  'single arm row': 'lats',
+  'straight-arm pulldown': 'lats',
+  'straight arm pulldown': 'lats',
+  'pull up': 'lats',
+  'chin up': 'lats',
+  // Shoulder variants
+  'lateral raise': 'lateral_delt',
+  'lateral raises': 'lateral_delt',
+  'side lateral raise': 'lateral_delt',
+  'front raise': 'front_delt',
+  'military press': 'front_delt',
+  'seated overhead press': 'front_delt',
+  'seated dumbbell press': 'front_delt',
+  'reverse fly': 'rear_delt',
+  'reverse pec deck': 'rear_delt',
+  // Tricep variants
+  'close grip bench press': 'lateral_head_tricep', // without hyphen
+  'weighted dips': 'lateral_head_tricep',
+  'tricep dips': 'lateral_head_tricep',
+  'rope pushdown': 'lateral_head_tricep',
+  'tricep rope pushdown': 'lateral_head_tricep',
+  'cable overhead extension': 'long_head_tricep',
+  'overhead cable extension': 'long_head_tricep',
+  'ez bar skull crusher': 'long_head_tricep',
+  'ez-bar skull crusher': 'long_head_tricep',
+  // Bicep variants
+  'ez bar curl': 'short_head_bicep',
+  'ez-bar curl': 'short_head_bicep',
+  'wide grip curl': 'short_head_bicep',
+  'concentration curl': 'short_head_bicep',
+  'narrow grip curl': 'long_head_bicep',
+  'cross-body curl': 'long_head_bicep',
+  // Leg variants
+  'goblet squat': 'quads',
+  'sumo squat': 'adductors',
+  'walking lunges': 'quads',
+  'reverse lunge': 'glutes',
+  'step up': 'quads',
+  'step-up': 'quads',
+  'nordic curl': 'hamstrings',
+  'glute ham raise': 'hamstrings',
+  'good morning': 'spinal_erectors',
+  'good mornings': 'spinal_erectors',
+  'banded glute bridge': 'glutes',
+  'single-leg hip thrust': 'glutes',
+  'single leg hip thrust': 'glutes',
+  // Calf variants
+  'calf raise': 'gastrocnemius',
+  'calf raises': 'gastrocnemius',
+  // Core variants
+  'side plank': 'obliques',
+  'woodchop': 'obliques',
+  'wood chop': 'obliques',
+  'hollow hold': 'transverse_abs',
+  'hollow body hold': 'transverse_abs',
+  'v-up': 'rectus_abdominis',
+  'v up': 'rectus_abdominis',
+  'sit-up': 'rectus_abdominis',
+  'sit up': 'rectus_abdominis',
+  'leg raise': 'rectus_abdominis',
+  'leg raises': 'rectus_abdominis',
+};
+
+/** Normalise exercise name spelling variants */
+const NAME_CORRECTIONS: Record<string, string> = {
+  flye: 'Fly',
+  flyes: 'Flys',
+};
+
+function normaliseExerciseName(name: string): string {
+  return name.replace(/\bflye(s)?\b/gi, (_match, s) =>
+    s ? NAME_CORRECTIONS.flyes : NAME_CORRECTIONS.flye,
+  );
+}
+
+// deno-lint-ignore no-explicit-any
+function stampMuscleEmphasis(exercises: any[]): any[] {
+  return exercises.map((ex) => {
+    const key = String(ex.name ?? '').toLowerCase().trim();
+
+    // 1. Exact match against primary map
+    if (MUSCLE_EMPHASIS_MAP[key]) {
+      return {
+        ...ex,
+        name: normaliseExerciseName(String(ex.name ?? '')),
+        muscleEmphasis: MUSCLE_EMPHASIS_MAP[key],
+      };
+    }
+
+    // 2. Exact match against alias map
+    if (MUSCLE_EMPHASIS_ALIASES[key]) {
+      return {
+        ...ex,
+        name: normaliseExerciseName(String(ex.name ?? '')),
+        muscleEmphasis: MUSCLE_EMPHASIS_ALIASES[key],
+      };
+    }
+
+    // 3. Partial match — check if any map key is contained in the exercise name
+    //    Catches "Weighted Dips" matching "dips", "Incline Barbell Press" matching "incline barbell bench press"
+    const allEntries = { ...MUSCLE_EMPHASIS_MAP, ...MUSCLE_EMPHASIS_ALIASES };
+    for (const [mapKey, emphasis] of Object.entries(allEntries)) {
+      if (key.includes(mapKey) || mapKey.includes(key)) {
+        return {
+          ...ex,
+          name: normaliseExerciseName(String(ex.name ?? '')),
+          muscleEmphasis: emphasis,
+        };
+      }
+    }
+
+    // 4. Fallback — keep Claude's value if it's in the valid taxonomy, else 'mid_chest'
+    const VALID_TAXONOMY = new Set([
+      'upper_chest', 'mid_chest', 'lower_chest',
+      'upper_back', 'mid_back', 'lats',
+      'front_delt', 'lateral_delt', 'rear_delt',
+      'long_head_tricep', 'lateral_head_tricep',
+      'short_head_bicep', 'long_head_bicep',
+      'quads', 'hamstrings', 'glutes', 'adductors',
+      'gastrocnemius', 'soleus',
+      'rectus_abdominis', 'obliques', 'transverse_abs', 'spinal_erectors',
+    ]);
+    const claudeValue = ex.muscleEmphasis ?? '';
+    return {
+      ...ex,
+      name: normaliseExerciseName(String(ex.name ?? '')),
+      muscleEmphasis: VALID_TAXONOMY.has(claudeValue) ? claudeValue : 'mid_chest',
+    };
+  });
+}
+
+// deno-lint-ignore no-explicit-any
+function stampMuscleEmphasisOnPlan(planJson: any): any {
+  return {
+    ...planJson,
+    weeks: (planJson.weeks ?? []).map((week: any) => ({
+      ...week,
+      days: (week.days ?? []).map((day: any) => ({
+        ...day,
+        exercises: Array.isArray(day.exercises) && day.exercises.length
+          ? stampMuscleEmphasis(day.exercises)
+          : day.exercises,
+      })),
+    })),
+  };
+}
+
 interface SessionDay {
   day: number;
   dayLabel?: string;
@@ -20,7 +273,10 @@ interface GeneratePlanBody {
   goal?: string;
   experience?: string;
   daysPerWeek?: number | string;
+  /** User's lifting days (Mon–Sun chips); preferred alias for scheduledDays */
   trainingDays?: string[];
+  /** BUG-8: Same as trainingDays — persisted on plan_json root for dashboard */
+  scheduledDays?: string[];
   sessionLength?: string;
   equipment?: string;
   injuries?: string[];
@@ -34,6 +290,8 @@ interface GeneratePlanBody {
   target1RM?: number | string;
   liftFrequency?: number;
   priorityMuscles?: string[];
+  /** S02b sub-muscle focus — biases exercise selection for priority muscles */
+  subMusclePreferences?: Record<string, string> | null;
   currentSplit?: string | null;
   currentSplitOther?: string | null;
   splitDuration?: string | null;
@@ -601,6 +859,7 @@ serve(async (req) => {
       experience: experienceIn = 'intermediate',
       daysPerWeek: daysPerWeekIn = 4,
       trainingDays: trainingDaysIn = [],
+      scheduledDays: scheduledDaysBody,
       equipment = '',
       injuries: injuriesIn = [],
       excludedExercises: excludedExercisesIn = [],
@@ -613,6 +872,7 @@ serve(async (req) => {
       target1RM,
       liftFrequency,
       priorityMuscles,
+      subMusclePreferences: subMusclePreferencesIn,
     } = body;
 
     const workoutDayCount = (sessionStructure ?? []).filter(
@@ -630,12 +890,26 @@ serve(async (req) => {
     const concurrentSport = body.concurrentSport ?? null;
     // GAP-8: Sex-aware programming — read from body (collected at S05 BodyMetrics as 'sex')
     const biologicalSex: string = body.biologicalSex ?? body.sex ?? 'male';
+    const subMusclePreferences: Record<string, string> =
+      subMusclePreferencesIn &&
+      typeof subMusclePreferencesIn === 'object' &&
+      !Array.isArray(subMusclePreferencesIn)
+        ? (subMusclePreferencesIn as Record<string, string>)
+        : {};
 
     // GAP-8: Prompt always uses base (male-equivalent) rep ranges; enforceRepRanges()
     // post-processes female +2 after Claude — single source of truth, no double application.
 
     const goal = goalIn ?? 'general';
-    const trainingDays: string[] = Array.isArray(trainingDaysIn) ? trainingDaysIn : [];
+    const trainingDays: string[] = (() => {
+      if (Array.isArray(scheduledDaysBody) && scheduledDaysBody.length > 0) {
+        return scheduledDaysBody.filter((d): d is string => typeof d === 'string' && d.length > 0);
+      }
+      if (Array.isArray(trainingDaysIn) && trainingDaysIn.length > 0) {
+        return trainingDaysIn.filter((d): d is string => typeof d === 'string' && d.length > 0);
+      }
+      return [];
+    })();
     const daysPerWeekParsed = parseInt(String(daysPerWeekIn ?? '4'), 10);
     const expRaw = String(experienceIn ?? 'intermediate').toLowerCase();
     const experience =
@@ -874,7 +1148,7 @@ PHASE 1 RULES (tag these first in each session):
 - restSeconds: 240 (4 minutes)
 - setStructure: "pyramid"
 - phase: "strength"
-- coachingNote: must reference 1RM context
+- coachingNote: selection reasoning per system message (why this heavy compound for Phase 1 — tie to their 1RM data where applicable)
 
 PHASE 2 RULES (list after Phase 1 in each session):
 - Count: 3-5 exercises per session
@@ -885,7 +1159,7 @@ PHASE 2 RULES (list after Phase 1 in each session):
 - restSeconds: 90-120
 - setStructure: "straight"
 - phase: "hypertrophy"
-- coachingNote: must reference size/feel context
+- coachingNote: selection reasoning per system message (why this accessory slot builds the hypertrophy phase for this session)
 
 FAILURE MODES TO AVOID:
 - Do NOT output exercises without a "phase" field
@@ -907,7 +1181,7 @@ Each DayObject with type "workout" must include: "sessionPhase": "power_hypertro
       goalContext = `Priority muscle groups: ${priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
       weightAnchor = `Rep and RPE targets follow PROGRAMMING PARAMETERS and exercise-type rules below. Week 1 prescribed load policy is in WEEK 1 STARTING WEIGHTS — targetWeight must be 0 for every exercise.`;
     } else if (goal === 'hypertrophy') {
-      weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for every exercise; coachingNotes per that section.`;
+      weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for every exercise; coachingNote per system message (selection reasoning).`;
     } else if (goal === 'fat_loss') {
       goalContext = body.targetWeightLbs
         ? `Target weight: ${body.targetWeightLbs} lbs. Plan duration: ${totalWeeks} weeks.`
@@ -931,29 +1205,9 @@ WEEK 1 STARTING WEIGHTS — NON-STRENGTH GOALS:
 Do NOT prescribe specific weights for Week 1 exercises.
 Set targetWeight to 0 for ALL exercises in Week 1.
 
-Instead, every exercise coachingNote in Week 1 must follow this pattern:
+Every exercise coachingNote in Week 1 must follow the coachingNote specification in the system message: selection reasoning (why this exercise, in this slot, for this user). Do not use generic load-calibration copy that restates reps or RPE targets — the UI already shows them.
 
-'Choose a weight you can hit [rep target] reps at RPE [targetRpe]. Log exactly what you use — I'll programme Week 2 from your actual numbers.'
-
-The rep target and RPE should match the exercise's programmed parameters. Examples:
-
-Hypertrophy compound (6-10 reps, RPE 7-8):
-'Choose a weight you can hit 6-10 reps at RPE 7-8. Log what you use and I'll build Week 2 from there.'
-
-Hypertrophy isolation (10-15 reps, RPE 7):
-'Pick a weight you can control for 10-15 reps at RPE 7. Go lighter than you think — form matters more than load in Week 1.'
-
-Fat loss (10-20 reps, RPE 7):
-'Light to moderate weight — you should be able to hit 15+ reps. This week is about establishing your baseline.'
-
-RULES for Week 1 coachingNotes:
-- Always reference the specific rep range and RPE target
-- Never say 'go easy' or 'take it light'
-- Frame it as data collection, not a warmup week
-- Maximum 2 sentences
-- Never suggest a specific weight in lbs
-
-Week 2+ onwards: programme weights normally based on what the user logged in the previous week.
+Week 2+ onwards: program weights normally based on what the user logged in the previous week.
 
 EXCEPTION — STRENGTH GOAL: unchanged — use current1RM × 0.75 and prescribed targetWeights as in the strength section above.`;
     }
@@ -1016,6 +1270,52 @@ ${MOVEMENT_PATTERN_BLOCK}`;
       Array.isArray(priorityMuscles) && priorityMuscles.length > 0
         ? `\n- Priority muscles (from onboarding): ${priorityMuscles.join(', ')}`
         : '';
+
+    const subMuscleBlock =
+      subMusclePreferences && Object.keys(subMusclePreferences).length > 0
+        ? (() => {
+            const focusDescriptions: Record<string, string> = {
+              short_head: 'short head bicep — barbell curls, wide-grip curls, preacher curls',
+              long_head: 'long head bicep — incline dumbbell curls, narrow-grip curls',
+              brachialis: 'brachialis — hammer curls, cross-body curls, reverse curls',
+              long_head_tricep: 'long head tricep — overhead extensions, skull crushers',
+              lateral_head_tricep:
+                'lateral head tricep — pushdowns, close-grip bench, dips',
+              upper: 'upper chest — incline press and incline fly variations',
+              lower: 'lower chest — decline press, dips, low-to-high cable fly',
+              front: 'front delt — overhead press variations, front raises',
+              lateral: 'lateral delt — lateral raises, upright rows, cable laterals',
+              rear: 'rear delt — face pulls, reverse fly, bent-over lateral raises',
+              lats: 'lats — vertical pulls (pull-ups, lat pulldowns, straight-arm pulldowns)',
+              upper_back:
+                'upper back — horizontal pulls (rows, face pulls, chest-supported rows)',
+              outer_sweep:
+                'vastus lateralis — hack squats, wide-stance leg press, leg extensions',
+              vmo:
+                'VMO/teardrop — close-stance squats, sissy squats, terminal knee extensions, leg press with feet low and close',
+            };
+            const resolveDesc = (muscle: string, focus: string): string => {
+              if (muscle === 'Triceps' && focus === 'long_head') {
+                return focusDescriptions.long_head_tricep;
+              }
+              if (muscle === 'Triceps' && focus === 'lateral_head') {
+                return focusDescriptions.lateral_head_tricep;
+              }
+              return focusDescriptions[focus] ?? focus;
+            };
+            const specific = Object.entries(subMusclePreferences)
+              .filter(([, v]) => v && v !== 'balanced')
+              .map(([muscle, focus]) => {
+                const desc = resolveDesc(muscle, focus);
+                return `- ${muscle}: bias toward ${desc}. At least 60% of this muscle's exercises must target this sub-muscle. The remaining 40% may be balanced.`;
+              });
+
+            if (specific.length === 0) {
+              return '\nSUB-MUSCLE FOCUS: All priority muscles set to balanced — distribute exercises evenly across sub-muscles.';
+            }
+            return `\nSUB-MUSCLE FOCUS (user-selected, treat as authoritative):\n${specific.join('\n')}\nFor muscles not listed above, program balanced sub-muscle distribution.`;
+          })()
+        : '\nSUB-MUSCLE FOCUS: No preferences set — program balanced development for all priority muscles.';
 
     const liftFrequencyLine =
       goal === 'strength' && liftFrequency != null && (liftFrequency === 2 || liftFrequency === 3)
@@ -1116,14 +1416,14 @@ This user is already strength-training. Week 1 baseline weights should reflect t
 
     const jordanWelcomeSentence3Block = isNonStrengthGoal
       ? `Sentence 3 — Week 1 baseline (non-strength — user-selected loads):
-  "Week 1 is your calibration week — you choose loads that match your effort targets, log them after every set, and I'll programme Week 2 from those exact numbers."`
+  "Week 1 is your calibration week — pick loads that match your effort targets and record them after each set; that data is how I tune what comes next."`
       : `Sentence 3 — Explain Week 1 baseline (prescribed loads):
   "Week 1 is your calibration week — the weights are set conservatively so you can focus on form and give me honest effort ratings after each set."`;
 
     const jordanWelcomeNonStrengthSentence2Addon = isNonStrengthGoal
       ? `
 Non-strength — Sentence 2 (required addition): After or woven into the goal acknowledgement above, you MUST convey that Week 1 working weights are user-selected in the app (targetWeight 0 — Jordan does not prescribe lbs for Week 1).
-Example (adapt RPE band to match programming template, default target RPE ${params.targetRpe}): "Week 1 you choose your own starting weights — pick what feels like RPE 7-8 for each exercise and log it honestly. I build Week 2 from those exact numbers."
+Example (adapt RPE band to match programming template, default target RPE ${params.targetRpe}): "Week 1 you set your own starting weights — aim for something that feels like RPE 7-8 on each exercise. Honest effort ratings after your sets are how I tune what comes next."
 This replaces any implication that Jordan has already set conservative working loads for you.`
       : '';
 
@@ -1146,10 +1446,10 @@ ${jordanWelcomeNonStrengthSentence2Addon}
 ${jordanWelcomeSentence3Block}
 
 Sentence 4 — Forward looking (what Jordan will do with data):
-  "I'll use your RPE data from this week to dial in Week 2 specifically to you — the more honest you are, the better your plan gets."
+  "I'll use your RPE data from this week to tune what comes next specifically to you — the more honest you are, the better your plan gets."
 
 CONTEXT FOR jordanWelcome (silent — apply when writing the welcome; do not mention in jordanWelcome text):
-Session length: ${sessionLength} minutes — programme accordingly and do not reference this constraint explicitly in the jordanWelcome message.
+Session length: ${sessionLength} minutes — program accordingly and do not reference this constraint explicitly in the jordanWelcome message.
 
 RULES:
 - Maximum 4 sentences total
@@ -1177,7 +1477,7 @@ ${athleteSplitLine}
 - Session length: ${sessionLength} (minutes per session, from onboarding)
 - Total plan duration: ${totalWeeks} weeks
 - Days per week: ${actualDaysPerWeek}
-- Exercises to avoid: ${exclusions}${priorityMusclesProfileLine}${liftFrequencyLine}
+- Exercises to avoid: ${exclusions}${priorityMusclesProfileLine}${subMuscleBlock}${liftFrequencyLine}
 ${goalContext ? `- Goal details: ${goalContext}` : ''}
 ${weeklyStructureBlock}
 ${splitHistoryOtherLine}${structuralNoveltyBlock}${strengthExperienceBlock}
@@ -1258,6 +1558,7 @@ Respond with ONLY this JSON, no other text:
   "jordanWelcome": "Exactly 4 sentences per JORDAN WELCOME FIELD spec above.",
   "totalWeeks": ${totalWeeks},
   "daysPerWeek": ${actualDaysPerWeek},
+  "scheduledDays": ${JSON.stringify(trainingDays)},
   "week": {
     "weekNumber": 1,
     "phase": "baseline",
@@ -1278,7 +1579,7 @@ Respond with ONLY this JSON, no other text:
             "targetWeight": ${isNonStrengthGoal ? 0 : 135},
             "restSeconds": ${params.restSeconds},
             "targetRpe": ${params.targetRpe},
-            "coachingNote": "${isNonStrengthGoal ? `Choose a weight you can hit ${params.reps} reps at RPE ${params.targetRpe}. Log exactly what you use — I'll programme Week 2 from your actual numbers.` : 'Week 1 calibration — log your honest RPE so I can dial in Week 2.'}"${goal === 'power_hypertrophy' ? ',\n            "phase": "strength",\n            "setStructure": "pyramid"' : ''}
+            "coachingNote": "${isNonStrengthGoal ? `Your upper chest priority anchors this session — incline angle shifts the stimulus to the clavicular head where you need growth.` : `Week 1 calibration at 75% of your 1RM — log your honest RPE so I can dial in Week 2 specifically to you.`}"${goal === 'power_hypertrophy' ? ',\n            "phase": "strength",\n            "setStructure": "pyramid"' : ''}
           }
         ]
       },
@@ -1315,24 +1616,26 @@ Your job: create a properly structured, goal-appropriate training week.${
 }
 
 For coachingNote fields:
-- Speak directly to the athlete as Jordan
-- Reference their goal and why this exercise fits the plan
-- For strength athletes: explain the weight selection in context of their 1RM
-- Keep each note to 1-2 sentences
-- Never write generic form cues ("focus on good form")
-- Never use filler praise ("Great choice!", "This is perfect!")
+coachingNote: A 1–2 sentence explanation of WHY this exercise is in this plan for this specific user. This is selection reasoning — not form cues, not generic motivation. Answer the implicit question: "Why this exercise, in this position, for my goal?"
+
+Rules for coachingNote:
+- Reference the user's specific goal, split, or priority muscles where relevant. Example: "Your short head bicep focus means width comes from the peak — barbell curls at this rep range maximize that stimulus."
+- For accessory exercises, explain the transfer to the primary goal. Example: "Face pulls keep your posterior chain balanced against all the pressing volume — non-negotiable for bench longevity."
+- For the primary compound of the day, explain why it anchors this session. Example: "Bench press is the cornerstone of this program — everything else this week is built to support this lift."
+- For antagonist/balance work, explain the structural reason. Example: "Barbell rows balance the horizontal pressing load — strong lats create a stable bench platform."
+- Week 1 calibration notes should acknowledge it is calibration without being generic. Example: "Week 1 is your baseline — I'm learning how you respond in this slot before we layer intensity."
+- Never restate reps/RPE load instructions in coachingNote — the UI already displays them.
+- Never write generic motivation ("give it your all", "push hard").
+- Never write form cues — those are handled elsewhere.
+- Maximum 2 sentences. Be specific. Be direct. Sound like a coach, not an app.
+- Never use the word "AI". Never say "I've calculated" or "the algorithm".
+- Always use first person as Jordan: "I've built", "your goal", "this session".
 - CRITICAL: Never use the word "AI" anywhere in coachingNote or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
 
 ${
   isNonStrengthGoal
-    ? `Week 1 coachingNote (non-strength goals):
-- targetWeight MUST be 0 on every exercise — never prescribe pounds in JSON.
-- Follow WEEK 1 STARTING WEIGHTS in the user message: rep range + RPE target, log exactly what you use, Week 2 from actual numbers.
-- Maximum 2 sentences. Never suggest a specific weight in lbs. Never say "go easy" or "take it light". Frame as data collection, not a warmup week.`
-    : `Week 1 coachingNote (strength / prescribed loads):
-- Must communicate calibration. Focus on: form, feeling the weight, and giving an honest RPE.
-- Do NOT say "go easy" or "light session".
-- Say something like: "Week 1 calibration — log your honest RPE so I can dial in Week 2" or similar. Keep it one sentence.`
+    ? `Operational — Week 1 non-strength JSON: targetWeight MUST be 0 on every exercise — never prescribe pounds in JSON.`
+    : `Operational — Week 1 strength JSON: follow prescribed targetWeights in the user message; coachingNote is still selection reasoning (why this lift), not form cues.`
 }
 
 For each workout day, include sessionFocus: one sentence (max 12 words) that tells the athlete exactly what today is about.
@@ -1410,16 +1713,26 @@ ${
     // Week 1 is always baseline (legacy plans used accumulation)
     week1Data.phase = 'baseline';
 
+    const scheduledFromClaude = Array.isArray((plan as { scheduledDays?: unknown }).scheduledDays)
+      ? (plan as { scheduledDays: unknown[] }).scheduledDays.filter(
+        (d): d is string => typeof d === 'string' && d.length > 0,
+      )
+      : [];
+    const scheduledDaysResolved =
+      scheduledFromClaude.length > 0 ? scheduledFromClaude : trainingDays;
+
     const normalized = {
       title: plan.title ?? 'Training Plan',
       jordanWelcome: plan.jordanWelcome ?? null,
       totalWeeks: plan.totalWeeks ?? totalWeeks,
       daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
+      scheduledDays: scheduledDaysResolved,
       goal: goal,
       split: splitForNormalized,
       enhancedRecovery,
       concurrentSport,
       biologicalSex,
+      subMusclePreferences,
       currentWeek: 1,
       weeks: [week1Data],
     };
@@ -1451,7 +1764,10 @@ ${
     }
 
     // GAP-8: Enforce female rep range adjustments post-Claude — Claude reverts some exercises
-    const processedPlanJson = enforceRepRanges(normalized, biologicalSex);
+    // GAP-7: Stamp muscleEmphasis from embedded lookup (same pattern as enforceRepRanges)
+    const processedPlanJson = stampMuscleEmphasisOnPlan(
+      enforceRepRanges(normalized, biologicalSex),
+    );
 
     if (biologicalSex === 'female') {
       // deno-lint-ignore no-explicit-any

@@ -29,6 +29,12 @@ import {
 import { getSessionIntent } from '../utils/getSessionIntent';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getNextTrainingDay,
+  getTodayDayLabel,
+  isLastScheduledTrainingDayToday,
+  isTodayTrainingDay,
+} from '../utils/dateUtils';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -53,6 +59,8 @@ type WorkoutDay = {
   exercises: Exercise[];
   isNextWeek?: boolean;
   sessionFocus?: string;
+  /** When present, matches onboarding day chips (Mon–Sun) */
+  dayLabel?: string;
 };
 
 type PlanData = {
@@ -67,6 +75,8 @@ type PlanData = {
   nextWeekReady: boolean;
   nextWeekFirstWorkout: WorkoutDay | null;
   showGenerateNextWeekCTA: boolean;
+  /** BUG-8: DEV / no-label fallback / last scheduled day — gates week-complete UI vs calendar rest */
+  postWeekHeroAllowed: boolean;
   planSplit?: string;
   nextWeekPhase?: string;
 };
@@ -171,6 +181,181 @@ function getPhaseDisplay(
   };
 }
 
+/** BUG-8: Primary = plan_json.scheduledDays; then week dayLabels; then profile.training_days */
+function resolveScheduledDaysInfo(
+  planJson: Record<string, unknown>,
+  profileTrainingDays: string[],
+): { scheduledDays: string[]; hasDayLabels: boolean } {
+  const pj = planJson as {
+    scheduledDays?: unknown;
+    weeks?: Array<{ days?: Array<{ type?: string; dayLabel?: string }> }>;
+  };
+
+  let scheduledDays: string[] = [];
+  let hasDayLabels = false;
+
+  if (Array.isArray(pj.scheduledDays) && pj.scheduledDays.length > 0) {
+    scheduledDays = pj.scheduledDays.filter(
+      (d): d is string => typeof d === 'string' && d.length > 0,
+    );
+    hasDayLabels = scheduledDays.length > 0;
+  }
+
+  if (!hasDayLabels) {
+    const rawDays = pj.weeks?.[0]?.days;
+    const derived = Array.isArray(rawDays)
+      ? rawDays
+          .filter((d) => d?.type === 'workout')
+          .map((d) => d.dayLabel)
+          .filter((x): x is string => typeof x === 'string' && x.length > 0)
+      : [];
+    if (derived.length > 0) {
+      scheduledDays = derived;
+      hasDayLabels = true;
+    }
+  }
+
+  if (!hasDayLabels && profileTrainingDays.length > 0) {
+    scheduledDays = [...profileTrainingDays];
+    hasDayLabels = true;
+  }
+
+  if (!hasDayLabels) {
+    scheduledDays = [];
+  }
+
+  return { scheduledDays, hasDayLabels };
+}
+
+/**
+ * Hero session: today's calendar slot only — not the next unlogged session in plan order.
+ */
+function resolveTodayWorkout(args: {
+  weekDays: WorkoutDay[];
+  completedDayNumbers: Set<number>;
+  devBypassDayGate: boolean;
+  hasDayLabels: boolean;
+  scheduledDays: string[];
+  todayLabel: string;
+  isTrainingToday: boolean;
+  nextWeekReady: boolean;
+  nextWeekFirstWorkout: WorkoutDay | null;
+}): WorkoutDay | null {
+  const {
+    weekDays,
+    completedDayNumbers,
+    devBypassDayGate,
+    hasDayLabels,
+    scheduledDays,
+    todayLabel,
+    isTrainingToday,
+    nextWeekReady,
+    nextWeekFirstWorkout,
+  } = args;
+
+  const workoutDaysOrdered = weekDays.filter((d) => d.type === 'workout');
+
+  const allWorkoutsInWeekLogged =
+    workoutDaysOrdered.length > 0 &&
+    workoutDaysOrdered.every((d) => completedDayNumbers.has(d.dayNumber));
+
+  const firstUnloggedInSequence = (): WorkoutDay | null =>
+    workoutDaysOrdered.find((d) => !completedDayNumbers.has(d.dayNumber)) ?? null;
+
+  if (devBypassDayGate) {
+    let w = firstUnloggedInSequence();
+    if (!w && nextWeekReady && nextWeekFirstWorkout) {
+      w = { ...nextWeekFirstWorkout, isNextWeek: true };
+    }
+    return w;
+  }
+
+  if (!hasDayLabels || scheduledDays.length === 0) {
+    let w = firstUnloggedInSequence();
+    if (
+      !w &&
+      nextWeekReady &&
+      nextWeekFirstWorkout &&
+      isTrainingToday &&
+      allWorkoutsInWeekLogged
+    ) {
+      w = { ...nextWeekFirstWorkout, isNextWeek: true };
+    }
+    return w;
+  }
+
+  if (!isTrainingToday) {
+    return null;
+  }
+
+  const byScheduleIndex = scheduledDays.indexOf(todayLabel);
+  if (byScheduleIndex >= 0 && byScheduleIndex < workoutDaysOrdered.length) {
+    const d = workoutDaysOrdered[byScheduleIndex];
+    if (!completedDayNumbers.has(d.dayNumber)) {
+      return d;
+    }
+    return null;
+  }
+
+  const byDayLabel = workoutDaysOrdered.find(
+    (d) =>
+      d.dayLabel === todayLabel && !completedDayNumbers.has(d.dayNumber),
+  );
+  if (byDayLabel) {
+    return byDayLabel;
+  }
+
+  if (nextWeekReady && nextWeekFirstWorkout && allWorkoutsInWeekLogged) {
+    return { ...nextWeekFirstWorkout, isNextWeek: true };
+  }
+
+  return null;
+}
+
+function getRestDayMessage(
+  nextTraining: { displayName: string; daysAway: number } | null,
+): string {
+  if (!nextTraining) {
+    return "Today's a rest day — use it well. A walk, some mobility work, or just good sleep goes a long way.";
+  }
+  if (nextTraining.daysAway === 1) {
+    return "Rest up today — you're back at it tomorrow. A 20-minute walk or some mobility work will help you recover faster.";
+  }
+  return `Rest day today. Your next session is ${nextTraining.displayName} — a walk or some mobility work now will have you ready to go.`;
+}
+
+function RestDayCard({
+  nextTraining,
+}: {
+  nextTraining: {
+    dayLabel: string;
+    daysAway: number;
+    displayName: string;
+  } | null;
+}) {
+  return (
+    <View style={styles.restDayCard}>
+      <View style={styles.restDayHeader}>
+        <Text style={styles.restDayLabel}>REST DAY</Text>
+        {nextTraining ? (
+          <Text style={styles.restDayNextUp}>
+            Next up: {nextTraining.displayName}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.restDayJordan}>
+        <View style={styles.jordanAvatar}>
+          <Text style={styles.jordanAvatarText}>J</Text>
+        </View>
+        <Text style={styles.restDayMessage}>
+          {getRestDayMessage(nextTraining)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function calculateSessionDuration(exercises: Exercise[]): number {
   const SET_DURATION_SECONDS = 45;
   let totalSeconds = 0;
@@ -224,6 +409,16 @@ export default function HomeScreen() {
   const [weightSaving, setWeightSaving] = useState(false);
   const uidRef = useRef<string | null>(null);
 
+  /** BUG-8: false only when we have real scheduled day labels and today is off-cycle */
+  const [isTrainingDay, setIsTrainingDay] = useState(true);
+  const [nextTrainingDay, setNextTrainingDay] = useState<{
+    dayLabel: string;
+    daysAway: number;
+    displayName: string;
+  } | null>(null);
+  /** BUG-8: DEV — persisted; skip day-of-week gating and use next-unlogged session */
+  const [devBypassDayGate, setDevBypassDayGate] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
@@ -239,6 +434,7 @@ export default function HomeScreen() {
       if (!userId) {
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
+        setDevBypassDayGate(false);
         return;
       }
       uidRef.current = userId;
@@ -272,6 +468,9 @@ export default function HomeScreen() {
       if (planError || !activePlan) {
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
+        setIsTrainingDay(true);
+        setNextTrainingDay(null);
+        setDevBypassDayGate(false);
         return;
       }
 
@@ -290,8 +489,59 @@ export default function HomeScreen() {
       if (!currentWeekData) {
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
+        setIsTrainingDay(true);
+        setNextTrainingDay(null);
+        setDevBypassDayGate(false);
         return;
       }
+
+      const devBypassRead =
+        __DEV__ &&
+        (await AsyncStorage.getItem('dev_bypass_day_gate')) === 'true';
+      setDevBypassDayGate(devBypassRead);
+
+      const { data: profileForDays } = await supabase
+        .from('user_profiles')
+        .select('training_days')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const profileTrainingDays = Array.isArray(profileForDays?.training_days)
+        ? (profileForDays.training_days as string[])
+        : [];
+
+      const todayLabel = getTodayDayLabel();
+      const { scheduledDays, hasDayLabels } = resolveScheduledDaysInfo(
+        planJson as Record<string, unknown>,
+        profileTrainingDays,
+      );
+      const isTrainingToday =
+        devBypassRead ||
+        !hasDayLabels ||
+        isTodayTrainingDay(scheduledDays, todayLabel);
+      const nextTraining =
+        hasDayLabels && !isTrainingToday
+          ? getNextTrainingDay(scheduledDays, todayLabel)
+          : null;
+
+      const postWeekHeroAllowed =
+        devBypassRead ||
+        !hasDayLabels ||
+        isLastScheduledTrainingDayToday(scheduledDays, todayLabel);
+
+      console.log(
+        '[BUG-8] scheduledDays:',
+        scheduledDays,
+        'hasDayLabels:',
+        hasDayLabels,
+        'todayLabel:',
+        todayLabel,
+        'isTrainingDay:',
+        isTrainingToday,
+      );
+
+      setIsTrainingDay(isTrainingToday);
+      setNextTrainingDay(nextTraining);
 
       const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
 
@@ -306,11 +556,6 @@ export default function HomeScreen() {
       );
       const completedSessions = completedDayNumbers.size;
 
-      let todayWorkout: WorkoutDay | null =
-        weekDays.find(
-          (d) => d.type === 'workout' && !completedDayNumbers.has(d.dayNumber),
-        ) ?? null;
-
       const nextWeekData =
         planJson.weeks?.find(
           (w) => getPlanWeekNumber(w) === plan.current_week + 1,
@@ -322,9 +567,17 @@ export default function HomeScreen() {
       const nextWeekFirstWorkout: WorkoutDay | null = nextWeekWorkoutDays[0] ?? null;
       const nextWeekReady = !!nextWeekFirstWorkout;
 
-      if (!todayWorkout && nextWeekReady && nextWeekFirstWorkout) {
-        todayWorkout = { ...nextWeekFirstWorkout, isNextWeek: true };
-      }
+      const todayWorkout = resolveTodayWorkout({
+        weekDays,
+        completedDayNumbers: completedDayNumbers,
+        devBypassDayGate: devBypassRead,
+        hasDayLabels,
+        scheduledDays,
+        todayLabel,
+        isTrainingToday,
+        nextWeekReady,
+        nextWeekFirstWorkout,
+      });
 
       const currentWeek = plan.current_week ?? 1;
       const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
@@ -346,7 +599,10 @@ export default function HomeScreen() {
         (w: any) => w.weekNumber === nextWeekNumber,
       );
       const showGenerateNextWeekCTA =
-        isWeekComplete && !nextWeekExists && dbCurrentWeek < totalWeeks;
+        isWeekComplete &&
+        !nextWeekExists &&
+        dbCurrentWeek < totalWeeks &&
+        postWeekHeroAllowed;
 
       if (__DEV__) {
         console.log('[CTA check]', {
@@ -373,6 +629,7 @@ export default function HomeScreen() {
         nextWeekReady,
         nextWeekFirstWorkout,
         showGenerateNextWeekCTA,
+        postWeekHeroAllowed,
         planSplit: (planJson as { split?: string }).split,
         nextWeekPhase: nextWeekData?.phase,
       });
@@ -639,6 +896,9 @@ export default function HomeScreen() {
   );
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;
+  const allSessionsComplete =
+    daysPerWeek > 0 && completedSessions >= daysPerWeek;
+  const postWeekHeroAllowed = planData?.postWeekHeroAllowed ?? true;
   const showGenerateNextWeekCTA = planData?.showGenerateNextWeekCTA ?? false;
   const exerciseCount = today?.exercises?.length ?? 0;
   const totalSets = today?.exercises?.reduce((sum, ex) => sum + ex.sets, 0) ?? 0;
@@ -732,8 +992,67 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ── */}
-        {today ? (
+        {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
+            Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
+        {!isTrainingDay && !devBypassDayGate ? (
+          allSessionsComplete && postWeekHeroAllowed ? (
+            <View style={styles.generateCTACard}>
+              <View style={styles.generateCTATitleRow}>
+                <Text style={styles.generateCTACheckmark}>✅</Text>
+                <Text style={styles.generateCTATitle}>
+                  Week {planData?.currentWeek} Complete!
+                </Text>
+              </View>
+              <Text style={styles.generateCTASubtitle}>
+                All sessions done. Jordan is preparing your Week{' '}
+                {(planData?.currentWeek ?? 0) + 1} plan.
+              </Text>
+              <TouchableOpacity
+                style={styles.generateCTAButton}
+                activeOpacity={0.8}
+                onPress={handleGenerateNextWeek}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <ActivityIndicator color={Colors.textPrimary} />
+                ) : (
+                  <Text style={styles.generateCTAButtonText}>
+                    Generate Week {(planData?.currentWeek ?? 0) + 1}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <RestDayCard nextTraining={nextTrainingDay} />
+          )
+        ) : showGenerateNextWeekCTA ? (
+          <View style={styles.generateCTACard}>
+            <View style={styles.generateCTATitleRow}>
+              <Text style={styles.generateCTACheckmark}>✅</Text>
+              <Text style={styles.generateCTATitle}>
+                Week {planData?.currentWeek} Complete!
+              </Text>
+            </View>
+            <Text style={styles.generateCTASubtitle}>
+              All sessions done. Jordan is preparing your Week{' '}
+              {(planData?.currentWeek ?? 0) + 1} plan.
+            </Text>
+            <TouchableOpacity
+              style={styles.generateCTAButton}
+              activeOpacity={0.8}
+              onPress={handleGenerateNextWeek}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <ActivityIndicator color={Colors.textPrimary} />
+              ) : (
+                <Text style={styles.generateCTAButtonText}>
+                  Generate Week {(planData?.currentWeek ?? 0) + 1}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : today ? (
           <View style={styles.workoutCard}>
             <View style={styles.workoutTopRow}>
               <View style={styles.workoutLabelRow}>
@@ -824,33 +1143,6 @@ export default function HomeScreen() {
               <Text style={styles.viewPlanText}>View Full Plan →</Text>
             </TouchableOpacity>
           </View>
-        ) : showGenerateNextWeekCTA ? (
-          <View style={styles.generateCTACard}>
-            <View style={styles.generateCTATitleRow}>
-              <Text style={styles.generateCTACheckmark}>✅</Text>
-              <Text style={styles.generateCTATitle}>
-                Week {planData?.currentWeek} Complete!
-              </Text>
-            </View>
-            <Text style={styles.generateCTASubtitle}>
-              All sessions done. Jordan is preparing your Week{' '}
-              {(planData?.currentWeek ?? 0) + 1} plan.
-            </Text>
-            <TouchableOpacity
-              style={styles.generateCTAButton}
-              activeOpacity={0.8}
-              onPress={handleGenerateNextWeek}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <ActivityIndicator color={Colors.textPrimary} />
-              ) : (
-                <Text style={styles.generateCTAButtonText}>
-                  Generate Week {(planData?.currentWeek ?? 0) + 1}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
         ) : (
           <View style={styles.restCard}>
             <Text style={styles.restEmoji}>💤</Text>
@@ -914,7 +1206,9 @@ export default function HomeScreen() {
         </View>
 
         {/* ── 3b. Next Week Ready Banner ── */}
-        {planData?.nextWeekReady && planData.completedSessions >= planData.daysPerWeek && (
+        {planData?.nextWeekReady &&
+          planData.completedSessions >= planData.daysPerWeek &&
+          postWeekHeroAllowed && (
           <View style={styles.nextWeekBanner}>
             <Text style={styles.nextWeekBannerTitle}>
               Week {planData.currentWeek + 1} is Ready 🚀
@@ -1211,6 +1505,60 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
     borderWidth: 1,
     borderColor: Colors.divider,
+  },
+  // BUG-8: Calendar rest day card (scheduled training day check)
+  restDayCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  restDayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  restDayLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  restDayNextUp: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  restDayJordan: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  jordanAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  jordanAvatarText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  restDayMessage: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    flex: 1,
+    lineHeight: 22,
   },
   workoutTopRow: {
     flexDirection: 'row',

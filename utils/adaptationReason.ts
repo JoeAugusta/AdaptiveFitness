@@ -50,36 +50,40 @@ export function deriveAdaptationReason(
     };
   }
 
-  const { avgWeightLbs, avgRpe, targetRpe: lastTargetRpe } = lastWeekData;
+  const { avgWeightLbs, avgRpe } = lastWeekData;
   const weightDelta = currentTargetWeight - avgWeightLbs;
-  const rpeDelta = avgRpe - lastTargetRpe; // positive = harder than planned
+  const effectiveTargetRpe = lastWeekData?.targetRpe > 0
+    ? lastWeekData.targetRpe
+    : currentTargetRpe;
 
-  // Weight went up
-  if (weightDelta > 0) {
-    if (rpeDelta < -1) {
+  const rpeGap = (lastWeekData?.avgRpe ?? 0) - effectiveTargetRpe;
+
+  // Trigger increase if gap is -0.5 or more below target
+  if (rpeGap < -0.5) {
+    if (weightDelta > 0) {
+      if (rpeGap < -1) {
+        return {
+          headline: `Up ${weightDelta.toFixed(1)} lbs — weights were too light`,
+          detail: `Last week you averaged RPE ${avgRpe.toFixed(1)} against a target of ${effectiveTargetRpe} — that ${Math.abs(rpeGap).toFixed(1)}-point gap told me the load wasn't creating enough stimulus. Load goes up until your RPE lands where it needs to be.`,
+          signal: 'up',
+        };
+      }
       return {
-        headline: `Up ${weightDelta.toFixed(1)} lbs — weights were too light`,
-        detail: `Last week you averaged RPE ${avgRpe.toFixed(1)} against a target of ${lastTargetRpe} — that ${Math.abs(rpeDelta).toFixed(1)}-point gap told me the load wasn't creating enough stimulus. Load goes up until your RPE lands where it needs to be.`,
+        headline: `Up ${weightDelta.toFixed(1)} lbs — progressive overload`,
+        detail: `Last week's ${avgWeightLbs} lbs at RPE ${avgRpe.toFixed(1)} was right on target. Standard progression — load increases to keep the stimulus ahead of your adaptation.`,
         signal: 'up',
       };
     }
+  } else if (rpeGap > 1.0) {
     return {
-      headline: `Up ${weightDelta.toFixed(1)} lbs — progressive overload`,
-      detail: `Last week's ${avgWeightLbs} lbs at RPE ${avgRpe.toFixed(1)} was right on target. Standard progression — load increases to keep the stimulus ahead of your adaptation.`,
-      signal: 'up',
-    };
-  }
-
-  // Weight went down
-  if (weightDelta < 0) {
-    return {
-      headline: `Down ${Math.abs(weightDelta).toFixed(1)} lbs — load managed`,
-      detail: `Last week's RPE ran ${rpeDelta.toFixed(1)} points above target at ${avgWeightLbs} lbs. I've pulled it back slightly — quality reps at the right intensity beats grinding through sets that are too heavy.`,
+      headline: weightDelta < 0
+        ? `Down ${Math.abs(weightDelta).toFixed(1)} lbs — load managed`
+        : 'Down — load managed',
+      detail: `Last week's RPE ran ${rpeGap.toFixed(1)} points above target at ${avgWeightLbs} lbs. I've pulled it back slightly — quality reps at the right intensity beats grinding through sets that are too heavy.`,
       signal: 'down',
     };
   }
-
-  // Weight held
+  // hold — truly on target (within ±0.5 to +1.0)
   return {
     headline: 'Same load — intentional hold',
     detail: `Last week's ${avgWeightLbs} lbs at RPE ${avgRpe.toFixed(1)} was well-calibrated. Same load this week — the goal is more volume at the same intensity before we push weight again.`,

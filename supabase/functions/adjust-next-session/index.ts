@@ -119,6 +119,10 @@ serve(async (req) => {
       const tier = String(ex.compoundTier ?? ex.category ?? '');
       const setCount = typeof ex.sets === 'number' ? ex.sets : Number(ex.sets ?? 0);
       const isPrimary = PRIMARY_TIERS.has(tier) || setCount >= 4;
+
+      // GUARD: never adjust self-select exercises (Week 1 no-weight exercises)
+      if (!ex.targetWeight || ex.targetWeight === 0) return ex;
+
       if (!isPrimary) return ex;
 
       const prevRpe = typeof ex.targetRpe === 'number' ? ex.targetRpe : Number(ex.targetRpe ?? 8);

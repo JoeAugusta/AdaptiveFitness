@@ -175,6 +175,152 @@ const MUSCLE_EMPHASIS_ALIASES: Record<string, string> = {
   'leg raises': 'rectus_abdominis',
 };
 
+/** GAP-7b: Exercise name → equipment type for weight rounding in generate-next-week. */
+const EQUIPMENT_MAP: Record<string, string> = {
+  // Barbell
+  'barbell bench press': 'barbell',
+  'incline barbell bench press': 'barbell',
+  'incline barbell press': 'barbell',
+  'decline bench press': 'barbell',
+  'close-grip bench press': 'barbell',
+  'close grip bench press': 'barbell',
+  'barbell row': 'barbell',
+  'bent-over row': 'barbell',
+  'bent over row': 'barbell',
+  'pendlay row': 'barbell',
+  't-bar row': 'barbell',
+  'barbell curl': 'barbell',
+  'ez bar curl': 'barbell',
+  'ez-bar curl': 'barbell',
+  'preacher curl': 'barbell',
+  'skull crushers': 'barbell',
+  'overhead press': 'barbell',
+  'back squat': 'barbell',
+  'front squat': 'barbell',
+  'deadlift': 'barbell',
+  'romanian deadlift': 'barbell',
+  'stiff-leg deadlift': 'barbell',
+  'sumo deadlift': 'barbell',
+  'good morning': 'barbell',
+  'good mornings': 'barbell',
+  'barbell shrug': 'barbell',
+  'upright row': 'barbell',
+  'reverse curl': 'barbell',
+  'wrist curl': 'barbell',
+  'reverse wrist curl': 'barbell',
+  'hip thrust': 'barbell',
+  // Dumbbell
+  'dumbbell bench press': 'dumbbell',
+  'incline dumbbell press': 'dumbbell',
+  'dumbbell chest fly': 'dumbbell',
+  'dumbbell row': 'dumbbell',
+  'dumbbell shoulder press': 'dumbbell',
+  'arnold press': 'dumbbell',
+  'dumbbell lateral raise': 'dumbbell',
+  'lateral raise': 'dumbbell',
+  'lateral raises': 'dumbbell',
+  'reverse dumbbell fly': 'dumbbell',
+  'dumbbell curl': 'dumbbell',
+  'hammer curl': 'dumbbell',
+  'incline dumbbell curl': 'dumbbell',
+  'dumbbell tricep kickback': 'dumbbell',
+  'dumbbell romanian deadlift': 'dumbbell',
+  'bulgarian split squat': 'dumbbell',
+  'walking lunge': 'dumbbell',
+  'walking lunges': 'dumbbell',
+  'goblet squat': 'dumbbell',
+  'dumbbell shrug': 'dumbbell',
+  'dumbbell calf raise': 'dumbbell',
+  'dumbbell wrist curl': 'dumbbell',
+  'farmer carry': 'dumbbell',
+  // Cable
+  'cable chest fly': 'cable',
+  'cable fly': 'cable',
+  'cable lateral raises': 'cable',
+  'cable lateral raise': 'cable',
+  'face pull': 'cable',
+  'face pulls': 'cable',
+  'seated cable row': 'cable',
+  'cable row': 'cable',
+  'lat pulldown': 'cable',
+  'straight-arm pulldown': 'cable',
+  'straight arm pulldown': 'cable',
+  'tricep pushdown': 'cable',
+  'rope pushdown': 'cable',
+  'overhead tricep extension': 'cable',
+  'cable overhead extension': 'cable',
+  'cable curl': 'cable',
+  'cable kickback': 'cable',
+  'cable pull-through': 'cable',
+  'cable shrug': 'cable',
+  'pallof press': 'cable',
+  'cable crunch': 'cable',
+  // Machine
+  'machine chest press': 'machine',
+  'machine row': 'machine',
+  'machine shoulder press': 'machine',
+  'leg press': 'machine',
+  'leg extension': 'machine',
+  'leg curl': 'machine',
+  'lying leg curl': 'machine',
+  'hack squat': 'machine',
+  'calf raises': 'machine',
+  'calf raise': 'machine',
+  'standing calf raises': 'machine',
+  'seated calf raises': 'machine',
+  'standing calf raise': 'machine',
+  'seated calf raise': 'machine',
+  'leg press calf raise': 'machine',
+  'smith machine calf raise': 'machine',
+  // Bodyweight
+  'pull-up': 'bodyweight',
+  'pull up': 'bodyweight',
+  'chin-up': 'bodyweight',
+  'chin up': 'bodyweight',
+  'push-up': 'bodyweight',
+  'dips': 'bodyweight',
+  'plank': 'bodyweight',
+  'hanging leg raise': 'bodyweight',
+  'ab wheel rollout': 'bodyweight',
+  'dead bug': 'bodyweight',
+  'russian twist': 'bodyweight',
+  'glute bridge': 'bodyweight',
+  'nordic hamstring curl': 'bodyweight',
+  // Kettlebell
+  'kettlebell swing': 'kettlebell',
+  'goblet squat (kb)': 'kettlebell',
+  'kettlebell shrug': 'kettlebell',
+};
+
+const EQUIPMENT_ALIASES: Record<string, string> = {};
+
+// deno-lint-ignore no-explicit-any
+function stampEquipment(exercises: any[]): any[] {
+  // Sort entries by key length descending — longer keys are more specific
+  const sortedEntries = [
+    ...Object.entries(EQUIPMENT_MAP),
+    ...Object.entries(EQUIPMENT_ALIASES ?? {}),
+  ].sort((a, b) => b[0].length - a[0].length);
+
+  return exercises.map((ex) => {
+    const key = String(ex.name ?? '').toLowerCase().trim();
+
+    // 1. Exact match
+    if (EQUIPMENT_MAP[key]) return { ...ex, equipment: EQUIPMENT_MAP[key] };
+
+    // 2. Partial match — longer keys first prevents "lateral raise" (dumbbell)
+    //    from matching before "cable lateral raise" (cable)
+    for (const [mapKey, equip] of sortedEntries) {
+      if (key.includes(mapKey) || mapKey.includes(key)) {
+        return { ...ex, equipment: equip };
+      }
+    }
+
+    // 3. Fallback — keep existing or default to barbell
+    return { ...ex, equipment: ex.equipment ?? 'barbell' };
+  });
+}
+
 /** Normalise exercise name spelling variants */
 const NAME_CORRECTIONS: Record<string, string> = {
   flye: 'Fly',
@@ -273,6 +419,7 @@ function stampMuscleEmphasisOnPlan(planJson: any): any {
           return day;
         }
         let exercises = stampMuscleEmphasis(day.exercises);
+        exercises = stampEquipment(exercises);
         if (week.weekNumber === 1) {
           exercises = enforceWeek1Rpe(exercises);
         }

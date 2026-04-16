@@ -29,7 +29,12 @@ import ExerciseCard, {
   WARMUP_COLLAPSED_STORAGE_KEY,
 } from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier } from '../components/ExerciseCard';
-import { EXERCISES, getCuesForExerciseName, isExerciseUnilateral } from '../constants/exerciseLibrary';
+import {
+  EXERCISES,
+  getCuesForExerciseName,
+  isExerciseUnilateral,
+  type Exercise,
+} from '../constants/exerciseLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import {
   cancelRestTimerNotification,
@@ -171,6 +176,7 @@ type PlanJsonExercise = {
   restSeconds?: number;
   coachingNote?: string;
   phase?: 'strength' | 'hypertrophy';
+  equipment?: Exercise['equipment'];
 };
 
 type EnrichedPlanExercise = {
@@ -186,14 +192,33 @@ type EnrichedPlanExercise = {
 function enrichExerciseWithLibraryData(
   planExercise: PlanJsonExercise,
 ): EnrichedPlanExercise {
-  const libraryExercise = EXERCISES.find(
-    (e) =>
-      e.name.toLowerCase().trim() ===
-      String(planExercise.name ?? '').toLowerCase().trim(),
+  const name = String(planExercise.name ?? '').toLowerCase().trim();
+
+  // 1. Exact match
+  let libraryExercise = EXERCISES.find(
+    (e) => e.name.toLowerCase().trim() === name,
   );
 
+  // 2. Plural strip — "Barbell Rows" → "Barbell Row"
+  if (!libraryExercise && name.endsWith('s')) {
+    const singular = name.slice(0, -1);
+    libraryExercise = EXERCISES.find(
+      (e) => e.name.toLowerCase().trim() === singular,
+    );
+  }
+
+  // 3. Partial match — exercise name contains library name or vice versa
   if (!libraryExercise) {
-    console.warn('[enrichExercise] No library match for:', planExercise.name);
+    libraryExercise = EXERCISES.find((e) => {
+      const libName = e.name.toLowerCase().trim();
+      return name.includes(libName) || libName.includes(name);
+    });
+  }
+
+  if (!libraryExercise) {
+    if (__DEV__) {
+      console.warn(`[enrichExercise] No library match for: ${planExercise.name}`);
+    }
     return {
       plan: planExercise,
       compoundTierResolved: 'secondary_compound',
@@ -207,7 +232,10 @@ function enrichExerciseWithLibraryData(
   }
 
   return {
-    plan: planExercise,
+    plan: {
+      ...planExercise,
+      equipment: planExercise.equipment ?? libraryExercise.equipment,
+    },
     compoundTierResolved:
       planExercise.compoundTier ?? libraryExercise.compoundTier,
     movementPatternResolved: libraryExercise.movementPattern,

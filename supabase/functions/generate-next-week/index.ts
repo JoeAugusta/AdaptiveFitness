@@ -61,27 +61,6 @@ type LogSetLike = {
   rpe?: number | null;
 };
 
-function collectSetsForExercise(
-  logs: { sets_json?: LogSetLike[] | null }[],
-  exerciseMap: Record<string, string>,
-  targetName: string,
-): LogSetLike[] {
-  const out: LogSetLike[] = [];
-  for (const log of logs) {
-    const setsJson = log.sets_json ?? [];
-    if (!Array.isArray(setsJson)) continue;
-    for (const set of setsJson) {
-      const resolvedName: string =
-        (set.exerciseId ? exerciseMap[set.exerciseId] : '') ||
-        String(set.exerciseName ?? '') ||
-        String(set.name ?? '');
-      if (resolvedName !== targetName) continue;
-      out.push(set);
-    }
-  }
-  return out;
-}
-
 function normalizeLogSetWeightLbs(s: LogSetLike): number {
   const w = s.weightLbs ?? s.weight;
   if (w == null) return 0;
@@ -270,6 +249,460 @@ function mergeNextWeekWithPreviousStructure(
   };
 }
 
+/** GAP-7b: Exercise name → equipment type for weight rounding in generate-next-week. */
+const EQUIPMENT_MAP: Record<string, string> = {
+  // Barbell
+  'barbell bench press': 'barbell',
+  'incline barbell bench press': 'barbell',
+  'incline barbell press': 'barbell',
+  'decline bench press': 'barbell',
+  'close-grip bench press': 'barbell',
+  'close grip bench press': 'barbell',
+  'barbell row': 'barbell',
+  'bent-over row': 'barbell',
+  'bent over row': 'barbell',
+  'pendlay row': 'barbell',
+  't-bar row': 'barbell',
+  'barbell curl': 'barbell',
+  'ez bar curl': 'barbell',
+  'ez-bar curl': 'barbell',
+  'preacher curl': 'barbell',
+  'skull crushers': 'barbell',
+  'overhead press': 'barbell',
+  'back squat': 'barbell',
+  'front squat': 'barbell',
+  'deadlift': 'barbell',
+  'romanian deadlift': 'barbell',
+  'stiff-leg deadlift': 'barbell',
+  'sumo deadlift': 'barbell',
+  'good morning': 'barbell',
+  'good mornings': 'barbell',
+  'barbell shrug': 'barbell',
+  'upright row': 'barbell',
+  'reverse curl': 'barbell',
+  'wrist curl': 'barbell',
+  'reverse wrist curl': 'barbell',
+  'hip thrust': 'barbell',
+  // Dumbbell
+  'dumbbell bench press': 'dumbbell',
+  'incline dumbbell press': 'dumbbell',
+  'dumbbell chest fly': 'dumbbell',
+  'dumbbell row': 'dumbbell',
+  'dumbbell shoulder press': 'dumbbell',
+  'arnold press': 'dumbbell',
+  'dumbbell lateral raise': 'dumbbell',
+  'dumbbell lateral raises': 'dumbbell',
+  'lateral raise': 'dumbbell',
+  'lateral raises': 'dumbbell',
+  'db lateral raise': 'dumbbell',
+  'db lateral raises': 'dumbbell',
+  'side lateral raise': 'dumbbell',
+  'side raises': 'dumbbell',
+  'dumbbell side raise': 'dumbbell',
+  'dumbbell front raise': 'dumbbell',
+  'front raise': 'dumbbell',
+  'dumbbell rear delt fly': 'dumbbell',
+  'dumbbell fly': 'dumbbell',
+  'dumbbell flys': 'dumbbell',
+  'reverse dumbbell fly': 'dumbbell',
+  'dumbbell curl': 'dumbbell',
+  'hammer curl': 'dumbbell',
+  'incline dumbbell curl': 'dumbbell',
+  'dumbbell tricep kickback': 'dumbbell',
+  'dumbbell romanian deadlift': 'dumbbell',
+  'bulgarian split squat': 'dumbbell',
+  'walking lunge': 'dumbbell',
+  'walking lunges': 'dumbbell',
+  'goblet squat': 'dumbbell',
+  'dumbbell shrug': 'dumbbell',
+  'dumbbell calf raise': 'dumbbell',
+  'dumbbell wrist curl': 'dumbbell',
+  'farmer carry': 'dumbbell',
+  // Cable
+  'cable chest fly': 'cable',
+  'cable fly': 'cable',
+  'cable lateral raises': 'cable',
+  'cable lateral raise': 'cable',
+  'face pull': 'cable',
+  'face pulls': 'cable',
+  'seated cable row': 'cable',
+  'cable row': 'cable',
+  'lat pulldown': 'cable',
+  'straight-arm pulldown': 'cable',
+  'straight arm pulldown': 'cable',
+  'tricep pushdown': 'cable',
+  'rope pushdown': 'cable',
+  'overhead tricep extension': 'cable',
+  'cable overhead extension': 'cable',
+  'cable curl': 'cable',
+  'cable kickback': 'cable',
+  'cable pull-through': 'cable',
+  'cable shrug': 'cable',
+  'pallof press': 'cable',
+  'cable crunch': 'cable',
+  // Machine
+  'machine chest press': 'machine',
+  'machine row': 'machine',
+  'machine shoulder press': 'machine',
+  'leg press': 'machine',
+  'leg extension': 'machine',
+  'leg curl': 'machine',
+  'lying leg curl': 'machine',
+  'hack squat': 'machine',
+  'calf raises': 'machine',
+  'calf raise': 'machine',
+  'standing calf raises': 'machine',
+  'seated calf raises': 'machine',
+  'standing calf raise': 'machine',
+  'seated calf raise': 'machine',
+  'leg press calf raise': 'machine',
+  'smith machine calf raise': 'machine',
+  // Bodyweight
+  'pull-up': 'bodyweight',
+  'pull up': 'bodyweight',
+  'chin-up': 'bodyweight',
+  'chin up': 'bodyweight',
+  'push-up': 'bodyweight',
+  'dips': 'bodyweight',
+  'plank': 'bodyweight',
+  'hanging leg raise': 'bodyweight',
+  'ab wheel rollout': 'bodyweight',
+  'dead bug': 'bodyweight',
+  'russian twist': 'bodyweight',
+  'glute bridge': 'bodyweight',
+  'nordic hamstring curl': 'bodyweight',
+  // Kettlebell
+  'kettlebell swing': 'kettlebell',
+  'goblet squat (kb)': 'kettlebell',
+  'kettlebell shrug': 'kettlebell',
+};
+
+const EQUIPMENT_ALIASES: Record<string, string> = {};
+
+// deno-lint-ignore no-explicit-any
+function stampEquipment(exercises: any[]): any[] {
+  // Sort entries by key length descending — longer keys are more specific
+  const sortedEntries = [
+    ...Object.entries(EQUIPMENT_MAP),
+    ...Object.entries(EQUIPMENT_ALIASES ?? {}),
+  ].sort((a, b) => b[0].length - a[0].length);
+
+  return exercises.map((ex) => {
+    const key = String(ex.name ?? '').toLowerCase().trim();
+
+    // 1. Exact match
+    if (EQUIPMENT_MAP[key]) return { ...ex, equipment: EQUIPMENT_MAP[key] };
+
+    // 2. Partial match — longer keys first prevents "lateral raise" (dumbbell)
+    //    from matching before "cable lateral raise" (cable)
+    for (const [mapKey, equip] of sortedEntries) {
+      if (key.includes(mapKey) || mapKey.includes(key)) {
+        return { ...ex, equipment: equip };
+      }
+    }
+
+    // 3. Fallback — keep existing or default to barbell
+    return { ...ex, equipment: ex.equipment ?? 'barbell' };
+  });
+}
+
+/** Returns the appropriate weight rounding increment for the given equipment type. */
+function getRoundingIncrement(equipment: string): number {
+  switch (equipment) {
+    case 'barbell':
+      return 2.5;
+    case 'dumbbell':
+      return 5;
+    case 'cable':
+      return 5;
+    case 'machine':
+      return 5;
+    case 'kettlebell':
+      return 8; // ~4kg standard KB jump
+    case 'bodyweight':
+      return 0; // no weight to round
+    default:
+      return 2.5; // safe barbell default
+  }
+}
+
+/**
+ * Calculates the correct weight increase based on RPE gap and exercise type.
+ * This is TypeScript post-processing — Claude never computes weight targets.
+ *
+ * rpeGap = avgLoggedRpe - targetRpe
+ * Negative = weights too light | Positive = weights too heavy
+ */
+function calculateWeightIncrease(
+  currentWeight: number,
+  rpeGap: number,
+  isCompound: boolean,
+  experience: string,
+): number {
+  if (currentWeight <= 0) return 0;
+
+  let basePct: number;
+  let fixedIncrease: number | null = null;
+
+  // RPE gap buckets — negative means athlete found it easier than target
+  if (rpeGap <= -2.5) {
+    basePct = 0.08; // 8% — very easy, big jump needed
+  } else if (rpeGap <= -1.5) {
+    basePct = 0.05; // 5% — clearly too light
+  } else if (rpeGap <= -0.5) {
+    basePct = 0.03; // 3% — slightly light, modest increase
+  } else {
+    // On target (gap within ±0.5) — standard progression
+    fixedIncrease = isCompound ? 2.5 : 1.0;
+    basePct = 0;
+  }
+
+  // Experience multiplier — beginners respond faster, advanced slower
+  const expMultiplier =
+    experience === 'beginner' ? 1.3 :
+    experience === 'advanced' ? 0.7 : 1.0;
+
+  const rawIncrease = fixedIncrease !== null
+    ? fixedIncrease
+    : currentWeight * basePct * expMultiplier;
+
+  // Round to nearest 2.5 lbs
+  const rounded = Math.round(rawIncrease / 2.5) * 2.5;
+
+  // Floor: always at least 2.5 lbs on compound, 1 lb on isolation
+  const floor = isCompound ? 2.5 : 1.0;
+
+  // Cap: never more than 12% of current weight in one jump
+  const cap = Math.round((currentWeight * 0.12) / 2.5) * 2.5;
+
+  return Math.min(Math.max(rounded, floor), cap);
+}
+
+function calculateWeightDecrease(
+  currentWeight: number,
+  rpeGap: number,
+): number {
+  if (currentWeight <= 0) return 0;
+
+  // rpeGap positive = harder than target
+  if (rpeGap >= 2.0) {
+    return Math.round((currentWeight * 0.05) / 2.5) * 2.5; // 5% reduction
+  }
+  return 2.5; // minimal pullback for slight overshoot
+}
+
+/**
+ * Finds the best matching key in exerciseData for a given exercise name.
+ * Handles plural variants, word order differences, and partial matches.
+ * Returns the matching key or null if no match found.
+ */
+function findExerciseDataKey(
+  name: string,
+  exerciseData: Record<string, any>,
+): string | null {
+  const key = name.toLowerCase().trim();
+
+  // 1. Exact match
+  if (exerciseData[key]) return key;
+
+  // 2. Strip plural 's'
+  if (key.endsWith('s') && exerciseData[key.slice(0, -1)]) {
+    return key.slice(0, -1);
+  }
+
+  // 3. Add plural 's'
+  if (exerciseData[key + 's']) return key + 's';
+
+  // 4. Partial match — check if any data key is contained in this name
+  //    or this name is contained in any data key
+  //    Sort by length descending to prefer longer (more specific) matches
+  const dataKeys = Object.keys(exerciseData).sort((a, b) => b.length - a.length);
+  for (const dataKey of dataKeys) {
+    if (key.includes(dataKey) || dataKey.includes(key)) {
+      return dataKey;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Post-processes Claude's next-week plan and enforces correct weight targets.
+ * Claude provides structure, coaching notes, and exercise selection.
+ * This function owns all weight arithmetic — Claude's weight values are overwritten.
+ */
+function enforceWeightProgression(
+  nextWeekDays: any[],
+  priorWeekLogs: any[], // sets_json from prior week's workout_logs
+  priorWeekPlanDays: any[], // the prior week's plan day objects from plan_json
+  experience: string,
+  isDeloadWeek: boolean,
+  exerciseIdToName: Record<string, string>,
+): any[] {
+  if (isDeloadWeek) return nextWeekDays; // deload weights handled by ×0.8 logic separately
+
+  // Build lookup: exerciseName → { avgLoggedWeight, avgLoggedRpe, targetRpe, targetWeight }
+  type ExerciseLog = {
+    totalWeight: number;
+    totalRpe: number;
+    count: number;
+    targetRpe: number;
+    targetWeight: number;
+    equipment: string;
+    isCompound: boolean;
+  };
+  const exerciseData: Record<string, ExerciseLog> = {};
+
+  // Load target data from prior week plan
+  for (const day of priorWeekPlanDays) {
+    for (const ex of day.exercises ?? []) {
+      if (!ex.name) continue;
+      const key = ex.name.toLowerCase().trim();
+      exerciseData[key] = {
+        totalWeight: 0,
+        totalRpe: 0,
+        count: 0,
+        targetRpe: ex.targetRpe ?? 8,
+        targetWeight: ex.targetWeight ?? 0,
+        equipment: ex.equipment ?? 'barbell',
+        // Compound if low reps (≤8 low end) — same proxy as enforceWeek1Rpe
+        isCompound: (() => {
+          const lowEnd = parseInt(String(ex.reps ?? '').split('-')[0], 10);
+          return isNaN(lowEnd) || lowEnd < 9;
+        })(),
+      };
+    }
+  }
+
+  console.log('[enforceWeight] exerciseData keys:', Object.keys(exerciseData));
+
+  // Accumulate actual logged data
+  for (const log of priorWeekLogs) {
+    const sets: any[] = log.sets_json ?? [];
+    for (const set of sets) {
+      // sets_json stores exerciseId — resolve to name via map
+      // Fallback chain: exerciseId lookup → exerciseName field → name field
+      const resolvedName =
+        (set.exerciseId ? exerciseIdToName[set.exerciseId] : null) ??
+        set.exerciseName ??
+        set.name ??
+        '';
+
+      const key = String(resolvedName).toLowerCase().trim();
+      if (!key || !exerciseData[key]) continue;
+
+      const weight = Number(set.weightLbs ?? set.weight ?? 0);
+      const rpe = Number(set.rpe ?? 0);
+
+      if (weight > 0) {
+        exerciseData[key].totalWeight += weight;
+        exerciseData[key].count += 1;
+      }
+      if (rpe > 0) {
+        exerciseData[key].totalRpe += rpe;
+      }
+    }
+  }
+
+  for (const [name, data] of Object.entries(exerciseData)) {
+    if (data.count > 0) {
+      console.log(`[enforceWeight] accumulated: "${name}" count=${data.count} avgWeight=${data.totalWeight/data.count} avgRpe=${data.totalRpe > 0 ? data.totalRpe/data.count : 0}`);
+    }
+  }
+
+  // Enforce correct weights on next week's plan
+  return nextWeekDays.map((day: any) => {
+    if (day.type !== 'workout') return day;
+
+    const updatedExercises = (day.exercises ?? []).map((ex: any) => {
+      const rawKey = String(ex.name ?? '').toLowerCase().trim();
+      const matchedKey = findExerciseDataKey(rawKey, exerciseData);
+      const data = matchedKey ? exerciseData[matchedKey] : null;
+      console.log(`[enforceWeight] looking up: "${rawKey}" → matched: "${matchedKey}" count=${data?.count ?? 'null'}`);
+
+      // No logged sets for this exercise — keep Claude's value
+      // NOTE: data.targetWeight === 0 is intentionally NOT checked here.
+      // Week 1 self-select exercises have targetWeight: 0 in the plan,
+      // but the user logs their actual weight. We must use avgLoggedWeight.
+      if (!data || data.count === 0) return ex;
+
+      const avgLoggedWeight = data.totalWeight / data.count;
+      const avgLoggedRpe = data.count > 0 && data.totalRpe > 0
+        ? data.totalRpe / data.count
+        : 0;
+
+      // No RPE data — hold weight
+      if (avgLoggedRpe === 0) {
+        const eq = data.equipment ?? 'barbell';
+        let w = avgLoggedWeight;
+        const increment = getRoundingIncrement(eq);
+        if (increment > 0) {
+          w = Math.round(w / increment) * increment;
+        }
+        const weightFloor = (eq === 'bodyweight')
+          ? 0
+          : (eq === 'dumbbell' || eq === 'cable' ||
+              eq === 'machine')
+            ? 5
+            : 45;
+        w = Math.max(weightFloor, w);
+        // Sanity cap: dumbbell exercises can't exceed realistic rack weights
+        // Most gyms max out at 120-150 lbs dumbbells
+        if (eq === 'dumbbell') {
+          w = Math.min(w, 150);
+        }
+        return { ...ex, targetWeight: w };
+      }
+
+      const rpeGap = avgLoggedRpe - data.targetRpe;
+
+      let newWeight: number;
+
+      if (rpeGap > 1.0) {
+        // Harder than target — decrease
+        const decrease = calculateWeightDecrease(avgLoggedWeight, rpeGap);
+        newWeight = avgLoggedWeight - decrease;
+      } else if (rpeGap < -0.5 || avgLoggedRpe <= 6) {
+        // Easier than target — increase
+        const increase = calculateWeightIncrease(
+          avgLoggedWeight,
+          rpeGap,
+          data.isCompound,
+          experience,
+        );
+        newWeight = avgLoggedWeight + increase;
+      } else {
+        // On target — hold
+        newWeight = avgLoggedWeight;
+      }
+
+      const eq = data.equipment ?? 'barbell';
+      // Round to nearest equipment-appropriate increment
+      const increment = getRoundingIncrement(eq);
+      if (increment > 0) {
+        newWeight = Math.round(newWeight / increment) * increment;
+      }
+      // Equipment-aware floor
+      const weightFloor = (eq === 'bodyweight')
+        ? 0
+        : (eq === 'dumbbell' || eq === 'cable' ||
+            eq === 'machine')
+          ? 5
+          : 45; // barbell minimum (empty bar)
+      newWeight = Math.max(weightFloor, newWeight);
+      // Sanity cap: dumbbell exercises can't exceed realistic rack weights
+      // Most gyms max out at 120-150 lbs dumbbells
+      if (eq === 'dumbbell') {
+        newWeight = Math.min(newWeight, 150);
+      }
+
+      return { ...ex, targetWeight: newWeight };
+    });
+
+    return { ...day, exercises: updatedExercises };
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -388,13 +821,13 @@ serve(async (req) => {
       )
       .sort((a: any, b: any) => a.weekNumber - b.weekNumber);
 
-    // Build exercise map from plan_json for name resolution
-    const exerciseMap: Record<string, string> = {};
+    // Build exerciseId → exerciseName map from ALL weeks in plan_json
+    const exerciseIdToName: Record<string, string> = {};
     for (const week of planJson.weeks ?? []) {
       for (const day of week.days ?? []) {
         for (const ex of day.exercises ?? []) {
           if (ex.id && ex.name) {
-            exerciseMap[ex.id] = ex.name;
+            exerciseIdToName[ex.id] = ex.name;
           }
         }
       }
@@ -402,6 +835,8 @@ serve(async (req) => {
 
     type PrescribedEx = {
       targetWeight: number;
+      /** Raw plan value — use for self-select / zero-target guards (null vs 0). */
+      targetWeightFromPlan: number | null | undefined;
       targetRpe: number;
       targetReps: number;
       minReps: number;
@@ -413,6 +848,7 @@ serve(async (req) => {
       for (const ex of day.exercises ?? []) {
         prescribedMap[ex.name] = {
           targetWeight: ex.targetWeight ?? 0,
+          targetWeightFromPlan: ex.targetWeight,
           targetRpe: ex.targetRpe ?? 0,
           targetReps: parseMidReps(ex.reps ?? '0'),
           minReps: parseMinReps(ex.reps ?? '1'),
@@ -421,6 +857,10 @@ serve(async (req) => {
         };
       }
     }
+
+    const hasAnyZeroPriorTarget = Object.values(prescribedMap).some(
+      (p) => p.targetWeightFromPlan === 0 || p.targetWeightFromPlan == null,
+    );
 
     const weightHistoryMap: Record<string, number[]> = {};
     const plateauedExercises = new Set<string>();
@@ -468,7 +908,7 @@ serve(async (req) => {
       for (const set of setsJson) {
         // Resolve exercise name — try exerciseId lookup first, then fallbacks
         const name: string =
-          (set.exerciseId ? exerciseMap[set.exerciseId] : null) ??
+          (set.exerciseId ? exerciseIdToName[set.exerciseId] : null) ??
           set.exerciseName ??
           set.name ??
           '';
@@ -497,101 +937,32 @@ serve(async (req) => {
       const avgRpe = actual && actual.count > 0 ? actual.totalRpe / actual.count : 0;
       const compound = isCompound(name);
       const hasRpeData = avgRpe > 0;
-      const priorTargetWeight = prescribed.targetWeight ?? 0;
-      const isNonStrengthGoal = goalType !== 'strength' && goalType !== 'power_hypertrophy';
-      const priorWasSelfSelect = isNonStrengthGoal && priorTargetWeight === 0;
-
-      let weightAction: 'increase' | 'decrease' | 'hold';
-      let weightDelta: number;
-      let newTargetWeight: number;
-      let selfSelectCoachingNote: string | undefined;
-      const progressionBaseWeight =
-        isCompletedWeekDeload && completedWeekNumber >= 2
-          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
-          : prescribed.targetWeight;
-
-      if (priorWasSelfSelect) {
-        const exerciseSets = collectSetsForExercise(logs, exerciseMap, name);
-        const week1Baseline = getWeek1BaselineFromLogs(logs, exerciseMap, name);
+      const tw = prescribed.targetWeightFromPlan;
+      // When priorTargetWeight is 0 (self-select week), enforceWeightProgression
+      // handles all weight arithmetic after Claude responds. Skip old adaptation
+      // logic entirely to prevent conflict.
+      if (tw === 0 || tw == null) {
+        const week1Baseline = getWeek1BaselineFromLogs(logs, exerciseIdToName, name);
         const baselineWeight = week1Baseline.baselineWeight;
         const rpeForAdaptation =
           week1Baseline.baselineRpe > 0 ? week1Baseline.baselineRpe : avgRpe;
         const hasRpeForSelfSelect = rpeForAdaptation > 0;
-        const rawPrior = prescribed.targetWeight;
+        const baselineWDisplay = Math.round(baselineWeight);
 
         console.log('[weight adaptation]', {
           exerciseName: name,
-          priorTargetWeight: rawPrior ?? 0,
+          priorTargetWeight: tw ?? 0,
           baselineWeight,
           isRampPattern: week1Baseline.isRampPattern,
           rpeForAdaptation,
           hasRpeData: hasRpeForSelfSelect,
-          setsCount: exerciseSets.length,
-          rawSets: exerciseSets.map((s) => ({
-            w: s.weightLbs,
-            r: s.reps,
-            rpe: s.rpe,
-          })),
+          deferWeightToPostProcessing: true,
         });
-
-        const rpeIsLow = hasRpeForSelfSelect && rpeForAdaptation <= 6;
-        const rpeIsHigh = hasRpeForSelfSelect && rpeForAdaptation >= 9;
-        const tr = prescribed.targetRpe;
-        const baseWeight = roundTo2_5(baselineWeight);
-        const baselineWDisplay = Math.round(baselineWeight);
-
-        let effectiveOldWeight: number;
-
-        if (baselineWeight === 0) {
-          newTargetWeight = 0;
-          weightAction = 'hold';
-          weightDelta = 0;
-          effectiveOldWeight = 0;
-          selfSelectCoachingNote =
-            `No weight logged last week — choose your working weight at RPE ${tr} this session.`;
-        } else if (!hasRpeForSelfSelect) {
-          newTargetWeight = baseWeight;
-          weightAction = 'hold';
-          weightDelta = 0;
-          effectiveOldWeight = baselineWDisplay;
-          selfSelectCoachingNote =
-            `Set at ${newTargetWeight} lbs from last week. Log your RPE this session so I can start adjusting your progression.`;
-        } else if (rpeIsLow) {
-          const inc = calculateIncrease(
-            baselineWeight,
-            rpeForAdaptation,
-            prescribed.targetRpe,
-            trainingAge,
-            compound,
-          );
-          newTargetWeight = Math.max(0, roundTo2_5(baselineWeight + inc));
-          weightAction = 'increase';
-          weightDelta = newTargetWeight - baselineWeight;
-          effectiveOldWeight = baselineWDisplay;
-          selfSelectCoachingNote =
-            `Your ${baselineWDisplay} lbs felt light — moving to ${newTargetWeight} lbs this week.`;
-        } else if (rpeIsHigh) {
-          newTargetWeight = Math.max(0, roundTo2_5(baselineWeight * 0.95));
-          weightAction = 'decrease';
-          weightDelta = newTargetWeight - baselineWeight;
-          effectiveOldWeight = baselineWDisplay;
-          selfSelectCoachingNote =
-            `${baselineWDisplay} lbs was tough — dropping to ${newTargetWeight} lbs for better quality reps.`;
-        } else {
-          newTargetWeight = baseWeight;
-          weightAction = 'hold';
-          weightDelta = 0;
-          effectiveOldWeight = baselineWDisplay;
-          selfSelectCoachingNote =
-            `${newTargetWeight} lbs confirmed as your working weight. Keep rating your RPE so I can keep dialling it in.`;
-        }
 
         exerciseAdaptations.push({
           name,
-          oldWeight: effectiveOldWeight,
-          newTargetWeight,
-          weightAction,
-          rpeGap: Math.round((rpeForAdaptation - prescribed.targetRpe) * 10) / 10,
+          baselineWeight,
+          isRampPattern: week1Baseline.isRampPattern,
           avgRpe: Math.round(rpeForAdaptation * 10) / 10,
           hasRpeData: hasRpeForSelfSelect,
           avgReps: Math.round(avgReps * 10) / 10,
@@ -600,12 +971,22 @@ serve(async (req) => {
           minReps: prescribed.minReps,
           oldReps: prescribed.reps,
           sets: prescribed.sets,
-          selfSelectCoachingNote,
-          isRampPattern: week1Baseline.isRampPattern,
           isUnilateral: isUnilateralExercise(name),
+          oldWeight: baselineWDisplay,
+          deferWeightToPostProcessing: true,
         });
         continue;
       }
+
+      const priorTargetWeight = prescribed.targetWeight ?? 0;
+
+      let weightAction: 'increase' | 'decrease' | 'hold';
+      let weightDelta: number;
+      let newTargetWeight: number;
+      const progressionBaseWeight =
+        isCompletedWeekDeload && completedWeekNumber >= 2
+          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
+          : prescribed.targetWeight;
 
       if (completionTier === 'full') {
         const rpeIsLow = hasRpeData && avgRpe <= 6;
@@ -708,7 +1089,12 @@ serve(async (req) => {
     // Deload overrides
     if (phase === 'deload') {
       for (const ex of exerciseAdaptations) {
-        ex.newTargetWeight = roundTo2_5(ex.oldWeight * 0.8);
+        if (ex.deferWeightToPostProcessing) {
+          const base = ex.oldWeight ?? ex.baselineWeight ?? 0;
+          ex.newTargetWeight = roundTo2_5(base * 0.8);
+        } else {
+          ex.newTargetWeight = roundTo2_5(ex.oldWeight * 0.8);
+        }
         ex.sets = Math.max(2, ex.sets - 1);
         ex.weightAction = 'deload';
       }
@@ -731,7 +1117,7 @@ serve(async (req) => {
         ? `PRESERVE THIS EXACT DAY STRUCTURE for Week ${nextWeekNumber}:
 ${structureLines}
 
-Do NOT add, remove, or reorder days. Return exactly ${dayCount} days in the same order: same dayNumber and type (workout/rest) for each slot. For each workout slot, provide exercises, sessionFocus, and fields as specified. Only update exercise weights, reps, and coaching notes based on performance data.
+Do NOT add, remove, or reorder days. Return exactly ${dayCount} days in the same order: same dayNumber and type (workout/rest) for each slot. For each workout slot, provide exercises, sessionFocus, and fields as specified. Update reps and coaching notes from performance data. For targetWeight on each exercise, copy the value from the exercise adaptations (last week's working weight) — do not derive weights from RPE yourself.
 
 `
         : '';
@@ -783,15 +1169,13 @@ Terse, data-driven, peer-level. This athlete knows what they're doing.
     };
     const toneInstruction = toneInstructionMap[toneTier] ?? toneInstructionMap.new;
 
-    const weightProgressionBaselineSection =
-      isCompletedWeekDeload && completedWeekNumber >= 2
-        ? `
-WEIGHT PROGRESSION BASELINE:
-IMPORTANT: Last week (Week ${completedWeekNumber}) was a DELOAD week. DO NOT use deload weights as the progression baseline. Use Week ${completedWeekNumber - 1} weights (pre-deload) as the starting point for all weight targets this week. The exerciseAdaptations JSON already encodes oldWeight and newTargetWeight stepped forward from pre-deload loads using normal RPE-based progression; deload-week logs informed RPE/fatigue only. Use deload week RPE and energy data ONLY to assess fatigue/recovery state in coaching notes — not to reduce working weights below the prescribed newTargetWeight values.
+    const weightProgressionBaselineSection = hasAnyZeroPriorTarget
+      ? `
+WEIGHT TARGETS (self-select / zero prior target): Some adaptations include "deferWeightToPostProcessing": true, meaning final weights are enforced after your response. For those exercises only: do not copy progression weights or hold/increase/decrease from adaptations. Use baselineWeight, avgRpe, avgReps, and ramp flags for qualitative coaching only.
+For exercises without deferWeightToPostProcessing: set targetWeight to the same value as last week's logged weight. Do NOT calculate increases or decreases — weight progression is handled in post-processing. Your job is exercise selection, rep ranges, set structure, and coaching notes only.
 `
-        : `
-WEIGHT PROGRESSION BASELINE:
-Use last week's logged performance and the exerciseAdaptations (oldWeight, newTargetWeight, weightAction) as the baseline for this week's targets.
+      : `
+WEIGHT TARGETS: Set targetWeight to the same value as last week's logged weight for each exercise. Do NOT calculate increases or decreases — weight progression is handled in post-processing. Your job is exercise selection, rep ranges, set structure, and coaching notes only.
 `;
 
     const claudeResponse = await fetchAnthropicMessagesWithRetry(() =>
@@ -809,17 +1193,12 @@ Use last week's logged performance and the exerciseAdaptations (oldWeight, newTa
 
 You are Jordan, the athlete's personal coach. You have their last week of performance data and you are writing their next week plan. Generate the training plan as structured JSON with varied exercise selection, smart ordering, and coaching notes that reference the user's actual performance.
 ${weightProgressionBaselineSection}
-RPE INTERPRETATION — read this carefully:
-- avgRpe is the athlete's ACTUAL RPE for that exercise last week
-- targetRpe is what was programmed
-- If avgRpe < targetRpe: the weight was TOO LIGHT. The athlete found it easy. Increase load.
-- If avgRpe > targetRpe: the weight was HEAVY. High effort.
-- weightAction field tells you exactly what to do: 'increase', 'hold', 'decrease', or 'deload'
-
 RAMP-UP WORKING SETS (Week 1 self-select and similar):
-- If an exercise adaptation has isRampPattern: true, the user ramped up to their working weight across sets within a session (e.g. lighter early sets, heaviest working sets at the end). The baselineWeight and newTargetWeight in the data already use their PEAK working weight, not an average across ramp sets.
+${hasAnyZeroPriorTarget ? `- If an exercise has deferWeightToPostProcessing: true and isRampPattern: true, the user ramped up to their working weight across sets within a session. Use baselineWeight for peak context only; do not tie coaching notes to newTargetWeight or progression from adaptations (final weights are post-processed).
+- If deferWeightToPostProcessing: true: ignore newTargetWeight in adaptations for that exercise.
+` : `- If an exercise adaptation has isRampPattern: true, the user ramped up to their working weight across sets within a session (e.g. lighter early sets, heaviest working sets at the end). The baselineWeight and newTargetWeight in the data already use their PEAK working weight, not an average across ramp sets.
 - For isRampPattern: true: use that peak as their true baseline for Week 2. Do not argue for a lower working weight because earlier sets in the log were lighter.
-
+`}
 UNILATERAL RULE: For exercises flagged isUnilateral, reps in sets_json are per-side.
 When assessing whether a user hit their rep target (e.g. target 10 reps, logged 10),
 that means 10 each side — this IS hitting the target. Do not penalise or hold weight
@@ -850,7 +1229,7 @@ ${concurrentSport ? `
 CONCURRENT SPORT CONTEXT:
 User trains ${concurrentSport.type.join(', ')} ${concurrentSport.daysPerWeek} days/week outside of lifting.
 Progression rules:
-- If user shows high fatigue signals (avg RPE > 8.5, low energy) AND daysPerWeek >= 3: hold weights rather than increase
+- If user shows high fatigue signals (avg RPE > 8.5, low energy) AND daysPerWeek >= 3: reflect recovery demands in coaching tone — do not compute weight changes yourself
 - Do not flag lower body fatigue as underperformance — sport training adds cumulative leg load
 - Jordan weekly summary may reference sport recovery where relevant` : ''}
 ${biologicalSex === 'female' ? `
@@ -862,11 +1241,12 @@ SEX-AWARE PROGRESSION — FEMALE:
 ${(biologicalSex === 'female' || enhancedRecovery) ? `DELOAD CADENCE: Week 5 (not week 4). If this is week 4, do NOT generate a deload week — generate a normal accumulation or intensification week instead.` : `DELOAD CADENCE: Week 4 standard.`}
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
-- Reference the actual numbers: their avgRpe, avgReps, and how the weight is changing
-- If weightAction is 'increase': explain why ("You hit this at RPE ${'{avgRpe}'} last week — that's lighter than target. Moving you up to ${'{newTargetWeight}'} lbs.")
-- If weightAction is 'hold': explain why ("RPE was on target last week — same weight, focus on quality reps.")
-- If weightAction is 'decrease': be honest ("Your RPE was high last week — backing off slightly to reset.")
-- If weightAction is 'deload': frame it positively ("This is an intentional deload week — lighter weight is the prescription, not a step back.")
+- Reference actual numbers from the exercise adaptations (avgRpe, avgReps, weightAction) to describe last week and the intent for this week — do not invent specific next-week pound targets; those are finalized in post-processing
+${hasAnyZeroPriorTarget ? `- If deferWeightToPostProcessing is true for an exercise: do not reference weightAction or prescribe hold/increase/decrease from adaptations. Use baselineWeight, avgRpe, avgReps, and isRampPattern for qualitative coaching only.
+` : ''}- If weightAction is 'increase': explain that load should progress because last week ran light vs target — stay qualitative, no invented pound amounts for this week
+- If weightAction is 'hold': explain that last week was calibrated — focus on execution
+- If weightAction is 'decrease': acknowledge last week ran heavy — quality reps matter
+- If weightAction is 'deload': frame deload positively as intentional recovery
 - Keep each note to 1-2 sentences
 - Never use generic form cues like 'Focus on good form'
 - Never use filler praise like 'Great job!' or 'Keep it up!'
@@ -920,11 +1300,12 @@ Equipment: ${equipment}
 Training age: ${trainingAge}
 Completion tier last week: ${completionTier} (${sessionsCompleted}/${sessionsPlanned} sessions)
 
-Exercise adaptations for next week (use newTargetWeight for each exercise):
+Exercise adaptations for next week (context for coaching${hasAnyZeroPriorTarget ? ' — for exercises without deferWeightToPostProcessing, copy targetWeight from newTargetWeight; for deferWeightToPostProcessing, use baseline/performance fields only' : ' — copy targetWeight from newTargetWeight'}; arithmetic is finalized in post-processing):
 ${JSON.stringify(exerciseAdaptations, null, 2)}
 
 Rules:
-- Use the newTargetWeight for each exercise listed above — do not change these weights
+${hasAnyZeroPriorTarget ? `- If deferWeightToPostProcessing is true for an exercise: do not set targetWeight from a prescribed progression or use weightAction for coaching notes. Set targetWeight to 0 in JSON. Do not invent hold, increase, or specific next-week pound amounts for that exercise. Final weights are applied in post-processing.
+` : ''}- Set each exercise targetWeight to the newTargetWeight value from the list above (last week's working weight) for exercises without deferWeightToPostProcessing. Do not substitute your own calculated weights
 - Maintain the same core exercise selection as last week unless weightAction is 'decrease' for 3+ sets (then suggest a regression)
 - If phase is 'deload': sets are already reduced in the data above, keep reps in lower range
 - If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
@@ -1015,6 +1396,28 @@ Return ONLY this exact JSON structure:
     nextWeekData.weekNumber = nextWeekNumber;
     nextWeekData.phase = phase;
     nextWeekData = mergeNextWeekWithPreviousStructure(weekData, nextWeekData, nextWeekNumber, phase);
+
+    const experienceForProgression =
+      (planJson as { experience?: string }).experience ?? trainingAge;
+
+    const priorWeekPlanDaysWithEquipment = (weekData?.days ?? []).map((day: any) => ({
+      ...day,
+      exercises: stampEquipment(day.exercises ?? []),
+    }));
+
+    nextWeekData.days = enforceWeightProgression(
+      nextWeekData.days ?? [],
+      logs,
+      priorWeekPlanDaysWithEquipment,
+      experienceForProgression,
+      phase === 'deload',
+      exerciseIdToName,
+    );
+
+    nextWeekData.days = (nextWeekData.days ?? []).map((day: any) => ({
+      ...day,
+      exercises: day.type === 'workout' ? stampEquipment(day.exercises ?? []) : day.exercises,
+    }));
 
     // Step 8 — Save to Supabase atomically (fresh read to avoid race)
     const { data: freshPlan, error: freshErr } = await supabase

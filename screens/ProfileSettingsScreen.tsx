@@ -51,14 +51,6 @@ const TRAINING_AGE_LABELS: Record<string, string> = {
   advanced: 'Advanced',
 };
 
-const SPLIT_LABELS: Record<string, string> = {
-  ppl: 'Push / Pull / Legs',
-  upper_lower: 'Upper / Lower',
-  full_body: 'Full Body',
-  bro_split: 'Bro Split',
-  custom: 'Custom',
-};
-
 const EQUIPMENT_LABELS: Record<string, string> = {
   full_gym: 'Full Gym',
   home_gym: 'Home Gym',
@@ -141,24 +133,36 @@ function formatHeightFeetInches(
   return `${ft}'${inch}"`;
 }
 
-function formatSessionLengthDisplay(val: unknown): string {
-  if (val == null || val === '') return '—';
-  if (typeof val === 'number' && Number.isFinite(val)) {
-    return `${Math.round(val)} min`;
+function formatSessionLength(val: string | number | null | undefined): string {
+  if (val === null || val === undefined || val === '') return '—';
+  const str = String(val).trim();
+  if (!str) return '—';
+  if (str.toLowerCase().includes('min')) return str;
+  if (str.includes('-') || str.includes('–')) {
+    return str.replace(/-/g, '–') + ' min';
   }
-  if (typeof val === 'string') {
-    const s = val.trim();
-    if (!s) return '—';
-    if (/^\d+$/.test(s)) return `${s} min`;
-    const m = s.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (m) return `${m[1]}–${m[2]} min`;
-    const parts = s.split(/[–-]/).map((p) => p.trim()).filter(Boolean);
-    if (parts.length === 2 && parts.every((p) => /^\d+$/.test(p))) {
-      return `${parts[0]}–${parts[1]} min`;
-    }
-    return s.toLowerCase().includes('min') ? s : `${s} min`;
-  }
-  return '—';
+  return `${str} min`;
+}
+
+function formatSplit(split: string | undefined | null): string {
+  const SPLIT_LABELS: Record<string, string> = {
+    full_body: 'Full Body',
+    full_body_beginner: 'Full Body',
+    upper_lower: 'Upper / Lower',
+    push_pull_legs: 'Push / Pull / Legs',
+    ppl: 'Push / Pull / Legs',
+    bro_split: 'Bro Split',
+    phul: 'PHUL',
+    phat: 'PHAT',
+    custom: 'Custom',
+  };
+  if (split == null || String(split).trim() === '') return '—';
+  const s = String(split);
+  const lower = s.toLowerCase();
+  return (
+    SPLIT_LABELS[lower] ??
+    s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
 function trainingPrefsDisplay(
@@ -171,14 +175,27 @@ function trainingPrefsDisplay(
   splitDisplay: string;
   equipmentDisplay: string;
 } {
-  const pj = plan?.plan_json ?? null;
-  const exp = (pj?.experience ?? profile?.training_age) as string | undefined;
+  const pj = (plan?.plan_json ?? null) as Record<string, unknown> | null;
+
+  const expRaw = pj?.experience ?? profile?.training_age;
   const daysRaw = pj?.daysPerWeek ?? profile?.days_per_week;
-  const sessionRaw = pj?.sessionLength ?? profile?.session_duration_mins;
-  const splitKey = (pj?.split ?? pj?.splitId ?? profile?.preferred_split) as
+  const rawSessionLength = (pj?.sessionLength ??
+    pj?.sessionDuration ??
+    null) as string | number | null;
+  const sessionLengthDisplay = rawSessionLength
+    ? formatSessionLength(rawSessionLength)
+    : profile?.session_duration_mins
+      ? formatSessionLength(String(profile.session_duration_mins))
+      : '—';
+  const splitRaw = (pj?.split ?? profile?.preferred_split) as
     | string
     | undefined;
-  const equipKey = (pj?.equipment ?? profile?.equipment) as string | undefined;
+  const equipRaw = pj?.equipment ?? profile?.equipment;
+
+  const expStr =
+    expRaw != null && expRaw !== '' ? String(expRaw as string) : '';
+  const equipStr =
+    equipRaw != null && equipRaw !== '' ? String(equipRaw as string) : '';
 
   let daysDisplay = '—';
   if (daysRaw != null && daysRaw !== '') {
@@ -187,11 +204,11 @@ function trainingPrefsDisplay(
   }
 
   return {
-    experienceDisplay: exp ? mapped(TRAINING_AGE_LABELS, exp) : '—',
+    experienceDisplay: expStr ? mapped(TRAINING_AGE_LABELS, expStr) : '—',
     daysDisplay,
-    sessionDisplay: formatSessionLengthDisplay(sessionRaw),
-    splitDisplay: splitKey ? mapped(SPLIT_LABELS, splitKey) : '—',
-    equipmentDisplay: equipKey ? mapped(EQUIPMENT_LABELS, equipKey) : '—',
+    sessionDisplay: sessionLengthDisplay,
+    splitDisplay: formatSplit(splitRaw),
+    equipmentDisplay: equipStr ? mapped(EQUIPMENT_LABELS, equipStr) : '—',
   };
 }
 

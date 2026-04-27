@@ -2092,6 +2092,7 @@ ${
       totalWeeks: plan.totalWeeks ?? totalWeeks,
       daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
       scheduledDays: scheduledDaysResolved,
+      sessionLength: body.sessionLength ?? null,
       goal: goal,
       split: splitForNormalized,
       enhancedRecovery,

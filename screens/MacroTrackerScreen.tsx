@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
   useWindowDimensions,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, {
@@ -26,6 +27,7 @@ import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { hapticSuccess, hapticWarning } from '../utils/haptics';
 
 interface MacroTargets {
   calories: number;
@@ -137,6 +139,39 @@ const QUICK_OPTIONS = [
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function jordanAdherenceMessage(goalType: string | null, avgRatio: number): string {
+  const g = (goalType ?? '').toLowerCase();
+  const deficit = g === 'fat_loss' || g === 'recomp';
+  const muscle =
+    g === 'hypertrophy' || g === 'strength' || g === 'power_hypertrophy';
+
+  if (avgRatio >= 0.9) {
+    if (deficit) {
+      return "Nutrition on point this week — deficit is holding and you're protecting muscle with solid protein numbers.";
+    }
+    if (muscle) {
+      return "Hitting your targets consistently — the surplus is there and your muscles have what they need to grow.";
+    }
+    return 'Consistent week on nutrition — your energy levels and performance will reflect this.';
+  }
+  if (avgRatio >= 0.7) {
+    if (deficit) {
+      return 'Close but not quite on target — the days you fell short were likely carbs or total calories. Protein is what matters most; protect that first.';
+    }
+    if (muscle) {
+      return 'A few days under target this week. The surplus took a hit — not a disaster, but worth tightening up. Prioritise your post-workout meal.';
+    }
+    return "Decent week — a few days off target won't derail you, but consistency compounds over weeks.";
+  }
+  if (deficit) {
+    return 'Nutrition was inconsistent this week — results will lag if this continues. Pick one meal to anchor each day and build from there.';
+  }
+  if (muscle) {
+    return "Under target most days this week — the muscle-building signal needs fuel. If you're not hungry enough, try adding a shake between meals.";
+  }
+  return "Tough week on nutrition. Don't chase perfection — just get tomorrow's protein sorted and go from there.";
+}
 
 function todayStr(): string {
   const d = new Date();
@@ -312,9 +347,47 @@ export default function MacroTrackerScreen() {
   const [builderTargetCals, setBuilderTargetCals] = useState(0);
   const [builderTargetProtein, setBuilderTargetProtein] = useState(0);
 
+  const [nutritionGoalType, setNutritionGoalType] = useState<string | null>(null);
+
+  const mealLoggedToastOpacity = useRef(new Animated.Value(0)).current;
+  const mealLoggedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overshootHapticSentRef = useRef(false);
+
+  const showMealLoggedToast = useCallback(() => {
+    void hapticSuccess();
+    if (mealLoggedToastTimerRef.current) {
+      clearTimeout(mealLoggedToastTimerRef.current);
+      mealLoggedToastTimerRef.current = null;
+    }
+    mealLoggedToastOpacity.setValue(0);
+    Animated.timing(mealLoggedToastOpacity, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+    mealLoggedToastTimerRef.current = setTimeout(() => {
+      Animated.timing(mealLoggedToastOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+      mealLoggedToastTimerRef.current = null;
+    }, 2000);
+  }, [mealLoggedToastOpacity]);
+
+  useEffect(
+    () => () => {
+      if (mealLoggedToastTimerRef.current) {
+        clearTimeout(mealLoggedToastTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
+      setNutritionGoalType(null);
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) return;
@@ -342,7 +415,7 @@ export default function MacroTrackerScreen() {
       const [targetsRes, todayRes, weekRes, mealSuggestRes] = await Promise.all([
         supabase
           .from('macro_plans')
-          .select('calories_target, protein_g, carbs_g, fats_g')
+          .select('calories_target, protein_g, carbs_g, fats_g, goals(goal_type)')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -377,13 +450,26 @@ export default function MacroTrackerScreen() {
       }
 
       if (targetsRes.data) {
+        const tr = targetsRes.data as {
+          calories_target: number;
+          protein_g: number;
+          carbs_g: number;
+          fats_g: number;
+          goals?: { goal_type?: string } | { goal_type?: string }[] | null;
+        };
+        const rel = tr.goals;
+        const gRow = Array.isArray(rel) ? rel[0] : rel;
+        setNutritionGoalType(
+          gRow && typeof gRow.goal_type === 'string' ? gRow.goal_type : null,
+        );
         setTargets({
-          calories: targetsRes.data.calories_target,
-          protein_g: targetsRes.data.protein_g,
-          carbs_g: targetsRes.data.carbs_g,
-          fats_g: targetsRes.data.fats_g,
+          calories: tr.calories_target,
+          protein_g: tr.protein_g,
+          carbs_g: tr.carbs_g,
+          fats_g: tr.fats_g,
         });
       } else {
+        setNutritionGoalType(null);
         setTargets(DEFAULT_TARGETS);
       }
 
@@ -427,6 +513,7 @@ export default function MacroTrackerScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      overshootHapticSentRef.current = false;
       void loadData();
     }, [loadData]),
   );
@@ -508,6 +595,43 @@ export default function MacroTrackerScreen() {
     };
   }, [weeklyData, t.calories]);
 
+  const weeklyAdherenceForNote = useMemo(() => {
+    if (t.calories <= 0) return { daysWithLogs: 0, avgRatio: 0 };
+    let sum = 0;
+    let n = 0;
+    for (let i = 6; i >= 0; i--) {
+      const ds = daysAgoStr(i);
+      const day = weeklyData.find((d) => d.date === ds);
+      const cals = day?.calories ?? 0;
+      if (cals > 0) {
+        sum += cals / t.calories;
+        n++;
+      }
+    }
+    return { daysWithLogs: n, avgRatio: n > 0 ? sum / n : 0 };
+  }, [weeklyData, t.calories]);
+
+  const jordanAdherenceBody = useMemo(() => {
+    if (weeklyAdherenceForNote.daysWithLogs < 3) return null;
+    return jordanAdherenceMessage(nutritionGoalType, weeklyAdherenceForNote.avgRatio);
+  }, [weeklyAdherenceForNote, nutritionGoalType]);
+
+  const calorieOvershootAmount = useMemo(
+    () =>
+      todayTotals.calories > t.calories
+        ? Math.round(todayTotals.calories - t.calories)
+        : 0,
+    [todayTotals.calories, t.calories],
+  );
+  const showCalOvershootBanner = calorieOvershootAmount > 50;
+
+  useEffect(() => {
+    if (isLoading || !showCalOvershootBanner) return;
+    if (overshootHapticSentRef.current) return;
+    overshootHapticSentRef.current = true;
+    void hapticWarning();
+  }, [isLoading, showCalOvershootBanner]);
+
   // ── Handlers ──
 
   const handleDelete = async (id: string) => {
@@ -539,6 +663,7 @@ export default function MacroTrackerScreen() {
       { onConflict: 'user_id,log_date,meal_name' },
     );
 
+    showMealLoggedToast();
     resetModal();
     loadData();
   };
@@ -689,6 +814,7 @@ export default function MacroTrackerScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.mainFlex}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -731,6 +857,16 @@ export default function MacroTrackerScreen() {
           </View>
           <CalorieRing pct={calPct} />
         </View>
+
+        {showCalOvershootBanner ? (
+          <View style={styles.calOvershootBanner}>
+            <Text style={styles.calOvershootIcon}>⚠</Text>
+            <Text style={styles.calOvershootText}>
+              Over target by {calorieOvershootAmount} cal — protein is the priority for the rest
+              of the day.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.macroRow}>
           {([
@@ -873,6 +1009,26 @@ export default function MacroTrackerScreen() {
         <Text style={styles.weeklySectionSub}>Calorie target adherence</Text>
         <View style={styles.weeklyChartCard}>
           <WeeklyBarChart data={weeklyData} target={t.calories} width={chartWidth} />
+          <View style={styles.adherenceLegendRow}>
+            <View style={styles.adherenceLegendItem}>
+              <View style={[styles.adherenceLegendSwatch, styles.adherenceLegendSwatchSuccess]} />
+              <Text style={styles.adherenceLegendLabel}>On target (≥90%)</Text>
+            </View>
+            <View style={styles.adherenceLegendItem}>
+              <View style={[styles.adherenceLegendSwatch, styles.adherenceLegendSwatchWarning]} />
+              <Text style={styles.adherenceLegendLabel}>Close (70–89%)</Text>
+            </View>
+            <View style={styles.adherenceLegendItem}>
+              <View style={[styles.adherenceLegendSwatch, styles.adherenceLegendSwatchDanger]} />
+              <Text style={styles.adherenceLegendLabel}>Off target (&lt;70%)</Text>
+            </View>
+          </View>
+          {jordanAdherenceBody ? (
+            <View style={styles.jordanAdherenceCard}>
+              <Text style={styles.jordanAdherenceLabel}>JORDAN</Text>
+              <Text style={styles.jordanAdherenceBodyText}>{jordanAdherenceBody}</Text>
+            </View>
+          ) : null}
           <View style={styles.statPillRow}>
             <View style={styles.statPill}>
               <View style={[styles.statDot, { backgroundColor: Colors.success }]} />
@@ -889,6 +1045,16 @@ export default function MacroTrackerScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Animated.View
+        style={[styles.mealLoggedToastWrap, { opacity: mealLoggedToastOpacity }]}
+        pointerEvents="none"
+      >
+        <View style={styles.mealLoggedToastInner}>
+          <Text style={styles.mealLoggedToastText}>✓  Meal logged</Text>
+        </View>
+      </Animated.View>
+      </View>
 
       {/* ── Add Meal Modal ── */}
       <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={resetModal}>
@@ -1056,6 +1222,7 @@ export default function MacroTrackerScreen() {
         visible={builderVisible}
         onClose={() => setBuilderVisible(false)}
         onLog={handleBuilderLog}
+        onMealLogged={showMealLoggedToast}
         slot={builderSlot}
         targetCalories={builderTargetCals}
         targetProtein={builderTargetProtein}
@@ -1068,6 +1235,7 @@ export default function MacroTrackerScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bgPrimary },
+  mainFlex: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1131,6 +1299,49 @@ const styles = StyleSheet.create({
   },
   calorieRemainingUnder: { color: Colors.success },
   calorieRemainingOver: { color: Colors.danger },
+
+  calOvershootBanner: {
+    backgroundColor: Colors.dangerMuted,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  calOvershootIcon: {
+    fontSize: 16,
+    color: Colors.danger,
+    marginRight: Spacing.xs,
+  },
+  calOvershootText: {
+    flex: 1,
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.danger,
+  },
+
+  mealLoggedToastWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 90,
+    alignItems: 'center',
+  },
+  mealLoggedToastInner: {
+    backgroundColor: Colors.success,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mealLoggedToastText: {
+    color: Colors.bgPrimary,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+  },
 
   macroRow: {
     flexDirection: 'row',
@@ -1270,11 +1481,62 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: Spacing.lg,
   },
+  adherenceLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  adherenceLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adherenceLegendSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  adherenceLegendSwatchSuccess: {
+    backgroundColor: Colors.success,
+  },
+  adherenceLegendSwatchWarning: {
+    backgroundColor: Colors.warning,
+  },
+  adherenceLegendSwatchDanger: {
+    backgroundColor: Colors.danger,
+  },
+  adherenceLegendLabel: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  jordanAdherenceCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  jordanAdherenceLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  jordanAdherenceBodyText: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary,
+  },
   statPillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 16,
+    marginTop: Spacing.sm,
   },
   statPill: {
     flexDirection: 'row',

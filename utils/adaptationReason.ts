@@ -3,6 +3,15 @@
  * Pure function — no API calls. All data comes from plan_json + workout_logs.
  */
 
+import { formatWorkoutWeight, LBS_TO_KG } from './units';
+
+function formatLoadDeltaForCopy(deltaLbs: number, isMetric: boolean): string {
+  if (!isMetric) return `${Math.abs(Math.round(deltaLbs))} lbs`;
+  const kg = Math.abs(deltaLbs) * LBS_TO_KG;
+  const rounded = Math.round(kg * 2) / 2;
+  return `${rounded} kg`;
+}
+
 export interface AdaptationReason {
   headline: string; // One punchy line — shown large
   detail: string; // 1–2 sentences — Jordan's explanation
@@ -10,10 +19,66 @@ export interface AdaptationReason {
 }
 
 export interface LastWeekData {
+  /** Baseline load for reasoning: session average, or top set when variance > 5% (matches server progression). */
   avgWeightLbs: number;
   avgRpe: number;
   targetRpe: number;
   targetWeightLbs: number;
+}
+
+/** Optional rows for pyramid-aware weight/RPE baseline (full session sets, not top-set filtered). */
+export type AdaptationPreviousSetRow = {
+  loggedWeight?: number;
+  weight?: number;
+  weightLbs?: number;
+  rpe?: number | null;
+};
+
+function baselineFromPreviousSets(
+  previousSets: AdaptationPreviousSetRow[],
+  setStructure: 'straight' | 'pyramid' | 'wave' | undefined,
+): { avgWeightLbs: number; avgRpe: number } | null {
+  const weights = previousSets
+    .map((s) => Number(s.loggedWeight ?? s.weight ?? s.weightLbs ?? 0))
+    .filter((w) => w > 0);
+
+  if (weights.length === 0) {
+    return null;
+  }
+
+  const avgWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
+  const maxWeight = Math.max(...weights);
+  const useTopSet = (maxWeight - avgWeight) > avgWeight * 0.05;
+  const avgWeightLbs = useTopSet ? maxWeight : avgWeight;
+
+  let avgRpe = 0;
+  if (setStructure === 'pyramid' && previousSets.length >= 2) {
+    const pos = previousSets
+      .map((s) => ({
+        wt: Number(s.loggedWeight ?? s.weight ?? s.weightLbs ?? 0),
+        rpe: Number(s.rpe ?? 0),
+      }))
+      .filter((x) => x.wt > 0);
+    if (pos.length >= 2) {
+      const maxWt = Math.max(...pos.map((x) => x.wt));
+      const topRpes = pos
+        .filter((x) => x.wt === maxWt)
+        .map((x) => x.rpe)
+        .filter((r) => r > 0);
+      if (topRpes.length > 0) {
+        avgRpe = topRpes.reduce((a, b) => a + b, 0) / topRpes.length;
+      }
+    }
+  } else {
+    const rpes = previousSets
+      .map((s) => Number(s.rpe ?? 0))
+      .filter((r) => r > 0);
+    if (rpes.length > 0) {
+      avgRpe = rpes.reduce((a, b) => a + b, 0) / rpes.length;
+    }
+  }
+
+  return { avgWeightLbs, avgRpe };
 }
 
 export function deriveAdaptationReason(
@@ -23,6 +88,9 @@ export function deriveAdaptationReason(
   weekNumber: number,
   lastWeekData: LastWeekData | null,
   adjustedBySignal?: string,
+  previousSets?: AdaptationPreviousSetRow[],
+  setStructure?: 'straight' | 'pyramid' | 'wave',
+  isMetric = false,
 ): AdaptationReason {
 
   // Week 1 — no prior data
@@ -50,43 +118,53 @@ export function deriveAdaptationReason(
     };
   }
 
-  const { avgWeightLbs, avgRpe } = lastWeekData;
-  const weightDelta = currentTargetWeight - avgWeightLbs;
-  const effectiveTargetRpe = lastWeekData?.targetRpe > 0
-    ? lastWeekData.targetRpe
-    : currentTargetRpe;
+  const fromSets = previousSets?.length
+    ? baselineFromPreviousSets(previousSets, setStructure)
+    : null;
 
-  const rpeGap = (lastWeekData?.avgRpe ?? 0) - effectiveTargetRpe;
+  /** W1 top-set (or straight) baseline — matches progression summary, not average of build sets. */
+  const topSetWeight =
+    fromSets?.avgWeightLbs ?? lastWeekData.avgWeightLbs;
+  /** Top-set RPE for pyramid; session mean for straight — copy only, not used for signal. */
+  const topSetRpe =
+    fromSets != null ? fromSets.avgRpe : lastWeekData.avgRpe;
+  const rpeStr = topSetRpe.toFixed(1);
 
-  // Trigger increase if gap is -0.5 or more below target
-  if (rpeGap < -0.5) {
-    if (weightDelta > 0) {
-      if (rpeGap < -1) {
-        return {
-          headline: `Up ${weightDelta.toFixed(1)} lbs — weights were too light`,
-          detail: `Last week you averaged RPE ${avgRpe.toFixed(1)} against a target of ${effectiveTargetRpe} — that ${Math.abs(rpeGap).toFixed(1)}-point gap told me the load wasn't creating enough stimulus. Load goes up until your RPE lands where it needs to be.`,
-          signal: 'up',
-        };
-      }
-      return {
-        headline: `Up ${weightDelta.toFixed(1)} lbs — progressive overload`,
-        detail: `Last week's ${avgWeightLbs} lbs at RPE ${avgRpe.toFixed(1)} was right on target. Standard progression — load increases to keep the stimulus ahead of your adaptation.`,
-        signal: 'up',
-      };
-    }
-  } else if (rpeGap > 1.0) {
+  const targetWeight = currentTargetWeight;
+  const weightDelta = targetWeight - topSetWeight;
+  let signal: 'up' | 'down' | 'hold';
+  if (topSetWeight > 0) {
+    const pctChange = weightDelta / topSetWeight;
+    if (pctChange > 0.01) signal = 'up';
+    else if (pctChange < -0.01) signal = 'down';
+    else signal = 'hold';
+  } else {
+    signal = targetWeight > 0 ? 'up' : 'hold';
+  }
+
+  const topStr = formatWorkoutWeight(topSetWeight, isMetric);
+  const deltaStr = formatLoadDeltaForCopy(weightDelta, isMetric);
+
+  if (signal === 'up') {
     return {
-      headline: weightDelta < 0
-        ? `Down ${Math.abs(weightDelta).toFixed(1)} lbs — load managed`
-        : 'Down — load managed',
-      detail: `Last week's RPE ran ${rpeGap.toFixed(1)} points above target at ${avgWeightLbs} lbs. I've pulled it back slightly — quality reps at the right intensity beats grinding through sets that are too heavy.`,
+      headline: `Up ${deltaStr} — progressive overload`,
+      detail:
+        `Last week's ${topStr} at RPE ${rpeStr} had room to grow — load increases to keep the stimulus ahead of your adaptation.`,
+      signal: 'up',
+    };
+  }
+  if (signal === 'down') {
+    return {
+      headline: `Down ${deltaStr} — load managed`,
+      detail:
+        `Last week's ${topStr} at RPE ${rpeStr} ran high — pulling it back slightly so you can execute clean reps.`,
       signal: 'down',
     };
   }
-  // hold — truly on target (within ±0.5 to +1.0)
   return {
     headline: 'Same load — intentional hold',
-    detail: `Last week's ${avgWeightLbs} lbs at RPE ${avgRpe.toFixed(1)} was well-calibrated. Same load this week — the goal is more volume at the same intensity before we push weight again.`,
+    detail:
+      `Last week's ${topStr} at RPE ${rpeStr} was well-calibrated. Same load this week — the goal is more volume at the same intensity before we push weight again.`,
     signal: 'hold',
   };
 }

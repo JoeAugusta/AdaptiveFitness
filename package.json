@@ -20,6 +20,7 @@
     "expo": "~55.0.4",
     "expo-av": "^16.0.8",
     "expo-constants": "~55.0.9",
+    "expo-dev-client": "~55.0.27",
     "expo-font": "~55.0.6",
     "expo-haptics": "~55.0.8",
     "expo-notifications": "~55.0.14",

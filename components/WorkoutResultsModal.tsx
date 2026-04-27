@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
+import { useMetric } from '../utils/units';
+import { supabase } from '../Lib/supabase';
 
 export interface SetLog {
   exerciseId: string;
@@ -43,12 +46,24 @@ interface WorkoutResultsModalProps {
   workoutLog: WorkoutLog | null;
   exerciseMap: Record<string, string>;
   planExercises: ExerciseObject[];
+  /** Optional — enriches Jordan session_summary debrief when present */
+  summaryPlanGoal?: string | null;
+  summaryWeek?: number | null;
+  summaryPlanPhase?: string | null;
 }
 
 function calculateAvgRpe(sets: SetLog[]): number | null {
   const rpeValues = sets.filter((s) => s.rpe && s.rpe > 0).map((s) => s.rpe!);
   if (rpeValues.length === 0) return null;
   return Math.round((rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length) * 10) / 10;
+}
+
+function averageTargetRpeFromPlan(exercises: ExerciseObject[]): number | null {
+  const vals = exercises
+    .map((e) => e.targetRpe)
+    .filter((n): n is number => typeof n === 'number' && !Number.isNaN(n));
+  if (vals.length === 0) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
 }
 
 // Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
@@ -178,7 +193,11 @@ function sanitizeRepString(value: string): string {
   return value.replace('–', '-').trim();
 }
 
-function formatSetDisplay(set: SetLog, exercise: ExerciseObject | undefined): string {
+function formatSetDisplay(
+  set: SetLog,
+  exercise: ExerciseObject | undefined,
+  formatW: (lbs: number) => string,
+): string {
   const exerciseName = (exercise?.name ?? set.exerciseName ?? '').toLowerCase();
   const knownTimed =
     exerciseName.includes('plank') ||
@@ -190,7 +209,7 @@ function formatSetDisplay(set: SetLog, exercise: ExerciseObject | undefined): st
   if (set.weightLbs === 0) {
     return `Bodyweight × ${set.reps ?? 0}`;
   }
-  return `${set.weightLbs ?? 0} lbs × ${set.reps ?? 0}`;
+  return `${formatW(set.weightLbs ?? 0)} × ${set.reps ?? 0}`;
 }
 
 export default function WorkoutResultsModal({
@@ -201,13 +220,90 @@ export default function WorkoutResultsModal({
   workoutLog,
   exerciseMap,
   planExercises,
+  summaryPlanGoal = null,
+  summaryWeek = null,
+  summaryPlanPhase = null,
 }: WorkoutResultsModalProps) {
+  const { formatWorkoutWeight } = useMetric();
+
   const sets = useMemo(
     () => parseSetsJson((workoutLog?.sets_json as WorkoutLog['sets_json'] | string | null | undefined) ?? []),
     [workoutLog],
   );
   const groupedSets = useMemo(() => buildExerciseMap(planExercises, sets), [planExercises, sets]);
   const avgRpe = useMemo(() => calculateAvgRpe(sets), [sets]);
+
+  const [jordanDebrief, setJordanDebrief] = useState<string | null>(null);
+  const [jordanLoading, setJordanLoading] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setJordanDebrief(null);
+      setJordanLoading(false);
+      return;
+    }
+    if (sets.length === 0) {
+      setJordanDebrief(null);
+      setJordanLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setJordanLoading(true);
+    setJordanDebrief(null);
+
+    const idList = sets
+      .map((s) => s.exerciseId)
+      .filter((id) => !!id && String(id).trim().length > 0);
+    const exerciseCount =
+      idList.length > 0 ? new Set(idList).size : 1;
+    const avgTarget = averageTargetRpeFromPlan(planExercises);
+    const avgRpeVal = calculateAvgRpe(sets);
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('coaching-feedback', {
+          body: {
+            exerciseName: 'session_summary',
+            sets,
+            loggedReps: sets.length,
+            targetReps: exerciseCount,
+            loggedRpe: avgRpeVal ?? 0,
+            targetRpe: avgTarget ?? 0,
+            planContext: {
+              goal: summaryPlanGoal ?? null,
+              week: summaryWeek ?? null,
+              phase: summaryPlanPhase ?? null,
+              targetRpe: avgTarget,
+            },
+            completedWeeks: summaryWeek ?? 1,
+          },
+        });
+        if (cancelled) return;
+        if (error) {
+          setJordanDebrief(null);
+          return;
+        }
+        const rawFb =
+          data &&
+          typeof data === 'object' &&
+          data !== null &&
+          'feedback' in data
+            ? (data as { feedback: unknown }).feedback
+            : null;
+        const text = typeof rawFb === 'string' ? rawFb.trim() : '';
+        setJordanDebrief(text.length > 0 ? text : null);
+      } catch {
+        if (!cancelled) setJordanDebrief(null);
+      } finally {
+        if (!cancelled) setJordanLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, sets, planExercises, summaryPlanGoal, summaryWeek, summaryPlanPhase]);
   const totalVolume = useMemo(() => calculateTotalVolume(sets), [sets]);
   const fatigueEmoji = getFatigueEmoji(workoutLog?.session_fatigue_rating ?? null);
   const fatigueDescriptor = getFatigueLabel(workoutLog?.session_fatigue_rating ?? null);
@@ -257,6 +353,18 @@ export default function WorkoutResultsModal({
           </Text>
           <Text style={styles.headerDate}>{completedDate}</Text>
         </View>
+
+        {jordanLoading ? (
+          <View style={styles.jordanLoadingWrap}>
+            <ActivityIndicator color={Colors.accent} size="small" />
+          </View>
+        ) : null}
+        {!jordanLoading && jordanDebrief ? (
+          <View style={styles.jordanCard}>
+            <Text style={styles.jordanLabel}>JORDAN</Text>
+            <Text style={styles.jordanNoteText}>{jordanDebrief}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.summaryStrip}>
           <View style={styles.summaryCard}>
@@ -350,7 +458,9 @@ export default function WorkoutResultsModal({
                   <Text style={styles.exerciseName}>{exerciseName}</Text>
                   {targetLabel ? <Text style={styles.targetText}>{targetLabel}</Text> : null}
                   {hasPhasedExercises && currentPhase === 'strength' ? (
-                    <Text style={styles.phaseMetricText}>Top: {exTopWeight} lbs · RPE {exAvgRpe?.toFixed(1) ?? '—'}</Text>
+                    <Text style={styles.phaseMetricText}>
+                      Top: {formatWorkoutWeight(exTopWeight)} · RPE {exAvgRpe?.toFixed(1) ?? '—'}
+                    </Text>
                   ) : null}
                   {hasPhasedExercises && currentPhase === 'hypertrophy' ? (
                     <Text style={styles.phaseMetricText}>Vol: {formatVolume(exVolume)} · RPE {exAvgRpe?.toFixed(1) ?? '—'}</Text>
@@ -378,7 +488,7 @@ export default function WorkoutResultsModal({
 
                         <View style={styles.weightRepsWrap}>
                           <Text style={styles.weightRepsText}>
-                            {formatSetDisplay(set, planExercise)}
+                            {formatSetDisplay(set, planExercise, formatWorkoutWeight)}
                           </Text>
                         </View>
 
@@ -415,7 +525,7 @@ export default function WorkoutResultsModal({
                   ) : null}
                   <Text style={styles.bestSetText}>
                     Best set:{' '}
-                    {formatSetDisplay(bestSet, planExercise)}
+                    {formatSetDisplay(bestSet, planExercise, formatWorkoutWeight)}
                   </Text>
                 </View>
                 </View>
@@ -427,7 +537,8 @@ export default function WorkoutResultsModal({
               <Text style={styles.rawFallbackLabel}>Raw session data</Text>
               {sets.map((set, idx) => (
                 <Text key={`${set.setNumber}-${idx}`} style={styles.rawFallbackRow}>
-                  Set {set.setNumber}: {set.weightLbs ?? 0} lbs × {set.reps ?? 0} reps RPE {set.rpe ?? '—'}
+                  Set {set.setNumber}: {formatSetDisplay(set, undefined, formatWorkoutWeight)} RPE{' '}
+                  {set.rpe ?? '—'}
                 </Text>
               ))}
             </View>
@@ -499,6 +610,32 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.regular,
     color: Colors.textTertiary,
+  },
+  jordanLoadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  jordanCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    marginBottom: Spacing.md,
+  },
+  jordanLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  jordanNoteText: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary,
   },
   summaryStrip: {
     flexDirection: 'row',

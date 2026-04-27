@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -15,6 +16,12 @@ import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { useMetric, lbsToDisplay, unitLabel } from '../utils/units';
+import {
+  fetchPersonalRecords,
+  type PersonalRecord,
+} from '../utils/personalRecords';
+import { useEntitlement } from '../hooks/useEntitlement';
 
 interface StrengthDataPoint {
   week: number;
@@ -65,20 +72,106 @@ function localDateKey(d: Date): string {
 const HEATMAP_DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const HEATMAP_ROWS = 7;
 
+/** Weekly Volume chart — intentional muscle → color system (keys are Title Case). */
 const MUSCLE_COLORS: Record<string, string> = {
-  'chest':        Colors.accent,
-  'back':         Colors.success,
-  'quadriceps':   Colors.warning,
-  'quads':        Colors.warning,
-  'shoulders':    '#8B5CF6', // TODO: map to design token
-  'hamstrings':   '#EC4899', // TODO: map to design token
-  'glutes':       Colors.accent,
-  'biceps':       '#06B6D4', // TODO: map to design token
-  'triceps':      '#84CC16', // TODO: map to design token
-  'calves':       '#A78BFA', // TODO: map to design token
-  'core':         '#FB923C', // TODO: map to design token
-  'other':        Colors.divider,
+  // Push — orange
+  Chest: Colors.accent,
+  Triceps: Colors.accent,
+  Quads: Colors.accent,
+
+  // Pull — green
+  Back: Colors.success,
+  Biceps: Colors.success,
+  Hamstrings: Colors.success,
+  Traps: Colors.success,
+
+  // Overhead / compound — amber
+  Shoulders: Colors.warning,
+  Glutes: Colors.warning,
+
+  // Accessory / small — gray
+  Core: Colors.textTertiary,
+  Calves: Colors.textTertiary,
+  Forearms: Colors.textTertiary,
 };
+
+function getMuscleColor(muscle: string): string {
+  const trimmed = muscle.trim();
+  if (!trimmed) return Colors.textSecondary;
+  const lower = trimmed.toLowerCase();
+  const key =
+    lower === 'quadriceps'
+      ? 'Quads'
+      : trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+  return MUSCLE_COLORS[key] ?? Colors.textSecondary;
+}
+
+function getDefaultStrengthLiftId(
+  planGoal: string | undefined,
+  goalLift?: string | null,
+): string {
+  const g = (planGoal ?? 'general').toLowerCase();
+  const gl = goalLift?.trim() || undefined;
+  const map: Record<string, string> = {
+    hypertrophy: 'barbell_bench_press',
+    strength: gl ?? 'barbell_squat',
+    fat_loss: 'barbell_squat',
+    recomp: 'barbell_bench_press',
+    power_hypertrophy: 'barbell_bench_press',
+    general: 'barbell_squat',
+  };
+  return map[g] ?? 'barbell_squat';
+}
+
+/** Map canonical lift id to a display name present in `topExercises` chips. */
+function pickExerciseNameForDefaultLift(
+  defaultLiftId: string,
+  candidates: string[],
+): string | null {
+  const id = defaultLiftId.toLowerCase();
+  for (const c of candidates) {
+    const n = c.toLowerCase();
+    if (id.includes('ohp') || id.includes('overhead') || /\bohp\b/.test(id)) {
+      if (n.includes('overhead') || n.includes('military') || /\bohp\b/.test(n)) {
+        return c;
+      }
+      continue;
+    }
+    const slug = id.replace(/^barbell_/, '').replace(/_/g, ' ');
+    const parts = slug.split(/\s+/).filter(Boolean);
+    if (parts.length > 0 && parts.every((p) => n.includes(p))) return c;
+  }
+  return null;
+}
+
+function computeBodyweightContradictionNote(
+  planGoal: string | undefined,
+  weightLogs: WeightLogPoint[],
+): string | null {
+  if (!planGoal) return null;
+  const g = planGoal.toLowerCase();
+  if (weightLogs.length < 5) return null;
+  const recent = weightLogs.slice(-7);
+  if (recent.length < 2) return null;
+  const firstW = recent[0].weight_lbs;
+  const lastW = recent[recent.length - 1].weight_lbs;
+  const delta = lastW - firstW;
+  const t0 = new Date(`${recent[0].log_date}T12:00:00`).getTime();
+  const t1 = new Date(`${recent[recent.length - 1].log_date}T12:00:00`).getTime();
+  const days = Math.max(1, (t1 - t0) / 86400000);
+  const weeklyRate = (delta / days) * 7;
+
+  if (g === 'hypertrophy' && delta < -0.5) {
+    return "You're losing weight on a muscle-building plan — you may be under-eating. Check your calorie targets.";
+  }
+  if (g === 'fat_loss' && delta > 0.5) {
+    return 'Your weight is trending up on a fat-loss plan — your calorie intake may be running above target.';
+  }
+  if (g === 'strength' && weeklyRate < -1.0) {
+    return "Rapid weight loss can compromise strength gains — make sure you're hitting your calorie and protein targets.";
+  }
+  return null;
+}
 
 // ── SVG Line Chart ──
 
@@ -193,10 +286,16 @@ function WeightLineChart({
   data,
   width,
   height,
+  isMetric,
+  lbsToDisplay: toDisp,
+  formatBodyWeight: formatBodyW,
 }: {
   data: WeightLogPoint[];
   width: number;
   height: number;
+  isMetric: boolean;
+  lbsToDisplay: (lbs: number) => number;
+  formatBodyWeight: (lbs: number) => string;
 }) {
   if (data.length < 2) return null;
 
@@ -207,15 +306,21 @@ function WeightLineChart({
   const cw = width - padL - padR;
   const ch = height - padT - padB;
 
-  const weights = data.map((d) => d.weight_lbs);
-  const minV = Math.floor(Math.min(...weights) - 2);
-  const maxV = Math.ceil(Math.max(...weights) + 2);
+  const displayWeights = data.map((d) => toDisp(d.weight_lbs));
+  const minW = Math.min(...displayWeights);
+  const maxW = Math.max(...displayWeights);
+  const pad = isMetric ? 1 : 2;
+  const minV = Math.floor(minW - pad);
+  const maxV = Math.ceil(maxW + pad);
   const rangeV = maxV - minV || 1;
 
   const toX = (i: number) => padL + (i / (data.length - 1)) * cw;
   const toY = (v: number) => padT + ch - ((v - minV) / rangeV) * ch;
 
-  const points = data.map((d, i) => ({ x: toX(i), y: toY(d.weight_lbs) }));
+  const points = data.map((d, i) => ({
+    x: toX(i),
+    y: toY(toDisp(d.weight_lbs)),
+  }));
 
   // Few x-axis labels to avoid overlap (~6 max including last day)
   const maxXLabels = 6;
@@ -237,7 +342,7 @@ function WeightLineChart({
   const yStep = rangeV / yTicks;
 
   const lastPt = points[points.length - 1];
-  const lastWeight = data[data.length - 1].weight_lbs;
+  const lastWeightLbs = data[data.length - 1].weight_lbs;
   const calloutTooCloseToRight = lastPt.x > width - 60;
   const calloutX = calloutTooCloseToRight ? width - 60 : lastPt.x;
   const calloutAnchor = calloutTooCloseToRight ? ('end' as const) : ('middle' as const);
@@ -259,7 +364,11 @@ function WeightLineChart({
               fontFamily={Fonts.regular}
               textAnchor="end"
             >
-              {Math.round(val)}
+              {isMetric
+                ? Math.abs(val - Math.round(val)) < 0.05
+                  ? String(Math.round(val))
+                  : val.toFixed(1)
+                : String(Math.round(val))}
             </SvgText>
           </G>
         );
@@ -316,7 +425,7 @@ function WeightLineChart({
         fontFamily={Fonts.bold}
         textAnchor={calloutAnchor}
       >
-        {`${lastWeight} lbs`}
+        {formatBodyW(lastWeightLbs)}
       </SvgText>
     </Svg>
   );
@@ -337,13 +446,21 @@ function getStrengthInsight(
   return `${exerciseName} is up an estimated ${gain} lbs over ${weeks} weeks. Keep the load climbing each session.`;
 }
 
+function muscleGroupLabel(raw: string): string {
+  const t = String(raw ?? '').trim();
+  return t.length > 0 ? t : 'Your top muscle group';
+}
+
 function getVolumeInsight(
   muscleRows: [string, number][],
   daysPerWeek: number,
 ): string | null {
   if (!muscleRows || muscleRows.length === 0) return null;
 
-  const volumeData = muscleRows.map(([name, sets]) => ({ name, sets }));
+  const volumeData = muscleRows.map(([name, sets]) => ({
+    name: muscleGroupLabel(name),
+    sets,
+  }));
   const sorted = [...volumeData].sort((a, b) => b.sets - a.sets);
   const highest = sorted[0];
   const lowest = sorted[sorted.length - 1];
@@ -397,19 +514,20 @@ function getVolumeInsight(
   );
 }
 
-function getWeightInsight(data: WeightLogPoint[]): string | null {
+function getWeightInsight(data: WeightLogPoint[], isMetric: boolean): string | null {
   if (data.length < 4) return null;
-  const first = data[0].weight_lbs;
-  const last = data[data.length - 1].weight_lbs;
+  const first = lbsToDisplay(data[0].weight_lbs, isMetric);
+  const last = lbsToDisplay(data[data.length - 1].weight_lbs, isMetric);
   const diff = Math.round((last - first) * 10) / 10;
   const days = data.length;
+  const u = unitLabel(isMetric);
   if (Math.abs(diff) < 0.5) {
     return `Weight has been stable over ${days} days — consistent with a maintenance or recomp approach.`;
   }
   if (diff < 0) {
-    return `Down ${Math.abs(diff)} lbs over ${days} days — on track. Keep hitting your protein target to preserve muscle.`;
+    return `Down ${Math.abs(diff)} ${u} over ${days} days — on track. Keep hitting your protein target to preserve muscle.`;
   }
-  return `Up ${diff} lbs over ${days} days — expected for a building phase. Monitor the rate and adjust calories if needed.`;
+  return `Up ${diff} ${u} over ${days} days — expected for a building phase. Monitor the rate and adjust calories if needed.`;
 }
 
 function getConsistencyInsight(
@@ -455,7 +573,6 @@ function getConsistencyJordanNote(
   currentWeek: number,
   planWeeks: PlanWeekLike[],
   daysPerWeekFallback: number,
-  activePlanId: string | null,
 ): string | null {
   const completedWeeks = new Set(logs.map((l) => l.week_number)).size;
   const totalSessions = logs.length;
@@ -477,15 +594,12 @@ function getConsistencyJordanNote(
   }
 
   if (completedWeeks < 3) {
-    return `${totalSessions} ${totalSessions === 1 ? 'session' : 'sessions'} logged — keep building.`;
+    return `${totalSessions} ${totalSessions === 1 ? 'session' : 'sessions'} completed — keep building.`;
   }
 
-  const planLogs = activePlanId
-    ? logs.filter((l) => l.plan_id === activePlanId)
-    : logs;
-  const weeksWithSessions = new Set(planLogs.map((l) => l.week_number)).size;
-  const totalLoggedSessions = planLogs.length;
-  return getConsistencyInsight(totalLoggedSessions, weeksWithSessions, daysPerWeekFallback);
+  const weeksWithSessions = new Set(logs.map((l) => l.week_number)).size;
+  const totalCompletedSessions = logs.length;
+  return getConsistencyInsight(totalCompletedSessions, weeksWithSessions, daysPerWeekFallback);
 }
 
 function JordanInsightCard({ text }: { text: string }) {
@@ -497,20 +611,95 @@ function JordanInsightCard({ text }: { text: string }) {
   );
 }
 
+function LockedProFeatureCard({
+  title,
+  onUpgrade,
+}: {
+  title: string;
+  onUpgrade: () => void;
+}) {
+  return (
+    <View style={lockedProStyles.wrap}>
+      <View style={lockedProStyles.card}>
+        <Text style={lockedProStyles.emoji}>🔒</Text>
+        <Text style={lockedProStyles.chartName}>{title}</Text>
+        <Text style={lockedProStyles.sub}>Available with Pro</Text>
+        <TouchableOpacity
+          onPress={onUpgrade}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={lockedProStyles.upgrade}>Upgrade →</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const lockedProStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 32,
+  },
+  card: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    minHeight: 120,
+    justifyContent: 'center',
+  },
+  emoji: {
+    fontSize: 24,
+    marginBottom: Spacing.xs,
+  },
+  chartName: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textSecondary,
+  },
+  sub: {
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  upgrade: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+    marginTop: Spacing.sm,
+  },
+});
+
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isPro: isRcPro } = useEntitlement();
   const { width: screenWidth } = useWindowDimensions();
   const chartWidth = screenWidth - Spacing.xl * 2 - 40;
+  const {
+    formatWorkoutWeight,
+    unitLabel: unitLabelStr,
+    isMetric,
+    lbsToDisplay: lbsToDisplayHook,
+    formatBodyWeight,
+  } = useMetric();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
+  /** Active plan only — weekly volume + consistency heatmap */
+  const [planLogs, setPlanLogs] = useState<any[]>([]);
   const [planId, setPlanId] = useState<string | null>(null);
   interface ExerciseInfo { name: string; muscleGroup: string; }
   const [exerciseMap, setExerciseMap] = useState<Record<string, ExerciseInfo>>({});
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [planGoalMeta, setPlanGoalMeta] = useState<{
+    goal?: string;
+    goalLift?: string;
+  } | null>(null);
   const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
   const [weightData, setWeightData] = useState<WeightLogPoint[]>([]);
   const [planDaysPerWeek, setPlanDaysPerWeek] = useState(4);
@@ -518,6 +707,8 @@ export default function ProgressChartsScreen() {
   const [planWeeksJson, setPlanWeeksJson] = useState<PlanWeekLike[]>([]);
   const [planCreatedAt, setPlanCreatedAt] = useState<string | null>(null);
   const [planTotalWeeks, setPlanTotalWeeks] = useState(12);
+  const [prs, setPrs] = useState<PersonalRecord[]>([]);
+  const [prsLoading, setPrsLoading] = useState(true);
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -527,6 +718,30 @@ export default function ProgressChartsScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No session');
 
+      setPrsLoading(true);
+      void fetchPersonalRecords(userId)
+        .then(setPrs)
+        .catch(() => setPrs([]))
+        .finally(() => setPrsLoading(false));
+
+      const { data: wlogs, error: le } = await supabase
+        .from('workout_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('week_number', { ascending: true });
+
+      if (le) throw new Error(le.message);
+      setLogs(wlogs ?? []);
+
+      const { data: wlWeightLogs } = await supabase
+        .from('weight_logs')
+        .select('log_date, weight_lbs')
+        .eq('user_id', userId)
+        .order('log_date', { ascending: true })
+        .limit(30);
+
+      setWeightData((wlWeightLogs ?? []) as WeightLogPoint[]);
+
       const { data: plan, error: pe } = await supabase
         .from('plans')
         .select('id, plan_json, current_week, total_weeks, goal_id, created_at')
@@ -534,21 +749,52 @@ export default function ProgressChartsScreen() {
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (pe || !plan) {
+        setPlanGoalMeta(null);
         setPlanId(null);
+        setPlanLogs([]);
         setPlanDaysPerWeek(4);
         setPlanCurrentWeek(1);
         setPlanWeeksJson([]);
         setPlanCreatedAt(null);
         setPlanTotalWeeks(12);
-        setLogs([]);
+        const eMapFallback: Record<string, { name: string; muscleGroup: string }> = {};
+        for (const log of wlogs ?? []) {
+          const sets: unknown[] = Array.isArray(log.sets_json) ? log.sets_json : [];
+          for (const raw of sets) {
+            const s = raw as {
+              exerciseId?: string;
+              exerciseName?: string;
+              name?: string;
+              muscleGroup?: string;
+            };
+            const id = s.exerciseId;
+            const name = s.exerciseName ?? s.name;
+            if (id && name && !eMapFallback[id]) {
+              eMapFallback[id] = { name, muscleGroup: s.muscleGroup ?? '' };
+            }
+          }
+        }
+        setExerciseMap(eMapFallback);
         setLoading(false);
         return;
       }
 
       setPlanId(plan.id);
+
+      const { data: planScopedLogs, error: pse } = await supabase
+        .from('workout_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('plan_id', plan.id)
+        .order('week_number', { ascending: true });
+      if (pse) {
+        console.warn('[ProgressCharts] plan workout_logs:', pse.message);
+      }
+      setPlanLogs(planScopedLogs ?? []);
+
       setPlanCreatedAt(
         typeof plan.created_at === 'string' ? plan.created_at : null,
       );
@@ -556,7 +802,15 @@ export default function ProgressChartsScreen() {
         daysPerWeek?: number;
         weeks?: PlanWeekLike[];
         totalWeeks?: number;
+        goal?: string;
+        goalLift?: string;
+        targetLift?: string;
       } | null;
+      const goalLiftRaw = pj?.goalLift ?? pj?.targetLift;
+      setPlanGoalMeta({
+        goal: typeof pj?.goal === 'string' ? pj.goal : undefined,
+        goalLift: typeof goalLiftRaw === 'string' ? goalLiftRaw : undefined,
+      });
       const dpwRaw = pj?.daysPerWeek;
       setPlanDaysPerWeek(
         typeof dpwRaw === 'number' && dpwRaw >= 1 && dpwRaw <= 7
@@ -581,7 +835,6 @@ export default function ProgressChartsScreen() {
               : 12;
       setPlanTotalWeeks(Math.min(52, Math.max(1, twRaw)));
 
-      // Build exerciseId → { name, muscleGroup } lookup from plan_json
       const eMap: Record<string, { name: string; muscleGroup: string }> = {};
       for (const week of (plan.plan_json?.weeks ?? [])) {
         for (const day of (week.days ?? [])) {
@@ -592,28 +845,25 @@ export default function ProgressChartsScreen() {
           }
         }
       }
+      for (const log of wlogs ?? []) {
+        const sets: unknown[] = Array.isArray(log.sets_json) ? log.sets_json : [];
+        for (const raw of sets) {
+          const s = raw as {
+            exerciseId?: string;
+            exerciseName?: string;
+            name?: string;
+            muscleGroup?: string;
+          };
+          const id = s.exerciseId;
+          const name = s.exerciseName ?? s.name;
+          if (id && name && !eMap[id]) {
+            eMap[id] = { name, muscleGroup: s.muscleGroup ?? '' };
+          }
+        }
+      }
       setExerciseMap(eMap);
-
-      const { data: wlogs, error: le } = await supabase
-        .from('workout_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('plan_id', plan.id)
-        .order('week_number', { ascending: true });
-
-      if (le) throw new Error(le.message);
-      setLogs(wlogs ?? []);
-
-      const { data: wlWeightLogs } = await supabase
-        .from('weight_logs')
-        .select('log_date, weight_lbs')
-        .eq('user_id', userId)
-        .order('log_date', { ascending: true })
-        .limit(30);
-
-      setWeightData((wlWeightLogs ?? []) as WeightLogPoint[]);
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+    } catch (e: unknown) {
+      setError(String(e instanceof Error ? e.message : e));
     } finally {
       setLoading(false);
     }
@@ -645,10 +895,6 @@ export default function ProgressChartsScreen() {
           s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
         const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
         const reps = Number(s.reps ?? s.loggedReps ?? 0);
-        const rawMuscle: string =
-          s.muscleGroup ?? exerciseMap[s.exerciseId]?.muscleGroup ?? 'Other';
-        // Normalise to Title Case to prevent duplicate keys ("back" vs "Back")
-        const muscleGroup = rawMuscle.charAt(0).toUpperCase() + rawMuscle.slice(1).toLowerCase();
         if (!name || weight === 0) continue;
 
         // Strength: Epley 1RM
@@ -658,8 +904,27 @@ export default function ProgressChartsScreen() {
         const prev = sMap[name].get(wk) ?? 0;
         if (est1RM > prev) sMap[name].set(wk, Math.round(est1RM));
 
-        // Volume accumulator
+        // Top exercises by volume (lifetime)
         exerciseVolume[name] = (exerciseVolume[name] ?? 0) + weight * reps;
+      }
+    }
+
+    // Weekly volume by muscle: active plan only
+    for (const log of planLogs) {
+      const wk: number = log.week_number;
+      const sets: any[] = log.sets_json ?? [];
+      for (const s of sets) {
+        const name: string =
+          s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
+        const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
+        const rawMuscle: string =
+          s.muscleGroup ?? exerciseMap[s.exerciseId]?.muscleGroup ?? 'Other';
+        const trimmed = rawMuscle.trim();
+        const muscleGroup =
+          trimmed.length > 0
+            ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase()
+            : 'Other';
+        if (!name || weight === 0) continue;
 
         if (!volMap.has(wk)) volMap.set(wk, new Map());
         const wkMap = volMap.get(wk)!;
@@ -710,21 +975,32 @@ export default function ProgressChartsScreen() {
       currentStreak: streak,
       bestWeek: bw ? { week: Number(bw[0]), sessions: bw[1] } : null,
     };
-  }, [logs, exerciseMap]);
+  }, [logs, planLogs, exerciseMap]);
+
+  useEffect(() => {
+    if (selectedExercise != null) return;
+    if (topExercises.length === 0) return;
+    const defaultId = getDefaultStrengthLiftId(
+      planGoalMeta?.goal,
+      planGoalMeta?.goalLift ?? null,
+    );
+    const pick = pickExerciseNameForDefaultLift(defaultId, topExercises);
+    if (pick) setSelectedExercise(pick);
+  }, [topExercises, planGoalMeta?.goal, planGoalMeta?.goalLift, selectedExercise]);
 
   const planMondayHeatmap = useMemo((): Date => {
     if (planCreatedAt) {
       return planMondayFromCreatedAt(new Date(planCreatedAt));
     }
-    if (logs.length > 0) {
-      const times = logs
+    if (planLogs.length > 0) {
+      const times = planLogs
         .map((l) => new Date(l.logged_at ?? l.created_at).getTime())
         .filter((t) => !Number.isNaN(t));
       const anchorDate = new Date(times.length > 0 ? Math.min(...times) : Date.now());
       return planMondayFromAnchor(anchorDate);
     }
     return planMondayFromAnchor(new Date());
-  }, [planCreatedAt, logs]);
+  }, [planCreatedAt, planLogs]);
 
   const heatmapTotalWeeks = useMemo(
     () => Math.min(52, Math.max(1, planTotalWeeks)),
@@ -743,12 +1019,12 @@ export default function ProgressChartsScreen() {
   const trainedIndices = useMemo(() => {
     const indices = new Set<number>();
     const numCells = heatmapTotalWeeks * HEATMAP_ROWS;
-    if (!logs?.length) return indices;
+    if (!planLogs?.length) return indices;
 
     const planStartMidnight = new Date(planMondayHeatmap);
     planStartMidnight.setHours(0, 0, 0, 0);
 
-    logs.forEach((log) => {
+    planLogs.forEach((log) => {
       const raw = log.logged_at ?? log.created_at;
       if (!raw) return;
       const logDate = new Date(raw);
@@ -765,7 +1041,7 @@ export default function ProgressChartsScreen() {
     });
 
     return indices;
-  }, [logs, planMondayHeatmap, heatmapTotalWeeks]);
+  }, [planLogs, planMondayHeatmap, heatmapTotalWeeks]);
 
   const heatmapDays = useMemo((): ConsistencyDay[] => {
     const cells = gridDates.map((d, i) => ({
@@ -825,8 +1101,15 @@ export default function ProgressChartsScreen() {
   }
 
   const hasData = logs.length > 0;
-  const sessionsLogged = logs.length;
-  const heatmapStatLabel = `${sessionsLogged} ${sessionsLogged === 1 ? 'session' : 'sessions'} logged — Week ${planCurrentWeek} of ${planTotalWeeks}`;
+  const sessionsLogged = planLogs.length;
+  const heatmapStatLabel = `${sessionsLogged} ${sessionsLogged === 1 ? 'session' : 'sessions'} completed — Week ${planCurrentWeek} of ${planTotalWeeks}`;
+  const premiumLocked = Platform.OS !== 'web' && !isRcPro;
+  const goPaywall = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    navigation.navigate('ProfileTab' as any, {
+      screen: 'SubscriptionManagement',
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -855,43 +1138,47 @@ export default function ProgressChartsScreen() {
             </Text>
           </View>
         ) : (
-          <>
-            <View style={styles.quickStatsRow}>
-              <View style={styles.statCard}>
-                <Text
-                  style={[
-                    styles.statValue,
-                    totalWorkouts > 0 && styles.statValueAccent,
-                  ]}
-                >
-                  {totalWorkouts}
-                </Text>
-                <Text style={styles.statLabel}>Workouts</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text
-                  style={[
-                    styles.statValue,
-                    currentStreak > 0 && styles.statValueAccent,
-                  ]}
-                >
-                  {currentStreak}
-                </Text>
-                <Text style={styles.statLabel}>Day streak</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text
-                  style={[
-                    styles.statValue,
-                    bestWeek != null && styles.statValueAccent,
-                  ]}
-                >
-                  {bestWeek ? `W${bestWeek.week}` : '—'}
-                </Text>
-                <Text style={styles.statLabel}>Best week</Text>
-              </View>
+          <View style={styles.quickStatsRow}>
+            <View style={styles.statCard}>
+              <Text
+                style={[
+                  styles.statValue,
+                  totalWorkouts > 0 && styles.statValueAccent,
+                ]}
+              >
+                {totalWorkouts}
+              </Text>
+              <Text style={styles.statLabel}>Workouts</Text>
             </View>
+            <View style={styles.statCard}>
+              <Text
+                style={[
+                  styles.statValue,
+                  currentStreak > 0 && styles.statValueAccent,
+                ]}
+              >
+                {currentStreak}
+              </Text>
+              <Text style={styles.statLabel}>Day streak</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text
+                style={[
+                  styles.statValue,
+                  bestWeek != null && styles.statValueAccent,
+                ]}
+              >
+                {bestWeek ? `W${bestWeek.week}` : '—'}
+              </Text>
+              <Text style={styles.statLabel}>Best week</Text>
+            </View>
+          </View>
+        )}
 
+        {premiumLocked ? (
+          <LockedProFeatureCard title="Strength Progression" onUpgrade={goPaywall} />
+        ) : hasData ? (
+          <>
             <Text style={styles.sectionHeading}>Strength Progression</Text>
             <Text style={styles.sectionSubLabel}>Estimated 1RM over time</Text>
             <View style={styles.sectionCard}>
@@ -946,7 +1233,117 @@ export default function ProgressChartsScreen() {
               const insight = getStrengthInsight(strengthData, activeExercise ?? '');
               return insight ? <JordanInsightCard text={insight} /> : null;
             })()}
+          </>
+        ) : null}
 
+        {/* ── PERSONAL RECORDS ─────────────────────────── */}
+        {premiumLocked ? (
+          <LockedProFeatureCard title="Personal Records" onUpgrade={goPaywall} />
+        ) : (
+          <>
+            <View style={styles.prHeader}>
+              <View>
+                <Text style={styles.sectionLabel}>PERSONAL RECORDS</Text>
+                <Text style={styles.sectionSub}>All-time best by estimated 1RM</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('PersonalRecords')}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.prSeeAll}>See All →</Text>
+              </TouchableOpacity>
+            </View>
+
+            {prsLoading ? (
+              <ActivityIndicator
+                color={Colors.accent}
+                style={{ marginVertical: Spacing.lg }}
+              />
+            ) : prs.length === 0 ? (
+              <View style={styles.prEmptyRow}>
+                <Text style={styles.prEmptyRowText}>
+                  Complete your first session to see records here.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.prList}>
+                {prs.slice(0, 5).map((pr, i) => (
+                  <TouchableOpacity
+                    key={`${pr.exerciseName}-${i}`}
+                    style={[
+                      styles.prRow,
+                      i === Math.min(prs.length, 5) - 1 && { borderBottomWidth: 0 },
+                    ]}
+                    onPress={() => navigation.navigate('PersonalRecords')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.prRowRank}>
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                    </Text>
+
+                    <Text style={styles.prRowName} numberOfLines={1}>
+                      {pr.exerciseName}
+                    </Text>
+
+                    <View style={styles.prRowRight}>
+                      {pr.isRecent ? (
+                        <View style={styles.prNewBadge}>
+                          <Text style={styles.prNewText}>NEW</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.prRowValue}>
+                        {formatWorkoutWeight(pr.estimated1RM)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {!prsLoading && prs.length > 0 ? (
+              <View style={styles.jordanCard}>
+                <Text style={styles.jordanLabel}>JORDAN</Text>
+                <Text style={styles.jordanText}>
+                  {`Your strongest lift is ${prs[0].exerciseName} at an estimated ${formatWorkoutWeight(prs[0].estimated1RM)} 1RM.${
+                    prs.filter((p) => p.isRecent).length > 0
+                      ? ` You set ${prs.filter((p) => p.isRecent).length} new record${prs.filter((p) => p.isRecent).length > 1 ? 's' : ''} in the last two weeks.`
+                      : ' Keep logging to push these numbers up.'
+                  }`}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        )}
+
+        {premiumLocked ? (
+          <LockedProFeatureCard title="Body Measurements" onUpgrade={goPaywall} />
+        ) : (
+          <TouchableOpacity
+            style={styles.bodyMeasurementsRow}
+            onPress={() => navigation.navigate('BodyMeasurements')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.bodyMeasurementsRowLeft}>
+              <Text style={styles.bodyMeasurementsEmoji}>📏</Text>
+              <View>
+                <Text style={styles.bodyMeasurementsTitle}>Body Measurements</Text>
+                <Text style={styles.bodyMeasurementsSubtitle}>
+                  Track waist, chest, hips & arms over time
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.bodyMeasurementsChevron}>›</Text>
+          </TouchableOpacity>
+        )}
+
+        {premiumLocked ? (
+          <>
+            <LockedProFeatureCard title="Weekly Volume" onUpgrade={goPaywall} />
+            <LockedProFeatureCard title="Bodyweight Trend" onUpgrade={goPaywall} />
+            <LockedProFeatureCard title="Consistency Heatmap" onUpgrade={goPaywall} />
+          </>
+        ) : hasData ? (
+          <>
             {(() => {
               const volumeWeeks = Array.from(volumeWeekData.keys()).sort((a, b) => a - b);
               const activeVolWeek = selectedVolumeWeek ?? volumeWeeks[volumeWeeks.length - 1] ?? null;
@@ -999,7 +1396,7 @@ export default function ProgressChartsScreen() {
                         {muscleRows.length > 0 ? (
                           <>
                             {muscleRows.map(([mg, sets]) => {
-                              const color = MUSCLE_COLORS[mg.toLowerCase()] ?? Colors.divider;
+                              const color = getMuscleColor(mg);
                               const pct = sets / maxSets;
                               return (
                                 <View key={mg} style={styles.volRow}>
@@ -1028,7 +1425,7 @@ export default function ProgressChartsScreen() {
                           </>
                         ) : (
                           <Text style={styles.placeholderTextMuted}>
-                            No sets logged for this week.
+                            No sets recorded for this week.
                           </Text>
                         )}
                       </>
@@ -1044,20 +1441,40 @@ export default function ProgressChartsScreen() {
             })()}
 
             <Text style={styles.sectionHeading}>Bodyweight Trend</Text>
-            <Text style={styles.sectionSubLabel}>Last 30 days</Text>
+            <Text style={styles.sectionSubLabel}>Last 30 days ({unitLabelStr})</Text>
             <View style={[styles.sectionCard, styles.bodyweightSectionCard]}>
               {weightData.length < 2 ? (
                 <Text style={styles.weightChartEmpty}>
                   Log your weight daily on the Dashboard to track your trend here.
                 </Text>
               ) : (
-                <WeightLineChart data={weightData} width={chartWidth} height={180} />
+                <WeightLineChart
+                  data={weightData}
+                  width={chartWidth}
+                  height={180}
+                  isMetric={isMetric}
+                  lbsToDisplay={lbsToDisplayHook}
+                  formatBodyWeight={formatBodyWeight}
+                />
               )}
             </View>
 
             {(() => {
-              const insight = getWeightInsight(weightData);
+              const insight = getWeightInsight(weightData, isMetric);
               return insight ? <JordanInsightCard text={insight} /> : null;
+            })()}
+
+            {(() => {
+              const note = computeBodyweightContradictionNote(
+                planGoalMeta?.goal,
+                weightData,
+              );
+              return note ? (
+                <View style={styles.bodyweightGoalNoteCard}>
+                  <Text style={styles.bodyweightGoalNoteLabel}>JORDAN</Text>
+                  <Text style={styles.bodyweightGoalNoteText}>{note}</Text>
+                </View>
+              ) : null;
             })()}
 
             <Text style={styles.sectionHeading}>Consistency</Text>
@@ -1139,16 +1556,15 @@ export default function ProgressChartsScreen() {
 
             {(() => {
               const insight = getConsistencyJordanNote(
-                logs as Array<{ week_number: number; plan_id?: string }>,
+                planLogs as Array<{ week_number: number; plan_id?: string }>,
                 planCurrentWeek,
                 planWeeksJson,
                 planDaysPerWeek,
-                planId,
               );
               return insight ? <JordanInsightCard text={insight} /> : null;
             })()}
           </>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1201,6 +1617,129 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.caption,
     color: Colors.accent,
+  },
+
+  prHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginTop: 32,
+    marginBottom: Spacing.sm,
+  },
+  sectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  sectionSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  prSeeAll: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+    marginTop: 2,
+  },
+  prList: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    marginBottom: Spacing.md,
+    overflow: 'hidden',
+  },
+  prRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  prRowRank: {
+    fontSize: 16,
+    width: 32,
+    textAlign: 'center',
+    fontFamily: Fonts.bold,
+    color: Colors.textTertiary,
+  },
+  prRowName: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginLeft: Spacing.sm,
+    marginRight: Spacing.sm,
+  },
+  prRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  prNewBadge: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  prRowValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
+  prRowUnit: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  prNewText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+  },
+  prEmptyRow: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+  },
+  prEmptyRowText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  jordanCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  jordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  jordanText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
 
   sectionHeading: {
@@ -1257,6 +1796,30 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  bodyweightGoalNoteCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  bodyweightGoalNoteLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  bodyweightGoalNoteText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
 
   errorCard: {
@@ -1483,6 +2046,43 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     textAlign: 'center',
     marginTop: 20,
+  },
+
+  bodyMeasurementsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  bodyMeasurementsRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bodyMeasurementsEmoji: {
+    fontSize: 22,
+    marginRight: Spacing.sm,
+  },
+  bodyMeasurementsTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  bodyMeasurementsSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  bodyMeasurementsChevron: {
+    fontFamily: Fonts.bold,
+    fontSize: 22,
+    color: Colors.accent,
   },
 });
 

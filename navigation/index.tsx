@@ -17,16 +17,21 @@ import BuildingPlanScreen from '../screens/onboarding/BuildingPlanScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
 import WorkoutCompleteScreen from '../screens/WorkoutCompleteScreen';
+import PlanCompleteScreen from '../screens/PlanCompleteScreen';
 import PlanViewScreen from '../screens/PlanViewScreen';
 import WorkoutHomeScreen from '../screens/WorkoutHomeScreen';
 import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import GoalTrackerScreen from '../screens/GoalTrackerScreen';
+import PersonalRecordsScreen from '../screens/PersonalRecordsScreen';
+import BodyMeasurementsScreen from '../screens/BodyMeasurementsScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import SubscriptionManagementScreen from '../screens/SubscriptionManagementScreen';
 import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
+import WorkoutHistoryScreen from '../screens/WorkoutHistoryScreen';
+import FreeSessionScreen from '../screens/FreeSessionScreen';
 
 // ── Nested stack navigators (untyped — screen files own their nav prop types) ──
 
@@ -55,6 +60,9 @@ function WorkoutTabStack() {
       <WorkoutStack.Screen name="WorkoutHome" component={WorkoutHomeScreen} />
       <WorkoutStack.Screen name="PlanView" component={PlanViewScreen} />
       <WorkoutStack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
+      <WorkoutStack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
+      <WorkoutStack.Screen name="FreeSession" component={FreeSessionScreen} />
+      <WorkoutStack.Screen name="PlanComplete" component={PlanCompleteScreen} />
     </WorkoutStack.Navigator>
   );
 }
@@ -64,6 +72,8 @@ function ProgressTabStack() {
     <ProgressStack.Navigator screenOptions={{ headerShown: false }}>
       <ProgressStack.Screen name="ProgressCharts" component={ProgressChartsScreen} />
       <ProgressStack.Screen name="GoalTracker" component={GoalTrackerScreen} />
+      <ProgressStack.Screen name="PersonalRecords" component={PersonalRecordsScreen} />
+      <ProgressStack.Screen name="BodyMeasurements" component={BodyMeasurementsScreen} />
     </ProgressStack.Navigator>
   );
 }
@@ -180,6 +190,7 @@ export default function RootNavigator() {
       {/* ── Full-screen experiences (above tab bar) ── */}
       <Root.Screen name="ActiveWorkout"    component={ActiveWorkoutScreen} />
       <Root.Screen name="WorkoutComplete"  component={WorkoutCompleteScreen} />
+      <Root.Screen name="PlanComplete" component={PlanCompleteScreen} />
     </Root.Navigator>
   );
 }

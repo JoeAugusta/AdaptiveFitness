@@ -901,6 +901,21 @@ function FatLossContent({
         />
       </View>
 
+      {rateCheck && (
+        <View style={styles.infoCard}>
+          <Text style={[styles.infoCardBody, { color: rateCheck.color }]}>
+            {rateCheck.message}
+          </Text>
+        </View>
+      )}
+      {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
+            {FAT_LOSS_EXPECTATIONS[targetDate]}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.sectionHeading}>
         Timeline & Plan Duration
       </Text>
@@ -931,21 +946,6 @@ function FatLossContent({
           );
         })}
       </View>
-
-      {rateCheck && (
-        <View style={styles.infoCard}>
-          <Text style={[styles.infoCardBody, { color: rateCheck.color }]}>
-            {rateCheck.message}
-          </Text>
-        </View>
-      )}
-      {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
-        <View style={styles.infoCard}>
-          <Text style={styles.infoCardBody}>
-            {FAT_LOSS_EXPECTATIONS[targetDate]}
-          </Text>
-        </View>
-      )}
     </ScreenShell>
   );
 }
@@ -998,6 +998,14 @@ function RecompContent({
         })}
       </View>
 
+      {RECOMP_EXPECTATIONS[planDuration] && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardBody}>
+            {RECOMP_EXPECTATIONS[planDuration]}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.sectionHeading}>Plan Duration</Text>
       <Text style={styles.sectionSubtitle}>
         How many weeks do you want to commit to?
@@ -1029,13 +1037,6 @@ function RecompContent({
           );
         })}
       </View>
-      {RECOMP_EXPECTATIONS[planDuration] && (
-        <View style={styles.infoCard}>
-          <Text style={styles.infoCardBody}>
-            {RECOMP_EXPECTATIONS[planDuration]}
-          </Text>
-        </View>
-      )}
     </ScreenShell>
   );
 }

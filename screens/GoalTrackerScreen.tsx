@@ -87,7 +87,7 @@ const GOAL_BADGE: Record<string, { color: string; label: string }> = {
 };
 
 const MILESTONE_DEFS = [
-  { pct: 25,  label: 'Getting Started 🌱' },
+  { pct: 10,  label: 'Getting Started 🌱' },
   { pct: 50,  label: 'Halfway There 💪' },
   { pct: 75,  label: 'Almost There 🔥' },
   { pct: 90,  label: 'Final Push ⚡' },
@@ -138,6 +138,26 @@ function buildMilestones(progressPct: number): Milestone[] {
     label: m.label,
     reached: progressPct >= m.pct,
   }));
+}
+
+/** Match logged exercise names to goal target lift ids (e.g. bench_press → "Barbell Bench Press"). */
+function liftIdMatchesExerciseName(
+  exerciseNameLower: string,
+  targetLiftLower: string,
+): boolean {
+  const raw = targetLiftLower.trim().toLowerCase();
+  if (!raw) return false;
+  if (raw === 'ohp' || raw.includes('overhead') || raw.includes('ohp')) {
+    return (
+      exerciseNameLower.includes('overhead') ||
+      exerciseNameLower.includes('military') ||
+      /\bohp\b/.test(exerciseNameLower)
+    );
+  }
+  const slug = raw.replace(/^barbell_/, '').replace(/_/g, ' ');
+  const parts = slug.split(/\s+/).filter((p) => p.length > 0);
+  if (parts.length === 0) return false;
+  return parts.every((p) => exerciseNameLower.includes(p));
 }
 
 const formatLiftName = (lift: string) =>
@@ -223,7 +243,7 @@ function buildStrengthActualsSeries(
         exerciseMap[s.exerciseId] ??
         ''
       ).toLowerCase();
-      if (!name.includes(targetLiftLower)) continue;
+      if (!liftIdMatchesExerciseName(name, targetLiftLower)) continue;
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? 0);
       if (w > 0 && r > 0) {
@@ -500,15 +520,15 @@ export default function GoalTrackerScreen() {
           .eq('status', 'active')
           .order('created_at', { ascending: false })
           .limit(1)
-          .single(),
+          .maybeSingle(),
         supabase
           .from('plans')
-          .select('id, current_week, total_weeks, plan_json, created_at')
+          .select('*')
           .eq('user_id', userId)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
           .limit(1)
-          .single(),
+          .maybeSingle(),
         supabase
           .from('goals')
           .select('*')
@@ -606,7 +626,7 @@ export default function GoalTrackerScreen() {
         for (const log of (recentLogs ?? [])) {
           for (const s of (log.sets_json ?? [])) {
             const name = (s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId] ?? '').toLowerCase();
-            if (!name.includes(targetLower)) continue;
+            if (!liftIdMatchesExerciseName(name, targetLower)) continue;
             const w = Number(s.weightLbs ?? s.weight ?? 0);
             const r = Number(s.reps ?? 0);
             if (w > 0 && r > 0) {
@@ -712,6 +732,7 @@ export default function GoalTrackerScreen() {
     for (const s of (log.sets_json ?? [])) {
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? s.loggedReps ?? 0);
+      if (w <= 0 || r <= 0) continue;
       // Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
       const repMultiplier = isExerciseUnilateral(String(s.exerciseName ?? '')) ? 2 : 1;
       weeklyVolumes[wk] = (weeklyVolumes[wk] ?? 0) + w * r * repMultiplier;
@@ -720,7 +741,8 @@ export default function GoalTrackerScreen() {
   const volumeWeeks = Object.keys(weeklyVolumes).map(Number).sort((a, b) => a - b);
   const week1Vol = weeklyVolumes[volumeWeeks[0]] ?? 0;
   const latestWeekVol = weeklyVolumes[volumeWeeks[volumeWeeks.length - 1]] ?? 0;
-  const hasVolumeData = volumeWeeks.length >= 2;
+  const hasWorkoutVolumeLogged = volumeWeeks.some((wk) => (weeklyVolumes[wk] ?? 0) > 0);
+  const hasVolumeData = volumeWeeks.length >= 1 && hasWorkoutVolumeLogged;
   const volumeChangePct = hasVolumeData && week1Vol > 0
     ? ((latestWeekVol - week1Vol) / week1Vol) * 100
     : 0;
@@ -766,10 +788,19 @@ export default function GoalTrackerScreen() {
 
         {/* ── Active Goal Card ── */}
         {!goal ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyEmoji}>🎯</Text>
-            <Text style={styles.emptyTitle}>No active goal</Text>
-            <Text style={styles.emptySubtext}>Complete onboarding to set your goal.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No Active Goal</Text>
+            <Text style={styles.emptySubtitle}>
+              Start a new plan to set your next goal.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyCTA}
+              onPress={() =>
+                navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
+              }
+            >
+              <Text style={styles.emptyCTAText}>Start New Plan →</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -935,7 +966,9 @@ export default function GoalTrackerScreen() {
                 </Text>
                 <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
                 {!hasVolumeData ? (
-                  <Text style={styles.evrMetricValue}>Not enough data yet</Text>
+                  <Text style={styles.evrMetricValue}>
+                    {logs.length === 0 ? 'Not enough data yet' : '—'}
+                  </Text>
                 ) : volumeChangePct === 0 ? (
                   <Text style={styles.evrMetricValue}>No change vs Week 1</Text>
                 ) : (
@@ -973,7 +1006,7 @@ export default function GoalTrackerScreen() {
                 </View>
               </View>
 
-              {currentWeek <= 2 && (
+              {volumeWeeks.length >= 2 && currentWeek <= 2 && (
                 <Text style={styles.evrBottomNote}>
                   Check back after a few more weeks for meaningful trends.
                 </Text>
@@ -1272,28 +1305,39 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
 
-  emptyCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    padding: 24,
+  emptyState: {
+    flex: 1,
     alignItems: 'center',
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.lg,
+    justifyContent: 'center',
+    padding: Spacing.xl,
   },
-  emptyEmoji: { fontFamily: Fonts.regular, fontSize: FontSizes.display },
   emptyTitle: {
     fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
+    fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
-    marginTop: 12,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
   },
-  emptySubtext: {
+  emptySubtitle: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginTop: 4,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+    lineHeight: 22,
+  },
+  emptyCTA: {
+    backgroundColor: Colors.accent,
+    height: 56,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCTAText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 
   goalCard: {

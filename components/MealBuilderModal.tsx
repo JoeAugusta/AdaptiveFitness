@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
+  TextInput,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,7 +33,9 @@ export type BuiltMeal = {
 type MealBuilderModalProps = {
   visible: boolean;
   onClose: () => void;
-  onLog: (meal: BuiltMeal) => void;
+  onLog: (meal: BuiltMeal) => void | Promise<void>;
+  /** Fired after `onLog` completes (e.g. parent saved to DB). */
+  onMealLogged?: () => void;
   slot: MealSlot;
   targetCalories: number;
   targetProtein: number;
@@ -45,6 +48,28 @@ const CATEGORY_TABS: { key: IngredientCategory; label: string }[] = [
   { key: 'carb', label: 'Carb' },
   { key: 'fat', label: 'Fat' },
   { key: 'vegetable', label: 'Veg' },
+];
+
+const CATEGORY_BADGE_BG: Record<IngredientCategory, string> = {
+  protein: Colors.accent,
+  carb: Colors.warning,
+  fat: Colors.success,
+  vegetable: Colors.success,
+};
+
+const CATEGORY_BADGE_LABEL: Record<IngredientCategory, string> = {
+  protein: 'Protein',
+  carb: 'Carbs',
+  fat: 'Fat',
+  vegetable: 'Veg',
+};
+
+/** Full library for search: all four categories, independent of active tab. */
+const ALL_INGREDIENT_CATEGORIES: IngredientCategory[] = [
+  'protein',
+  'carb',
+  'fat',
+  'vegetable',
 ];
 
 function remainderMacroTargets(targetCalories: number, targetProtein: number): {
@@ -62,6 +87,7 @@ export default function MealBuilderModal({
   visible,
   onClose,
   onLog,
+  onMealLogged,
   slot,
   targetCalories,
   targetProtein,
@@ -70,11 +96,13 @@ export default function MealBuilderModal({
 }: MealBuilderModalProps) {
   const [activeCategory, setActiveCategory] = useState<IngredientCategory>('protein');
   const [selectedIngredients, setSelectedIngredients] = useState<Ingredient[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (visible) {
       setSelectedIngredients([]);
       setActiveCategory('protein');
+      setSearchQuery('');
     }
   }, [visible]);
 
@@ -93,10 +121,25 @@ export default function MealBuilderModal({
     [targetCalories, targetProtein],
   );
 
-  const filteredList = useMemo(
-    () => getFilteredIngredients(activeCategory, slot, dietaryStyle, allergies),
-    [activeCategory, slot, dietaryStyle, allergies],
+  const allIngredientsFlat = useMemo(
+    () =>
+      ALL_INGREDIENT_CATEGORIES.flatMap((category) =>
+        getFilteredIngredients(category, dietaryStyle, allergies),
+      ),
+    [dietaryStyle, allergies],
   );
+
+  const isSearchActive = searchQuery.trim().length > 0;
+
+  const displayedIngredients = useMemo(() => {
+    if (!isSearchActive) {
+      return getFilteredIngredients(activeCategory, dietaryStyle, allergies);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    return allIngredientsFlat
+      .filter((i) => i.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [isSearchActive, searchQuery, activeCategory, dietaryStyle, allergies, allIngredientsFlat]);
 
   const calRatio = targetCalories > 0 ? totals.calories / targetCalories : 0;
   const progressPct = Math.min(100, calRatio * 100);
@@ -122,16 +165,20 @@ export default function MealBuilderModal({
 
   const handleLog = useCallback(() => {
     if (selectedIngredients.length === 0) return;
-    onLog({
+    const meal: BuiltMeal = {
       slot,
       ingredients: selectedIngredients,
       totalCalories: totals.calories,
       totalProtein: totals.protein,
       totalCarbs: totals.carbs,
       totalFats: totals.fats,
-    });
-    onClose();
-  }, [selectedIngredients, slot, totals, onLog, onClose]);
+    };
+    void (async () => {
+      await Promise.resolve(onLog(meal));
+      onMealLogged?.();
+      onClose();
+    })();
+  }, [selectedIngredients, slot, totals, onLog, onMealLogged, onClose]);
 
   return (
     <Modal
@@ -212,6 +259,29 @@ export default function MealBuilderModal({
             </View>
           </View>
 
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search ingredients..."
+              placeholderTextColor={Colors.textTertiary}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Clear search"
+              >
+                <Text style={styles.searchClear}>✕</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -237,16 +307,44 @@ export default function MealBuilderModal({
 
           <View style={styles.listWrap}>
             <FlatList
-              data={filteredList}
+              data={displayedIngredients}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[
+                styles.listContent,
+                isSearchActive && displayedIngredients.length === 0
+                  ? styles.listContentEmptySearch
+                  : null,
+              ]}
+              keyboardShouldPersistTaps="handled"
               ListFooterComponent={<View style={styles.listFooterSpacer} />}
+              ListEmptyComponent={
+                isSearchActive ? (
+                  <View style={styles.searchEmpty}>
+                    <Text style={styles.searchEmptyTitle}>No ingredients found</Text>
+                    <Text style={styles.searchEmptySub}>Try a different search</Text>
+                  </View>
+                ) : null
+              }
               renderItem={({ item }) => {
                 const count = selectedIngredients.filter((x) => x.id === item.id).length;
                 return (
                   <View style={styles.ingredientRow}>
                     <View style={styles.ingredientLeft}>
-                      <Text style={styles.ingredientName}>{item.name}</Text>
+                      <View style={styles.ingredientNameRow}>
+                        {isSearchActive ? (
+                          <View
+                            style={[
+                              styles.categoryBadge,
+                              { backgroundColor: CATEGORY_BADGE_BG[item.category] },
+                            ]}
+                          >
+                            <Text style={styles.categoryBadgeText}>
+                              {CATEGORY_BADGE_LABEL[item.category]}
+                            </Text>
+                          </View>
+                        ) : null}
+                        <Text style={styles.ingredientName}>{item.name}</Text>
+                      </View>
                       <Text style={styles.ingredientPortion}>{item.portion}</Text>
                       <View style={styles.ingredientMacroRow}>
                         <View style={styles.miniPillCal}>
@@ -423,6 +521,69 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
   },
 
+  searchBar: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  searchIcon: {
+    fontSize: 16,
+    color: Colors.textTertiary,
+    marginRight: Spacing.xs,
+  },
+  searchInput: {
+    flex: 1,
+    color: Colors.textPrimary,
+    backgroundColor: 'transparent',
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    paddingVertical: 0,
+  },
+  searchClear: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  ingredientNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  categoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+    marginRight: 6,
+  },
+  categoryBadgeText: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    color: Colors.bgPrimary,
+  },
+  searchEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+  },
+  searchEmptyTitle: {
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  searchEmptySub: {
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
+
   progressTrack: {
     height: 6,
     borderRadius: 3,
@@ -462,6 +623,7 @@ const styles = StyleSheet.create({
 
   listWrap: { flex: 1 },
   listContent: { paddingBottom: 8 },
+  listContentEmptySearch: { flexGrow: 1 },
   listFooterSpacer: { height: 100 },
   ingredientRow: {
     paddingVertical: 14,
@@ -476,6 +638,8 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSizes.body,
     fontFamily: Fonts.semiBold,
+    flex: 1,
+    flexShrink: 1,
   },
   ingredientPortion: {
     fontFamily: Fonts.regular,

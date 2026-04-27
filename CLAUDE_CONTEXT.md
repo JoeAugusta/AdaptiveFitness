@@ -1,6 +1,6 @@
 # ADAPTIVE FITNESS COACH — CLAUDE CONTEXT
 <!-- DO NOT CHANGE THE FILENAME -->
-<!-- Last updated: April 2026 — v1.18 Near-Release Beta Sprint -->
+<!-- Last updated: April 2026 — Near-Release Beta Sprint Week 2 (v1.19) -->
 
 ---
 
@@ -10,8 +10,8 @@
 **Stack:** React Native + Expo, Supabase, RevenueCat, Claude API, Zustand
 **Supabase tables:** users, user_profiles, goals, plans, workout_logs, macro_plans, weekly_summaries, macro_logs, weight_logs, meal_suggestions, cardio_logs (Phase 4), free_sessions (Phase 4), body_measurements (Phase 4)
 **Config files:** Lib/supabase.ts, Lib/RevenueCat.ts
-**Edge Functions:** generate-plan, coaching-feedback, weekly-coach-summary, generate-next-week, adjust-macros, generate-meals, generate-final-review, adjust-next-session (Phase 4), adjust-for-injury (Phase 4), adjust-equipment-session (Phase 4)
-**Key files:** constants/design.ts, constants/exerciseLibrary.ts, constants/ingredientLibrary.ts, components/MealBuilderModal.tsx, components/ExerciseCard.tsx, components/WorkoutResultsModal.tsx, navigation/types.ts, utils/splitRecommendation.ts, utils/projections.ts, utils/dateUtils.ts, components/ProjectionChart.tsx
+**Edge Functions:** generate-plan, coaching-feedback, weekly-coach-summary, generate-next-week, adjust-macros, generate-meals, generate-final-review, adjust-next-session, adjust-for-injury (Phase 4), adjust-equipment-session (Phase 4)
+**Key files:** constants/design.ts, constants/exerciseLibrary.ts, constants/ingredientLibrary.ts, components/MealBuilderModal.tsx, components/ExerciseCard.tsx, components/WorkoutResultsModal.tsx, navigation/types.ts, utils/splitRecommendation.ts, utils/projections.ts, utils/dateUtils.ts, utils/sessionSignal.ts, utils/missedSession.ts, utils/adaptationReason.ts, components/ProjectionChart.tsx
 
 ---
 
@@ -30,23 +30,30 @@
 - Post-Review Sprint (v1.14) ✅ April 9 2026
 - Beta Sprint Partial (v1.17) ✅ April 2026
 - Near-Release Beta Sprint Week 1 (v1.18) ✅ April 14 2026
+- Near-Release Beta Sprint Week 2 (v1.19) ✅ April 16 2026
 
-### Completed in Week 1 Beta Sprint (v1.18)
+### Completed in Week 2 Beta Sprint (v1.19)
 | Item | Detail |
 |---|---|
-| BUG-4 | S03 ExperienceScreen: red validation text on mount fixed |
-| BUG-5 | Unilateral exercise handling: isUnilateral field, rep display, volume ×2, prompt context |
-| BUG-7 | Active set highlight no longer bleeds to next exercise |
-| GAP-5 | Power-Hypertrophy goal: full onboarding, PHUL session architecture, Phase 1/2 workout UI, WorkoutResultsModal split, dual projection |
-| GAP-2 | Enhanced Recovery flag: S03 toggle, user_profiles column, deload cadence week 5, generate-plan + generate-next-week prompts |
-| GAP-1 | Concurrent Sport input: S04 section, user_profiles column, TDEE adjustment, generate-plan + generate-next-week prompts |
-| GAP-8 | Sex-aware programming: enforceRepRanges() post-processing in generate-plan, female +2 all exercises, week 5 deload, biologicalSex in plan_json |
-| Calorie max | Raised from 5000 → 5500 |
-| P2-CX2 | Weekly summary banner confirmed working (was testing artifact) |
+| BUG-8 | scheduledDays stored in plan_json, dashboard day-of-week gating working |
+| GAP-7 | muscleEmphasis data layer: stampMuscleEmphasis post-processing, fuzzy match aliases, EQUIPMENT_MAP |
+| GAP-13 | Sub-muscle priority targeting UI: Biceps/Triceps/Chest/Shoulders/Back/Quads with experience-aware defaults |
+| GAP-6 | Exercise selection reasoning in coachingNote: stacked UI (reasoning + RPE anchor) |
+| P3-C1 | Within-week load adjustment: adjust-next-session Edge Function, pre-session Jordan modal |
+| P3-C2 | Missed session handling: window check, reschedule or skip-and-forward |
+| P3-F10 | Jordan tone evolution: newcomer/building/established/veteran tiers by completedWeeks |
+| P3-F7 | Transparent adaptation reasoning: tap weight → bottom sheet with Jordan explanation |
+| RPE progression | RPE-gap-scaled weight increases (3/5/8% buckets with experience multipliers) |
+| Equipment rounding | Barbell 2.5 lbs, dumbbell/cable/machine 5 lbs, kettlebell 8 lbs |
+| Week 1 RPE cap | enforceWeek1Rpe: compounds ≤8, isolations ≤7 (rep range proxy) |
+| Self-select fix | Old weight adaptation system disabled for priorTargetWeight===0 exercises |
+| Library fuzzy match | enrichExerciseWithLibraryData: plural strip + partial match |
+| exerciseId resolution | enforceWeightProgression reads exerciseId→name map from plan_json |
+| Spelling | "programme" → "program", "Flye" → "Fly" normalisation |
 
 ### Current Phase
-**Near-Release Beta Sprint Week 2 (v1.18)** — April 2026
-BUG-8 day-of-week dashboard intelligence is IN PROGRESS — partially implemented, blocked on scheduledDays missing from plan_json.
+**Near-Release Beta Sprint Week 3 (v1.19)** — April 2026
+P2-CX7 24hr re-engagement push is NEXT.
 
 ---
 
@@ -123,11 +130,7 @@ navigation.navigate('MainTabs') // NOT goBack()
 type Goal = 'fat_loss' | 'hypertrophy' | 'strength' | 'power_hypertrophy' | 'recomp' | 'general'
 ```
 
-**power_hypertrophy** is a first-class goal added in v1.18. Display name: "Strength & Size". Uses PHUL split by default. Session architecture has two explicit phases:
-- Phase 1: Heavy compound (3–6 reps male / 5–8 reps female, pyramid sets, RPE 8–9, 3–5 min rest)
-- Phase 2: Hypertrophy accessories (8–12 reps male / 10–14 reps female, straight sets, RPE 7–8, 90–120s rest)
-
-Both phases track progression independently in generate-next-week.
+**power_hypertrophy** is a first-class goal. Display name: "Strength & Size". Uses PHUL split by default.
 
 ---
 
@@ -135,16 +138,17 @@ Both phases track progression independently in generate-next-week.
 
 **Step counter:** S02=1, S02b=2, S03=3, S03b=4, S04=5, S05=6, S06=7, S07=8. BuildingPlan has no step.
 
-### S02 Goal Selection
-- Goals: fat_loss, hypertrophy, strength, power_hypertrophy, recomp, general
-- power_hypertrophy display: "Strength & Size"
-
 ### S02b GoalDetailsScreen
 - CTA: Always "Continue" — never "Skip"
-- power_hypertrophy: 4 optional 1RM inputs (Bench/Squat/Deadlift/OHP), experience-based dual projection (no target 1RM, no feasibility card), no pace selector
+- power_hypertrophy: 4 optional 1RM inputs, experience-based dual projection, no pace selector
 - Strength: feasibility card uses getStrengthProjectionRange() — range, never flat number
 - canReachGoal = high >= gap (NOT 75% threshold)
 - recommendedWeeks forwarded through ALL navigation hops
+- **Sub-muscle preferences (GAP-13):** After priority muscle chip selected, refinement row appears
+  - SUB_MUSCLE_OPTIONS defined for: Biceps, Triceps, Chest, Shoulders, Back, Quads
+  - Default: "Balanced" pre-selected for all experience levels
+  - No pre-selection for advanced was removed (experience not yet collected at S02b)
+  - subMusclePreferences forwarded to BuildingPlanScreen → generate-plan → plan_json root
 
 ### S03 ExperienceScreen
 - Day picker: 7 pills Mon–Sun, min 2, sorted Mon→Sun
@@ -152,14 +156,11 @@ Both phases track progression independently in generate-next-week.
 - "Looks good →" → structureConfirmed = true | "Adjust" → context chips
 - structureConfirmed resets on selectedDays/experience/enhancedRecovery change
 - Enhanced Recovery Flag: toggle below experience selector, Intermediate/Advanced only, default off
-- Label: "I recover quickly between sessions and can handle high training volume."
 - Session length warning for power_hypertrophy + short session on S03 (not S07)
 
 ### S04 Constraints
 - Screen title: "Equipment & Constraints"
 - Concurrent Sport Training section at bottom: multi-select chips + days/week picker
-- Sport chips: Martial Arts / Running / Cycling / Swimming / Team Sports / Other
-- Days picker: 1/2/3/4+ (appears only when sport selected)
 
 ### S05 Body Metrics
 - biologicalSex collected here — passed to generate-plan and generate-next-week
@@ -167,7 +168,7 @@ Both phases track progression independently in generate-next-week.
 ### S06 MacroSetup
 - calorie_pace stored in macro_plans, passed to generate-plan
 - power_hypertrophy: no pace selector shown
-- Calorie max: 5500 (raised from 5000 in v1.18)
+- Calorie max: 5500
 - Concurrent sport TDEE adjustment applied here
 
 ### S07 PlanPreviewScreen
@@ -177,31 +178,30 @@ Both phases track progression independently in generate-next-week.
 ---
 
 ## PLAN_JSON STRUCTURE
+```
 plan_json: { title, totalWeeks, daysPerWeek, goal, split, currentWeek,
 experience, sessionLength, equipment, jordanWelcome,
 enhancedRecovery, concurrentSport, biologicalSex,
-scheduledDays, weeks[] }
+scheduledDays, subMusclePreferences, weeks[] }
 WeekObject: { weekNumber, phase, days[] }
 DayObject:  { dayNumber, type ('workout'|'rest'|'cardio'), title, sessionFocus,
 muscleGroups, exercises[], sessionPhase?,
 cardioType?, suggestedDurationMinutes? }
-ExerciseObject: { id, name, muscleGroup, muscleEmphasis?, isUnilateral?,
-setStructure ('straight'|'pyramid'|'wave'),
+ExerciseObject: { id, name, muscleGroup, muscleEmphasis, equipment,
+isUnilateral?, setStructure ('straight'|'pyramid'|'wave'),
 sets, reps, targetWeight, restSeconds,
-targetRpe, coachingNote, difficultyTag?,
+targetRpe, coachingNote, adjustedBySignal?,
 phase? ('strength'|'hypertrophy'),
 plateaued?, plateauWeeks? }
 sets_json: { exerciseId, setNumber, weightLbs, reps, rpe(0=not logged), swapped }
+```
 
-**v1.18 fields:**
-- plan_json.enhancedRecovery: boolean
-- plan_json.concurrentSport: { type: string[], daysPerWeek: number } | null
-- plan_json.biologicalSex: 'male' | 'female' | 'prefer_not_to_say'
-- plan_json.scheduledDays: string[] — e.g. ['Mon','Wed','Fri'] — IN PROGRESS (BUG-8)
-- DayObject.sessionPhase: 'power_hypertrophy' | undefined
-- ExerciseObject.phase: 'strength' | 'hypertrophy' | undefined
-- ExerciseObject.isUnilateral: boolean
-- ExerciseObject.setStructure: 'straight' | 'pyramid' | 'wave'
+**v1.19 fields:**
+- plan_json.scheduledDays: string[] — e.g. ['Mon','Wed','Fri']
+- plan_json.subMusclePreferences: Record<string,string> — e.g. {"Biceps":"long_head","Chest":"upper"}
+- ExerciseObject.muscleEmphasis: string — taxonomy tag, stamped by stampMuscleEmphasis()
+- ExerciseObject.equipment: string — 'barbell'|'dumbbell'|'cable'|'machine'|'bodyweight'|'kettlebell'
+- ExerciseObject.adjustedBySignal: 'high_fatigue'|'low_fatigue' — set by adjust-next-session
 
 Phase colors: baseline(accent) | accumulation(success) | intensification/deload(warning)
 Week 1 always baseline. Deload: every 4th week standard, every 5th week if enhancedRecovery OR biologicalSex === 'female'.
@@ -210,11 +210,12 @@ Week 1 always baseline. Deload: every 4th week standard, every 5th week if enhan
 
 ## DATABASE SCHEMA NOTES
 
-### Columns added in v1.18
+### Columns added in v1.18–v1.19
 ```sql
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS enhanced_recovery boolean DEFAULT false;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS concurrent_sport jsonb DEFAULT null;
--- goals table constraint updated to include power_hypertrophy:
+ALTER TABLE workout_logs ADD COLUMN IF NOT EXISTS skipped boolean DEFAULT false;
+-- goals table constraint updated to include power_hypertrophy
 ALTER TABLE goals DROP CONSTRAINT goals_goal_type_check;
 ALTER TABLE goals ADD CONSTRAINT goals_goal_type_check
   CHECK (goal_type IN ('fat_loss','hypertrophy','strength','power_hypertrophy','recomp','general'));
@@ -228,103 +229,209 @@ ALTER TABLE goals ADD CONSTRAINT goals_goal_type_check
 
 ---
 
-## SEX-AWARE PROGRAMMING (v1.18)
+## GENERATE-PLAN — KEY BEHAVIOURS (v1.19)
 
-Implemented via enforceRepRanges() post-processing in generate-plan AFTER Claude response, before Supabase save. TypeScript enforces — Claude receives base ranges.
-```ts
-// Female adjustments applied by enforceRepRanges():
-// Phase 1 (power_hypertrophy): always forced to '5-8'
-// Phase 2 (power_hypertrophy): bucket by lowEnd of Claude's output:
-//   lowEnd ≤ 9  → '10-14'
-//   lowEnd ≤ 11 → '12-16'
-//   lowEnd ≤ 13 → '14-18'
-//   else        → '17-22'
-// Non-phase exercises: FEMALE_REP_MAP lookup table (+2 to both ends)
-// Male Phase 2: minimum 8 reps enforced (corrects Claude drift to 6-8)
+### Post-processing order (all run after Claude response, before Supabase save):
+1. `enforceRepRanges(exercises, biologicalSex)` — female rep range adjustments
+2. `stampMuscleEmphasis(exercises)` — MUSCLE_EMPHASIS_MAP + alias lookup, longest key first
+3. `stampEquipment(exercises)` — EQUIPMENT_MAP + alias lookup, longest key first
+4. `enforceWeek1Rpe(exercises)` — Week 1 only: compounds ≤8 RPE, isolations ≤7 RPE (rep range proxy: lowEnd ≥9 = isolation)
+5. `normaliseExerciseName(name)` — "Flye"→"Fly", etc.
 
-// Deload cadence:
-// enhancedRecovery || biologicalSex === 'female' → week 5
-// standard → week 4
-// Applied in both PlanView client-side AND generate-next-week prompt
-```
+### coachingNote rules (GAP-6)
+- 1–2 sentences explaining WHY this exercise is in this plan for this user
+- Selection reasoning ONLY — not form cues, not generic motivation
+- Never write "Choose a weight" — RPE anchor shown separately in UI
+- Never write "programme" — always "program"
+- Jordan voice, first person
 
-biologicalSex stored in plan_json root for generate-next-week access.
+### Sub-muscle bias (GAP-13)
+- subMusclePreferences passed in request body, stored in plan_json root
+- Bias instruction injected into Claude prompt: 60% of that muscle's exercises from targeted sub-muscle
+- "Balanced" = even distribution, no bias instruction sent to Claude
 
----
+### scheduledDays
+- Destructured from request body as selectedDays
+- Stored in plan_json root: scheduledDays: selectedDays ?? []
 
-## TDEE CALCULATION (v1.18)
-```ts
-Step 1: Convert imperial → metric
-Step 2: BMR via Mifflin-St Jeor
-Step 3: TDEE = BMR × activityMultiplier (1.375–1.9 by lifting days/week)
-Step 4: Concurrent sport adjustment:
-  if concurrentSport:
-    avgIntensity = avg of sport intensities (martial_arts/team_sports:150, running/cycling:120, swimming:130, other:100)
-    TDEE += avgIntensity × daysPerWeek
-Step 5: Apply pace offset
-Step 6: Round to nearest 50. Min 1200, max 5500.
-```
-
----
-
-## GENERATE-PLAN — KEY BEHAVIOURS (v1.18)
-
-- enforceRepRanges() post-processes all exercises after Claude response
-- currentLifts (power_hypertrophy): Phase 1 targetWeight = currentLifts[lift] × 0.75, rounded to nearest 5 lbs. Null lift → targetWeight: 0
-- scheduledDays must be stored in plan_json root (IN PROGRESS — BUG-8)
+### Other
+- max_tokens: 16000
 - biologicalSex, enhancedRecovery, concurrentSport all passed in request body and stored in plan_json
-- max_tokens: 16000 (raised to prevent truncation on large plans)
-- Validation logging: Phase1/Phase2 counts logged per day for power_hypertrophy
-
-### Session exercise count (90+ mins, intermediate example)
-30-45: 4 total | 45-60: 5 total | 60-90: 6 total | 90+: 7-8 total
+- currentLifts (power_hypertrophy): Phase 1 targetWeight = currentLifts[lift] × 0.75, rounded to nearest 5 lbs
 
 ---
 
-## GENERATE-NEXT-WEEK — KEY BEHAVIOURS (v1.18)
+## GENERATE-NEXT-WEEK — KEY BEHAVIOURS (v1.19)
 
-- effectiveOldWeight ReferenceError: FIXED
+### Weight progression — enforceWeightProgression()
+TypeScript post-processing owns ALL weight arithmetic. Claude's targetWeight values are overwritten.
+
+**RPE gap buckets (rpeGap = avgLoggedRpe - targetRpe):**
+```ts
+rpeGap <= -2.5 → basePct = 8%   // very easy
+rpeGap <= -1.5 → basePct = 5%   // clearly too light
+rpeGap <= -0.5 → basePct = 3%   // slightly light
+otherwise      → fixed increase: compound +2.5, isolation +1.0
+```
+
+**Experience multipliers:** beginner ×1.3 | intermediate ×1.0 | advanced ×0.7
+
+**Equipment-aware rounding:**
+```ts
+barbell → 2.5 lbs
+dumbbell / cable / machine → 5 lbs
+kettlebell → 8 lbs
+bodyweight → 0 (no rounding)
+```
+
+**Floors:** barbell 45 lbs | dumbbell/cable/machine 5 lbs | bodyweight 0
+**Cap:** never more than 12% increase per week
+**Dumbbell sanity cap:** max 150 lbs
+**Self-select guard:** priorTargetWeight === 0 → old weight adaptation system skipped entirely, enforceWeightProgression owns the calculation
+
+### Exercise name resolution
+- exerciseIdToName map built from all weeks in plan_json
+- Sets_json resolved: exerciseId → name (primary), fallback to exerciseName/name fields
+- findExerciseDataKey(): exact → plural strip → add plural → partial match (longest key first)
+
+### Other
+- stampEquipment runs BEFORE enforceWeightProgression (equipment needed for rounding)
+- stampMuscleEmphasis runs AFTER enforceWeightProgression
 - biologicalSex, enhancedRecovery, concurrentSport read from plan_json
 - Deload cadence: (enhancedRecovery || biologicalSex === 'female') ? 5 : 4
 - power_hypertrophy: Phase 1 and Phase 2 progress independently
 - Unilateral rule: reps in sets_json are per-side
+- DC-1 fix: when priorWeek.phase === 'deload', use Week N-2 weights as progression baseline
 
 ---
 
-## SPLIT LIBRARY (v1.18)
+## ADJUST-NEXT-SESSION EDGE FUNCTION (P3-C1)
 
-14 splits. power_hypertrophy goal:
-2 days → upper_lower hybrid
-3 days → full_body_advanced hybrid
-4-5 days → phul
-6-7 days → ppl (caps at 6 workout sessions)
+**Trigger:** Called from WorkoutCompleteScreen after session saved. Fire-and-forget.
+**Input:** planId, weekNumber, signal ('high_fatigue'|'low_fatigue')
+**Guard:** Only mutates exercises where targetWeight > 0. Never mutates self-select exercises.
+**RPE delta:** high_fatigue → -0.5 | low_fatigue → +0.5
+**Scope:** Only remaining sessions in current week. Never future weeks.
+**Sets adjustedBySignal field** on mutated exercises.
 
----
+### Signal detection (utils/sessionSignal.ts)
+```ts
+high_fatigue: avgRpe > 8.5 AND fatigueRating <= 2
+low_fatigue:  avgRpe < 6.0 AND fatigueRating >= 4
+on_target:    avgRpe 7.0–8.5
+```
 
-## UNILATERAL EXERCISE RULES
-
-- Display: "X reps each side" — never "X reps"
-- sets_json: reps logged are per-side (stored as entered, NOT doubled)
-- Volume calc: multiply reps × 2 for total
-- coaching-feedback prompt: "reps reported are per-side"
-- generate-next-week prompt: "reps reported are per-side"
-- isUnilateral: boolean on all ExerciseObjects
-
----
-
-## POWER-HYPERTROPHY SESSION RULES
-
-- Phase 1 header: "PHASE 1 — STRENGTH" | subtitle dynamic from first Phase 1 exercise reps
-- Phase 2 header: "PHASE 2 — HYPERTROPHY" | subtitle dynamic from first Phase 2 exercise reps
-- Phase 1 rest timer: always 240s (4 min) regardless of restSeconds
-- Phase 2 rest timer: prescribed restSeconds (90-120s typical)
-- WorkoutResultsModal: split into Phase 1 (top weight) + Phase 2 (volume) sections
+### Pre-session modal
+Shown in ActiveWorkoutScreen on mount when preSessionMessage is non-null.
+Signal passed as preSessionMessage param to ActiveWorkout navigation.
+NOT shown on dashboard (removed — was causing UX confusion).
 
 ---
 
-## DASHBOARD — DAY-OF-WEEK INTELLIGENCE (BUG-8 — IN PROGRESS)
+## MISSED SESSION HANDLING (P3-C2, utils/missedSession.ts)
 
-### utils/dateUtils.ts (created v1.18)
+**Detection:** Today is scheduled training day + session unlogged + time after 8pm local
+**Window check:** Tomorrow is a rest day → offer reschedule (one day only, never cascade)
+**No window:** Skip-and-forward with Jordan note
+**User confirmation always required** — never auto-reschedule silently
+**markSessionSkipped:** inserts workout_log with skipped: true, sets_json: []
+**rescheduleSession:** writes rescheduledTo: dayLabel to plan_json day object
+
+---
+
+## ADAPTATION REASONING (P3-F7, utils/adaptationReason.ts)
+
+Tappable weight target in ExerciseCard (targetWeight > 0 only) → bottom sheet.
+Client-side only — no Edge Function.
+Reads lastWeekSets (already fetched for last week strip).
+
+**Signal types:** up | down | hold | baseline | fatigue_adjusted
+**Increase trigger:** rpeGap < -0.5
+**Decrease trigger:** rpeGap > 1.0
+**Hold:** within ±0.5 to +1.0
+
+---
+
+## JORDAN TONE EVOLUTION (P3-F10)
+
+Applied in: generate-next-week, coaching-feedback, weekly-coach-summary
+
+```ts
+function getJordanToneTier(completedWeeks: number): 'newcomer'|'building'|'established'|'veteran' {
+  if (weeks <= 1) return 'newcomer';   // welcoming, explanatory
+  if (weeks <= 4) return 'building';   // warmer, references actual numbers
+  if (weeks <= 8) return 'established'; // direct, referential, pattern-aware
+  return 'veteran';                     // terse, data-driven, peer-level
+}
+```
+
+Note: `'new'` is a JS reserved word — always use `'newcomer'` as the key. Function must be at module scope (not inside serve handler) to avoid Deno bundler errors.
+
+---
+
+## EXERCISE LIBRARY — KEY BEHAVIOURS (v1.19)
+
+### muscleEmphasis field
+Required on all Exercise objects. Taxonomy: mid_chest, upper_chest, lower_chest, mid_back, lats, upper_back, front_delt, lateral_delt, rear_delt, long_head_tricep, lateral_head_tricep, short_head_bicep, long_head_bicep, brachialis, quads, hamstrings, glutes, adductors, gastrocnemius, soleus, rectus_abdominis, obliques, transverse_abs, spinal_erectors.
+
+### equipment field
+Required on all Exercise objects: 'barbell'|'dumbbell'|'machine'|'cable'|'bodyweight'|'kettlebell'|'band'
+
+### isUnilateral
+Detected by UNILATERAL_IDS set. Lookup in enrichExerciseWithLibraryData uses fuzzy match:
+1. Exact name match
+2. Strip plural 's' and retry
+3. Partial match (name contains library name or vice versa)
+
+### Name normalisation
+- "Flye"/"Flyes" → "Fly"/"Flys" (normaliseExerciseName in generate-plan)
+- Exercise names in plan_json must match library for enrichment to work
+
+### Sub-muscle priority targeting (GAP-13)
+```ts
+SUB_MUSCLE_OPTIONS defined for: Biceps, Triceps, Chest, Shoulders, Back, Quads
+Biceps:   Balanced / Short head / Long head / Brachialis
+Triceps:  Balanced / Long head / Lateral head
+Chest:    Balanced / Upper / Lower
+Shoulders: Balanced / Front / Lateral / Rear
+Back:     Balanced / Lats (width) / Upper back (thickness)
+Quads:    Balanced / Outer sweep / Teardrop (VMO)
+```
+Default: 'balanced' pre-selected for all users (experience not yet known at S02b).
+
+---
+
+## WEEK 1 PROGRAMMING RULES (v1.19)
+
+- **enforceWeek1Rpe:** All exercises post-processed after Claude response
+  - rep range low end ≥ 9 → isolation → cap RPE at 7
+  - rep range low end < 9 → compound → cap RPE at 8
+- **Self-select weights:** Non-strength goals, targetWeight: 0 for all Week 1 exercises
+- **Jordan coaching note line 1:** Selection reasoning (GAP-6)
+- **Jordan coaching note line 2:** "Pick a weight that lands at RPE X — I'll program Week 2 from your actual numbers." (shown only when targetWeight === 0)
+
+---
+
+## SEX-AWARE PROGRAMMING (v1.18)
+
+Implemented via enforceRepRanges() post-processing in generate-plan.
+```ts
+// Female adjustments:
+// Phase 1 (power_hypertrophy): always forced to '5-8'
+// Phase 2 (power_hypertrophy): bucket by lowEnd
+// Non-phase exercises: FEMALE_REP_MAP (+2 to both ends)
+// Male Phase 2: minimum 8 reps enforced
+
+// Deload cadence:
+// enhancedRecovery || biologicalSex === 'female' → week 5
+// standard → week 4
+```
+
+---
+
+## DASHBOARD — DAY-OF-WEEK INTELLIGENCE (BUG-8 — COMPLETE)
+
+### utils/dateUtils.ts
 ```ts
 getTodayDayLabel(): 'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun'
 isTodayTrainingDay(scheduledDays, todayLabel): boolean
@@ -334,53 +441,47 @@ isPastLastTrainingDay(scheduledDays, todayLabel): boolean
 ```
 
 ### Hero card priority (HomeScreen)
-
-!isTrainingDay && !devBypassDayGate:
-
-allSessionsComplete && postWeekHeroAllowed → Generate Week 2 CTA
-else → RestDayCard (Jordan message + "Next up: [day]")
-
-
-showGenerateNextWeekCTA → Generate Week 2 CTA
-todaySession exists → WorkoutCard
-else → generic rest card
-
+- missedSessionResult?.isMissed → MissedSessionCard (warning border)
+- !isTrainingDay && allSessionsComplete → Generate Week 2 CTA
+- !isTrainingDay → RestDayCard
+- showGenerateNextWeekCTA → Generate Week 2 CTA
+- todaySession exists → WorkoutCard
+- else → generic rest card
 
 ### RestDayCard
-- "REST DAY" label + "Next up: [displayName]" (orange, accent)
-- Jordan avatar + contextual recovery message
-- Message varies by daysAway (1 = "tomorrow", 2+ = day name)
-
-### BLOCKER: scheduledDays not in plan_json
-hasDayLabels = false → falls back to degraded behaviour (first unlogged session regardless of day).
-Fix required: store scheduledDays in plan_json from generate-plan + pass selectedDays from BuildingPlanScreen.
+"REST DAY" label + "Next up: [displayName]" (orange, accent)
+Jordan avatar + contextual recovery message
 
 ### DEV bypass
 AsyncStorage key: 'dev_bypass_day_gate'
 Toggle in ProfileSettings DEV panel: "Bypass Day Gate (test any session)"
-When ON: always shows next unlogged workout card, bypasses all day gating.
 
 ---
 
-## DEV PANEL (ProfileSettings — __DEV__ === true)
+## SPLIT LIBRARY (v1.19)
 
-- DEV: Restart Onboarding button
-- Clear Summary Banners button (clears all summary_viewed_* AsyncStorage keys)
-- Bypass Day Gate toggle (dev_bypass_day_gate AsyncStorage key)
+14 splits. power_hypertrophy goal:
+2 days → upper_lower hybrid
+3 days → full_body_advanced hybrid
+4-5 days → phul
+6-7 days → ppl (caps at 6 workout sessions)
 
 ---
 
 ## DEPLOYMENT RULES
 
-### Edge Functions — must deploy manually after every change
-supabase functions deploy generate-plan
-supabase functions deploy generate-next-week
-supabase functions deploy coaching-feedback
-supabase functions deploy weekly-coach-summary
-supabase functions deploy adjust-macros
-supabase functions deploy generate-meals
-supabase functions deploy generate-final-review
-Only deploy functions that were actually changed.
+### Edge Functions — always use --no-verify-jwt
+```bash
+supabase functions deploy generate-plan --no-verify-jwt
+supabase functions deploy generate-next-week --no-verify-jwt
+supabase functions deploy coaching-feedback --no-verify-jwt
+supabase functions deploy weekly-coach-summary --no-verify-jwt
+supabase functions deploy adjust-macros --no-verify-jwt
+supabase functions deploy generate-meals --no-verify-jwt
+supabase functions deploy generate-final-review --no-verify-jwt
+supabase functions deploy adjust-next-session --no-verify-jwt
+```
+Only deploy functions that were actually changed. JWT re-enables on redeploy — always include --no-verify-jwt.
 
 ### Expo client — hot-reloads automatically
 Screen and component changes apply immediately. No action needed.
@@ -389,9 +490,6 @@ Screen and component changes apply immediately. No action needed.
 npx expo start --clear
 
 ### Supabase schema changes — run migration first
-```sql
-ALTER TABLE table_name ADD COLUMN IF NOT EXISTS column_name type DEFAULT value;
-```
 Never add a column in app code before adding it in Supabase — returns 400 error.
 
 ---
@@ -410,8 +508,20 @@ Never add a column in app code before adding it in Supabase — returns 400 erro
 - session_fatigue_rating NOT energy_rating — Supabase 400 if wrong column name
 - Calorie TDEE max: 5500
 - Phase 1 targetWeight rounded to nearest 5 lbs (not 2.5) for barbell compounds
-- P2-CX2 weekly summary banner: confirmed working — was testing artifact (AsyncStorage keys set to 'true' during testing). Clear via DEV panel "Clear Summary Banners" button.
-- GAP-8-MINOR: Overhead Press occasionally shows 8-12 instead of 10-14 in female power_hypertrophy. All other exercises correct. Fix in Week 5 QA.
+- GAP-8-MINOR: Overhead Press occasionally shows 8-12 instead of 10-14 in female power_hypertrophy. Fix in Week 5 QA.
+- Jordan tone 'new' is a JS reserved word — always use 'newcomer' as object key in Edge Functions
+- Edge Functions: getJordanToneTier must be at module scope, not inside serve() — Deno bundler error otherwise
+- enforceWeightProgression: old [weight adaptation] system must be disabled for priorTargetWeight===0 to prevent conflict
+- stampEquipment must run BEFORE enforceWeightProgression in generate-next-week
+- Walking Lunge and similar exercises may have inconsistent naming (singular vs plural) across weeks — fuzzy match handles this client-side but plan_json consistency preferred
+
+---
+
+## DEV PANEL (ProfileSettings — __DEV__ === true)
+
+- DEV: Restart Onboarding button
+- Clear Summary Banners button (clears all summary_viewed_* AsyncStorage keys)
+- Bypass Day Gate toggle (dev_bypass_day_gate AsyncStorage key)
 
 ---
 
@@ -432,6 +542,10 @@ Never add a column in app code before adding it in Supabase — returns 400 erro
 - Concurrent sport: always schedule heavy leg days away from high-intensity sport days
 - DEV testing mode: day-of-week gating bypassed via ProfileSettings DEV toggle — never ships to production
 - enforceRepRanges() is the single source of truth for female rep ranges — never ask Claude to compute +2
+- enforceWeightProgression() is the single source of truth for weight targets — Claude never computes increases
+- stampMuscleEmphasis() and stampEquipment() are the single source of truth for those fields — Claude values overwritten
+- Never write "programme" — always "program"
+- Never write "Flye" — always "Fly"
 
 ---
 
@@ -450,59 +564,51 @@ Never add a column in app code before adding it in Supabase — returns 400 erro
 
 ### 🔴 BUGS — Fix Before TestFlight
 
-1. **BUG-8** — Dashboard day-of-week intelligence: PARTIALLY IMPLEMENTED. dateUtils.ts, RestDayCard, DEV bypass toggle all done. BLOCKER: scheduledDays not stored in plan_json → hasDayLabels always false → falls back to degraded behaviour (shows next unlogged session regardless of day). Fix: add scheduledDays to generate-plan output + pass selectedDays from BuildingPlanScreen to Edge Function.
+None currently blocking. All Week 2 bugs resolved.
 
-### 🔴 Must Ship Before Beta — New Features (v1.18)
+### 🔴 Must Ship Before Beta — Week 3 (IN PROGRESS)
 
-2. **GAP-7** — Sub-muscle targeting data layer: exercise library re-tag (muscleEmphasis field), generate-plan prompt instruction, plateau rotation sub-muscle awareness
-3. **GAP-6** — Exercise selection reasoning: generate-plan prompt updated to produce selection rationale (not form cues) in coachingNote
-4. **GAP-9** — Metric unit toggle: Profile Settings toggle, all weight displays + inputs, progress charts — DB always stores lbs
+1. **P2-CX7** — 24hr re-engagement push (Plan Ready "Go to Dashboard" tap) — NEXT
+2. **Plan Completion Flow** — PlanCompleteScreen + generate-final-review Edge Function + cross-plan memory
+3. **P3-C2 polish** — Missed session: rescheduled session UI needs to show correctly on dashboard next day
+4. **P3-F1** — Exercise education (How To modal, 3–5 form cues, difficulty tags)
+5. **P3-F2** — Cardio layer (Light + Medium prescriptions)
+6. **P3-F3** — Pyramid sets for intermediate/advanced (all goals)
+7. **P3-F9** — Body measurement tracking (waist/chest/hip/arm + progress chart)
+8. **P2-N2** — Meal Builder search bar
+9. **Free Session Mode** — basic version
+10. **Workout History Screen**
+11. **GAP-9** — Metric unit toggle: Profile Settings toggle, all weight displays + inputs, progress charts — DB always stores lbs
+12. **P2-CX3** — Sleep input on daily weigh-in card
 
-### 🟠 Must Ship Before Beta — Features
+### 🟠 Must Ship — New (added during Week 2 sprint)
 
-5. **P2-CX7** — 24hr re-engagement push (Plan Ready "Go to Dashboard" tap)
-6. **Plan Completion Flow** — PlanCompleteScreen + generate-final-review Edge Function + cross-plan memory
-7. **P3-C1** — Within-week load adjustment (adjust-next-session Edge Function)
-8. **P3-C2** — Missed session handling (detect + push + dashboard card)
-9. **P3-F7** — Transparent adaptation reasoning (tap weight → bottom sheet)
-10. **P3-F10** — Jordan tone evolution (prompt copy changes by completedWeeks)
-11. **P3-F1** — Exercise education (How To modal, 3–5 form cues, difficulty tags)
-12. **P3-F2** — Cardio layer (Light + Medium prescriptions)
-13. **P3-F3** — Pyramid sets for intermediate/advanced (all goals)
-14. **P3-F9** — Body measurement tracking (waist/chest/hip/arm + progress chart)
-15. **P2-N2** — Meal Builder search bar
-16. **Free Session Mode** — basic version
-17. **Workout History Screen**
-
-### 🟠 Must Ship — New (added Week 1 sprint)
-
-18. **GAP-11** — Sport session logging: dashboard card when concurrentSport set. "Did you train [sport] today?" Yes/No/Partial. Logs to sport_logs table (user_id, plan_id, log_date, sport_type, completed, intensity). Week 3.
-19. **GAP-12** — Dynamic sport calorie adjustment: weekly-coach-summary reads sport_logs, compares actual vs expected sessions, adjusts next week TDEE via adjust-macros. Forward-looking, never accusatory. Week 3, depends on GAP-11.
-20. **P2-O-REST** — Active recovery suggestions on rest day dashboard card. Jordan suggests walk/mobility/stretching. Copy only, no new feature system. Week 4.
-21. **BUG-8** — Dashboard day-of-week intelligence (see above — in progress)
+13. **GAP-11** — Sport session logging: dashboard card when concurrentSport set
+14. **GAP-12** — Dynamic sport calorie adjustment: weekly-coach-summary reads sport_logs
+15. **P2-O-REST** — Active recovery suggestions on rest day dashboard card (copy only)
+16. **GAP-13** ✅ COMPLETE — Sub-muscle priority targeting
 
 ### 🟠 Must Ship — Polish (Week 4)
 
-22. All P2-W items: W7 (rest day collapse), W8 (phase legend), W10 (results Jordan note)
-23. All P2-N items: N1 (overshoot warning), N3 (log meal toast), N4 (adherence legend), N5 (adherence Jordan note)
-24. All P2-PR items: PR4 (Week 2 paywall), PR5 (gating consistency), PR6 (goal edit gate)
-25. All P2-O items: O4–O13
-26. **P2-CX1** — Bad week emotional coaching copy paths
-27. **P2-CX3** — Sleep input on daily weigh-in card
-28. **P2-CX5** — Haptic feedback (full spec)
-29. **P2-ST1** — Identity audit: remove tracker/logger/planner language everywhere
+17. All P2-W items: W7 (rest day collapse), W8 (phase legend), W10 (results Jordan note)
+18. All P2-N items: N1 (overshoot warning), N3 (log meal toast), N4 (adherence legend), N5 (adherence Jordan note)
+19. All P2-PR items: PR4 (Week 2 paywall), PR5 (gating consistency), PR6 (goal edit gate)
+20. All P2-O items: O4–O13
+21. **P2-CX1** — Bad week emotional coaching copy paths
+22. **P2-CX5** — Haptic feedback (full spec)
+23. **P2-ST1** — Identity audit: remove tracker/logger/planner language everywhere
 
 ### 🟡 Beta Target — Not Blocking
 
-30. P3-C7 — Mid-plan injury handling
-31. P3-C5 — Full readiness score
-32. P3-C3 — Mid-week Jordan check-in card
-33. P3-F6 — Notification schedule customization
+24. P3-C7 — Mid-plan injury handling
+25. P3-C5 — Full readiness score
+26. P3-C3 — Mid-week Jordan check-in card
+27. P3-F6 — Notification schedule customization
 
 ### ⚪ Post-Beta
 
 - Supersets | Apple Health/Google Fit/MyFitnessPal | Wave loading
-- Sub-muscle targeting full UI | App Store assets | Video exercise demos
+- Sub-muscle targeting full UI deep calibration | App Store assets | Video exercise demos
 - Sex-aware programming deep calibration (after beta data)
 
 ---
@@ -511,37 +617,13 @@ Never add a column in app code before adding it in Supabase — returns 400 erro
 
 **Week 1 ✅ COMPLETE:** BUG-4, BUG-5, BUG-7 | Power-Hypertrophy + PHUL | Enhanced recovery | Concurrent sport + TDEE | Sex-aware programming | Calorie max 5500
 
-**Week 2 IN PROGRESS:** BUG-8 (scheduledDays fix — ACTIVE) | GAP-7 sub-muscle targeting | GAP-6 exercise reasoning | P3-C1 within-week load adjustment | P3-C2 missed session | P3-F10 Jordan tone evolution | P3-F7 adaptation reasoning | P2-CX7 re-engagement push
+**Week 2 ✅ COMPLETE:** BUG-8 (scheduledDays) | GAP-7 (muscleEmphasis + equipment data layer) | GAP-13 (sub-muscle priority UI) | GAP-6 (exercise reasoning in coachingNote) | P3-C1 (within-week load adjustment) | P3-C2 (missed session handling) | P3-F10 (Jordan tone evolution) | P3-F7 (adaptation reasoning) | RPE-gap-scaled weight progression | Equipment-aware rounding | Week 1 RPE caps
 
-**Week 3:** Plan completion flow | Free session mode | Workout history | Cardio layer | Pyramid sets | Body measurements | Meal Builder search | Sleep input | Metric toggle | Exercise education | GAP-11 sport logging | GAP-12 sport calorie adjustment
+**Week 3 IN PROGRESS:** P2-CX7 re-engagement push (NEXT) | Plan completion flow | Free session mode | Workout history | Cardio layer | Pyramid sets | Body measurements | Meal Builder search | Sleep input | Metric toggle | Exercise education | GAP-11 sport logging | GAP-12 sport calorie adjustment
 
 **Week 4:** All P2-W, P2-N, P2-PR, P2-O polish | P2-CX1/3/5 | Identity audit | P2-O-REST active recovery copy
 
 **Week 5:** Full QA + regression. End-to-end all goals. Deload regression. Concurrent sport scheduling. Enhanced recovery volume. Real device testing.
-
----
-
-## ACTIVE DEBUG — BUG-8 scheduledDays
-
-**Status:** Dashboard day-of-week logic implemented but not gating correctly.
-
-**Root cause:** plan_json does not contain scheduledDays field. hasDayLabels = false → degraded behaviour → next unlogged session shown regardless of day.
-
-**Fix required (Composer 2 — two files):**
-
-File 1: supabase/functions/generate-plan/index.ts
-- Destructure selectedDays (or whatever the user's training day array is called) from request body
-- Add to plan_json root: scheduledDays: selectedDays ?? []
-- Add to Claude prompt plan_json structure instruction
-
-File 2: screens/onboarding/BuildingPlanScreen.tsx (or wherever generate-plan is called)
-- Confirm selectedDays (from ExperienceScreen S03 params) is in the Edge Function request body
-- If not: add scheduledDays: params.selectedDays ?? []
-
-**Verification:** After fix, console.log in HomeScreen should show:
-[BUG-8] scheduledDays: ['Mon','Fri'], hasDayLabels: true, isTrainingDay: false/true
-
-**After fix:** Generate a fresh plan, check plan_json.scheduledDays in Supabase, confirm rest day card shows on non-training days.
 
 ---
 

@@ -294,6 +294,117 @@ const EQUIPMENT_MAP: Record<string, string> = {
 
 const EQUIPMENT_ALIASES: Record<string, string> = {};
 
+/**
+ * Maps exercise names (lowercase) to their compoundTier.
+ * Covers exercises used in plans; longest key first in lookup prevents partial match conflicts.
+ */
+const COMPOUND_TIER_MAP: Record<string, 'primary_compound' | 'secondary_compound' | 'isolation'> = {
+  'barbell bench press': 'primary_compound',
+  'back squat': 'primary_compound',
+  'front squat': 'primary_compound',
+  'deadlift': 'primary_compound',
+  'sumo deadlift': 'primary_compound',
+  'overhead press': 'primary_compound',
+  'barbell row': 'primary_compound',
+  'barbell bent-over row': 'primary_compound',
+  'bent-over row': 'primary_compound',
+  'pull-up': 'primary_compound',
+  'pull-ups': 'primary_compound',
+  'chin-up': 'primary_compound',
+  'chin-ups': 'primary_compound',
+  't-bar row': 'primary_compound',
+  'incline barbell bench press': 'secondary_compound',
+  'incline dumbbell press': 'secondary_compound',
+  'dumbbell bench press': 'secondary_compound',
+  'close grip bench press': 'secondary_compound',
+  'close-grip bench press': 'secondary_compound',
+  'dips': 'secondary_compound',
+  'dumbbell row': 'secondary_compound',
+  'dumbbell shoulder press': 'secondary_compound',
+  'arnold press': 'secondary_compound',
+  'machine shoulder press': 'secondary_compound',
+  'machine chest press': 'secondary_compound',
+  'machine row': 'secondary_compound',
+  'seated cable row': 'secondary_compound',
+  'lat pulldown': 'secondary_compound',
+  'leg press': 'secondary_compound',
+  'hack squat': 'secondary_compound',
+  'bulgarian split squat': 'secondary_compound',
+  'walking lunge': 'secondary_compound',
+  'walking lunges': 'secondary_compound',
+  'goblet squat': 'secondary_compound',
+  'romanian deadlift': 'secondary_compound',
+  'stiff-leg deadlift': 'secondary_compound',
+  'stiff leg deadlift': 'secondary_compound',
+  'dumbbell romanian deadlift': 'secondary_compound',
+  'hip thrust': 'secondary_compound',
+  'banded hip thrust': 'secondary_compound',
+  'cable pull-through': 'secondary_compound',
+  'glute bridge': 'secondary_compound',
+  'push-up': 'secondary_compound',
+  'push-ups': 'secondary_compound',
+  'upright row': 'secondary_compound',
+  'farmer carry': 'secondary_compound',
+  'kettlebell swing': 'secondary_compound',
+  'ab wheel rollout': 'secondary_compound',
+  'plank': 'secondary_compound',
+  'pallof press': 'secondary_compound',
+  // Short-name variants Claude commonly uses (exact match before partial)
+  'barbell curl': 'isolation',
+  'barbell hip thrust': 'secondary_compound',
+  'barbell shrug': 'isolation',
+  'barbell squat': 'primary_compound',
+  'barbell bent over row': 'primary_compound',
+  'bench press': 'primary_compound',
+  'bent over row': 'primary_compound',
+  'cable rows': 'secondary_compound',
+  'calf raises': 'isolation',
+  'chinups': 'primary_compound',
+  'conventional deadlift': 'primary_compound',
+  'face pull': 'isolation',
+  'face pulls': 'isolation',
+  'hammer curls': 'isolation',
+  'hip thrusts': 'secondary_compound',
+  'lateral raise': 'isolation',
+  'lateral raises': 'isolation',
+  'lat pulldowns': 'secondary_compound',
+  'leg curls': 'isolation',
+  'leg extensions': 'isolation',
+  'military press': 'primary_compound',
+  'ohp': 'primary_compound',
+  'pullups': 'primary_compound',
+  'russian twists': 'isolation',
+  'squat': 'primary_compound',
+  'tricep dips': 'secondary_compound',
+};
+
+function getCompoundTierFromName(
+  name: string,
+): 'primary_compound' | 'secondary_compound' | 'isolation' {
+  const lower = name.toLowerCase().trim();
+
+  if (COMPOUND_TIER_MAP[lower]) return COMPOUND_TIER_MAP[lower];
+
+  const stripped = lower
+    .replace(
+      /^(barbell|dumbbell|cable|machine|kettlebell|banded|smith machine|incline|decline|flat|sumo|conventional|close grip|close-grip|wide grip|wide-grip|narrow grip|paused|tempo)\s+/g,
+      '',
+    )
+    .trim();
+  if (stripped !== lower && COMPOUND_TIER_MAP[stripped]) {
+    return COMPOUND_TIER_MAP[stripped];
+  }
+
+  const keys = Object.keys(COMPOUND_TIER_MAP).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (lower.includes(key) || key.includes(lower)) {
+      return COMPOUND_TIER_MAP[key];
+    }
+  }
+
+  return 'isolation';
+}
+
 // deno-lint-ignore no-explicit-any
 function stampEquipment(exercises: any[]): any[] {
   // Sort entries by key length descending — longer keys are more specific
@@ -408,13 +519,48 @@ function enforceWeek1Rpe(exercises: any[]): any[] {
   });
 }
 
+/**
+ * Deterministically assigns setStructure to every exercise.
+ * Overwrites whatever Claude returned — same pattern as stampEquipment.
+ */
 // deno-lint-ignore no-explicit-any
-function stampMuscleEmphasisOnPlan(planJson: any): any {
+function enforceSetStructure(exercises: any[], goal: string): any[] {
+  return exercises.map((ex) => {
+    const equipment: string = ex.equipment ?? 'barbell';
+    const sets: number = typeof ex.sets === 'number' ? ex.sets : 3;
+    const isBodyweight = equipment === 'bodyweight';
+
+    const compoundTier = getCompoundTierFromName(String(ex.name ?? ''));
+    const isIsolation = compoundTier === 'isolation';
+    const isPrimaryCompound = compoundTier === 'primary_compound';
+    const isSecondaryCompound = compoundTier === 'secondary_compound';
+    const isHypertrophyGoal = goal === 'hypertrophy';
+    const isPhase2Accessory = ex.phase === 'hypertrophy';
+
+    let setStructure: 'straight' | 'pyramid' = 'straight';
+
+    if (!isBodyweight && !isIsolation && !isPhase2Accessory) {
+      if (isPrimaryCompound && sets >= 3) {
+        setStructure = 'pyramid';
+      } else if (isSecondaryCompound && sets >= 3 && !isHypertrophyGoal) {
+        setStructure = 'pyramid';
+      }
+    }
+
+    return { ...ex, setStructure, compoundTier };
+  });
+}
+
+// deno-lint-ignore no-explicit-any
+function stampMuscleEmphasisOnPlan(planJson: any, goal: string): any {
   return {
     ...planJson,
     weeks: (planJson.weeks ?? []).map((week: any) => ({
       ...week,
       days: (week.days ?? []).map((day: any) => {
+        if (day.type === 'cardio') {
+          return { ...day, exercises: [] };
+        }
         if (!Array.isArray(day.exercises) || !day.exercises.length) {
           return day;
         }
@@ -423,6 +569,7 @@ function stampMuscleEmphasisOnPlan(planJson: any): any {
         if (week.weekNumber === 1) {
           exercises = enforceWeek1Rpe(exercises);
         }
+        exercises = enforceSetStructure(exercises, goal);
         return { ...day, exercises };
       }),
     })),
@@ -432,7 +579,7 @@ function stampMuscleEmphasisOnPlan(planJson: any): any {
 interface SessionDay {
   day: number;
   dayLabel?: string;
-  type: 'workout' | 'rest';
+  type: 'workout' | 'rest' | 'cardio';
   focus: string;
   primaryMuscles: string[];
   sessionIntensity: 'heavy' | 'volume' | 'moderate';
@@ -815,10 +962,14 @@ function enforceRepRanges(planJson: any, bSex: string): any {
     weeks: (planJson.weeks ?? []).map((week: any) => ({
       ...week,
       // deno-lint-ignore no-explicit-any
-      days: (week.days ?? []).map((day: any) => ({
-        ...day,
-        // deno-lint-ignore no-explicit-any
-        exercises: (day.exercises ?? []).map((exercise: any) => {
+      days: (week.days ?? []).map((day: any) => {
+        if (day.type === 'cardio') {
+          return { ...day, exercises: [] };
+        }
+        return {
+          ...day,
+          // deno-lint-ignore no-explicit-any
+          exercises: (day.exercises ?? []).map((exercise: any) => {
           let adjustedReps = exercise.reps;
 
           if (bSex === 'female') {
@@ -861,8 +1012,9 @@ function enforceRepRanges(planJson: any, bSex: string): any {
           }
 
           return { ...exercise, reps: adjustedReps };
-        }),
-      })),
+        })
+        };
+      }),
     })),
   };
 }
@@ -878,6 +1030,9 @@ function buildSessionBreakdown(sessionStructure: SessionDay[]): string {
       const dow = day.dayLabel ? ` (${day.dayLabel})` : '';
       if (day.type === 'rest') {
         return `Day ${day.day}${dow}: Rest day`;
+      }
+      if (day.type === 'cardio') {
+        return `Day ${day.day}${dow}: Cardio day`;
       }
       const muscles = Array.isArray(day.primaryMuscles) ? day.primaryMuscles.join(', ') : '';
       const intensity = day.sessionIntensity;
@@ -1630,10 +1785,48 @@ RULES:
 - Tone: direct, knowledgeable, like a real coach talking to a new client for the first time — not a chatbot greeting
 ${jordanWelcomeRpeRuleLine}
 - Do not end with a separate "call to action" sentence beyond Sentence 4; Sentence 4 is the close
-- CRITICAL: Never use the word "AI" anywhere in jordanWelcome or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
+- CRITICAL: Never use the word "AI" anywhere in jordanWelcome or any coaching copy. Jordan is a coach, not an AI system. Never write "I'm Jordan, your AI coach" or any variation. Always write "I'm Jordan, your coach" — first person, no qualifiers. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
 - Good opening (pattern): "I'm Jordan, your coach for the next ${totalWeeks} weeks..."
-- Bad opening (never): "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
+- Bad opening (never — never output text like this): "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
 - Apply the same CRITICAL rule (no "AI"; first person as Jordan; "I" or "your coach" only) to every sessionFocus line, every exercise coachingNote, and any motivationalNote field in this response.`;
+
+    const cardioInstruction =
+      goal === 'fat_loss' || goal === 'recomp'
+        ? `
+CARDIO DAYS:
+Include 1–2 cardio days per week for this ${goal} plan. Cardio days
+use type: 'cardio' (not 'workout' or 'rest'). They count toward
+daysPerWeek only if they replace a rest day — never add cardio on
+top of a workout day.
+
+Cardio day structure:
+{
+  "dayNumber": N,
+  "type": "cardio",
+  "title": "[Cardio Type] Cardio",
+  "sessionFocus": "Low-impact conditioning — keep heart rate moderate",
+  "cardioType": "light" | "medium",
+  "suggestedDurationMinutes": <integer minutes, typically 20–45>,
+  "muscleGroups": [],
+  "exercises": []
+}
+
+CARDIO TYPE RULES:
+- "light": Walking, cycling, elliptical. HR zone 2 (comfortable conversation pace).
+  Duration: 30–45 minutes. Use for fat_loss recovery days and all recomp.
+- "medium": Steady-state cardio (treadmill jog, rowing, stair climber).
+  HR zone 3 (breathing harder, can speak short sentences).
+  Duration: 20–30 minutes. Use for fat_loss plans only when daysPerWeek >= 4.
+
+SCHEDULING RULES:
+- Never schedule cardio the day after a heavy leg workout.
+- Prefer cardio on rest days adjacent to upper body days.
+- For fat_loss with 3 days/week: 1 light cardio day.
+- For fat_loss with 4+ days/week: 1 light + 1 medium cardio day.
+- For recomp: always 1 light cardio day only.
+- Cardio days have empty exercises array — never add strength exercises.
+`
+        : '';
 
     const prompt = `${absoluteRuleBlock}
 ${sessionStructureFollowBlock}
@@ -1722,6 +1915,8 @@ Week 1 phase MUST be "baseline". Weeks 2 onward (when generated later) follow ac
 
 ${jordanWelcomeFieldSpec}
 
+${cardioInstruction}
+
 Respond with ONLY this JSON, no other text:
 {
   "title": "descriptive plan name",
@@ -1764,7 +1959,7 @@ Respond with ONLY this JSON, no other text:
     ]
   }
 }
-Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".${goal === 'power_hypertrophy' ? ' Each exercise MUST include "phase": "strength" or "hypertrophy" AND "setStructure": "pyramid" or "straight". Each workout day MUST include "sessionPhase": "power_hypertrophy". Missing any of these fields is a critical error.' : ''}`;
+Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".${goal === 'fat_loss' || goal === 'recomp' ? ' For fat_loss and recomp, also include cardio days per CARDIO DAYS above: type "cardio", empty exercises array, cardioType and suggestedDurationMinutes — never on a workout day.' : ''}${goal === 'power_hypertrophy' ? ' Each exercise MUST include "phase": "strength" or "hypertrophy" AND "setStructure": "pyramid" or "straight". Each workout day MUST include "sessionPhase": "power_hypertrophy". Missing any of these fields is a critical error.' : ''}`;
 
     const response = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
@@ -1831,7 +2026,7 @@ Follow the JORDAN WELCOME FIELD specification in the user message exactly — 4 
     ? ' Non-strength: Sentence 2 may include numeric RPE bands per that spec.'
     : ' In the welcome text, say "effort ratings" not numeric RPE except where the user-message spec allows.'
 } Never use chatbot openers or banned hype phrases from that spec.
-- CRITICAL for jordanWelcome: Never use the word "AI" in the welcome or any coaching copy. Jordan is a coach. First person as Jordan — "I" or "your coach" only. Good: "I'm Jordan, your coach for the next ${totalWeeks} weeks..." Bad: "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
+- CRITICAL for jordanWelcome: Never use the word "AI" in the welcome or any coaching copy. Jordan is a coach, not an AI system. Never "I'm Jordan, your AI coach" or any variation. Always "I'm Jordan, your coach" — first person, no qualifiers. Good: "I'm Jordan, your coach for the next ${totalWeeks} weeks..." Bad (never output): "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
 
 ${
   isNonStrengthGoal
@@ -1937,6 +2132,7 @@ ${
     // GAP-7: Stamp muscleEmphasis from embedded lookup (same pattern as enforceRepRanges)
     const processedPlanJson = stampMuscleEmphasisOnPlan(
       enforceRepRanges(normalized, biologicalSex),
+      goal,
     );
 
     if (biologicalSex === 'female') {

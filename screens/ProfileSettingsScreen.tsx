@@ -11,8 +11,12 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
+  Platform,
+  TextInput,
+  Keyboard,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
@@ -27,7 +31,9 @@ import {
   CommonStyles,
 } from '../constants/design';
 import { deleteUserAccount } from '../utils/deleteAccount';
+import { useMetric } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEntitlement } from '../hooks/useEntitlement';
 
 // ── Label maps ──
 
@@ -120,6 +126,21 @@ function mapped(map: Record<string, string>, key: string | undefined): string {
   return key ? (map[key] ?? key) : '—';
 }
 
+function formatHeightFeetInches(
+  ft: number | null | undefined,
+  inch: number | null | undefined,
+): string {
+  if (
+    ft == null ||
+    inch == null ||
+    !Number.isFinite(Number(ft)) ||
+    !Number.isFinite(Number(inch))
+  ) {
+    return '—';
+  }
+  return `${ft}'${inch}"`;
+}
+
 function formatSessionLengthDisplay(val: unknown): string {
   if (val == null || val === '') return '—';
   if (typeof val === 'number' && Number.isFinite(val)) {
@@ -210,6 +231,8 @@ function SkeletonCard({
 
 export default function ProfileSettingsScreen() {
   const navigation = useNavigation<NavProp>();
+  const insets = useSafeAreaInsets();
+  const { isPro: rcIsPro, loading: rcEntitlementLoading } = useEntitlement();
 
   const [data, setData] = useState<ScreenData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,11 +246,24 @@ export default function ProfileSettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const [showHeightSheet, setShowHeightSheet] = useState(false);
+  const [showAgeSheet, setShowAgeSheet] = useState(false);
+  const [heightFtDraft, setHeightFtDraft] = useState('');
+  const [heightInDraft, setHeightInDraft] = useState('');
+  const [ageDraft, setAgeDraft] = useState('');
+  const [bodyMetricsSheetError, setBodyMetricsSheetError] = useState<string | null>(null);
+  const [bodyMetricsFlash, setBodyMetricsFlash] = useState<'saved' | null>(null);
+  const [bodyMetricsSaving, setBodyMetricsSaving] = useState(false);
+
   /** BUG-8: DEV-only — dashboard always shows workout card when true */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
+  /** DEV-only — next WorkoutComplete save treats session as plan-final */
+  const [devForcePlanComplete, setDevForcePlanComplete] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  const { isMetric, setIsMetric, formatBodyWeight } = useMetric();
 
   useEffect(() => {
     if (loading) {
@@ -248,6 +284,9 @@ export default function ProfileSettingsScreen() {
     if (__DEV__) {
       AsyncStorage.getItem('dev_bypass_day_gate').then((val) => {
         setDevBypassDayGate(val === 'true');
+      });
+      AsyncStorage.getItem('dev_force_plan_complete').then((v) => {
+        setDevForcePlanComplete(v === 'true');
       });
     }
   }, []);
@@ -335,6 +374,99 @@ export default function ProfileSettingsScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!bodyMetricsFlash) return;
+    const t = setTimeout(() => setBodyMetricsFlash(null), 2000);
+    return () => clearTimeout(t);
+  }, [bodyMetricsFlash]);
+
+  const openHeightSheet = useCallback(() => {
+    const p = data?.profile;
+    setHeightFtDraft(p?.height_ft != null ? String(p.height_ft) : '');
+    setHeightInDraft(p?.height_in != null ? String(p.height_in) : '');
+    setBodyMetricsSheetError(null);
+    setShowHeightSheet(true);
+  }, [data?.profile]);
+
+  const openAgeSheet = useCallback(() => {
+    const p = data?.profile;
+    setAgeDraft(p?.age != null ? String(p.age) : '');
+    setBodyMetricsSheetError(null);
+    setShowAgeSheet(true);
+  }, [data?.profile]);
+
+  const saveHeight = useCallback(async () => {
+    setBodyMetricsSheetError(null);
+    const ft = parseInt(heightFtDraft, 10);
+    const inch = parseInt(heightInDraft, 10);
+    if (!Number.isFinite(ft) || !Number.isFinite(inch)) {
+      setBodyMetricsSheetError('Enter valid numbers for feet and inches.');
+      return;
+    }
+    if (ft < 3 || ft > 8 || inch < 0 || inch > 11) {
+      setBodyMetricsSheetError('Height should be roughly 3–8 ft and 0–11 in.');
+      return;
+    }
+    setBodyMetricsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+      const { error } = await supabase.from('user_profiles').upsert(
+        { user_id: user.id, height_ft: ft, height_in: inch },
+        { onConflict: 'user_id' },
+      );
+      if (error) throw error;
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              profile: { ...prev.profile, height_ft: ft, height_in: inch },
+            }
+          : prev,
+      );
+      Keyboard.dismiss();
+      setShowHeightSheet(false);
+      setBodyMetricsFlash('saved');
+    } catch (e) {
+      setBodyMetricsSheetError(
+        e instanceof Error ? e.message : 'Could not save.',
+      );
+    } finally {
+      setBodyMetricsSaving(false);
+    }
+  }, [heightFtDraft, heightInDraft]);
+
+  const saveAge = useCallback(async () => {
+    setBodyMetricsSheetError(null);
+    const age = parseInt(ageDraft, 10);
+    if (!Number.isFinite(age) || age < 13 || age > 99) {
+      setBodyMetricsSheetError('Age must be between 13 and 99.');
+      return;
+    }
+    setBodyMetricsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+      const { error } = await supabase.from('user_profiles').upsert(
+        { user_id: user.id, age },
+        { onConflict: 'user_id' },
+      );
+      if (error) throw error;
+      setData((prev) =>
+        prev ? { ...prev, profile: { ...prev.profile, age } } : prev,
+      );
+      Keyboard.dismiss();
+      setShowAgeSheet(false);
+      setBodyMetricsFlash('saved');
+    } catch (e) {
+      setBodyMetricsSheetError(
+        e instanceof Error ? e.message : 'Could not save.',
+      );
+    } finally {
+      setBodyMetricsSaving(false);
+    }
+  }, [ageDraft]);
 
   const resetToOnboarding = () => {
     const rootNav = navigation.getParent()?.getParent();
@@ -441,6 +573,36 @@ export default function ProfileSettingsScreen() {
     ? trainingPrefsDisplay(data.plan, data.profile)
     : null;
 
+  const showRateApp = (data?.plan?.current_week ?? 1) > 1;
+
+  const handleGoalRowPress = useCallback(() => {
+    const goalKey = data?.goal?.goal_type ?? 'general';
+    if (Platform.OS === 'web') {
+      navigation.navigate('GoalDetails', { goal: goalKey });
+      return;
+    }
+    if (rcEntitlementLoading) return;
+    if (rcIsPro) {
+      navigation.navigate('GoalDetails', { goal: goalKey });
+      return;
+    }
+    Alert.alert(
+      'Pro Feature',
+      'Changing your goal generates a new plan — this is a Pro feature. Upgrade to get unlimited plan generations.',
+      [
+        { text: 'Not Now', style: 'cancel' },
+        {
+          text: 'Upgrade',
+          onPress: () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            navigation.navigate('ProfileTab' as any, {
+              screen: 'SubscriptionManagement',
+            }),
+        },
+      ],
+    );
+  }, [navigation, data?.goal?.goal_type, rcIsPro, rcEntitlementLoading]);
+
   // ── Render ──
 
   return (
@@ -479,7 +641,10 @@ export default function ProfileSettingsScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={styles.profileChevron}>›</Text>
+            <View style={styles.profileHeaderRight}>
+              <Text style={styles.profileHeaderLinkText}>Subscription</Text>
+              <Text style={styles.profileChevron}>›</Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -489,7 +654,24 @@ export default function ProfileSettingsScreen() {
           <SkeletonCard count={3} pulseAnim={pulseAnim} />
         ) : (
           <View style={styles.sectionCard}>
-            <Row label="Goal" value={mapped(GOAL_LABELS, data?.goal?.goal_type)} />
+            <TouchableOpacity
+              style={styles.row}
+              onPress={handleGoalRowPress}
+              activeOpacity={0.7}
+              disabled={Platform.OS !== 'web' && rcEntitlementLoading}
+            >
+              <Text style={styles.rowLabel}>Goal</Text>
+              <View style={styles.goalRowRight}>
+                <Text style={[styles.rowValue, styles.goalRowValue]} numberOfLines={1}>
+                  {mapped(GOAL_LABELS, data?.goal?.goal_type)}
+                </Text>
+                {Platform.OS !== 'web' && !rcEntitlementLoading && !rcIsPro ? (
+                  <Text style={styles.goalLockMark}>🔒</Text>
+                ) : (
+                  <Text style={styles.rowChevron}>›</Text>
+                )}
+              </View>
+            </TouchableOpacity>
             <Row
               label="Current Week"
               value={
@@ -511,38 +693,104 @@ export default function ProfileSettingsScreen() {
         {loading ? (
           <SkeletonCard count={4} pulseAnim={pulseAnim} />
         ) : (
-          <View style={styles.sectionCard}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Weight</Text>
-              <View style={styles.weightValueGroup}>
-                <Text style={styles.weightPrimary}>
-                  {latestWeightLog
-                    ? `${latestWeightLog.weight_lbs} lbs`
-                    : `${data?.profile.weight_lbs ?? '—'} lbs`}
-                </Text>
-                {latestWeightLog ? (
-                  <Text style={styles.weightSecondary}>
-                    {isToday
-                      ? 'Logged today'
-                      : `Logged ${new Date(latestWeightLog.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+          <>
+            <View style={styles.sectionCard}>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Weight</Text>
+                <View style={styles.weightValueGroup}>
+                  <Text style={styles.weightPrimary}>
+                    {latestWeightLog
+                      ? formatBodyWeight(latestWeightLog.weight_lbs)
+                      : data?.profile.weight_lbs != null
+                        ? formatBodyWeight(data.profile.weight_lbs)
+                        : '—'}
                   </Text>
-                ) : null}
-                <Text style={isToday ? styles.weightTertiarySuccess : styles.weightTertiary}>
-                  {isToday ? 'Up to date ✓' : 'Log today from Dashboard'}
-                </Text>
+                  {latestWeightLog ? (
+                    <Text style={styles.weightSecondary}>
+                      {isToday
+                        ? 'Logged today'
+                        : `Logged ${new Date(latestWeightLog.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                    </Text>
+                  ) : null}
+                  <Text style={isToday ? styles.weightTertiarySuccess : styles.weightTertiary}>
+                    {isToday ? 'Up to date ✓' : 'Log today from Dashboard'}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={openHeightSheet}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowLabel}>Height</Text>
+                <View style={styles.goalRowRight}>
+                  <Text style={[styles.rowValue, styles.goalRowValue]} numberOfLines={1}>
+                    {formatHeightFeetInches(
+                      data?.profile.height_ft,
+                      data?.profile.height_in,
+                    )}
+                  </Text>
+                  <Text style={styles.rowChevron}>›</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={openAgeSheet}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowLabel}>Age</Text>
+                <View style={styles.goalRowRight}>
+                  <Text style={[styles.rowValue, styles.goalRowValue]} numberOfLines={1}>
+                    {data?.profile.age != null && Number.isFinite(Number(data.profile.age))
+                      ? `${data.profile.age} years`
+                      : '—'}
+                  </Text>
+                  <Text style={styles.rowChevron}>›</Text>
+                </View>
+              </TouchableOpacity>
+              <View style={[styles.row, styles.rowLast]}>
+                <Text style={styles.rowLabel}>Biological Sex</Text>
+                <View style={styles.sexRowRight}>
+                  <Text style={styles.rowValue} numberOfLines={1}>
+                    {mapped(SEX_LABELS, data?.profile.sex)}
+                  </Text>
+                  <Text style={styles.notEditableHint}>(not editable)</Text>
+                </View>
               </View>
             </View>
-            <Row
-              label="Height"
-              value={`${data?.profile.height_ft ?? '—'}'${data?.profile.height_in ?? '—'}"`}
-            />
-            <Row
-              label="Age"
-              value={data?.profile.age != null ? String(data.profile.age) : '—'}
-            />
-            <Row label="Biological Sex" value={mapped(SEX_LABELS, data?.profile.sex)} isLast />
-          </View>
+            {bodyMetricsFlash ? (
+              <Text style={styles.bodyMetricsFlash}>Saved</Text>
+            ) : null}
+          </>
         )}
+
+        {/* ── 3b. Preferences — units ── */}
+        <Text style={styles.sectionHeading}>PREFERENCES</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.unitsPrefRow}>
+            <Text style={styles.unitsPrefLabel}>Units</Text>
+            <View style={styles.unitsPillRow}>
+              <TouchableOpacity
+                style={[styles.unitsPill, !isMetric ? styles.unitsPillActive : null]}
+                onPress={() => void setIsMetric(false)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.unitsPillText, !isMetric ? styles.unitsPillTextActive : null]}>
+                  lbs
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.unitsPill, isMetric ? styles.unitsPillActive : null]}
+                onPress={() => void setIsMetric(true)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.unitsPillText, isMetric ? styles.unitsPillTextActive : null]}>
+                  kg
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
 
         {/* ── 4. Training Preferences ── */}
         <Text style={styles.sectionHeading}>TRAINING PREFERENCES</Text>
@@ -577,21 +825,23 @@ export default function ProfileSettingsScreen() {
         <Text style={styles.sectionHeading}>APP</Text>
         <View style={styles.sectionCard}>
           <TouchableOpacity
-            style={styles.row}
+            style={[styles.row, !showRateApp && styles.rowLast]}
             onPress={() => navigation.navigate('NotificationsSettings' as never)}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Workout Reminders</Text>
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.row, styles.rowLast]}
-            onPress={() => Linking.openURL('https://apps.apple.com')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.rowLabel}>Rate Adaptive Fitness</Text>
-            <Text style={styles.rowChevron}>›</Text>
-          </TouchableOpacity>
+          {showRateApp ? (
+            <TouchableOpacity
+              style={[styles.row, styles.rowLast]}
+              onPress={() => Linking.openURL('https://apps.apple.com')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.rowLabel}>Rate Adaptive Fitness</Text>
+              <Text style={styles.rowChevron}>›</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* ── 6. Support ── */}
@@ -672,12 +922,211 @@ export default function ProfileSettingsScreen() {
               When ON: dashboard always shows workout card regardless of day. OFF =
               production behaviour.
             </Text>
+
+            <View style={styles.devToggleRow}>
+              <Text style={styles.devToggleLabel}>Force Plan Complete (next session save)</Text>
+              <Switch
+                value={devForcePlanComplete}
+                onValueChange={async (val) => {
+                  setDevForcePlanComplete(val);
+                  await AsyncStorage.setItem(
+                    'dev_force_plan_complete',
+                    val ? 'true' : 'false',
+                  );
+                }}
+                trackColor={{ false: Colors.border, true: Colors.accentMuted }}
+                thumbColor={devForcePlanComplete ? Colors.accent : Colors.textSecondary}
+                ios_backgroundColor={Colors.border}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.devButton, styles.devButtonAfter]}
+              activeOpacity={0.8}
+              onPress={async () => {
+                try {
+                  const {
+                    data: { session },
+                  } = await supabase.auth.getSession();
+                  if (!session?.user?.id) {
+                    Alert.alert('DEV', 'No user session found.');
+                    return;
+                  }
+                  const { data: plan, error } = await supabase
+                    .from('plans')
+                    .select('id')
+                    .eq('user_id', session.user.id)
+                    .in('status', ['active', 'completed'])
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (error) {
+                    Alert.alert('DEV', `Supabase error: ${error.message}`);
+                    return;
+                  }
+                  if (!plan?.id) {
+                    Alert.alert(
+                      'DEV',
+                      'No plan found. Complete onboarding first.',
+                    );
+                    return;
+                  }
+                  // Root types use Dashboard: undefined; nested tab params are valid at runtime.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (navigation as any).navigate('Dashboard', {
+                    screen: 'WorkoutTab',
+                    params: {
+                      screen: 'PlanComplete',
+                      params: { planId: plan.id },
+                    },
+                  });
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  Alert.alert('DEV', `Error: ${msg}`);
+                }
+              }}
+            >
+              <Text style={styles.devPlanCompleteJumpText}>
+                DEV: Jump to Plan Complete Screen
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
         {/* ── 8. Version footer ── */}
         <Text style={styles.versionText}>Adaptive Fitness • v1.0.0</Text>
       </ScrollView>
+
+      <Modal
+        visible={showHeightSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setShowHeightSheet(false);
+        }}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => {
+              Keyboard.dismiss();
+              setShowHeightSheet(false);
+            }}
+          />
+          <View style={[styles.sheetCard, { paddingBottom: Spacing.lg + insets.bottom }]}>
+            <Text style={styles.sheetTitle}>Edit Height</Text>
+            <View style={styles.sheetHeightInputs}>
+              <TextInput
+                style={styles.sheetInputNarrow}
+                value={heightFtDraft}
+                onChangeText={setHeightFtDraft}
+                keyboardType="number-pad"
+                placeholder="5"
+                placeholderTextColor={Colors.textTertiary}
+              />
+              <Text style={styles.sheetBetweenLabel}>ft</Text>
+              <TextInput
+                style={styles.sheetInputNarrow}
+                value={heightInDraft}
+                onChangeText={setHeightInDraft}
+                keyboardType="number-pad"
+                placeholder="11"
+                placeholderTextColor={Colors.textTertiary}
+              />
+              <Text style={styles.sheetBetweenLabel}>in</Text>
+            </View>
+            {bodyMetricsSheetError && showHeightSheet ? (
+              <Text style={styles.sheetError}>{bodyMetricsSheetError}</Text>
+            ) : null}
+            <View style={styles.sheetActions}>
+              <TouchableOpacity
+                style={styles.sheetBtnSecondary}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowHeightSheet(false);
+                  setBodyMetricsSheetError(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sheetBtnSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sheetBtnPrimary, bodyMetricsSaving && styles.sheetBtnDisabled]}
+                onPress={() => void saveHeight()}
+                disabled={bodyMetricsSaving}
+                activeOpacity={0.8}
+              >
+                {bodyMetricsSaving ? (
+                  <ActivityIndicator color={Colors.textPrimary} />
+                ) : (
+                  <Text style={styles.sheetBtnPrimaryText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAgeSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setShowAgeSheet(false);
+        }}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => {
+              Keyboard.dismiss();
+              setShowAgeSheet(false);
+            }}
+          />
+          <View style={[styles.sheetCard, { paddingBottom: Spacing.lg + insets.bottom }]}>
+            <Text style={styles.sheetTitle}>Edit Age</Text>
+            <TextInput
+              style={styles.sheetInputFull}
+              value={ageDraft}
+              onChangeText={setAgeDraft}
+              keyboardType="number-pad"
+              placeholder="32"
+              placeholderTextColor={Colors.textTertiary}
+            />
+            {bodyMetricsSheetError && showAgeSheet ? (
+              <Text style={styles.sheetError}>{bodyMetricsSheetError}</Text>
+            ) : null}
+            <View style={styles.sheetActions}>
+              <TouchableOpacity
+                style={styles.sheetBtnSecondary}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowAgeSheet(false);
+                  setBodyMetricsSheetError(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sheetBtnSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sheetBtnPrimary, bodyMetricsSaving && styles.sheetBtnDisabled]}
+                onPress={() => void saveAge()}
+                disabled={bodyMetricsSaving}
+                activeOpacity={0.8}
+              >
+                {bodyMetricsSaving ? (
+                  <ActivityIndicator color={Colors.textPrimary} />
+                ) : (
+                  <Text style={styles.sheetBtnPrimaryText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         transparent
@@ -790,6 +1239,16 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.textTertiary,
   },
+  profileHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  profileHeaderLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
 
   sectionHeading: {
     fontFamily: Fonts.bold,
@@ -808,6 +1267,42 @@ const styles = StyleSheet.create({
     borderColor: Colors.divider,
     overflow: 'hidden',
     marginBottom: Spacing.lg,
+  },
+
+  unitsPrefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  unitsPrefLabel: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
+  unitsPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  unitsPill: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  unitsPillActive: {
+    backgroundColor: Colors.accent,
+  },
+  unitsPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textSecondary,
+  },
+  unitsPillTextActive: {
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
   },
 
   row: {
@@ -837,6 +1332,142 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 18,
     color: Colors.textTertiary,
+  },
+  goalRowRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginLeft: 12,
+    minWidth: 0,
+    gap: 6,
+  },
+  goalRowValue: {
+    flexShrink: 1,
+    marginLeft: 0,
+  },
+  goalLockMark: {
+    fontSize: FontSizes.body,
+  },
+  sexRowRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginLeft: 12,
+    minWidth: 0,
+    gap: 6,
+  },
+  notEditableHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    flexShrink: 0,
+  },
+  bodyMetricsFlash: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.success,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.md,
+    marginLeft: 4,
+  },
+
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  sheetBackdrop: {
+    flex: 1,
+  },
+  sheetCard: {
+    backgroundColor: Colors.bgCard,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.xl,
+  },
+  sheetTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.lg,
+  },
+  sheetHeightInputs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  sheetInputNarrow: {
+    width: 80,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  sheetInputFull: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 12,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  sheetBetweenLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  sheetError: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.danger,
+    marginBottom: Spacing.md,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  sheetBtnSecondary: {
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+  },
+  sheetBtnSecondaryText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  sheetBtnPrimary: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.xl,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  sheetBtnPrimaryText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  sheetBtnDisabled: {
+    opacity: 0.6,
   },
   weightValueGroup: { alignItems: 'flex-end' },
   weightPrimary: {
@@ -928,6 +1559,11 @@ const styles = StyleSheet.create({
   },
   devButtonAfter: {
     marginTop: 12,
+  },
+  devPlanCompleteJumpText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.warning,
   },
 
   versionText: {

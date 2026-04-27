@@ -32,12 +32,14 @@ interface ExerciseSummary {
 
 interface PlanDay {
   dayNumber: number;
-  type: 'workout' | 'rest';
+  type: 'workout' | 'rest' | 'cardio';
   title: string;
   muscleGroups: string[];
   exercises: ExerciseSummary[];
   completed: boolean;
   sessionFocus?: string;
+  cardioType?: 'light' | 'medium';
+  suggestedDurationMinutes?: number;
 }
 
 interface PlanWeek {
@@ -60,6 +62,7 @@ interface RawExercise {
 
 interface RawPlanJson {
   weeks?: RawWeek[];
+  goal?: string;
   split?: string;
   daysPerWeek?: number;
   title?: string;
@@ -72,11 +75,13 @@ interface RawPlanJson {
 
 interface RawDay {
   dayNumber: number;
-  type: 'workout' | 'rest';
+  type: 'workout' | 'rest' | 'cardio';
   title: string;
   muscleGroups?: string[];
   exercises?: RawExercise[];
   sessionFocus?: string;
+  cardioType?: 'light' | 'medium';
+  suggestedDurationMinutes?: number;
 }
 
 interface RawWeek {
@@ -329,6 +334,9 @@ export default function PlanViewScreen() {
   const [planData, setPlanData] = useState<LoadedPlan | null>(null);
   const [, setCompletedSet] = useState<Set<string>>(new Set());
   const [selectedWeek, setSelectedWeek] = useState(1);
+  const [completedCardioDays, setCompletedCardioDays] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rawPlanJson, setRawPlanJson] = useState<RawPlanJson | null>(null);
@@ -339,6 +347,9 @@ export default function PlanViewScreen() {
   const [selectedPlanExercises, setSelectedPlanExercises] = useState<ExerciseObject[]>([]);
   const [selectedDayTitle, setSelectedDayTitle] = useState('');
   const [selectedCompletedDate, setSelectedCompletedDate] = useState('—');
+  const [resultsSummaryGoal, setResultsSummaryGoal] = useState<string | undefined>(undefined);
+  const [resultsSummaryWeek, setResultsSummaryWeek] = useState<number | undefined>(undefined);
+  const [resultsSummaryPhase, setResultsSummaryPhase] = useState<string | undefined>(undefined);
 
   const loadPlanData = useCallback(async () => {
     setLoading(true);
@@ -362,7 +373,7 @@ export default function PlanViewScreen() {
           .from('plans')
           .select('id, plan_json, current_week, total_weeks, title')
           .eq('id', trimmedPlanId)
-          .single(),
+          .maybeSingle(),
         supabase
           .from('plans')
           .select('id')
@@ -375,6 +386,9 @@ export default function PlanViewScreen() {
 
       if (planResult.error) throw planResult.error;
       const plan = planResult.data;
+      if (!plan) {
+        throw new Error('Plan not found');
+      }
       const idForLogs =
         plan.id && String(plan.id).trim().length >= 10
           ? String(plan.id).trim()
@@ -415,7 +429,13 @@ export default function PlanViewScreen() {
         days: rw.days.map((rd) => ({
           dayNumber: rd.dayNumber,
           type: rd.type,
-          title: rd.title ?? (rd.type === 'rest' ? 'Rest Day' : 'Workout'),
+          title:
+            rd.title ??
+            (rd.type === 'rest'
+              ? 'Rest Day'
+              : rd.type === 'cardio'
+                ? 'Cardio'
+                : 'Workout'),
           muscleGroups: rd.muscleGroups ?? [],
           exercises: (rd.exercises ?? []).map((ex) => ({
             id: ex.id,
@@ -426,6 +446,8 @@ export default function PlanViewScreen() {
           })),
           completed: logSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
           sessionFocus: rd.sessionFocus,
+          cardioType: rd.cardioType,
+          suggestedDurationMinutes: rd.suggestedDurationMinutes,
         })),
       }));
 
@@ -454,6 +476,41 @@ export default function PlanViewScreen() {
   useEffect(() => {
     loadPlanData();
   }, [loadPlanData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!resolvedPlanId || resolvedPlanId.length < 10) {
+        setCompletedCardioDays(new Set());
+        return;
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) {
+        setCompletedCardioDays(new Set());
+        return;
+      }
+      const { data: cardioLogs, error } = await supabase
+        .from('cardio_logs')
+        .select('day_number, week_number')
+        .eq('plan_id', resolvedPlanId)
+        .eq('user_id', userId)
+        .eq('week_number', selectedWeek);
+      if (cancelled) return;
+      if (error) {
+        if (__DEV__) console.warn('[PlanView] cardio_logs', error);
+        setCompletedCardioDays(new Set());
+        return;
+      }
+      const rows = (cardioLogs ?? []) as { day_number: number }[];
+      setCompletedCardioDays(
+        new Set(rows.map((l) => Number(l.day_number))),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedPlanId, selectedWeek]);
 
   const handleStartWorkout = (day: PlanDay) => {
     const pid =
@@ -586,6 +643,15 @@ export default function PlanViewScreen() {
         setSelectedDayTitle(day.title);
         setSelectedCompletedDate(
           formatCompletedDate((workoutLog as { created_at?: string } | null)?.created_at),
+        );
+        setResultsSummaryGoal(
+          rawPlanJson && typeof rawPlanJson.goal === 'string'
+            ? rawPlanJson.goal
+            : undefined,
+        );
+        setResultsSummaryWeek(selectedWeek);
+        setResultsSummaryPhase(
+          typeof weekData?.phase === 'string' ? weekData.phase : undefined,
         );
         setResultsVisible(true);
       } finally {
@@ -771,6 +837,48 @@ export default function PlanViewScreen() {
                 onViewResults={handleViewResults}
                 loadingResults={resultsLoadingDayKey === `${selectedWeek}-${day.dayNumber}`}
               />
+            ) : day.type === 'cardio' ? (
+              (() => {
+                const isCardioDone = completedCardioDays.has(day.dayNumber);
+                return (
+                  <View
+                    key={day.dayNumber}
+                    style={[
+                      styles.cardioDayRow,
+                      isCardioDone && styles.cardioDayRowDone,
+                    ]}
+                  >
+                    <View style={styles.cardioDayLeft}>
+                      <Text style={styles.cardioDayNum}>Day {day.dayNumber}</Text>
+                      <Text style={styles.cardioDayTitle}>
+                        {day.cardioType === 'light' ? '🚶' : '🏃'}{' '}
+                        {day.title ?? 'Cardio'}
+                      </Text>
+                      <Text style={styles.cardioDaySub}>
+                        {day.suggestedDurationMinutes ?? 30} min ·{' '}
+                        {day.cardioType === 'light'
+                          ? 'Zone 2 — comfortable pace'
+                          : 'Moderate steady-state'}
+                      </Text>
+                    </View>
+                    <View style={styles.cardioDayRight}>
+                      {isCardioDone ? (
+                        <View style={styles.cardioDoneBadge}>
+                          <Text style={styles.cardioDoneBadgeText}>Done ✓</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.cardioTypePill}>
+                          <Text style={styles.cardioTypePillText}>
+                            {day.cardioType === 'medium'
+                              ? 'STEADY-STATE'
+                              : 'LIGHT CARDIO'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })()
             ) : (
               <RestDayCard key={day.dayNumber} day={day} />
             ),
@@ -784,6 +892,25 @@ export default function PlanViewScreen() {
             </Text>
           </View>
         )}
+
+        <TouchableOpacity
+          style={styles.historyLink}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('WorkoutHistory')}
+        >
+          <Text style={styles.historyLinkText}>View Workout History →</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.extraWorkCard}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('FreeSession' as never)}
+        >
+          <Text style={styles.extraWorkCardLabel}>EXTRA WORK</Text>
+          <Text style={styles.extraWorkCardText}>
+            Train outside your plan — Jordan tracks it →
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.libraryLink}
@@ -803,6 +930,9 @@ export default function PlanViewScreen() {
         workoutLog={selectedWorkoutLog}
         exerciseMap={selectedExerciseMap}
         planExercises={selectedPlanExercises}
+        summaryPlanGoal={resultsSummaryGoal}
+        summaryWeek={resultsSummaryWeek}
+        summaryPlanPhase={resultsSummaryPhase}
       />
     </View>
   );
@@ -1151,6 +1281,74 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
   },
 
+  cardioDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  cardioDayLeft: {
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
+  cardioDayNum: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: 2,
+  },
+  cardioDayTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  cardioDaySub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  cardioDayRight: {
+    flexShrink: 0,
+    alignItems: 'flex-end',
+  },
+  cardioDayRowDone: {
+    opacity: 0.7,
+  },
+  cardioDoneBadge: {
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  cardioDoneBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.success,
+  },
+  cardioTypePill: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  cardioTypePillText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+  },
+
   lockedWeekState: {
     alignItems: 'center',
     paddingVertical: 80,
@@ -1173,6 +1371,39 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  historyLink: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  historyLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  extraWorkCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  extraWorkCardLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  extraWorkCardText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
   libraryLink: {
     marginTop: Spacing.xxl,
     marginBottom: Spacing.sm,

@@ -14,6 +14,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
+import { scheduleReEngagementPush } from '../../utils/notifications';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
 
@@ -166,6 +167,14 @@ function resolvePlanWeeksFromParams(params: RouteType['params']): number {
     if (typeof w === 'number') return w;
   }
   return 12;
+}
+
+function computeTargetDate(planDurationParam: string | number | undefined): string {
+  const raw = String(planDurationParam ?? '12');
+  const weeks = parseInt(raw.replace(/\D/g, ''), 10) || 12;
+  const date = new Date();
+  date.setDate(date.getDate() + weeks * 7);
+  return date.toISOString().split('T')[0];
 }
 
 type RetryPlanContext = {
@@ -413,7 +422,9 @@ export default function BuildingPlanScreen() {
               ? parseFloat(params.startingWeightLbs)
               : null,
             status: 'active',
-            target_date: params.targetDate ?? null,
+            target_date: computeTargetDate(
+              params.planDuration ?? params.recommendedWeeks ?? 12,
+            ),
           })
           .select()
           .single();
@@ -537,9 +548,12 @@ export default function BuildingPlanScreen() {
           plan_json: planJson,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (planError) throw planError;
+      if (!savedPlan) {
+        throw new Error('Plan insert did not return a row');
+      }
 
       const week1Days = planJson.weeks?.[0]?.days ?? [];
       const firstWorkout = week1Days.find((d: any) => d.type === 'workout');
@@ -723,12 +737,13 @@ export default function BuildingPlanScreen() {
             <TouchableOpacity
               style={styles.handoffSecondaryBtn}
               activeOpacity={0.7}
-              onPress={() =>
+              onPress={() => {
+                scheduleReEngagementPush();
                 navigation.reset({
                   index: 0,
                   routes: [{ name: 'Dashboard' }],
-                })
-              }
+                });
+              }}
             >
               <Text style={styles.handoffSecondaryBtnText}>
                 Go to Dashboard

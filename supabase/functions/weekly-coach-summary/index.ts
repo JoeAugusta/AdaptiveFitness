@@ -27,6 +27,94 @@ function parseMidReps(reps: string): number {
   return parseInt(reps) || 0;
 }
 
+function formatSportUnderscoreTitle(s: string): string {
+  return s
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function metForSportIntensity(intensity: string): number {
+  const i = String(intensity).toLowerCase();
+  if (i === 'low') return 4.0;
+  if (i === 'moderate') return 7.0;
+  if (i === 'high') return 10.0;
+  return 7.0;
+}
+
+function utcDateOnly(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/** Monday (UTC) of the ISO week containing `d`. */
+function startOfIsoWeekMondayUtc(d: Date): Date {
+  const x = utcDateOnly(d);
+  const dow = x.getUTCDay();
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  x.setUTCDate(x.getUTCDate() - daysFromMonday);
+  return x;
+}
+
+function endOfIsoWeekSundayUtc(mondayUtc: Date): Date {
+  const x = new Date(mondayUtc);
+  x.setUTCDate(x.getUTCDate() + 6);
+  return x;
+}
+
+function dateStrYmdUtc(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Calendar span covering all workout log dates (Monday–Sunday weeks, UTC). */
+function sportWeekBoundsFromWorkoutLogs(logs: any[]): { weekStartDate: string; weekEndDate: string } {
+  const logTimes = logs
+    .map((l: any) => (l.logged_at ? new Date(l.logged_at as string).getTime() : NaN))
+    .filter((t: number) => !Number.isNaN(t));
+  const times = logTimes.length > 0 ? logTimes : [Date.now()];
+  const minD = new Date(Math.min(...times));
+  const maxD = new Date(Math.max(...times));
+  const start = startOfIsoWeekMondayUtc(minD);
+  const end = endOfIsoWeekSundayUtc(startOfIsoWeekMondayUtc(maxD));
+  return { weekStartDate: dateStrYmdUtc(start), weekEndDate: dateStrYmdUtc(end) };
+}
+
+function primarySportDisplayName(planJson: any, sportLogs: { sport_type?: string }[]): string {
+  const cs = planJson?.concurrentSport;
+  if (cs && typeof cs === 'object' && Array.isArray(cs.type) && cs.type[0]) {
+    return formatSportUnderscoreTitle(String(cs.type[0]));
+  }
+  const st = sportLogs[0]?.sport_type;
+  if (st) {
+    try {
+      const o = JSON.parse(String(st)) as { type?: string[] };
+      if (Array.isArray(o.type) && o.type[0]) {
+        return formatSportUnderscoreTitle(String(o.type[0]));
+      }
+    } catch {
+      /* raw key */
+    }
+    return formatSportUnderscoreTitle(String(st));
+  }
+  return 'Sport';
+}
+
+function intensityBreakdownSummary(sportLogs: { intensity?: string }[]): string {
+  let low = 0;
+  let moderate = 0;
+  let high = 0;
+  for (const row of sportLogs) {
+    const i = String(row.intensity ?? '').toLowerCase();
+    if (i === 'low') low++;
+    else if (i === 'moderate') moderate++;
+    else if (i === 'high') high++;
+  }
+  const parts: string[] = [];
+  if (low) parts.push(`${low} × Low`);
+  if (moderate) parts.push(`${moderate} × Moderate`);
+  if (high) parts.push(`${high} × High`);
+  return parts.length > 0 ? parts.join(', ') : '—';
+}
+
 /** Session-wide average RPE from all logged sets (for deload interpretation). */
 function calculateAvgRpeFromLogs(logs: any[]): number {
   let sum = 0;
@@ -66,7 +154,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const [planResult, logsResult] = await Promise.all([
+    const [planResult, logsResult, profileResult] = await Promise.all([
       supabase.from('plans').select('plan_json, goal_id').eq('id', planId).single(),
       supabase
         .from('workout_logs')
@@ -74,6 +162,7 @@ serve(async (req) => {
         .eq('user_id', userId)
         .eq('plan_id', planId)
         .eq('week_number', weekNumber),
+      supabase.from('user_profiles').select('weight_lbs').eq('user_id', userId).maybeSingle(),
     ]);
 
     if (planResult.error) throw new Error(`Failed to fetch plan: ${planResult.error.message}`);
@@ -92,6 +181,82 @@ serve(async (req) => {
         .single();
       if (goalRow?.goal_type) goalType = goalRow.goal_type;
     }
+
+    const { weekStartDate, weekEndDate } = sportWeekBoundsFromWorkoutLogs(logs);
+    const profileRow = profileResult.error ? null : profileResult.data;
+    const weightLbsNum = Number(profileRow?.weight_lbs ?? 0);
+    const weightKgForSport = (weightLbsNum > 0 ? weightLbsNum : 175) / 2.20462;
+
+    const { data: sportLogsRaw, error: sportLogsError } = await supabase
+      .from('sport_logs')
+      .select('duration_min, intensity, sport_type')
+      .eq('user_id', userId)
+      .eq('plan_id', planId)
+      .gte('logged_at', weekStartDate)
+      .lte('logged_at', weekEndDate);
+    if (sportLogsError) console.error('sport_logs fetch error:', sportLogsError.message);
+    const sportLogs = sportLogsRaw ?? [];
+
+    let totalSportCalsRaw = 0;
+    for (const row of sportLogs) {
+      const dur = Number((row as { duration_min?: number }).duration_min ?? 0);
+      if (dur <= 0) continue;
+      const met = metForSportIntensity(String((row as { intensity?: string }).intensity ?? ''));
+      totalSportCalsRaw += met * weightKgForSport * (dur / 60);
+    }
+    const totalSportCalsBurned = Math.round(totalSportCalsRaw / 50) * 50;
+
+    const sportDisplayName = primarySportDisplayName(planJson, sportLogs);
+    const intensitySummary = intensityBreakdownSummary(sportLogs);
+
+    let adjustmentCopy = '';
+    let sportCalorieNudge: string | null = null;
+    const goalKey = String(goalType).toLowerCase();
+    const isFatLoss = goalKey === 'fat_loss';
+    const isHypertrophyGroup =
+      goalKey === 'hypertrophy' || goalKey === 'strength' || goalKey === 'power_hypertrophy';
+    const isRecompGeneral = goalKey === 'recomp' || goalKey === 'general';
+
+    if (sportLogs.length > 0 && totalSportCalsBurned >= 300) {
+      if (isFatLoss) {
+        if (totalSportCalsBurned >= 600) {
+          adjustmentCopy =
+            `Your sport sessions burned an estimated ${totalSportCalsBurned} calories this week. Consider adding 150 calories on your hardest training day to support recovery without disrupting your deficit.`;
+          sportCalorieNudge = adjustmentCopy;
+        } else {
+          adjustmentCopy =
+            'Sport volume this week fits your deficit focus; no daily calorie increase recommended.';
+        }
+      } else if (isHypertrophyGroup) {
+        const addCals =
+          totalSportCalsBurned >= 900 ? 500 : totalSportCalsBurned >= 600 ? 350 : 200;
+        adjustmentCopy =
+          `Your ${sportDisplayName} sessions added ~${totalSportCalsBurned} calories of burn this week. I'd add ${addCals} calories to your daily target this week to protect your muscle-building surplus.`;
+        sportCalorieNudge = adjustmentCopy;
+      } else if (isRecompGeneral) {
+        const addCals = totalSportCalsBurned >= 600 ? 250 : 150;
+        adjustmentCopy =
+          `Your ${sportDisplayName} sessions burned ~${totalSportCalsBurned} calories. Adding ${addCals} calories this week keeps you close to maintenance and supports recovery.`;
+        sportCalorieNudge = adjustmentCopy;
+      } else {
+        const addCals = totalSportCalsBurned >= 600 ? 250 : 150;
+        adjustmentCopy =
+          `Your ${sportDisplayName} sessions burned ~${totalSportCalsBurned} calories. Adding ${addCals} calories this week keeps you close to maintenance and supports recovery.`;
+        sportCalorieNudge = adjustmentCopy;
+      }
+    }
+
+    if (isFatLoss && totalSportCalsBurned < 600) {
+      sportCalorieNudge = null;
+    }
+
+    const sportContext =
+      sportLogs.length === 0
+        ? 'No sport sessions logged this week.'
+        : `Sport sessions this week: ${sportLogs.length} session(s) of ${sportDisplayName}.
+Total estimated burn: ${totalSportCalsBurned} calories.
+Intensity breakdown: ${intensitySummary}.
+${adjustmentCopy}`.trim();
 
     // Build exercise id → name map from all weeks in plan_json
     const exerciseMap: Record<string, string> = {};
@@ -381,6 +546,49 @@ RPE deltas (only when rpeDataRecorded is true):
 - NEVER use "tough-week" just because RPE was low. Low RPE = easy = good compliance.
   "tough-week" is reserved for: missed sessions, missed rep targets with HIGH RPE, or injury.
 
+TOUGH WEEK COPY RULES (when metrics.derivedRating === 'tough-week' — align performanceSummary, headline, highlights, and nextWeekChanges with this; performanceRating must be "tough-week" unless deload override contradicts):
+
+Jordan's tone for a tough week is: direct, non-judgmental, forward-focused. Like a coach who has seen bad weeks before and knows they happen.
+
+STRUCTURE for the opening paragraph (performanceSummary):
+  Sentence 1: Acknowledge the week plainly. Name what happened. Do NOT soften or spin it.
+  Sentence 2: One sentence of context — life happens, weeks get derailed, this is normal. One sentence only.
+  Sentence 3: The forward action. What happens next week. Specific, not vague.
+  Sentence 4: Optional — one reinforcing line if needed.
+
+DISTINGUISH between two tough-week causes (use metrics: completionRate, avgRpeVsTarget, exercisesUnderPerformed.length, rpeDataRecorded):
+
+CAUSE A — Low completion (< 60% sessions):
+  User missed most of their sessions. The physical state is fine — they just didn't show up.
+  Jordan's focus: Re-commitment, not sympathy.
+  Tone: Honest and matter-of-fact. Not harsh. Not coddling.
+  Example opening: "You got one session in this week — the plan called for three. Life gets in the way sometimes; that's not the issue. What matters is what you do when you come back, and you're back now. I've kept your Week ${weekNumber + 1} targets where they were — walk in and execute."
+
+CAUSE B — High RPE overexertion (avgRpeVsTarget > +1.5 AND 3+ exercises underperformed; only when rpeDataRecorded is true):
+  User showed up but pushed too hard and underperformed.
+  Jordan's focus: Recovery and execution quality next week.
+  Tone: Coaches the pattern, not the person. Empathetic but clear.
+  Example opening: "You pushed hard this week — harder than the targets called for — and the RPE data shows it caught up with you by the end. That's useful information. Week ${weekNumber + 1} I've pulled the intensity targets back slightly; hit clean reps at the prescribed RPE rather than chasing the top end."
+
+NEVER DO these on a tough week:
+  - Never open with "It happens to everyone" as the FIRST sentence (it can appear later)
+  - Never use: Keep it up / Bounce back / You've got this / Don't worry / Every champion / Trust the process
+  - Never lecture about consistency for more than one sentence
+  - Never end with a generic motivational sign-off
+  - Never pretend the week went fine
+  - Never use exclamation marks on a tough week
+
+HEADLINES for tough-week (headline field when derivedRating === 'tough-week'):
+  Low completion: "Missed sessions — back to it" or "One session — reset and go" or "Light week — ${weekNumber + 1} is what counts"
+  High RPE: "Pushed too hard — dialling it back" or "Overreached — recovery week ahead" or "RPE ran hot — adjusting Week ${weekNumber + 1}"
+  Headlines should be factual, not dramatic. Never "Tough week 💪".
+
+WINS section on a tough week (highlights array):
+  If there are genuine wins (a PR, a well-executed set, good nutrition adherence) — include them. Do not manufacture wins from nothing. If there are no wins, use an empty highlights array or a single honest line such as "Nothing to highlight this week — fresh start next session."
+
+WHAT'S CHANGING section on a tough week (nextWeekChanges):
+  Be specific about what Jordan has actually adjusted (weights held, intensity pulled back, volume maintained). If nothing changed because the missed sessions left no adaptation data — say that plainly: "With limited data from this week, I've held your Week ${weekNumber + 1} targets where they were."
+
 - rpeDataRecorded: if false, the user did NOT log RPE this week.
   Do NOT say "RPE was on target" or reference RPE performance.
   Instead acknowledge that RPE data was not captured and note that
@@ -398,6 +606,12 @@ RPE deltas (only when rpeDataRecorded is true):
   and RPE was on target. If this list has 3+ exercises, mention in
   nextWeekChanges that exercise variations may be introduced to
   provide fresh stimulus.
+
+Sport / recovery context:
+${sportContext}
+
+SPORT CONTEXT RULE FOR SUMMARY:
+If sport sessions were logged this week (see sportContext above — i.e. not the single line "No sport sessions logged this week"), include ONE sentence in the weekly summary body acknowledging the sport volume and the calorie recommendation. Keep it brief and actionable. Do not mention MET values or formulas. Write in Jordan's voice. If no sport sessions were logged, omit this entirely.
 
 Return ONLY this exact JSON structure with no other text:
 {
@@ -452,6 +666,7 @@ Return ONLY this exact JSON structure with no other text:
           week_number: weekNumber,
           summary_json: summary,
           generated_at: new Date().toISOString(),
+          sport_calorie_nudge: sportCalorieNudge,
         },
         { onConflict: 'user_id,plan_id,week_number' },
       );
@@ -474,4 +689,5 @@ Return ONLY this exact JSON structure with no other text:
 });
 
 // DEPLOY:
-// supabase functions deploy weekly-coach-summary
+// supabase db push   # applies sport_calorie_nudge migration
+// supabase functions deploy weekly-coach-summary --no-verify-jwt

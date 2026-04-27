@@ -169,7 +169,7 @@ export default function WeeklyCoachSummaryScreen() {
         .from('plans')
         .select('current_week')
         .eq('id', planId)
-        .single();
+        .maybeSingle();
 
       const currentWeek: number = planRow?.current_week ?? (weekNumber + 1);
       setCurrentWeekNum(currentWeek);
@@ -272,7 +272,7 @@ export default function WeeklyCoachSummaryScreen() {
             <Text style={styles.inProgressTitle}>Week {weekNumber} is in progress</Text>
             <Text style={styles.inProgressBody}>
               {
-                "Your weekly summary from Jordan will be ready once you've completed this week's sessions."
+                "Nothing to review yet — go earn it. Complete your sessions and I'll break down exactly how you did."
               }
             </Text>
             <Pressable

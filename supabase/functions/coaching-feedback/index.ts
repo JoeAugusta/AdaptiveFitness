@@ -39,6 +39,11 @@ serve(async (req) => {
       isUnilateral,
     } = body;
 
+    const planContext =
+      body.planContext && typeof body.planContext === 'object'
+        ? (body.planContext as Record<string, unknown>)
+        : null;
+
     const completedWeeks =
       body.completedWeeks ??
       body.planJson?.currentWeek ??
@@ -110,9 +115,14 @@ Rules:
     const loggedRpeNum = Number(loggedRpe);
     const targetRpeNum = Number(targetRpe);
 
+    const planContextLine =
+      isSessionSummary && planContext
+        ? `\nAthlete context: goal ${String(planContext.goal ?? '—')}, week ${String(planContext.week ?? '—')}, phase ${String(planContext.phase ?? '—')}, target session RPE (avg) ${String(planContext.targetRpe ?? targetRpeNum)}.`
+        : '';
+
     const userContent = isSessionSummary
       ? `Session complete: ${loggedReps} sets across ${targetReps} exercises.
-${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.
+${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.${planContextLine}
 Give a 2-sentence session debrief.`
       : `Exercise: ${exerciseName}
 Target: ${targetReps} reps at ${targetWeight} lbs, RPE ${targetRpe}

@@ -13,9 +13,11 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
+import { hapticPR, hapticSuccess } from '../utils/haptics';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -80,6 +82,58 @@ function isGenerateNextWeekOk(data: unknown, error: unknown): boolean {
   return ['success', 'already_exists', 'plan_complete', 'already_advanced'].includes(
     d.status ?? '',
   );
+}
+
+type PlanLogRow = {
+  week_number: number;
+  day_number: number;
+  skipped: boolean | null;
+};
+
+/** True when this session completes the last scheduled workout in the final plan week (log already saved). */
+function checkIsFinalSession(
+  planJson: unknown,
+  totalWeeks: number,
+  weekNumber: number,
+  allLogs: PlanLogRow[],
+): boolean {
+  if (weekNumber !== totalWeeks) return false;
+
+  const weeks =
+    planJson &&
+    typeof planJson === 'object' &&
+    planJson !== null &&
+    'weeks' in planJson &&
+    Array.isArray((planJson as { weeks: unknown }).weeks)
+      ? (planJson as { weeks: unknown[] }).weeks
+      : [];
+
+  const finalWeekObj = weeks.find(
+    (w) => rawWeekNumber(w as { weekNumber?: unknown; week_number?: unknown }) === totalWeeks,
+  );
+  if (!finalWeekObj || typeof finalWeekObj !== 'object' || finalWeekObj === null) {
+    return false;
+  }
+
+  const days =
+    'days' in finalWeekObj &&
+    Array.isArray((finalWeekObj as { days?: unknown }).days)
+      ? (finalWeekObj as { days: unknown[] }).days
+      : [];
+  const workoutDays = days.filter(
+    (d) =>
+      typeof d === 'object' &&
+      d !== null &&
+      (d as { type?: string }).type === 'workout',
+  );
+  const scheduledCount = workoutDays.length;
+  if (scheduledCount === 0) return false;
+
+  const loggedThisWeek = allLogs.filter(
+    (l) => l.week_number === totalWeeks && !l.skipped,
+  ).length;
+
+  return loggedThisWeek >= scheduledCount;
 }
 
 export default function WorkoutCompleteScreen() {
@@ -155,6 +209,25 @@ export default function WorkoutCompleteScreen() {
   const [isWeekComplete, setIsWeekComplete] = useState(false);
   const [weekCompletionChecked, setWeekCompletionChecked] = useState(false);
   const autoGenStartedRef = useRef(false);
+  const workoutCompleteSuccessHapticRef = useRef(false);
+
+  useEffect(() => {
+    if (workoutCompleteSuccessHapticRef.current) return;
+    workoutCompleteSuccessHapticRef.current = true;
+    void hapticSuccess();
+  }, []);
+
+  useEffect(() => {
+    if (prsHit <= 0) return;
+    let cancelled = false;
+    const prTimer = setTimeout(() => {
+      if (!cancelled) void hapticPR();
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(prTimer);
+    };
+  }, [prsHit]);
 
   useEffect(() => {
     if (nextWeekReady) {
@@ -179,6 +252,42 @@ export default function WorkoutCompleteScreen() {
           return;
         }
 
+        const { data: planRow } = await supabase
+          .from('plans')
+          .select('plan_json, total_weeks')
+          .eq('id', planId)
+          .maybeSingle();
+
+        const totalWeeks =
+          typeof planRow?.total_weeks === 'number' && planRow.total_weeks > 0
+            ? planRow.total_weeks
+            : typeof (planRow?.plan_json as { totalWeeks?: number } | undefined)?.totalWeeks ===
+                'number'
+              ? (planRow?.plan_json as { totalWeeks: number }).totalWeeks
+              : 1;
+
+        const { data: allLogs } = await supabase
+          .from('workout_logs')
+          .select('week_number, day_number, skipped')
+          .eq('user_id', userId)
+          .eq('plan_id', planId);
+
+        const logRows = (allLogs ?? []) as PlanLogRow[];
+
+        const devForce =
+          __DEV__ && (await AsyncStorage.getItem('dev_force_plan_complete')) === 'true';
+        const planJson = planRow?.plan_json;
+        const isFinal = devForce
+          ? true
+          : checkIsFinalSession(planJson, totalWeeks, weekNumber, logRows);
+
+        if (isFinal) {
+          if (!cancelled) {
+            navigation.replace('PlanComplete', { planId });
+          }
+          return;
+        }
+
         const { data: logs } = await supabase
           .from('workout_logs')
           .select('day_number')
@@ -189,12 +298,6 @@ export default function WorkoutCompleteScreen() {
         const distinctLoggedDays = new Set(
           (logs ?? []).map((r: { day_number: number }) => r.day_number),
         ).size;
-
-        const { data: planRow } = await supabase
-          .from('plans')
-          .select('plan_json')
-          .eq('id', planId)
-          .single();
 
         const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
 
@@ -209,7 +312,7 @@ export default function WorkoutCompleteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [planId, weekNumber]);
+  }, [planId, weekNumber, navigation]);
 
   const handleGenerateNextWeek = useCallback(async () => {
     setIsGenerating(true);
@@ -397,7 +500,7 @@ export default function WorkoutCompleteScreen() {
           .from('plans')
           .select('plan_json')
           .eq('id', planId)
-          .single();
+          .maybeSingle();
 
         type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
         type PlanDay = { dayNumber?: number; exercises?: Array<{ targetRpe?: number }> };

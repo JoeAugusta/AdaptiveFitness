@@ -41,13 +41,13 @@ const PACE_CONFIG = {
       label: 'Aggressive',
       adjustment: -600,
       sub: '−600 cal/day',
-      note: 'Faster results, harder to maintain',
+      note: 'Fastest results, harder to sustain',
     },
   ],
   hypertrophy: [
     {
       id: 'conservative',
-      label: 'Lean Bulk',
+      label: 'Lean Bulk — Clean gains, minimal fat',
       adjustment: 200,
       sub: '+200 cal/day',
       note: 'Minimal fat gain, slower muscle',
@@ -65,7 +65,7 @@ const PACE_CONFIG = {
       label: 'Aggressive',
       adjustment: 500,
       sub: '+500 cal/day',
-      note: 'Fastest muscle gain, more fat gain',
+      note: 'Fastest gains, some fat gain',
     },
   ],
 } as const;
@@ -74,8 +74,11 @@ const MIN_CALORIES = 1200;
 const MAX_CALORIES = 5500;
 const CALORIE_STEP = 50;
 
+const MACRO_WEEKLY_ADJUST_NOTE =
+  'These targets will adjust weekly based on your weight trend and performance data.';
+
 const MACRO_INFO_BODY =
-  'Protein is set at 1g per lb of bodyweight to maximise muscle retention. Fats cover 25% of calories for hormone health. Carbohydrates fill the remainder to fuel your training sessions.\n\nThese targets will adjust weekly based on your weight trend and performance data.';
+  'Protein is set at 1g per lb of bodyweight to maximise muscle retention. Fats cover 25% of calories for hormone health. Carbohydrates fill the remainder to fuel your training sessions.';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'MacroSetup'>;
 type RouteType = RouteProp<RootStackParamList, 'MacroSetup'>;
@@ -343,6 +346,8 @@ export default function MacroSetupScreen() {
           </Text>
         </View>
 
+        <Text style={styles.macroAdjustNote}>{MACRO_WEEKLY_ADJUST_NOTE}</Text>
+
         {(params.goal === 'fat_loss' || params.goal === 'hypertrophy') && (
           <>
             <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>
@@ -560,6 +565,14 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginTop: 12,
     textAlign: 'center',
+  },
+  macroAdjustNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
 
   sectionLabel: {

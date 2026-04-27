@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,6 +46,14 @@ import {
   rescheduleSession,
   type MissedSessionResult,
 } from '../utils/missedSession';
+import { useMetric, convertSessionFocus } from '../utils/units';
+import CardioDayCard from '../components/CardioDayCard';
+import CardioDoneCard from '../components/CardioDoneCard';
+import SportSessionModal, {
+  type ConcurrentSportPlan,
+  type SportLogRow,
+} from '../components/SportSessionModal';
+import { useEntitlement } from '../hooks/useEntitlement';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
 function sessionSignalFromLastLog(
@@ -94,7 +103,7 @@ type Exercise = {
 
 type WorkoutDay = {
   dayNumber: number;
-  type: 'workout' | 'rest';
+  type: 'workout' | 'rest' | 'cardio';
   title: string;
   muscleGroups: string[];
   exercises: Exercise[];
@@ -102,6 +111,8 @@ type WorkoutDay = {
   sessionFocus?: string;
   /** When present, matches onboarding day chips (Mon–Sun) */
   dayLabel?: string;
+  cardioType?: 'light' | 'medium';
+  suggestedDurationMinutes?: number;
 };
 
 type PlanData = {
@@ -120,6 +131,15 @@ type PlanData = {
   postWeekHeroAllowed: boolean;
   planSplit?: string;
   nextWeekPhase?: string;
+  /** From plan_json.goal — used for cardio hero (fat_loss / recomp only) */
+  planGoal?: string | null;
+  /** Cardio day matching today's calendar label, if any */
+  todayCardioDay?: WorkoutDay | null;
+  /** cardio_logs row exists for todayCardioDay */
+  cardioLoggedToday?: boolean;
+  /** Calendar training schedule — maps plan days to weekday labels */
+  scheduledDays: string[];
+  hasDayLabels: boolean;
 };
 
 type SetItem = {
@@ -136,6 +156,32 @@ function getPlanWeekNumber(w: unknown): number | undefined {
   const o = w as { weekNumber?: unknown; week_number?: unknown; number?: unknown };
   const n = o.weekNumber ?? o.week_number ?? o.number;
   return typeof n === 'number' && !Number.isNaN(n) ? n : undefined;
+}
+
+/** plan_json.concurrentSport: { type: string[], daysPerWeek } — card only if type[].length > 0 */
+function concurrentSportFromPlanJson(raw: unknown): ConcurrentSportPlan | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as { type?: unknown; daysPerWeek?: unknown };
+  if (!Array.isArray(o.type) || o.type.length === 0) return null;
+  const types = o.type.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+  if (types.length === 0) return null;
+  const daysPerWeek =
+    typeof o.daysPerWeek === 'number' && !Number.isNaN(o.daysPerWeek) ? o.daysPerWeek : 0;
+  return { type: types, daysPerWeek };
+}
+
+function formatSportTypeDisplayName(sportType: string): string {
+  return sportType
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function formatSportIntensityLabel(intensity: string): string {
+  if (intensity === 'low') return 'Low';
+  if (intensity === 'moderate') return 'Moderate';
+  if (intensity === 'high') return 'High';
+  return intensity;
 }
 
 function getPhaseDisplay(
@@ -323,48 +369,123 @@ function resolveTodayWorkout(args: {
   return null;
 }
 
-function getRestDayMessage(
-  nextTraining: { displayName: string; daysAway: number } | null,
-): string {
-  if (!nextTraining) {
-    return "Today's a rest day — use it well. A walk, some mobility work, or just good sleep goes a long way.";
-  }
-  if (nextTraining.daysAway === 1) {
-    return "Rest up today — you're back at it tomorrow. A 20-minute walk or some mobility work will help you recover faster.";
-  }
-  return `Rest day today. Your next session is ${nextTraining.displayName} — a walk or some mobility work now will have you ready to go.`;
+const ALL_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/**
+ * Map plan dayNumber → calendar label: week days are ordered in plan_json;
+ * first plan day aligns with first scheduled training day, then consecutive calendar days.
+ */
+/** Plan day whose calendar label matches today (any type: workout, rest, cardio). */
+function findTodayPlanDayByCalendar(
+  weekDays: WorkoutDay[],
+  todayLabel: string,
+  scheduledDays: string[],
+): WorkoutDay | null {
+  if (!scheduledDays?.length) return null;
+
+  const firstScheduledIdx = ALL_DAY_LABELS.indexOf(
+    scheduledDays[0] as (typeof ALL_DAY_LABELS)[number],
+  );
+  if (firstScheduledIdx < 0) return null;
+
+  const ordered = [...weekDays].sort((a, b) => a.dayNumber - b.dayNumber);
+  const dayNumberToLabel: Record<number, string> = {};
+  ordered.forEach((day, idx) => {
+    const calendarIdx = (firstScheduledIdx + idx) % 7;
+    dayNumberToLabel[day.dayNumber] = ALL_DAY_LABELS[calendarIdx];
+  });
+
+  return ordered.find((d) => dayNumberToLabel[d.dayNumber] === todayLabel) ?? null;
 }
 
-function RestDayCard({
-  nextTraining,
+function findTodayCardioDayByWeekMap(
+  weekDays: WorkoutDay[],
+  todayLabel: string,
+  scheduledDays: string[],
+): WorkoutDay | null {
+  const d = findTodayPlanDayByCalendar(weekDays, todayLabel, scheduledDays);
+  return d?.type === 'cardio' ? d : null;
+}
+
+function getJordanRecoverySuggestion(goal: string | null | undefined): string {
+  const g = String(goal ?? 'general').toLowerCase();
+  const map: Record<string, string> = {
+    fat_loss:
+      'Active recovery today — a 20–30 minute walk keeps metabolism up without cutting into tomorrow\'s session. Avoid anything that raises heart rate above conversational pace.',
+    hypertrophy:
+      'Muscles grow on rest days, not training days — today is doing real work. Stay out of the gym. Light walking or stretching is fine; anything that creates soreness is not.',
+    strength:
+      'CNS recovery is the priority today. Keep activity light — a walk is fine, but skip anything that taxes your nervous system. You need to be fresh for your next heavy session.',
+    power_hypertrophy:
+      'Today is for CNS recovery. Your sessions are demanding — respect the rest. Light mobility work is fine; anything that creates fatigue is working against tomorrow\'s output.',
+    recomp:
+      'Active recovery today — a 20–30 minute walk supports fat loss without adding recovery debt. Avoid intense cardio; you need to be fresh for your next lifting session.',
+    general:
+      'Take it easy today. A walk, some light stretching, or just doing nothing are all good choices. Recovery is part of the plan, not a break from it.',
+  };
+  return map[g] ?? 'Rest up today — your next session will be better for it.';
+}
+
+function RecoveryDayCard({
+  planGoal,
+  dayNumber,
 }: {
-  nextTraining: {
-    dayLabel: string;
-    daysAway: number;
-    displayName: string;
-  } | null;
+  planGoal: string | null | undefined;
+  dayNumber: number | null;
 }) {
+  const suggestion = getJordanRecoverySuggestion(planGoal);
   return (
-    <View style={styles.restDayCard}>
-      <View style={styles.restDayHeader}>
-        <Text style={styles.restDayLabel}>REST DAY</Text>
-        {nextTraining ? (
-          <Text style={styles.restDayNextUp}>
-            Next up: {nextTraining.displayName}
-          </Text>
+    <View style={styles.recoveryDayCard}>
+      <View style={styles.recoveryDayHeaderRow}>
+        <Text style={styles.recoveryDayPill}>REST DAY</Text>
+        {dayNumber != null ? (
+          <Text style={styles.recoveryDayContext}>{`Day ${dayNumber}`}</Text>
         ) : null}
       </View>
-
-      <View style={styles.restDayJordan}>
-        <View style={styles.jordanAvatar}>
-          <Text style={styles.jordanAvatarText}>J</Text>
+      <Text style={styles.recoveryDayTitle}>Recovery Day</Text>
+      <View style={styles.jordanSuggestionCard}>
+        <Text style={styles.jordanSuggestionBrand}>JORDAN</Text>
+        <Text style={styles.jordanSuggestionBody}>{suggestion}</Text>
+      </View>
+      <View style={styles.recoveryPillarsRow}>
+        <View style={styles.recoveryPillarCard}>
+          <Text style={styles.recoveryPillarEmoji}>🌙</Text>
+          <Text style={styles.recoveryPillarLabel}>SLEEP</Text>
+          <Text style={styles.recoveryPillarValueBold}>8–9 hrs</Text>
         </View>
-        <Text style={styles.restDayMessage}>
-          {getRestDayMessage(nextTraining)}
-        </Text>
+        <View style={styles.recoveryPillarCard}>
+          <Text style={styles.recoveryPillarEmoji}>🥩</Text>
+          <Text style={styles.recoveryPillarLabel}>PROTEIN</Text>
+          <Text style={styles.recoveryPillarValueProtein}>Hit your target</Text>
+        </View>
+        <View style={styles.recoveryPillarCard}>
+          <Text style={styles.recoveryPillarEmoji}>💧</Text>
+          <Text style={styles.recoveryPillarLabel}>HYDRATION</Text>
+          <Text style={styles.recoveryPillarValueBold}>2–3 L water</Text>
+        </View>
       </View>
     </View>
   );
+}
+
+const SLEEP_PILL_OPTIONS: { value: number; label: string }[] = [
+  { value: 5, label: '5h' },
+  { value: 6, label: '6h' },
+  { value: 7, label: '7h' },
+  { value: 8, label: '8h' },
+  { value: 9, label: '9h' },
+  { value: 10, label: '10h+' },
+];
+
+/** Map DB `sleep_hours` to a selectable pill value, or null if no match. */
+function mapDbSleepHoursToPill(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (Number.isNaN(n)) return null;
+  for (const { value: v } of SLEEP_PILL_OPTIONS) {
+    if (Math.abs(n - v) < 0.01) return v;
+  }
+  return null;
 }
 
 function calculateSessionDuration(exercises: Exercise[]): number {
@@ -382,8 +503,10 @@ function calculateSessionDuration(exercises: Exercise[]): number {
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
+  const { isPro, loading: entitlementLoading } = useEntitlement();
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
+  const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
@@ -414,11 +537,14 @@ export default function HomeScreen() {
   >([]);
 
   const [todayWeight, setTodayWeight] = useState<number | null>(null);
+  const [todaySleepHours, setTodaySleepHours] = useState<number | null>(null);
   const [weightLoggedToday, setWeightLoggedToday] = useState(false);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState('');
+  const [selectedSleepHours, setSelectedSleepHours] = useState<number | null>(null);
   const [weightSaving, setWeightSaving] = useState(false);
   const uidRef = useRef<string | null>(null);
+  const { displayToLbs, lbsToDisplay, formatBodyWeight, unitLabel, isMetric } = useMetric();
 
   /** BUG-8: false only when we have real scheduled day labels and today is off-cycle */
   const [isTrainingDay, setIsTrainingDay] = useState(true);
@@ -438,6 +564,13 @@ export default function HomeScreen() {
     currentWeek: number;
     planJson: Record<string, unknown>;
   } | null>(null);
+  const [cardioCompleted, setCardioCompleted] = useState(false);
+  const [planConcurrentSport, setPlanConcurrentSport] = useState<ConcurrentSportPlan | null>(
+    null,
+  );
+  const [todaySportLog, setTodaySportLog] = useState<SportLogRow | null>(null);
+  const [showSportSessionModal, setShowSportSessionModal] = useState(false);
+  const [sportDashboardUserId, setSportDashboardUserId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -470,58 +603,91 @@ export default function HomeScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) {
+        setPlanStatus(null);
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         setDevBypassDayGate(false);
         setPlanSnapshotForMissed(null);
+        setPlanConcurrentSport(null);
+        setTodaySportLog(null);
+        setSportDashboardUserId(null);
         return;
       }
       uidRef.current = userId;
+      setSportDashboardUserId(userId);
       setUserEmail(session.user.email ?? '');
 
       // Load today's weight log
       const todayDate = new Date().toISOString().split('T')[0];
       const { data: todayLog } = await supabase
         .from('weight_logs')
-        .select('weight_lbs')
+        .select('weight_lbs, sleep_hours')
         .eq('user_id', userId)
         .eq('log_date', todayDate)
         .maybeSingle();
 
       if (todayLog) {
         setTodayWeight(todayLog.weight_lbs as number);
+        setTodaySleepHours(mapDbSleepHoursToPill(todayLog.sleep_hours));
         setWeightLoggedToday(true);
       } else {
+        setTodaySleepHours(null);
         setWeightLoggedToday(false);
       }
 
-      const { data: activePlan, error: planError } = await supabase
+      const { data: planRow, error: planError } = await supabase
         .from('plans')
         .select('id, plan_json, current_week, total_weeks, status, title')
         .eq('user_id', userId)
-        .eq('status', 'active')
+        .in('status', ['active', 'completed'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (planError || !activePlan) {
+      if (planError || !planRow) {
+        setPlanStatus(null);
+        setPlanData(null);
+        setCardioCompleted(false);
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
         setPlanSnapshotForMissed(null);
+        setPlanConcurrentSport(null);
+        setTodaySportLog(null);
         return;
       }
 
-      const plan = activePlan;
+      setPlanStatus(planRow.status ?? null);
+
+      if (planRow.status === 'completed') {
+        setPlanData(null);
+        setCardioCompleted(false);
+        setPlanSnapshotForMissed(null);
+        setMissedSessionResult(null);
+        setCoachSummary(null);
+        setJordanWelcome(null);
+        setUnviewedSummaryWeekNumber(null);
+        setCurrentPhase(undefined);
+        setWorkoutLogs([]);
+        setIsTrainingDay(true);
+        setNextTrainingDay(null);
+        setDevBypassDayGate(false);
+        setPlanConcurrentSport(null);
+        setTodaySportLog(null);
+        loadStats(userId, planRow.id, planRow.current_week ?? 1);
+        return;
+      }
+
+      const plan = planRow;
       const planJson = plan.plan_json;
       const jordanWelcome: string | null =
         (planJson as { jordanWelcome?: string }).jordanWelcome ?? null;
 
       const currentWeekData =
         planJson.weeks?.find(
-          (w) => getPlanWeekNumber(w) === plan.current_week,
+          (w: unknown) => getPlanWeekNumber(w) === plan.current_week,
         ) ?? planJson.weeks?.[0];
 
       const currentWeekPhase: string | undefined = currentWeekData?.phase;
@@ -533,6 +699,8 @@ export default function HomeScreen() {
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
         setPlanSnapshotForMissed(null);
+        setPlanConcurrentSport(null);
+        setTodaySportLog(null);
         return;
       }
 
@@ -599,7 +767,7 @@ export default function HomeScreen() {
 
       const nextWeekData =
         planJson.weeks?.find(
-          (w) => getPlanWeekNumber(w) === plan.current_week + 1,
+          (w: unknown) => getPlanWeekNumber(w) === plan.current_week + 1,
         ) ?? null;
 
       const nextWeekWorkoutDays: WorkoutDay[] =
@@ -621,6 +789,44 @@ export default function HomeScreen() {
       });
 
       const currentWeek = plan.current_week ?? 1;
+      const planGoal = (planJson as { goal?: string }).goal ?? null;
+      let todayCardioDay: WorkoutDay | null = null;
+      let cardioLoggedToday = false;
+      if (planGoal === 'fat_loss' || planGoal === 'recomp') {
+        todayCardioDay = findTodayCardioDayByWeekMap(
+          weekDays,
+          todayLabel,
+          scheduledDays,
+        );
+        if (todayCardioDay) {
+          const { data: cardioLogCheck } = await supabase
+            .from('cardio_logs')
+            .select('id')
+            .eq('plan_id', plan.id)
+            .eq('week_number', currentWeek)
+            .eq('day_number', todayCardioDay.dayNumber)
+            .maybeSingle();
+          cardioLoggedToday = !!cardioLogCheck;
+        }
+      }
+      setCardioCompleted(cardioLoggedToday);
+
+      const rawConcurrentSport = (planJson as { concurrentSport?: unknown }).concurrentSport;
+      const normalizedConcurrentSport = concurrentSportFromPlanJson(rawConcurrentSport);
+      setPlanConcurrentSport(normalizedConcurrentSport);
+      if (normalizedConcurrentSport) {
+        const { data: sportLogRow } = await supabase
+          .from('sport_logs')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('plan_id', plan.id)
+          .eq('logged_at', todayDate)
+          .maybeSingle();
+        setTodaySportLog((sportLogRow as SportLogRow | null) ?? null);
+      } else {
+        setTodaySportLog(null);
+      }
+
       const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
       const distinctDays = completedSessions;
       const isWeekComplete = distinctDays >= daysPerWeek && daysPerWeek > 0;
@@ -673,6 +879,11 @@ export default function HomeScreen() {
         postWeekHeroAllowed,
         planSplit: (planJson as { split?: string }).split,
         nextWeekPhase: nextWeekData?.phase,
+        planGoal,
+        todayCardioDay,
+        cardioLoggedToday,
+        scheduledDays,
+        hasDayLabels,
       });
       setPlanSnapshotForMissed({
         planId: plan.id,
@@ -854,8 +1065,9 @@ export default function HomeScreen() {
   };
 
   const handleSaveWeight = async () => {
-    const val = parseFloat(weightInput);
-    if (isNaN(val) || val < 50 || val > 500) {
+    const displayVal = parseFloat(weightInput);
+    const valLbs = displayToLbs(displayVal);
+    if (isNaN(displayVal) || isNaN(valLbs) || valLbs < 50 || valLbs > 500) {
       Alert.alert('Invalid weight', 'Please enter a weight between 50 and 500 lbs.');
       return;
     }
@@ -868,13 +1080,19 @@ export default function HomeScreen() {
       const { error } = await supabase
         .from('weight_logs')
         .upsert(
-          { user_id: uid, log_date: todayDate, weight_lbs: val },
+          {
+            user_id: uid,
+            log_date: todayDate,
+            weight_lbs: valLbs,
+            sleep_hours: selectedSleepHours != null ? selectedSleepHours : null,
+          },
           { onConflict: 'user_id,log_date' },
         );
       if (error) {
         Alert.alert('Error', 'Could not save weight. Please try again.');
       } else {
-        setTodayWeight(val);
+        setTodayWeight(valLbs);
+        setTodaySleepHours(selectedSleepHours);
         setWeightLoggedToday(true);
         setShowWeightModal(false);
       }
@@ -888,6 +1106,17 @@ export default function HomeScreen() {
   const handleStartWorkout = useCallback(() => {
     const todayWorkout = planData?.todayWorkout ?? null;
     if (!todayWorkout) return;
+    const sessionWeek = todayWorkout.isNextWeek
+      ? (planData?.currentWeek ?? 1) + 1
+      : planData?.currentWeek ?? 1;
+    if (Platform.OS !== 'web' && sessionWeek >= 2) {
+      if (entitlementLoading) return;
+      if (!isPro) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        navigation.navigate('ProfileTab' as any, { screen: 'SubscriptionManagement' });
+        return;
+      }
+    }
     const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
     const weeklyLogsLocal = workoutLogs ?? [];
     const sessionsThisWeekLocal = weeklyLogsLocal.length;
@@ -910,7 +1139,7 @@ export default function HomeScreen() {
       workoutTitle: todayWorkout.title,
       preSessionMessage: preSessionCopyLocal ?? null,
     });
-  }, [navigation, planData, workoutLogs]);
+  }, [navigation, planData, workoutLogs, isPro, entitlementLoading]);
 
   if (isLoading) {
     return (
@@ -930,11 +1159,21 @@ export default function HomeScreen() {
     'Good evening';
 
   const today = planData?.todayWorkout ?? null;
+  const todayLabelHome = getTodayDayLabel();
+  const recoveryDayNumber =
+    planData?.hasDayLabels && (planData.scheduledDays?.length ?? 0) > 0
+      ? findTodayPlanDayByCalendar(
+          planData.weekDays,
+          todayLabelHome,
+          planData.scheduledDays,
+        )?.dayNumber ?? null
+      : null;
   const todaySessionFocus = getSessionIntent(
     currentPhase,
     today?.sessionFocus,
     planData?.planSplit,
   );
+  const displaySessionFocus = convertSessionFocus(todaySessionFocus, isMetric);
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;
   const allSessionsComplete =
@@ -946,6 +1185,12 @@ export default function HomeScreen() {
   const estMins = today?.exercises && today.exercises.length > 0
     ? calculateSessionDuration(today.exercises)
     : 45;
+  const sessionWeekForGate = today
+    ? today.isNextWeek
+      ? (planData?.currentWeek ?? 1) + 1
+      : (planData?.currentWeek ?? 1)
+    : 1;
+  const needsWeekPaywall = Platform.OS !== 'web' && sessionWeekForGate >= 2;
   const displayName = userEmail
     ? userEmail.split('@')[0].charAt(0).toUpperCase() +
       userEmail.split('@')[0].slice(1)
@@ -961,9 +1206,17 @@ export default function HomeScreen() {
   const streakDisplay = statsLoading ? '—' : String(currentStreak);
   const sessionsDisplay = statsLoading ? '—' : String(totalSessions);
   const weeklySessionCount = workoutLogs?.length ?? 0;
+  const dashboardCurrentWeek = planData?.currentWeek ?? 1;
   let volumeDisplay: string;
   if (statsLoading) {
     volumeDisplay = '—';
+  } else if (dashboardCurrentWeek > 1) {
+    const v = weeklyVolume ?? 0;
+    if (v >= 1000) {
+      volumeDisplay = `${Math.round((v / 1000) * 10) / 10}k`;
+    } else {
+      volumeDisplay = String(v);
+    }
   } else if (weeklySessionCount === 0) {
     volumeDisplay = '—';
   } else if (weeklyVolume >= 1000) {
@@ -973,24 +1226,28 @@ export default function HomeScreen() {
   }
 
   const sessionCount = totalSessions;
-  const dashboardCurrentWeek = planData?.currentWeek ?? 1;
   const isDay1ColdStart =
     planData != null && sessionCount === 0 && dashboardCurrentWeek === 1;
 
   const jordanCardState: JordanCardState =
-    sessionCount === 0 && dashboardCurrentWeek === 1
-      ? 'day1'
-      : coachSummary?.headline
-        ? 'summary_available'
-        : 'in_week';
+    planStatus === 'completed'
+      ? 'in_week'
+      : sessionCount === 0 && dashboardCurrentWeek === 1
+        ? 'day1'
+        : coachSummary?.headline
+          ? 'summary_available'
+          : 'in_week';
 
-  const displayedJordanText: string = {
-    day1:
-      "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.",
-    in_week:
-      "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.",
-    summary_available: coachSummary?.headline ?? jordanWelcome ?? '',
-  }[jordanCardState];
+  const displayedJordanText: string =
+    planStatus === 'completed'
+      ? 'Great work finishing the program. Start a new plan when you\'re ready.'
+      : {
+          day1:
+            "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.",
+          in_week:
+            "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.",
+          summary_available: coachSummary?.headline ?? jordanWelcome ?? '',
+        }[jordanCardState];
 
   const weeklyLogs = workoutLogs ?? [];
 
@@ -1026,6 +1283,24 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {planStatus === 'completed' ? (
+          <View style={styles.planCompleteCard}>
+            <Text style={styles.planCompleteEmoji}>🏁</Text>
+            <Text style={styles.planCompleteTitle}>Plan Complete</Text>
+            <Text style={styles.planCompleteSubtitle}>
+              You finished the full program. Ready to start your next one?
+            </Text>
+            <TouchableOpacity
+              style={styles.planCompleteCTA}
+              onPress={() =>
+                navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
+              }
+            >
+              <Text style={styles.planCompleteCTAText}>Start New Plan →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
         {missedSessionResult?.isMissed && !missedCardDismissed && planSnapshotForMissed ? (
           <View style={styles.missedCard}>
             <View style={styles.missedCardHeader}>
@@ -1135,9 +1410,39 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {planData?.todayCardioDay &&
+        planData.todayCardioDay.type === 'cardio' &&
+        (planData.planGoal === 'fat_loss' || planData.planGoal === 'recomp') &&
+        !cardioCompleted &&
+        !devBypassDayGate ? (
+          <CardioDayCard
+            cardioType={planData.todayCardioDay.cardioType ?? 'light'}
+            suggestedDurationMinutes={
+              planData.todayCardioDay.suggestedDurationMinutes ?? 30
+            }
+            planId={planData.planId}
+            weekNumber={planData.currentWeek}
+            dayNumber={planData.todayCardioDay.dayNumber}
+            onComplete={() => {
+              setCardioCompleted(true);
+              loadDashboardData();
+            }}
+          />
+        ) : null}
+        {planData?.todayCardioDay &&
+        planData.todayCardioDay.type === 'cardio' &&
+        (planData.planGoal === 'fat_loss' || planData.planGoal === 'recomp') &&
+        cardioCompleted &&
+        !devBypassDayGate ? (
+          <CardioDoneCard
+            cardioType={planData.todayCardioDay.cardioType ?? 'light'}
+            durationMinutes={planData.todayCardioDay.suggestedDurationMinutes ?? 30}
+          />
+        ) : null}
+
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
-        {!isTrainingDay && !devBypassDayGate ? (
+        {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
           allSessionsComplete && postWeekHeroAllowed ? (
             <View style={styles.generateCTACard}>
               <View style={styles.generateCTATitleRow}>
@@ -1166,7 +1471,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <RestDayCard nextTraining={nextTrainingDay} />
+            <RecoveryDayCard planGoal={planData?.planGoal} dayNumber={recoveryDayNumber} />
           )
         ) : showGenerateNextWeekCTA ? (
           <View style={styles.generateCTACard}>
@@ -1242,9 +1547,9 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {todaySessionFocus ? (
+            {displaySessionFocus ? (
               <View style={styles.sessionFocusCard}>
-                <Text style={styles.sessionFocusText}>{todaySessionFocus}</Text>
+                <Text style={styles.sessionFocusText}>{displaySessionFocus}</Text>
               </View>
             ) : null}
 
@@ -1265,13 +1570,35 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.ctaButton}
-              activeOpacity={0.8}
-              onPress={handleStartWorkout}
-            >
-              <Text style={styles.ctaText}>Start Workout →</Text>
-            </TouchableOpacity>
+            {needsWeekPaywall && entitlementLoading ? (
+              <View style={[styles.ctaButton, styles.ctaButtonLoadingGate]}>
+                <ActivityIndicator color={Colors.accent} />
+              </View>
+            ) : needsWeekPaywall && !isPro ? (
+              <TouchableOpacity
+                style={styles.weekUnlockButton}
+                activeOpacity={0.8}
+                onPress={() =>
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  navigation.navigate('ProfileTab' as any, {
+                    screen: 'SubscriptionManagement',
+                  })
+                }
+              >
+                <Text style={styles.weekUnlockTitle}>
+                  🔒 Unlock Week {sessionWeekForGate} — Go Pro
+                </Text>
+                <Text style={styles.weekUnlockPrice}>$14.99/mo or $99.99/yr</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.ctaButton}
+                activeOpacity={0.8}
+                onPress={handleStartWorkout}
+              >
+                <Text style={styles.ctaText}>Start Workout →</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() =>
@@ -1286,70 +1613,58 @@ export default function HomeScreen() {
               <Text style={styles.viewPlanText}>View Full Plan →</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.restCard}>
-            <Text style={styles.restEmoji}>💤</Text>
-            <Text style={styles.restTitle}>Rest Day</Text>
-            <Text style={styles.restSubtitle}>
-              Recovery day — no training scheduled
-            </Text>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() =>
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                navigation.navigate('WorkoutTab' as any, {
-                  screen: 'PlanView',
-                  params: { planId: planData?.planId ?? 'mock', weekNumber: planData?.currentWeek ?? 1 },
-                })
-              }
-              style={styles.restPlanLink}
-            >
-              <Text style={styles.restPlanLinkText}>View Full Plan →</Text>
-            </TouchableOpacity>
-          </View>
+        ) : planData?.todayCardioDay ? null : (
+          <RecoveryDayCard planGoal={planData?.planGoal} dayNumber={recoveryDayNumber} />
+        )}
+          </>
         )}
 
         {/* ── 5. Week Progress ── */}
-        <View style={styles.weekCard}>
-          <View style={styles.weekTopRow}>
-            <Text style={styles.weekLabel}>
-              WEEK {planData?.currentWeek ?? 1} OF {planData?.totalWeeks ?? 8}
-            </Text>
-            <Text style={styles.weekSessions}>
-              {completedSessions} of {daysPerWeek} sessions
-            </Text>
-          </View>
+        {planStatus !== 'completed' && (
+          <View style={styles.weekProgressSection}>
+            <View style={styles.weekCard}>
+              <View style={styles.weekTopRow}>
+                <Text style={styles.weekLabel}>
+                  WEEK {planData?.currentWeek ?? 1} OF {planData?.totalWeeks ?? 8}
+                </Text>
+                <Text style={styles.weekSessions}>
+                  {completedSessions} of {daysPerWeek} sessions
+                </Text>
+              </View>
 
-          <View style={styles.dotsRow}>
-            {Array.from({ length: daysPerWeek }, (_, i) => i + 1).map((dot) => {
-              const isComplete = dot <= completedSessions;
-              const isCurrent = dot === completedSessions + 1;
-              return (
-                <View
-                  key={dot}
-                  style={[
-                    styles.dayDot,
-                    isComplete && styles.dayDotComplete,
-                    isCurrent && styles.dayDotCurrent,
-                    !isComplete && !isCurrent && styles.dayDotFuture,
-                  ]}
-                >
-                  {isComplete ? (
-                    <Text style={styles.dotCheckmark}>✓</Text>
-                  ) : null}
-                  {isCurrent ? <View style={styles.dayDotCurrentInner} /> : null}
-                </View>
-              );
-            })}
-          </View>
+              <View style={styles.dotsRow}>
+                {Array.from({ length: daysPerWeek }, (_, i) => i + 1).map((dot) => {
+                  const isComplete = dot <= completedSessions;
+                  const isCurrent = dot === completedSessions + 1;
+                  return (
+                    <View
+                      key={dot}
+                      style={[
+                        styles.dayDot,
+                        isComplete && styles.dayDotComplete,
+                        isCurrent && styles.dayDotCurrent,
+                        !isComplete && !isCurrent && styles.dayDotFuture,
+                      ]}
+                    >
+                      {isComplete ? (
+                        <Text style={styles.dotCheckmark}>✓</Text>
+                      ) : null}
+                      {isCurrent ? <View style={styles.dayDotCurrentInner} /> : null}
+                    </View>
+                  );
+                })}
+              </View>
 
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: progressFillWidth }]} />
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: progressFillWidth }]} />
+              </View>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ── 3b. Next Week Ready Banner ── */}
-        {planData?.nextWeekReady &&
+        {planStatus !== 'completed' &&
+          planData?.nextWeekReady &&
           planData.completedSessions >= planData.daysPerWeek &&
           postWeekHeroAllowed && (
           <View style={styles.nextWeekBanner}>
@@ -1388,11 +1703,16 @@ export default function HomeScreen() {
                   <Text style={styles.weightLogCheck}>✓</Text>
                   <Text style={styles.weightLogTitleLogged}>Weighed In</Text>
                 </View>
-                <Text style={styles.weightLogSub}>{todayWeight} lbs today</Text>
+                <Text style={styles.weightLogSub}>
+                  {todayWeight != null ? formatBodyWeight(todayWeight) : '—'} today
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => {
-                  setWeightInput(String(todayWeight ?? ''));
+                  setWeightInput(
+                    todayWeight != null ? String(lbsToDisplay(todayWeight)) : '',
+                  );
+                  setSelectedSleepHours(todaySleepHours);
                   setShowWeightModal(true);
                 }}
                 activeOpacity={0.7}
@@ -1412,6 +1732,7 @@ export default function HomeScreen() {
                 style={styles.weightLogBtn}
                 onPress={() => {
                   setWeightInput('');
+                  setSelectedSleepHours(null);
                   setShowWeightModal(true);
                 }}
                 activeOpacity={0.8}
@@ -1422,56 +1743,102 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {planConcurrentSport != null &&
+        planConcurrentSport.type.length > 0 &&
+        planData != null &&
+        planStatus !== 'completed' ? (
+          todaySportLog != null ? (
+            <View style={[styles.sportLogCard, styles.sportLogCardLogged]}>
+              <View style={styles.sportLogLeftCol}>
+                <View style={styles.sportLogTopRow}>
+                  <Text style={styles.sportLogCheck}>✓</Text>
+                  <Text style={styles.sportLogLoggedTitle}>Sport Logged</Text>
+                </View>
+                <Text style={styles.sportLogSubLogged}>
+                  {`${todaySportLog.duration_min} min · ${formatSportIntensityLabel(todaySportLog.intensity)}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSportSessionModal(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.sportLogEdit}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Pressable
+              style={styles.sportLogCard}
+              onPress={() => setShowSportSessionModal(true)}
+            >
+              <View style={styles.sportLogLeftCol}>
+                <View style={styles.sportLogTopRow}>
+                  <Text style={styles.sportLogBolt}>⚡</Text>
+                  <Text style={styles.sportLogTitle}>Log Sport Session</Text>
+                </View>
+                <Text style={styles.sportLogSportName}>
+                  {formatSportTypeDisplayName(planConcurrentSport.type[0]!)}
+                </Text>
+              </View>
+              <Text style={styles.sportLogCTA}>Log →</Text>
+            </Pressable>
+          )
+        ) : null}
+
         {/* ── 7. Quick Stats Row ── */}
-        {isDay1ColdStart ? (
-          <View style={styles.coldStartPlaceholder}>
-            <Text style={styles.coldStartText}>
-              Your stats will build here as you train. Start your first session to
-              begin.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.quickStatsRow}>
-            <View style={styles.quickStatCard}>
-              <Text style={styles.quickStatEmoji}>🔥</Text>
-              <Text
-                style={[
-                  styles.quickStatValue,
-                  currentStreak > 0 ? styles.quickStatValueAccent : null,
-                ]}
-              >
-                {streakDisplay}
-              </Text>
-              <Text style={styles.quickStatLabel}>Day streak</Text>
-            </View>
-            <View style={styles.quickStatCard}>
-              <Text style={styles.quickStatEmoji}>⚡</Text>
-              <Text
-                style={[
-                  styles.quickStatValue,
-                  totalSessions > 0 ? styles.quickStatValueAccent : null,
-                ]}
-              >
-                {sessionsDisplay}
-              </Text>
-              <Text style={styles.quickStatLabel}>Sessions</Text>
-            </View>
-            <View style={styles.quickStatCard}>
-              <Text style={styles.quickStatEmoji}>📈</Text>
-              <Text
-                style={[
-                  styles.quickStatValue,
-                  weeklySessionCount > 0 &&
-                    weeklyVolume > 0 &&
-                    !statsLoading
-                    ? styles.quickStatValueAccent
-                    : null,
-                ]}
-              >
-                {volumeDisplay}
-              </Text>
-              <Text style={styles.quickStatLabel}>lbs</Text>
-            </View>
+        {planStatus !== 'completed' && (
+          <View style={styles.statsStrip}>
+            {isDay1ColdStart ? (
+              <View style={styles.coldStartPlaceholder}>
+                <Text style={styles.coldStartText}>
+                  Your stats will build here as you train. Start your first session to
+                  begin.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.quickStatsRow}>
+                <View style={styles.quickStatCard}>
+                  <Text style={styles.quickStatEmoji}>🔥</Text>
+                  <Text
+                    style={[
+                      styles.quickStatValue,
+                      currentStreak > 0 ? styles.quickStatValueAccent : null,
+                    ]}
+                  >
+                    {streakDisplay}
+                  </Text>
+                  <Text style={styles.quickStatLabel}>Day streak</Text>
+                </View>
+                <View style={styles.quickStatCard}>
+                  <Text style={styles.quickStatEmoji}>⚡</Text>
+                  <Text
+                    style={[
+                      styles.quickStatValue,
+                      totalSessions > 0 ? styles.quickStatValueAccent : null,
+                    ]}
+                  >
+                    {sessionsDisplay}
+                  </Text>
+                  <Text style={styles.quickStatLabel}>Sessions</Text>
+                </View>
+                <View style={styles.quickStatCard}>
+                  <Text style={styles.quickStatEmoji}>📈</Text>
+                  <Text
+                    style={[
+                      styles.quickStatValue,
+                      weeklySessionCount > 0 &&
+                        weeklyVolume > 0 &&
+                        !statsLoading
+                        ? styles.quickStatValueAccent
+                        : null,
+                    ]}
+                  >
+                    {volumeDisplay}
+                  </Text>
+                  <Text style={styles.quickStatLabel}>lbs</Text>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -1520,7 +1887,7 @@ export default function HomeScreen() {
           </Text>
 
           <View style={styles.coachFooterRow}>
-            {jordanCardState === 'summary_available' ? (
+            {jordanCardState === 'summary_available' && planStatus !== 'completed' ? (
               <Pressable
                 onPress={() =>
                   navigation.navigate('WeeklyCoachSummary', {
@@ -1559,7 +1926,37 @@ export default function HomeScreen() {
               onChangeText={setWeightInput}
               placeholderTextColor={Colors.textSecondary}
             />
-            <Text style={styles.weightModalUnit}>lbs</Text>
+            <Text style={styles.weightModalUnit}>{unitLabel}</Text>
+            <View style={styles.sleepRow}>
+              <View style={styles.sleepRowLeft}>
+                <Text style={styles.sleepMoon}>🌙</Text>
+                <Text style={styles.sleepLabel}>Sleep</Text>
+              </View>
+              <View style={styles.sleepPillsRow}>
+                {SLEEP_PILL_OPTIONS.map(({ value, label }) => {
+                  const selected = selectedSleepHours === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.sleepPill, selected ? styles.sleepPillSelected : null]}
+                      onPress={() =>
+                        setSelectedSleepHours((prev) => (prev === value ? null : value))
+                      }
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[
+                          styles.sleepPillText,
+                          selected ? styles.sleepPillTextSelected : null,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
             <View style={styles.weightModalBtns}>
               <TouchableOpacity
                 style={styles.weightModalCancelBtn}
@@ -1584,6 +1981,20 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {planConcurrentSport != null && planData != null && sportDashboardUserId != null ? (
+        <SportSessionModal
+          visible={showSportSessionModal}
+          onClose={() => setShowSportSessionModal(false)}
+          onSaved={() => {
+            void loadDashboardData();
+          }}
+          userId={sportDashboardUserId}
+          planId={planData.planId}
+          concurrentSport={planConcurrentSport}
+          existingLog={todaySportLog}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -1732,38 +2143,94 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
   },
-  // BUG-8: Calendar rest day card (scheduled training day check)
-  restDayCard: {
+  recoveryDayCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
   },
-  restDayHeader: {
+  recoveryDayHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.md,
   },
-  restDayLabel: {
-    fontFamily: Fonts.bold,
+  recoveryDayPill: {
     fontSize: FontSizes.label,
-    color: Colors.textSecondary,
+    fontFamily: Fonts.bold,
+    color: Colors.textTertiary,
     letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  restDayNextUp: {
-    fontFamily: Fonts.medium,
+  recoveryDayContext: {
     fontSize: FontSizes.caption,
-    color: Colors.accent,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
   },
-  restDayJordan: {
+  recoveryDayTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginTop: Spacing.sm,
+  },
+  jordanSuggestionCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    marginTop: Spacing.sm,
+  },
+  jordanSuggestionBrand: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  jordanSuggestionBody: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary,
+  },
+  recoveryPillarsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  recoveryPillarCard: {
+    flex: 1,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginHorizontal: Spacing.xs,
+    alignItems: 'center',
+  },
+  recoveryPillarEmoji: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    marginBottom: Spacing.xs,
+  },
+  recoveryPillarLabel: {
+    fontSize: FontSizes.micro,
+    fontFamily: Fonts.bold,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  recoveryPillarValueBold: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  recoveryPillarValueProtein: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
   },
   jordanAvatar: {
     width: 32,
@@ -1778,13 +2245,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
-  },
-  restDayMessage: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    flex: 1,
-    lineHeight: 22,
   },
   workoutTopRow: {
     flexDirection: 'row',
@@ -1879,6 +2339,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ctaButtonLoadingGate: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  weekUnlockButton: {
+    marginTop: Spacing.xl,
+    minHeight: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  weekUnlockTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+    textAlign: 'center',
+  },
+  weekUnlockPrice: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
   ctaText: {
     fontSize: FontSizes.title,
     fontFamily: Fonts.semiBold,
@@ -1938,46 +2428,54 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
   },
 
-  restCard: {
+  planCompleteCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.sm,
     backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
     alignItems: 'center',
-    paddingVertical: 32,
+    marginBottom: Spacing.md,
   },
-  restEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 48,
-    textAlign: 'center',
+  planCompleteEmoji: {
+    fontSize: 36,
+    marginBottom: Spacing.sm,
   },
-  restTitle: {
-    fontSize: FontSizes.heading2,
+  planCompleteTitle: {
     fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
-    textAlign: 'center',
-    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
   },
-  restSubtitle: {
+  planCompleteSubtitle: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: 6,
+    marginBottom: Spacing.lg,
+    lineHeight: 22,
   },
-  restPlanLink: {
-    marginTop: Spacing.lg,
+  planCompleteCTA: {
+    backgroundColor: Colors.accent,
+    height: 48,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.xl,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
-  restPlanLinkText: {
-    fontFamily: Fonts.medium,
+  planCompleteCTAText: {
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.body,
-    color: Colors.accent,
-    textAlign: 'center',
+    color: Colors.textPrimary,
   },
+
+  /** Wrapper for week ring + dots (conditional block clarity) */
+  weekProgressSection: {},
 
   weekCard: {
     marginHorizontal: Spacing.xl,
@@ -2049,6 +2547,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: Colors.accent,
   },
+
+  /** Quick stats strip (streak / sessions / lbs) — grouped for conditional render */
+  statsStrip: {},
 
   coldStartPlaceholder: {
     paddingVertical: Spacing.md,
@@ -2234,14 +2735,86 @@ const styles = StyleSheet.create({
   weightLogCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
-    padding: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  sportLogCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    marginHorizontal: Spacing.xl,
+    marginTop: 0,
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sportLogCardLogged: {
+    borderColor: Colors.divider,
+  },
+  sportLogLeftCol: {
+    flex: 1,
+  },
+  sportLogTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sportLogBolt: {
+    fontFamily: Fonts.regular,
+    fontSize: 18,
+    color: Colors.accent,
+  },
+  sportLogTitle: {
+    marginLeft: 8,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textPrimary,
+  },
+  sportLogSportName: {
+    marginTop: 2,
+    marginLeft: 26,
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  sportLogCTA: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+  },
+  sportLogCheck: {
+    color: Colors.success,
+    fontFamily: Fonts.bold,
+    fontSize: 16,
+  },
+  sportLogLoggedTitle: {
+    marginLeft: 8,
+    color: Colors.textPrimary,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+  },
+  sportLogSubLogged: {
+    marginTop: 2,
+    marginLeft: 24,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSizes.caption,
+  },
+  sportLogEdit: {
+    fontFamily: Fonts.semiBold,
+    color: Colors.textSecondary,
+    fontSize: FontSizes.caption,
   },
   weightLogLeft: {
     flex: 1,
@@ -2339,6 +2912,56 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 4,
+  },
+  sleepRow: {
+    marginTop: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  sleepRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  sleepMoon: {
+    fontSize: FontSizes.body,
+    marginRight: Spacing.xs,
+  },
+  sleepLabel: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textSecondary,
+  },
+  sleepPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexGrow: 1,
+    gap: Spacing.xs,
+  },
+  sleepPill: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  sleepPillSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+  },
+  sleepPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.textSecondary,
+  },
+  sleepPillTextSelected: {
+    color: Colors.accent,
   },
   weightModalBtns: {
     flexDirection: 'row',

@@ -70,6 +70,43 @@ const DEFAULT_EXCLUDED: string[] = [
   'Good Mornings', 'Hip Thrust',
 ];
 
+/** Primary muscle context for "Exercises to Avoid" chips (custom entries fall back to "General"). */
+const EXERCISE_MUSCLE_GROUP_LABEL: Record<string, string> = {
+  'Overhead Press': 'Shoulders',
+  'Behind-the-neck Press': 'Shoulders',
+  'Upright Rows': 'Shoulders',
+  'Lateral Raises': 'Shoulders',
+  'Arnold Press': 'Shoulders',
+  'Deadlift': 'Posterior Chain',
+  'Good Mornings': 'Hamstrings / Lower Back',
+  'Back Squat': 'Quads / Glutes',
+  'Romanian Deadlift': 'Hamstrings',
+  'Barbell Row': 'Back',
+  'Lunges': 'Quads / Glutes',
+  'Leg Press': 'Quads',
+  'Box Jumps': 'Quads / Calves',
+  'Step-ups': 'Quads / Glutes',
+  'Hip Thrust': 'Glutes',
+  'Sumo Deadlift': 'Posterior Chain',
+  'Wide Stance Squat': 'Quads / Glutes',
+  'Lateral Lunges': 'Glutes / Quads',
+  'Barbell Curl': 'Biceps',
+  'Front Squat': 'Quads',
+  'Clean and Press': 'Full Body',
+  'Wrist Curls': 'Forearms',
+  'Dips': 'Chest / Triceps',
+  'Skull Crushers': 'Triceps',
+  'Close-grip Bench Press': 'Chest / Triceps',
+  'Overhead Tricep Extension': 'Triceps',
+  'Bench Press': 'Chest',
+  'Pull-ups': 'Back',
+  'Lat Pulldown': 'Back',
+};
+
+function muscleGroupLabelForExercise(name: string): string {
+  return EXERCISE_MUSCLE_GROUP_LABEL[name] ?? 'General';
+}
+
 const WARNING_BORDER = `${Colors.warning}40`;
 
 // GAP-1: Concurrent sport training options
@@ -274,13 +311,16 @@ export default function ConstraintsScreen() {
               <TouchableOpacity
                 key={exercise}
                 activeOpacity={0.7}
-                style={[styles.chip, selected && styles.chipSelected]}
+                style={[styles.chip, styles.avoidExerciseChip, selected && styles.chipSelected]}
                 onPress={() => toggleExcluded(exercise)}
               >
                 <Text
                   style={[styles.chipText, selected && styles.chipTextSelected]}
                 >
                   {exercise}
+                </Text>
+                <Text style={styles.chipMuscleSub}>
+                  {muscleGroupLabelForExercise(exercise)}
                 </Text>
               </TouchableOpacity>
             );
@@ -536,6 +576,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     margin: 4,
+  },
+  avoidExerciseChip: {
+    alignItems: 'center',
+  },
+  chipMuscleSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    marginTop: 2,
+    textAlign: 'center',
   },
   chipSelected: {
     backgroundColor: Colors.accentMuted,

@@ -21,13 +21,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
+import { hapticHeavy, hapticLight, hapticMedium } from '../utils/haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
-import ExerciseCard, {
-  WARMUP_COLLAPSED_STORAGE_KEY,
-} from '../components/ExerciseCard';
+import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier } from '../components/ExerciseCard';
 import {
   EXERCISES,
@@ -36,6 +34,7 @@ import {
   type Exercise,
 } from '../constants/exerciseLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { cancelReEngagementPush } from '../utils/notifications';
 import {
   cancelRestTimerNotification,
   playRestCompleteSound,
@@ -68,7 +67,7 @@ type WorkoutExercise = {
   isUnilateral: boolean;
   planCategory: 'compound' | 'isolation';
   compoundTier: CompoundTier;
-  /** Passed to ExerciseCard warmup logic (library / plan tier) */
+  /** Compound tier from library / plan — warmup eligibility */
   category: CompoundTier;
   movementPattern?: string;
   targetWeight: number;
@@ -82,6 +81,13 @@ type WorkoutExercise = {
   phase?: 'strength' | 'hypertrophy';
   /** Selection reasoning from plan_json (GAP-6) */
   coachingNote?: string;
+  setStructure?: 'straight' | 'pyramid' | 'wave';
+  setTargets?: Array<{
+    setNumber: number;
+    targetWeight: number;
+    targetReps: string;
+    targetRpe: number;
+  }>;
 };
 
 type WorkoutData = {
@@ -177,6 +183,13 @@ type PlanJsonExercise = {
   coachingNote?: string;
   phase?: 'strength' | 'hypertrophy';
   equipment?: Exercise['equipment'];
+  setStructure?: 'straight' | 'pyramid' | 'wave';
+  setTargets?: Array<{
+    setNumber: number;
+    targetWeight: number;
+    targetReps: string;
+    targetRpe: number;
+  }>;
 };
 
 type EnrichedPlanExercise = {
@@ -366,7 +379,8 @@ export default function ActiveWorkoutScreen() {
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [warmupCollapsedCompound, setWarmupCollapsedCompound] = useState(false);
+  /** Raw `phase` from plan_json for the active week (training mesocycle). */
+  const [sessionPlanPhaseRaw, setSessionPlanPhaseRaw] = useState<string | null>(null);
   /** DB row id — use for workout_logs so it always matches the loaded plan row */
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(null);
   /** Same plan_id / day_number as INSERT — must match plan_json DayObject.dayNumber */
@@ -377,16 +391,15 @@ export default function ActiveWorkoutScreen() {
 
   // Load workout data
   useEffect(() => {
+    cancelReEngagementPush();
     loadWorkoutData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setWarmupCollapsedCompound(false);
     setResolvedPlanId(null);
     setSessionPlanIdForLogs(null);
     setSessionDayNumber(null);
-    void AsyncStorage.removeItem(WARMUP_COLLAPSED_STORAGE_KEY);
   }, [params.planId, params.weekNumber, params.dayNumber]);
 
   const getAlternatives = (muscleGroup: string): string[] => {
@@ -413,6 +426,7 @@ export default function ActiveWorkoutScreen() {
 
   const loadWorkoutData = async () => {
     try {
+      setSessionPlanPhaseRaw(null);
       console.log('[ActiveWorkout] planId from params:', params.planId);
 
       const {
@@ -468,7 +482,7 @@ export default function ActiveWorkoutScreen() {
         .from('plans')
         .select('id, plan_json, current_week')
         .eq('id', rawPlanId)
-        .single();
+        .maybeSingle();
 
       const { data: plan, error } = planResult;
 
@@ -655,6 +669,8 @@ export default function ActiveWorkoutScreen() {
           cuesResolved,
         }) => {
           const usesWeight = usesWeightFromLibrary;
+          const setCount = ex.sets > 0 ? ex.sets : 3;
+          const setTargets = ex.setTargets;
           return {
             id: ex.id,
             name: ex.name,
@@ -667,17 +683,23 @@ export default function ActiveWorkoutScreen() {
             movementPattern: movementPatternResolved,
             targetWeight: ex.targetWeight ?? 0,
             reps: ex.reps,
-            sets: Array.from({ length: ex.sets }, (_, i) => ({
-              setNumber: i + 1,
-              targetReps: ex.reps,
-              targetWeight: ex.targetWeight,
-              targetRpe: ex.targetRpe,
-            })),
+            sets: Array.from({ length: setCount }, (_, i) => {
+              const sn = i + 1;
+              const row = setTargets?.find((t) => t.setNumber === sn);
+              return {
+                setNumber: sn,
+                targetReps: row?.targetReps ?? ex.reps,
+                targetWeight: row?.targetWeight ?? ex.targetWeight ?? 0,
+                targetRpe: row?.targetRpe ?? ex.targetRpe,
+              };
+            }),
+            setTargets: ex.setTargets,
             alternatives: getAlternatives(ex.muscleGroup),
             cues: cuesResolved,
             restSeconds: ex.restSeconds,
             phase: ex.phase,
             coachingNote: ex.coachingNote,
+            setStructure: ex.setStructure ?? 'straight',
           };
         },
       );
@@ -703,6 +725,9 @@ export default function ActiveWorkoutScreen() {
         }
       }
 
+      setSessionPlanPhaseRaw(
+        typeof weekData?.phase === 'string' ? weekData.phase : null,
+      );
       setWorkout({ title: dayData.title, goal: planGoal, exercises });
     } catch (e) {
       console.error('Failed to load workout:', e);
@@ -744,7 +769,7 @@ export default function ActiveWorkoutScreen() {
       if (AppState.currentState === 'active') {
         void playRestCompleteSound();
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void hapticHeavy();
       return;
     }
     const timeout = setTimeout(
@@ -877,11 +902,13 @@ export default function ActiveWorkoutScreen() {
   };
 
   const handleSwapExercise = (exerciseId: string, newName: string) => {
+    void hapticMedium();
     setExerciseSwaps((prev) => ({ ...prev, [exerciseId]: newName }));
     showToast('Exercise swapped. Your coach will note this.');
   };
 
   const skipRest = () => {
+    void hapticLight();
     void cancelRestTimerNotification();
     setIsRestActive(false);
     setRestSeconds(0);
@@ -1022,6 +1049,18 @@ export default function ActiveWorkoutScreen() {
   const displayWorkoutTitle =
     workout?.title ?? params.workoutTitle ?? 'Workout';
 
+  const sessionPhaseBadgeLabel = (() => {
+    const p = sessionPlanPhaseRaw?.toLowerCase();
+    if (!p) return null;
+    const map: Record<string, string> = {
+      baseline: 'BASELINE',
+      accumulation: 'ACCUMULATION',
+      intensification: 'INTENSIFICATION',
+      deload: 'DELOAD',
+    };
+    return map[p] ?? null;
+  })();
+
   const workoutExercises = workout?.exercises ?? [];
   const phase1Exercise = workoutExercises.find((e) => e.phase === 'strength');
   const phase1Reps = phase1Exercise?.reps ?? '3–6';
@@ -1054,9 +1093,18 @@ export default function ActiveWorkoutScreen() {
           >
             <Text style={styles.backArrow}>{'‹'}</Text>
           </TouchableOpacity>
-          <Text style={styles.workoutTitleCenter} numberOfLines={1}>
-            {displayWorkoutTitle}
-          </Text>
+          <View style={styles.workoutTitleCenter} pointerEvents="box-none">
+            <Text style={styles.workoutTitleText} numberOfLines={1}>
+              {displayWorkoutTitle}
+            </Text>
+            {sessionPhaseBadgeLabel ? (
+              <View style={styles.sessionPhaseBadge}>
+                <Text style={styles.sessionPhaseBadgeText}>
+                  {sessionPhaseBadgeLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
         </View>
 
@@ -1102,8 +1150,6 @@ export default function ActiveWorkoutScreen() {
                     coachingLoading={coachingLoading[exercise.id] ?? false}
                     weekNumber={params.weekNumber}
                     goal={workout?.goal ?? 'strength'}
-                    warmupCollapsedCompound={warmupCollapsedCompound}
-                    onWarmupCollapsedCompoundChange={setWarmupCollapsedCompound}
                     onLogSet={handleLogSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}
@@ -1192,7 +1238,10 @@ export default function ActiveWorkoutScreen() {
                   key={opt.rating}
                   activeOpacity={0.92}
                   style={styles.emojiCardWrap}
-                  onPress={() => setFatigueRating(opt.rating)}
+                  onPress={() => {
+                    void hapticLight();
+                    setFatigueRating(opt.rating);
+                  }}
                 >
                   <Animated.View
                     style={[
@@ -1318,11 +1367,32 @@ const styles = StyleSheet.create({
     right: 72,
     top: Spacing.sm,
     bottom: 12,
-    textAlign: 'center',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    pointerEvents: 'box-none',
+  },
+  workoutTitleText: {
+    width: '100%',
     fontSize: FontSizes.title,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    pointerEvents: 'none',
+    textAlign: 'left',
+  },
+  sessionPhaseBadge: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  sessionPhaseBadgeText: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1,
+    color: Colors.textSecondary,
   },
   timerText: {
     zIndex: 2,

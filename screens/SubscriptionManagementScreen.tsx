@@ -40,7 +40,7 @@ const FEATURES: [string, boolean, boolean][] = [
   ['Weekly plan adaptation', false, true],
   ['Real-time coaching feedback', false, true],
   ['Weekly coach summary', false, true],
-  ['Macro tracker', false, true],
+  ['Nutrition coaching', false, true],
   ['Progress charts', false, true],
 ];
 
@@ -325,7 +325,7 @@ export default function SubscriptionManagementScreen() {
                     </View>
                   </View>
                   <Text style={styles.statusDescription}>
-                    Upgrade to Pro to unlock adaptive coaching, unlimited plans, macro tracking, and
+                    Upgrade to Pro to unlock adaptive coaching, unlimited plans, nutrition targets, and
                     all progress features.
                   </Text>
                 </>

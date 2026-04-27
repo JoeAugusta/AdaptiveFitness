@@ -709,14 +709,12 @@ export const INGREDIENTS: Ingredient[] = [
 
 export function getFilteredIngredients(
   category: IngredientCategory,
-  slot: MealSlot,
   dietaryStyle: DietaryStyle,
   allergies: Allergen[],
 ): Ingredient[] {
   return INGREDIENTS.filter(
     (ing) =>
       ing.category === category &&
-      ing.mealSlots.includes(slot) &&
       ing.dietaryStyles.includes(dietaryStyle) &&
       !ing.allergens.some((a) => allergies.includes(a)),
   );

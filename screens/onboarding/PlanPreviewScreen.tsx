@@ -891,7 +891,7 @@ export default function PlanPreviewScreen() {
         ]}
       >
         <Text style={styles.socialProof}>
-          Join thousands of athletes training smarter
+          Join athletes training with purpose.
         </Text>
 
         <View style={styles.pricingRow}>

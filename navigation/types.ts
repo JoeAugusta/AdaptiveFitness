@@ -159,6 +159,8 @@ export type RootStackParamList = {
     fatigueRating: number;
     prsHit: number;
   };
+  /** Final plan retrospective (full-screen, same level as WorkoutComplete) */
+  PlanComplete: { planId: string };
   PlanView: {
     planId: string;
     weekNumber?: number;
@@ -168,11 +170,34 @@ export type RootStackParamList = {
     weekNumber: number;
   };
   WorkoutHome: undefined;
+  /** Logged in Workout tab stack; listed here for cross-navigator `navigate` typing */
+  WorkoutHistory: undefined;
+  FreeSession: undefined;
   ExerciseLibrary: undefined;
   ProgressCharts: undefined;
   GoalTracker: undefined;
+  PersonalRecords: undefined;
+  BodyMeasurements: undefined;
   MacroTracker: undefined;
   ProfileSettings: undefined;
   SubscriptionManagement: undefined;
   NotificationsSettings: undefined;
+};
+
+/** Progress tab stack */
+export type ProgressStackParamList = {
+  ProgressCharts: undefined;
+  GoalTracker: undefined;
+  PersonalRecords: undefined;
+  BodyMeasurements: undefined;
+};
+
+/** Workout tab stack — PlanComplete is also registered on the root stack for navigation from WorkoutComplete */
+export type WorkoutStackParamList = {
+  WorkoutHome: undefined;
+  PlanView: { planId: string; weekNumber?: number } | undefined;
+  ExerciseLibrary: undefined;
+  PlanComplete: { planId: string };
+  WorkoutHistory: undefined;
+  FreeSession: undefined;
 };

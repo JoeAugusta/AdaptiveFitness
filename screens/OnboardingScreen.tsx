@@ -98,7 +98,14 @@ export default function OnboardingScreen() {
           onPress={handleContinue}
           disabled={!selectedGoal}
         >
-          <Text style={styles.buttonText}>Continue</Text>
+          <Text
+            style={[
+              styles.buttonText,
+              !selectedGoal && styles.buttonTextDisabled,
+            ]}
+          >
+            Continue
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -197,11 +204,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: {
-    opacity: 0.4,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    opacity: 1,
   },
   buttonText: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
+  },
+  buttonTextDisabled: {
+    color: Colors.textTertiary,
   },
 });

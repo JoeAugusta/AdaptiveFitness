@@ -28,7 +28,9 @@ const LIFT_OPTIONS: Option[] = [
   { id: 'bench_press', label: 'Bench Press' },
   { id: 'squat', label: 'Back Squat' },
   { id: 'deadlift', label: 'Deadlift' },
+  { id: 'sumo_deadlift', label: 'Sumo Deadlift' },
   { id: 'ohp', label: 'Overhead Press' },
+  { id: 'weighted_pullup', label: 'Weighted Pull-up' },
 ];
 
 const MUSCLE_OPTIONS: string[] = [
@@ -94,9 +96,69 @@ const SECONDARY_LIFT_OPTIONS: Option[] = [
   { id: 'bench_press', label: 'Bench Press' },
   { id: 'squat', label: 'Back Squat' },
   { id: 'deadlift', label: 'Deadlift' },
+  { id: 'sumo_deadlift', label: 'Sumo Deadlift' },
   { id: 'ohp', label: 'Overhead Press' },
+  { id: 'weighted_pullup', label: 'Weighted Pull-up' },
   { id: 'none', label: 'None' },
 ];
+
+type StrengthLiftCategory = 'lower' | 'upper' | 'back';
+
+function getStrengthLiftCategory(targetLift: string | null): StrengthLiftCategory | null {
+  if (!targetLift) return null;
+  const k = targetLift.toLowerCase();
+  if (
+    k === 'squat' ||
+    k === 'front_squat' ||
+    k === 'deadlift' ||
+    k === 'sumo_deadlift' ||
+    k === 'romanian_deadlift'
+  ) {
+    return 'lower';
+  }
+  if (k === 'bench_press' || k === 'ohp') return 'upper';
+  if (k === 'barbell_row' || k === 'weighted_pullup') return 'back';
+  return 'upper';
+}
+
+/** Splits offered for "current training" when goal is strength — filtered by target lift category. */
+function getStrengthCurrentSplitOptions(category: StrengthLiftCategory | null): string[] {
+  if (!category) return [];
+  if (category === 'lower') {
+    return [
+      'Not following a program',
+      'Full Body',
+      'Upper / Lower',
+      'PHUL',
+      'Squat-Focused (5-day)',
+      'Other',
+    ];
+  }
+  if (category === 'upper') {
+    return [
+      'Not following a program',
+      'Full Body',
+      'Upper / Lower',
+      'PHUL',
+      'Push / Pull / Legs',
+      'Other',
+    ];
+  }
+  return [
+    'Not following a program',
+    'Full Body',
+    'Upper / Lower',
+    'PHUL',
+    'Push / Pull / Legs',
+    'Other',
+  ];
+}
+
+function strengthLiftDisplayNameForNote(targetLift: string | null): string {
+  if (!targetLift) return 'your lift';
+  const opt = LIFT_OPTIONS.find((o) => o.id === targetLift);
+  return opt?.label ?? targetLift.replace(/_/g, ' ');
+}
 
 const PLAN_DURATION_OPTIONS: Option[] = [
   { id: '8w', label: '8 Weeks' },
@@ -210,6 +272,33 @@ function StrengthContent({
   const [durationManuallySet, setDurationManuallySet] = useState(false);
   const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(null);
   const [trainingBackground, setTrainingBackground] = useState<string | null>(null);
+  const [currentSplit, setCurrentSplit] = useState<string | null>(null);
+  const [splitDuration, setSplitDuration] = useState<string | null>(null);
+  const [currentSplitOther, setCurrentSplitOther] = useState('');
+
+  const strengthLiftCategory = getStrengthLiftCategory(targetLift);
+  const strengthSplitOptions = useMemo(
+    () => getStrengthCurrentSplitOptions(strengthLiftCategory),
+    [strengthLiftCategory],
+  );
+
+  useEffect(() => {
+    if (currentSplit == null || strengthSplitOptions.length === 0) return;
+    if (!strengthSplitOptions.includes(currentSplit)) {
+      setCurrentSplit(null);
+      setSplitDuration(null);
+      setCurrentSplitOther('');
+    }
+  }, [currentSplit, strengthSplitOptions]);
+
+  useEffect(() => {
+    if (currentSplit === 'Not following a program') {
+      setSplitDuration(null);
+    }
+    if (currentSplit !== 'Other') {
+      setCurrentSplitOther('');
+    }
+  }, [currentSplit]);
 
   const canContinue = !!targetLift && current1RM.trim() !== '' && target1RM.trim() !== '';
 
@@ -265,8 +354,8 @@ function StrengthContent({
     navigation.navigate('Experience', {
       ...route.params,
       priorityMuscles: [],
-      currentSplit: undefined,
-      splitDuration: undefined,
+      currentSplit: currentSplit ?? undefined,
+      splitDuration: splitDuration ?? undefined,
       recommendedWeeks,
       trainingBackground: trainingBackground ?? null,
       targetLift,
@@ -274,7 +363,10 @@ function StrengthContent({
       target1RM: target1RM.trim(),
       secondaryLift,
       planDuration,
-      currentSplitOther: undefined,
+      currentSplitOther:
+        currentSplit === 'Other' && currentSplitOther.trim()
+          ? currentSplitOther.trim()
+          : undefined,
     } as RootStackParamList['Experience']);
   };
 
@@ -292,9 +384,12 @@ function StrengthContent({
           secondaryLift,
           planDuration,
           recommendedWeeks,
-          currentSplit: null,
-          currentSplitOther: null,
-          splitDuration: null,
+          currentSplit: currentSplit ?? null,
+          currentSplitOther:
+            currentSplit === 'Other' && currentSplitOther.trim()
+              ? currentSplitOther.trim()
+              : null,
+          splitDuration: splitDuration ?? null,
           trainingBackground: trainingBackground ?? null,
         })
       }
@@ -326,6 +421,96 @@ function StrengthContent({
           );
         })}
       </View>
+
+      {targetLift ? (
+        <View style={styles.trainingHistoryBlock}>
+          <Text style={styles.trainingSectionHeading}>Current training</Text>
+          <Text style={styles.trainingHistorySubtext}>
+            Helps Jordan match structure to your goal lift
+          </Text>
+          <Text style={styles.trainingQuestion}>
+            What split have you been following?
+          </Text>
+          <View style={styles.chipRow}>
+            {strengthSplitOptions.map((label) => {
+              const selected = currentSplit === label;
+              return (
+                <TouchableOpacity
+                  key={label}
+                  activeOpacity={0.7}
+                  style={[styles.chip, selected && styles.chipSelected]}
+                  onPress={() => setCurrentSplit(label)}
+                >
+                  <Text
+                    style={[styles.chipText, selected && styles.chipTextSelected]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text
+            style={{
+              fontFamily: Fonts.regular,
+              fontSize: FontSizes.caption,
+              color: Colors.textSecondary,
+              marginTop: Spacing.xs,
+            }}
+          >
+            {`Splits filtered for ${strengthLiftDisplayNameForNote(targetLift)} frequency — you need to hit this lift at least twice a week to drive 1RM progress.`}
+          </Text>
+          {currentSplit === 'Other' ? (
+            <TextInput
+              style={styles.splitOtherInput}
+              placeholder="Briefly describe your current structure"
+              placeholderTextColor={Colors.textTertiary}
+              value={currentSplitOther}
+              onChangeText={setCurrentSplitOther}
+              maxLength={80}
+            />
+          ) : null}
+          {currentSplit != null &&
+            currentSplit !== '' &&
+            currentSplit !== 'Not following a program' && (
+              <>
+                <Text style={[styles.trainingQuestion, styles.trainingQuestionFollow]}>
+                  How long on this structure?
+                </Text>
+                <View style={styles.chipRow}>
+                  {HYPERTROPHY_SPLIT_DURATION_OPTIONS.map((label) => {
+                    const selected = splitDuration === label;
+                    return (
+                      <TouchableOpacity
+                        key={label}
+                        activeOpacity={0.7}
+                        style={[styles.chip, selected && styles.chipSelected]}
+                        onPress={() => setSplitDuration(label)}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            selected && styles.chipTextSelected,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          {splitDuration === '6+ months' && (
+            <View style={styles.jordanInsightCard}>
+              <Text style={styles.jordanInsightText}>
+                Your body has adapted to this structure. Jordan will recommend a
+                different approach to reignite your progress.
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : null}
 
       <Text style={styles.sectionHeading}>Current & Target 1RM</Text>
       <View style={styles.inputFieldBlock}>

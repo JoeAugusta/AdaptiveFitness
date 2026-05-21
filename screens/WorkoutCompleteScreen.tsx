@@ -363,6 +363,19 @@ export default function WorkoutCompleteScreen() {
         summarySettled.status === 'fulfilled' ? summarySettled.value : null;
       if (summaryResult && !summaryResult.error && summaryResult.data?.summary) {
         setShowSummaryBanner(true);
+        const completedWeekNumber = weekNumber;
+        try {
+          await AsyncStorage.setItem(
+            'afc_unviewed_summary_week',
+            String(completedWeekNumber),
+          );
+          console.log(
+            '[WorkoutComplete] Set unviewed summary week:',
+            completedWeekNumber,
+          );
+        } catch (asErr) {
+          console.warn('[WorkoutComplete] AsyncStorage setItem failed:', asErr);
+        }
         try {
           const { data: macroAdj } = await supabase.functions.invoke(
             'adjust-macros',
@@ -536,9 +549,63 @@ export default function WorkoutCompleteScreen() {
           },
         });
 
+        const payload = data as {
+          feedback?: string | null;
+          message?: string | null;
+          note?: string | null;
+          coaching_note?: string | null;
+        } | null | undefined;
+
+        const coachingNote =
+          payload?.message ??
+          payload?.note ??
+          payload?.coaching_note ??
+          payload?.feedback ??
+          null;
+        const coachingNoteTrimmed =
+          coachingNote != null && String(coachingNote).trim() !== ''
+            ? String(coachingNote).trim()
+            : null;
+
         pulse.stop();
         setCoachLoading(false);
-        setCoachNoteDisplay(data?.feedback ?? null);
+        setCoachNoteDisplay(coachingNoteTrimmed ?? null);
+
+        if (coachingNoteTrimmed && planId) {
+          const { data: currentPlan } = await supabase
+            .from('plans')
+            .select('plan_json')
+            .eq('id', planId)
+            .maybeSingle();
+
+          if (
+            currentPlan?.plan_json != null &&
+            typeof currentPlan.plan_json === 'object' &&
+            !Array.isArray(currentPlan.plan_json)
+          ) {
+            const updatedPlanJson = {
+              ...(currentPlan.plan_json as Record<string, unknown>),
+              latestJordanNote: coachingNoteTrimmed,
+              latestJordanNoteUpdatedAt: new Date().toISOString(),
+            };
+
+            console.log('[JORDAN NOTE WRITE]', {
+              coachingNote,
+              planId,
+              hasCurrentPlan: !!currentPlan,
+            });
+
+            const { error: writeError } = await supabase
+              .from('plans')
+              .update({ plan_json: updatedPlanJson })
+              .eq('id', planId);
+
+            console.log('[JORDAN NOTE WRITE RESULT]', {
+              error: writeError?.message ?? null,
+              success: !writeError,
+            });
+          }
+        }
       } catch {
         pulse.stop();
         setCoachLoading(false);

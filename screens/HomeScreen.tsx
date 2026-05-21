@@ -15,7 +15,7 @@ import {
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
@@ -54,6 +54,7 @@ import SportSessionModal, {
   type SportLogRow,
 } from '../components/SportSessionModal';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { useAuth } from '../contexts/AuthContext';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
 function sessionSignalFromLastLog(
@@ -140,6 +141,17 @@ type PlanData = {
   /** Calendar training schedule — maps plan days to weekday labels */
   scheduledDays: string[];
   hasDayLabels: boolean;
+  /** plan_json excerpts for Jordan card copy only */
+  jordanPlanMeta?: {
+    jordanWelcome?: string;
+    jordanNote?: string;
+  };
+  /** Mirrors plan_json fields used by Jordan card (session note + welcome) */
+  plan_json?: {
+    latestJordanNote?: string | null;
+    latestJordanNoteUpdatedAt?: string | null;
+    jordanWelcome?: string | null;
+  };
 };
 
 type SetItem = {
@@ -182,6 +194,26 @@ function formatSportIntensityLabel(intensity: string): string {
   if (intensity === 'moderate') return 'Moderate';
   if (intensity === 'high') return 'High';
   return intensity;
+}
+
+function formatJordanCardUpdatedLabel(
+  iso: string | null | undefined,
+): string {
+  if (!iso || typeof iso !== 'string') return 'Updated today';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'Updated recently';
+
+  const startOfLocalDay = (t: Date) => {
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+  };
+  const now = new Date();
+  if (startOfLocalDay(d) >= startOfLocalDay(now)) {
+    return 'Updated today';
+  }
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  return `Updated ${m}/${day}/${String(y).slice(-2)}`;
 }
 
 function getPhaseDisplay(
@@ -503,13 +535,14 @@ function calculateSessionDuration(exercises: Exercise[]): number {
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
+  const { session } = useAuth();
   const { isPro, loading: entitlementLoading } = useEntitlement();
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
-  const [userEmail, setUserEmail] = useState('');
+  const [profile, setProfile] = useState<{ full_name?: string | null } | null>(null);
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
@@ -518,7 +551,13 @@ export default function HomeScreen() {
   const [coachSummary, setCoachSummary] = useState<{
     headline: string;
     week_number: number;
+    coach_note?: string | null;
+    summaryText?: string | null;
+    generated_at?: string | null;
+    updated_at?: string | null;
   } | null>(null);
+  /** Latest weekly_summaries row — drives Review Summary CTA even after unviewed flag cleared. */
+  const [latestSummary, setLatestSummary] = useState<{ week_number: number } | null>(null);
   const [jordanWelcome, setJordanWelcome] = useState<string | null>(null);
   /** Prior week (currentWeek - 1) has a DB summary but user has not opened WeeklyCoachSummary for that week. */
   const [unviewedSummaryWeekNumber, setUnviewedSummaryWeekNumber] = useState<
@@ -611,11 +650,21 @@ export default function HomeScreen() {
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
         setSportDashboardUserId(null);
+        setProfile(null);
         return;
       }
       uidRef.current = userId;
       setSportDashboardUserId(userId);
-      setUserEmail(session.user.email ?? '');
+
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setProfile(profileData);
 
       // Load today's weight log
       const todayDate = new Date().toISOString().split('T')[0];
@@ -647,6 +696,7 @@ export default function HomeScreen() {
       if (planError || !planRow) {
         setPlanStatus(null);
         setPlanData(null);
+        setLatestSummary(null);
         setCardioCompleted(false);
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
@@ -666,6 +716,7 @@ export default function HomeScreen() {
         setCardioCompleted(false);
         setPlanSnapshotForMissed(null);
         setMissedSessionResult(null);
+        setLatestSummary(null);
         setCoachSummary(null);
         setJordanWelcome(null);
         setUnviewedSummaryWeekNumber(null);
@@ -884,6 +935,18 @@ export default function HomeScreen() {
         cardioLoggedToday,
         scheduledDays,
         hasDayLabels,
+        jordanPlanMeta: {
+          jordanWelcome: (planJson as { jordanWelcome?: string }).jordanWelcome,
+          jordanNote: (planJson as { jordanNote?: string }).jordanNote,
+        },
+        plan_json: {
+          latestJordanNote: (planJson as { latestJordanNote?: string | null })
+            .latestJordanNote,
+          latestJordanNoteUpdatedAt: (
+            planJson as { latestJordanNoteUpdatedAt?: string | null }
+          ).latestJordanNoteUpdatedAt,
+          jordanWelcome: (planJson as { jordanWelcome?: string }).jordanWelcome ?? null,
+        },
       });
       setPlanSnapshotForMissed({
         planId: plan.id,
@@ -893,47 +956,63 @@ export default function HomeScreen() {
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
 
-      // Fetch latest weekly summary for coach card
-      const { data: latestSummary } = await supabase
+      // Latest weekly_summaries row for Jordan card — do not gate on current_week so body stays fresh
+      const { data: weeklySummaryLatestRow } = await supabase
         .from('weekly_summaries')
-        .select('summary_json, week_number')
+        .select('summary_json, week_number, generated_at')
         .eq('user_id', userId)
         .eq('plan_id', plan.id)
         .order('week_number', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (
-        latestSummary &&
-        latestSummary.week_number >= plan.current_week - 1
-      ) {
-        const summaryJson = latestSummary.summary_json as { headline?: string } | null;
+      if (weeklySummaryLatestRow) {
+        setLatestSummary({ week_number: weeklySummaryLatestRow.week_number });
+        const summaryJson = weeklySummaryLatestRow.summary_json as {
+          headline?: string;
+          coach_note?: string;
+          summary?: string;
+          performanceSummary?: string;
+          motivationalNote?: string;
+        } | null;
+
+        const rawCoachNote =
+          summaryJson?.coach_note != null && String(summaryJson.coach_note).trim() !== ''
+            ? String(summaryJson.coach_note).trim()
+            : null;
+        const rawSummary =
+          summaryJson?.summary != null && String(summaryJson.summary).trim() !== ''
+            ? String(summaryJson.summary).trim()
+            : summaryJson?.performanceSummary != null &&
+                String(summaryJson.performanceSummary).trim() !== ''
+              ? String(summaryJson.performanceSummary).trim()
+              : null;
+
         setCoachSummary({
-          headline: summaryJson?.headline ?? '',
-          week_number: latestSummary.week_number,
+          headline:
+            summaryJson?.headline != null && String(summaryJson.headline).trim() !== ''
+              ? String(summaryJson.headline).trim()
+              : '',
+          week_number: weeklySummaryLatestRow.week_number,
+          coach_note: rawCoachNote,
+          summaryText: rawSummary,
+          generated_at:
+            typeof weeklySummaryLatestRow.generated_at === 'string'
+              ? weeklySummaryLatestRow.generated_at
+              : null,
+          updated_at: null,
         });
       } else {
+        setLatestSummary(null);
         setCoachSummary(null);
       }
 
-      const planId = plan.id;
-      const { data: summaries } = await supabase
-        .from('weekly_summaries')
-        .select('week_number')
-        .eq('user_id', userId)
-        .eq('plan_id', planId)
-        .order('week_number', { ascending: false })
-        .limit(10);
-
-      let unviewedWeek: number | null = null;
-      for (const summary of summaries ?? []) {
-        const viewedKey = `summary_viewed_${planId}_week${summary.week_number}`;
-        const viewed = await AsyncStorage.getItem(viewedKey);
-        if (viewed !== 'true') {
-          unviewedWeek = summary.week_number;
-          break;
-        }
-      }
+      const unviewedWeekStr = await AsyncStorage.getItem('afc_unviewed_summary_week');
+      const parsedUnviewed =
+        unviewedWeekStr != null && unviewedWeekStr.trim() !== ''
+          ? parseInt(unviewedWeekStr.trim(), 10)
+          : NaN;
+      const unviewedWeek = Number.isFinite(parsedUnviewed) ? parsedUnviewed : null;
       setUnviewedSummaryWeekNumber(unviewedWeek);
 
       // Fire stats in background — dashboard renders immediately
@@ -1191,10 +1270,13 @@ export default function HomeScreen() {
       : (planData?.currentWeek ?? 1)
     : 1;
   const needsWeekPaywall = Platform.OS !== 'web' && sessionWeekForGate >= 2;
-  const displayName = userEmail
-    ? userEmail.split('@')[0].charAt(0).toUpperCase() +
-      userEmail.split('@')[0].slice(1)
-    : '';
+  const displayName = (() => {
+    if (profile?.full_name) {
+      return profile.full_name.trim().split(' ')[0];
+    }
+    const emailLocal = session?.user?.email?.split('@')[0] ?? '';
+    return emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1);
+  })();
   const profileInitial = displayName
     ? displayName.charAt(0).toUpperCase()
     : 'U';
@@ -1229,6 +1311,51 @@ export default function HomeScreen() {
   const isDay1ColdStart =
     planData != null && sessionCount === 0 && dashboardCurrentWeek === 1;
 
+  const jordanDay1Copy =
+    "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.";
+  const jordanInWeekCopy =
+    "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.";
+
+  const jordanCardBodyComputed =
+    planStatus === 'completed'
+      ? null
+      : (() => {
+          if (
+            coachSummary?.coach_note &&
+            String(coachSummary.coach_note).trim() !== ''
+          ) {
+            return coachSummary.coach_note.trim();
+          }
+          if (
+            coachSummary?.summaryText &&
+            String(coachSummary.summaryText).trim() !== ''
+          ) {
+            return coachSummary.summaryText.trim();
+          }
+
+          const pjJordan = planData?.plan_json;
+          const sessionNote = pjJordan?.latestJordanNote;
+          if (sessionNote != null && String(sessionNote).trim() !== '') {
+            return String(sessionNote).trim();
+          }
+
+          const currentWeek = planData?.currentWeek ?? 1;
+          const hasCompletedSessions =
+            pjJordan?.latestJordanNoteUpdatedAt != null &&
+            String(pjJordan.latestJordanNoteUpdatedAt).trim() !== '';
+
+          if (currentWeek === 1 && !hasCompletedSessions) {
+            const w =
+              pjJordan?.jordanWelcome ??
+              planData?.jordanPlanMeta?.jordanWelcome ??
+              jordanWelcome ??
+              null;
+            if (w != null && String(w).trim() !== '') return String(w).trim();
+          }
+
+          return null;
+        })();
+
   const jordanCardState: JordanCardState =
     planStatus === 'completed'
       ? 'in_week'
@@ -1238,16 +1365,34 @@ export default function HomeScreen() {
           ? 'summary_available'
           : 'in_week';
 
-  const displayedJordanText: string =
+  const displayedJordanText =
     planStatus === 'completed'
       ? 'Great work finishing the program. Start a new plan when you\'re ready.'
-      : {
-          day1:
-            "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.",
-          in_week:
-            "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.",
-          summary_available: coachSummary?.headline ?? jordanWelcome ?? '',
-        }[jordanCardState];
+      : jordanCardBodyComputed != null && jordanCardBodyComputed.trim() !== ''
+        ? jordanCardBodyComputed
+        : jordanCardState === 'day1'
+          ? jordanDay1Copy
+          : jordanInWeekCopy;
+
+  const jordanCardTimestamp =
+    coachSummary?.generated_at ??
+    coachSummary?.updated_at ??
+    planData?.plan_json?.latestJordanNoteUpdatedAt ??
+    null;
+
+  const jordanCardUpdatedLabel = formatJordanCardUpdatedLabel(jordanCardTimestamp);
+
+  /** True when an AsyncStorage-flagged unread summary exists and user is on an active plan dashboard. */
+  const hasUnviewedWeeklySummary =
+    unviewedSummaryWeekNumber != null &&
+    planData != null &&
+    planStatus !== 'completed';
+
+  const completedWeek = (planData?.currentWeek ?? 1) - 1;
+  const hasViewableSummary =
+    completedWeek >= 1 &&
+    latestSummary != null &&
+    planStatus === 'active';
 
   const weeklyLogs = workoutLogs ?? [];
 
@@ -1261,6 +1406,15 @@ export default function HomeScreen() {
     !isWeekComplete
       ? PRE_SESSION_COPY[lastSessionSignal]
       : null;
+
+  console.log('[JORDAN CARD CTA]', {
+    hasUnviewedWeeklySummary,
+    hasViewableSummary,
+    unviewedSummaryWeekNumber,
+    planRowStatusFromState: planStatus,
+    planDataCurrentWeek: planData?.currentWeek,
+    latestSummaryWeek: latestSummary?.week_number,
+  });
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1886,22 +2040,63 @@ export default function HomeScreen() {
               'Your weekly summary will appear here after your first week.'}
           </Text>
 
+          {hasViewableSummary && planData ? (
+            <TouchableOpacity
+              style={styles.reviewSummaryCTA}
+              activeOpacity={0.85}
+              onPress={() => {
+                const weekNum = latestSummary?.week_number ?? completedWeek;
+                const planIdForSummary =
+                  planData.planId ??
+                  (planData as PlanData & { id?: string }).id ??
+                  '';
+                const rootNav = navigation.getParent()?.getParent();
+                rootNav?.dispatch(
+                  CommonActions.reset({
+                    index: 0,
+                    routes: [
+                      {
+                        name: 'Dashboard',
+                        state: {
+                          routes: [
+                            {
+                              name: 'HomeTab',
+                              state: {
+                                routes: [
+                                  {
+                                    name: 'WeeklyCoachSummary',
+                                    params: {
+                                      planId: planIdForSummary,
+                                      weekNumber: weekNum,
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  }),
+                );
+              }}
+            >
+              <View style={styles.reviewSummaryCTARow}>
+                <Text style={styles.reviewSummaryCTAText}>
+                  Review Week {latestSummary?.week_number ?? completedWeek} Summary →
+                </Text>
+                {hasUnviewedWeeklySummary ? (
+                  <View style={styles.newBadge}>
+                    <Text style={styles.newBadgeText}>NEW</Text>
+                  </View>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ) : null}
+
           <View style={styles.coachFooterRow}>
-            {jordanCardState === 'summary_available' && planStatus !== 'completed' ? (
-              <Pressable
-                onPress={() =>
-                  navigation.navigate('WeeklyCoachSummary', {
-                    planId: planData?.planId ?? '',
-                    weekNumber: planData?.currentWeek ?? 1,
-                  })
-                }
-              >
-                <Text style={styles.coachLink}>Weekly Summary →</Text>
-              </Pressable>
-            ) : (
-              <View style={styles.coachFooterSpacer} />
-            )}
-            <Text style={styles.coachUpdated}>Updated today</Text>
+            <View style={styles.coachFooterSpacer} />
+            <Text style={styles.coachUpdated}>{jordanCardUpdatedLabel}</Text>
           </View>
         </View>
       </ScrollView>
@@ -2691,6 +2886,33 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.accent,
+  },
+  reviewSummaryCTA: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  reviewSummaryCTARow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reviewSummaryCTAText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
+  newBadge: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.bgPrimary,
   },
   coachUpdated: {
     fontFamily: Fonts.regular,

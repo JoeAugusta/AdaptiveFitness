@@ -71,6 +71,8 @@ type WorkoutExercise = {
   category: CompoundTier;
   movementPattern?: string;
   targetWeight: number;
+  /** plan_json prescription — overrides per-set defaults for adaptation copy */
+  targetRpe?: number;
   reps: string;
   sets: ExerciseSet[];
   alternatives: string[];
@@ -93,6 +95,8 @@ type WorkoutExercise = {
 type WorkoutData = {
   title: string;
   goal: string;
+  /** Strength programme lift id — from plan_json.goalLift / targetLift */
+  goalLift?: string | null;
   exercises: WorkoutExercise[];
 };
 
@@ -163,6 +167,7 @@ const MOCK_WORKOUT_EXERCISES_BASE: Omit<WorkoutExercise, 'cues'>[] = [
 const MOCK_WORKOUT: WorkoutData = {
   title: 'Push Day A',
   goal: 'strength',
+  goalLift: 'bench_press',
   exercises: MOCK_WORKOUT_EXERCISES_BASE.map((e) => ({
     ...e,
     cues: getCuesForExerciseName(e.name),
@@ -388,6 +393,10 @@ export default function ActiveWorkoutScreen() {
     null,
   );
   const [sessionDayNumber, setSessionDayNumber] = useState<number | null>(null);
+  /** Canonical week_number for logs / UI — aligns with plans.current_week unless lockToRouteWeek. */
+  const [resolvedPlanWeekNumber, setResolvedPlanWeekNumber] = useState<
+    number | null
+  >(null);
 
   // Load workout data
   useEffect(() => {
@@ -400,7 +409,13 @@ export default function ActiveWorkoutScreen() {
     setResolvedPlanId(null);
     setSessionPlanIdForLogs(null);
     setSessionDayNumber(null);
-  }, [params.planId, params.weekNumber, params.dayNumber]);
+    setResolvedPlanWeekNumber(null);
+  }, [
+    params.planId,
+    params.weekNumber,
+    params.dayNumber,
+    params.lockToRouteWeek,
+  ]);
 
   const getAlternatives = (muscleGroup: string): string[] => {
     const map: Record<string, string[]> = {
@@ -453,6 +468,7 @@ export default function ActiveWorkoutScreen() {
         setResolvedPlanId(null);
         setSessionPlanIdForLogs(null);
         setSessionDayNumber(null);
+        setResolvedPlanWeekNumber(null);
         setWorkout(buildWorkoutFromMock());
         setPreviousSetsMap({});
         return;
@@ -473,6 +489,7 @@ export default function ActiveWorkoutScreen() {
         setResolvedPlanId(null);
         setSessionPlanIdForLogs(null);
         setSessionDayNumber(null);
+        setResolvedPlanWeekNumber(null);
         setPreviousSetsMap({});
         setWorkout(buildWorkoutFromMock());
         return;
@@ -504,14 +521,46 @@ export default function ActiveWorkoutScreen() {
 
       setResolvedPlanId(plan?.id ? String(plan.id).trim() : rawPlanId);
 
-      const planJson = plan?.plan_json;
-      const weekData =
-        planJson?.weeks?.find(
-          (w: { weekNumber: number }) => w.weekNumber === params.weekNumber,
-        ) ?? planJson?.weeks?.[0];
+      if (error || !plan) {
+        setSessionPlanIdForLogs(null);
+        setSessionDayNumber(null);
+        setResolvedPlanWeekNumber(null);
+        setPreviousSetsMap({});
+        setWorkout(buildWorkoutFromMock());
+        return;
+      }
+
+      const planJson = plan.plan_json;
+      const dbCurrentWeek = Number(plan.current_week ?? 1);
+      const paramWeek = Number(params.weekNumber ?? dbCurrentWeek);
+      const lockWeek = params.lockToRouteWeek === true;
+
+      const findWeekInPlan = (n: number) =>
+        planJson.weeks?.find(
+          (w: { weekNumber?: number; week_number?: number }) =>
+            Number(w.weekNumber ?? w.week_number) === n,
+        );
+
+      const intendedWeekNumber = lockWeek ? paramWeek : dbCurrentWeek;
+
+      let weekData =
+        findWeekInPlan(intendedWeekNumber);
+      if (!weekData) {
+        weekData = findWeekInPlan(dbCurrentWeek) ?? planJson.weeks?.[0];
+      }
+
+      const resolvedWeekNumber =
+        weekData != null
+          ? Number(
+              weekData.weekNumber ??
+                (weekData as { week_number?: number }).week_number ??
+                intendedWeekNumber,
+            )
+          : intendedWeekNumber;
 
       const dayData = weekData?.days?.find(
-        (d: { dayNumber: number }) => d.dayNumber === params.dayNumber,
+        (d: { dayNumber: number }) =>
+          Number(d.dayNumber) === Number(params.dayNumber),
       );
 
       const canonicalDayNumber =
@@ -519,7 +568,7 @@ export default function ActiveWorkoutScreen() {
           ? dayData.dayNumber
           : params.dayNumber;
 
-      const previousWeekNumber = params.weekNumber - 1;
+      const previousWeekNumber = resolvedWeekNumber - 1;
       const previousSetsMap: Record<string, LoggedSet[]> = {};
       let previousLogForDev:
         | { sets_json?: LoggedSet[] | string | null; day_number?: number }
@@ -621,7 +670,10 @@ export default function ActiveWorkoutScreen() {
         console.log('[workout consistency]', {
           planId: idForQueries,
           dayNumber: canonicalDayNumber,
-          weekNumber: params.weekNumber,
+          weekNumber: resolvedWeekNumber,
+          routeWeekParam: params.weekNumber,
+          planCurrentWeekDb: dbCurrentWeek,
+          lockToRouteWeek: params.lockToRouteWeek === true,
           previousWeekQueried:
             previousWeekNumber >= 1 ? previousWeekNumber : null,
           previousLogFound: !!previousLogForDev,
@@ -630,16 +682,10 @@ export default function ActiveWorkoutScreen() {
         });
       }
 
-      if (error || !plan) {
-        setSessionPlanIdForLogs(null);
-        setSessionDayNumber(null);
-        setWorkout(buildWorkoutFromMock());
-        return;
-      }
-
       if (!weekData) {
         setSessionPlanIdForLogs(null);
         setSessionDayNumber(null);
+        setResolvedPlanWeekNumber(null);
         setWorkout(buildWorkoutFromMock());
         return;
       }
@@ -647,10 +693,12 @@ export default function ActiveWorkoutScreen() {
       if (!dayData || dayData.type === 'rest') {
         setSessionPlanIdForLogs(null);
         setSessionDayNumber(null);
+        setResolvedPlanWeekNumber(null);
         setWorkout(buildWorkoutFromMock());
         return;
       }
 
+      setResolvedPlanWeekNumber(resolvedWeekNumber);
       setSessionPlanIdForLogs(idForQueries);
       setSessionDayNumber(dayData.dayNumber);
 
@@ -682,6 +730,7 @@ export default function ActiveWorkoutScreen() {
             category: compoundTierResolved,
             movementPattern: movementPatternResolved,
             targetWeight: ex.targetWeight ?? 0,
+            targetRpe: ex.targetRpe,
             reps: ex.reps,
             sets: Array.from({ length: setCount }, (_, i) => {
               const sn = i + 1;
@@ -709,6 +758,15 @@ export default function ActiveWorkoutScreen() {
           ? (planJson as { goal: string }).goal
           : 'general';
 
+      const planGoalLift =
+        typeof (planJson as { goalLift?: string }).goalLift === 'string' &&
+          (planJson as { goalLift: string }).goalLift.trim() !== ''
+          ? (planJson as { goalLift: string }).goalLift.trim()
+          : typeof (planJson as { targetLift?: string }).targetLift === 'string' &&
+              (planJson as { targetLift: string }).targetLift.trim() !== ''
+            ? (planJson as { targetLift: string }).targetLift.trim()
+            : null;
+
       if (__DEV__ && exercises.length > 0 && Object.keys(previousSetsMap).length > 0) {
         for (const ex of exercises) {
           const found = getPreviousSetsForExercise(
@@ -728,11 +786,12 @@ export default function ActiveWorkoutScreen() {
       setSessionPlanPhaseRaw(
         typeof weekData?.phase === 'string' ? weekData.phase : null,
       );
-      setWorkout({ title: dayData.title, goal: planGoal, exercises });
+      setWorkout({ title: dayData.title, goal: planGoal, goalLift: planGoalLift, exercises });
     } catch (e) {
       console.error('Failed to load workout:', e);
       setSessionPlanIdForLogs(null);
       setSessionDayNumber(null);
+      setResolvedPlanWeekNumber(null);
       setWorkout(buildWorkoutFromMock());
     } finally {
       setIsLoading(false);
@@ -795,6 +854,8 @@ export default function ActiveWorkoutScreen() {
     }).start();
   }, [isRestActive, restSubtextOpacity]);
 
+  const sessionWeekForLogs = resolvedPlanWeekNumber ?? params.weekNumber;
+
   const showToast = (message: string) => {
     setToastMessage(message);
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -824,7 +885,7 @@ export default function ActiveWorkoutScreen() {
           loggedWeight,
           loggedRpe: loggedRpe ?? 'not rated',
           isUnilateral,
-          weekNumber: params.weekNumber,
+          weekNumber: sessionWeekForLogs,
         },
       });
       if (error) {
@@ -976,7 +1037,7 @@ export default function ActiveWorkoutScreen() {
       if (__DEV__) {
         console.log('[SAVE workout_log]', {
           plan_id: planIdForLog,
-          week_number: params.weekNumber,
+          week_number: sessionWeekForLogs,
           day_number: dayNumberForLog,
           setsCount: sets.length,
           planIdSource,
@@ -992,7 +1053,7 @@ export default function ActiveWorkoutScreen() {
       await supabase.from('workout_logs').insert({
         user_id: userId,
         plan_id: planIdForLog,
-        week_number: params.weekNumber,
+        week_number: sessionWeekForLogs,
         day_number: dayNumberForLog,
         logged_at: new Date().toISOString(),
         session_fatigue_rating: fatigueRating,
@@ -1036,7 +1097,7 @@ export default function ActiveWorkoutScreen() {
 
     navigation.navigate('WorkoutComplete', {
       planId: planIdForComplete,
-      weekNumber: params.weekNumber,
+      weekNumber: sessionWeekForLogs,
       dayNumber: dayNumberForComplete,
       totalSets: sets.length,
       totalExercises: (workout?.exercises ?? []).length,
@@ -1148,8 +1209,9 @@ export default function ActiveWorkoutScreen() {
                     swappedName={exerciseSwaps[exercise.id] ?? null}
                     coachingNote={coachingNotes[exercise.id] ?? null}
                     coachingLoading={coachingLoading[exercise.id] ?? false}
-                    weekNumber={params.weekNumber}
+                    weekNumber={sessionWeekForLogs}
                     goal={workout?.goal ?? 'strength'}
+                    programGoalLift={workout?.goalLift ?? null}
                     onLogSet={handleLogSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}

@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { scheduleReEngagementPush } from '../../utils/notifications';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
+import { useAuth } from '../../contexts/AuthContext';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -194,6 +195,7 @@ function isGeneratePlanOverloaded(data: unknown): boolean {
 
 export default function BuildingPlanScreen() {
   const navigation = useNavigation<NavProp>();
+  const { refreshPlans } = useAuth();
   const route = useRoute<RouteType>();
   const params = route.params;
   const startTime = useRef(Date.now()).current;
@@ -384,6 +386,14 @@ export default function BuildingPlanScreen() {
             ? profileWorkoutDayCount
             : parseInt(String(params.daysPerWeek), 10);
 
+        const p = params as typeof params & { biologicalSex?: string | null };
+        const sexForProfile = p.sex ?? p.biologicalSex ?? null;
+
+        console.log('[ONBOARDING SAVE]', {
+          sex: p.sex ?? p.biologicalSex,
+          userId,
+        });
+
         await supabase.from('user_profiles').upsert({
           user_id: userId,
           training_age: params.experience,
@@ -396,13 +406,16 @@ export default function BuildingPlanScreen() {
           injuries: params.injuries ?? [],
           weak_points: params.priorityMuscles ?? [],
           age: parseInt(params.age),
-          sex: params.sex,
+          sex: sexForProfile,
           height_ft: parseInt(params.heightFt),
           height_in: parseInt(params.heightIn),
           weight_lbs: parseFloat(params.weightLbs),
           body_fat_pct: params.bodyFatPct ? parseFloat(params.bodyFatPct) : null,
           enhanced_recovery: params.enhancedRecovery ?? false,
           concurrent_sport: params.concurrentSport ?? null,
+        }, {
+          onConflict: 'user_id',
+          ignoreDuplicates: false,
         });
 
         planWeeksResolved = resolvePlanWeeksFromParams(params);
@@ -576,6 +589,7 @@ export default function BuildingPlanScreen() {
         },
       );
 
+      await refreshPlans();
       setApiDone(true);
     } catch (error) {
       console.error('Plan generation failed:', error);

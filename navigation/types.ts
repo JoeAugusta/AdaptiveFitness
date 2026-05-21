@@ -43,6 +43,9 @@ type PlanStructureParams = {
 
 export type RootStackParamList = {
   Splash: undefined;
+  Auth: undefined;
+  SignUp: undefined;
+  SignIn: undefined;
   Onboarding: undefined;
   /** S02b — optional experience for sub-muscle defaults (advanced = no pre-select); usually set only when re-entering flow */
   GoalDetails: { goal: string; experience?: string };
@@ -148,6 +151,8 @@ export type RootStackParamList = {
     dayNumber: number;
     workoutTitle?: string;
     preSessionMessage?: string | null;
+    /** When true, use `weekNumber` from route (e.g. Plan calendar). Omit for Dashboard — DB `plans.current_week` is source of truth. */
+    lockToRouteWeek?: boolean;
   };
   WorkoutComplete: {
     planId: string;

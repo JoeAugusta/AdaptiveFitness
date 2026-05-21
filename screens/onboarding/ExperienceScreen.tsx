@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -57,6 +57,424 @@ const DURATION_OPTIONS: Option[] = [
 
 function formatMuscleLabel(m: string): string {
   return m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Strength training-structure preview: exact muscle chips per day type (PHUL / PPL / upper-lower). */
+const STRENGTH_PREVIEW_FOCUS_MUSCLES: Record<string, string[]> = {
+  upper_power: ['chest', 'back', 'shoulders', 'biceps', 'triceps'],
+  lower_power: ['quads', 'hamstrings', 'glutes'],
+  upper_hypertrophy: ['chest', 'back', 'shoulders', 'arms'],
+  lower_hypertrophy: ['quads', 'hamstrings', 'glutes', 'calves'],
+  push_heavy: ['chest', 'shoulders', 'triceps'],
+  pull_heavy: ['back', 'biceps', 'rear_delts'],
+  legs_quad: ['quads', 'hamstrings', 'glutes', 'calves'],
+  push_volume: ['chest', 'shoulders', 'triceps'],
+  pull_volume: ['back', 'biceps'],
+  legs_posterior: ['hamstrings', 'glutes', 'calves'],
+  upper_heavy: ['chest', 'back', 'shoulders'],
+  lower_heavy: ['quads', 'hamstrings', 'glutes'],
+  upper_moderate: ['chest', 'back', 'shoulders'],
+  upper_volume: ['chest', 'back', 'arms'],
+  lower_volume: ['hamstrings', 'glutes', 'core'],
+  squat_heavy: ['quads', 'hamstrings', 'glutes'],
+  squat_volume: ['quads', 'hamstrings', 'glutes', 'calves'],
+};
+
+const STRIP_FROM_UPPER_STRENGTH_PREVIEW = new Set([
+  'quads',
+  'hamstrings',
+  'glutes',
+  'calves',
+]);
+
+const STRIP_FROM_LOWER_STRENGTH_PREVIEW = new Set([
+  'chest',
+  'back',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'rear_delts',
+  'arms',
+]);
+
+function isLowerBodyFocusStrength(focus: string): boolean {
+  if (focus.startsWith('lower_')) return true;
+  if (
+    focus.startsWith('legs_') ||
+    focus === 'legs_full' ||
+    focus === 'legs_unilateral' ||
+    focus === 'legs_shoulders'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isUpperBodyFocusStrength(focus: string): boolean {
+  if (focus.startsWith('upper_')) return true;
+  if (focus.startsWith('push_') || focus.startsWith('pull_')) return true;
+  if (
+    focus.includes('chest_back') ||
+    focus.includes('shoulders_arms') ||
+    focus === 'arms_core' ||
+    focus === 'arms_upper' ||
+    focus === 'upper_arms_focus'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function filterStrengthPreviewMuscles(focus: string, muscles: string[]): string[] {
+  if (isLowerBodyFocusStrength(focus)) {
+    return muscles.filter((m) => !STRIP_FROM_LOWER_STRENGTH_PREVIEW.has(m));
+  }
+  if (isUpperBodyFocusStrength(focus)) {
+    return muscles.filter((m) => !STRIP_FROM_UPPER_STRENGTH_PREVIEW.has(m));
+  }
+  return muscles;
+}
+
+function getStrengthTrainingPreviewMuscles(
+  session: SessionDay,
+  splitId: string,
+): string[] {
+  if (session.type !== 'workout') return [];
+  if (session.focus === 'full_body_a' || session.focus === 'full_body_b') {
+    return session.primaryMuscles;
+  }
+  if (session.focus === 'legs_shoulders') {
+    return session.primaryMuscles;
+  }
+  if (session.focus === 'upper_volume' && splitId === 'ppl_upper') {
+    return ['chest', 'back', 'shoulders'];
+  }
+  if (session.focus === 'arms_upper') {
+    return ['biceps', 'triceps', 'shoulders'];
+  }
+  const mapped = STRENGTH_PREVIEW_FOCUS_MUSCLES[session.focus];
+  if (mapped) return mapped;
+  return filterStrengthPreviewMuscles(session.focus, session.primaryMuscles);
+}
+
+const STRENGTH_TAGLINE_PHUL =
+  'Heavy day + volume day for each movement — the structure that drives 1RM progress.';
+
+const STRENGTH_TAGLINE_PPL =
+  'Push, pull, and legs hit twice a week — frequency is what builds strength.';
+
+const STRENGTH_TAGLINE_FULL_BODY =
+  'Full body three times a week — maximum frequency for strength at this volume.';
+
+const STRENGTH_TAGLINE_UPPER_LOWER =
+  'Upper and lower split twice each — balanced frequency with enough volume per session.';
+
+const STRENGTH_TAGLINE_FALLBACK =
+  'Structured for strength — built around your schedule.';
+
+function isStrengthLowerBodyTargetLift(
+  targetLift: string | null | undefined,
+): boolean {
+  if (!targetLift) return false;
+  const k = targetLift.toLowerCase();
+  return k.includes('squat') || k.includes('deadlift');
+}
+
+/** Short display name for strength structure preview titles / taglines (matches app targetLift ids). */
+function getStrengthTargetLiftShortLabel(
+  targetLift: string | null | undefined,
+): string {
+  if (!targetLift) return 'Lift';
+  const key = targetLift.toLowerCase().trim();
+  const labels: Record<string, string> = {
+    squat: 'Squat',
+    back_squat: 'Squat',
+    deadlift: 'Deadlift',
+    sumo_deadlift: 'Sumo Deadlift',
+    bench_press: 'Bench',
+    ohp: 'OHP',
+    overhead_press: 'OHP',
+    weighted_pullup: 'Weighted Pull-up',
+  };
+  return labels[key] ?? 'Lift';
+}
+
+/** Preview-only rows for strength + lower-body goal lifts (does not alter sessionStructure / plan). */
+type StrengthLowerBodyPreviewRow = {
+  dayLabel: string;
+  title: string;
+  muscles: string[];
+};
+
+type StrengthLowerBodyStructurePreviewResult = {
+  rows: StrengthLowerBodyPreviewRow[];
+  tagline: string;
+  /** Set when 7 training days are selected — preview caps at 6 sessions. */
+  restDayNote?: string;
+};
+
+function buildStrengthLowerBodyStructurePreview(
+  sortedDayLabels: string[],
+  targetLift: string,
+): StrengthLowerBodyStructurePreviewResult | null {
+  const n = sortedDayLabels.length;
+  if (n !== 2 && n !== 3 && n !== 5 && n !== 6) return null;
+
+  const liftLabel = getStrengthTargetLiftShortLabel(targetLift);
+  const dayLabelAt = (i: number) => sortedDayLabels[i] ?? `D${i + 1}`;
+
+  if (n === 2) {
+    return {
+      rows: [
+        {
+          dayLabel: dayLabelAt(0),
+          title: `${liftLabel} — Heavy`,
+          muscles: ['quads', 'hamstrings', 'glutes'],
+        },
+        {
+          dayLabel: dayLabelAt(1),
+          title: `${liftLabel} — Volume + Upper`,
+          muscles: ['hamstrings', 'glutes', 'back', 'core'],
+        },
+      ],
+      tagline:
+        'Two days, two sessions — heavy and volume on your target lift is the minimum to drive progress.',
+    };
+  }
+
+  if (n === 3) {
+    return {
+      rows: [
+        {
+          dayLabel: dayLabelAt(0),
+          title: `${liftLabel} — Heavy`,
+          muscles: ['quads', 'hamstrings', 'glutes'],
+        },
+        {
+          dayLabel: dayLabelAt(1),
+          title: 'Upper Body',
+          muscles: ['chest', 'back', 'shoulders', 'arms'],
+        },
+        {
+          dayLabel: dayLabelAt(2),
+          title: `${liftLabel} — Volume`,
+          muscles: ['quads', 'hamstrings', 'glutes', 'core'],
+        },
+      ],
+      tagline: `${liftLabel} twice, upper once — maximum frequency for 1RM progress on a 3-day schedule.`,
+    };
+  }
+
+  if (n === 5) {
+    return {
+      rows: [
+        {
+          dayLabel: dayLabelAt(0),
+          title: `${liftLabel} — Heavy`,
+          muscles: ['quads', 'hamstrings', 'glutes'],
+        },
+        {
+          dayLabel: dayLabelAt(1),
+          title: 'Upper Body — Power',
+          muscles: ['chest', 'back', 'shoulders'],
+        },
+        {
+          dayLabel: dayLabelAt(2),
+          title: 'Upper Body — Volume',
+          muscles: ['chest', 'back', 'arms'],
+        },
+        {
+          dayLabel: dayLabelAt(3),
+          title: `${liftLabel} — Volume`,
+          muscles: ['quads', 'hamstrings', 'glutes', 'core'],
+        },
+        {
+          dayLabel: dayLabelAt(4),
+          title: 'Upper Body — Accessories',
+          muscles: ['back', 'arms', 'shoulders'],
+        },
+      ],
+      tagline: `${liftLabel} twice a week — heavy and volume — with three upper days to build the supporting structure.`,
+    };
+  }
+
+  return {
+    rows: [
+      {
+        dayLabel: dayLabelAt(0),
+        title: `${liftLabel} — Heavy`,
+        muscles: ['quads', 'hamstrings', 'glutes'],
+      },
+      {
+        dayLabel: dayLabelAt(1),
+        title: 'Upper Body — Power',
+        muscles: ['chest', 'back', 'shoulders'],
+      },
+      {
+        dayLabel: dayLabelAt(2),
+        title: 'Upper Body — Volume',
+        muscles: ['chest', 'back', 'arms'],
+      },
+      {
+        dayLabel: dayLabelAt(3),
+        title: `${liftLabel} — Volume`,
+        muscles: ['quads', 'hamstrings', 'glutes', 'core'],
+      },
+      {
+        dayLabel: dayLabelAt(4),
+        title: 'Upper Body — Power',
+        muscles: ['back', 'shoulders'],
+      },
+      {
+        dayLabel: dayLabelAt(5),
+        title: `${liftLabel} — Technique`,
+        muscles: ['quads', 'glutes', 'core'],
+      },
+    ],
+    tagline: `Three ${liftLabel} sessions — heavy, volume, technique — the frequency serious 1RM progress requires.`,
+  };
+}
+
+/** Bench / close-grip bench / overhead press — preview-only 2d & 3d structures. */
+function isStrengthUpperBodyPressTargetLift(
+  targetLift: string | null | undefined,
+): boolean {
+  if (!targetLift) return false;
+  const k = targetLift.toLowerCase();
+  if (k === 'ohp' || k.includes('overhead')) return true;
+  if (k.includes('close_grip') || k.includes('close-grip')) return true;
+  if (k.includes('bench')) return true;
+  return false;
+}
+
+function buildStrengthUpperBodyPressStructurePreview(
+  sortedDayLabels: string[],
+  targetLift: string,
+): StrengthLowerBodyStructurePreviewResult | null {
+  const n = sortedDayLabels.length;
+  if (n !== 2 && n !== 3) return null;
+
+  const k = targetLift.toLowerCase();
+  const isOhp = k === 'ohp' || k.includes('overhead');
+  const dayLabelAt = (i: number) => sortedDayLabels[i] ?? `D${i + 1}`;
+
+  if (isOhp) {
+    if (n === 2) {
+      return {
+        rows: [
+          {
+            dayLabel: dayLabelAt(0),
+            title: 'Overhead Press — Heavy',
+            muscles: ['shoulders', 'triceps', 'chest'],
+          },
+          {
+            dayLabel: dayLabelAt(1),
+            title: 'Overhead Press — Volume + Lower',
+            muscles: ['shoulders', 'triceps', 'quads', 'hamstrings'],
+          },
+        ],
+        tagline:
+          'Overhead press twice a week — heavy and volume — the minimum frequency to drive 1RM progress.',
+      };
+    }
+    return {
+      rows: [
+        {
+          dayLabel: dayLabelAt(0),
+          title: 'Overhead Press — Heavy',
+          muscles: ['shoulders', 'triceps', 'chest'],
+        },
+        {
+          dayLabel: dayLabelAt(1),
+          title: 'Lower Body + Back',
+          muscles: ['quads', 'hamstrings', 'back'],
+        },
+        {
+          dayLabel: dayLabelAt(2),
+          title: 'Overhead Press — Volume',
+          muscles: ['shoulders', 'triceps', 'chest', 'back'],
+        },
+      ],
+      tagline:
+        'Overhead press twice, lower body once — built around your pressing 1RM.',
+    };
+  }
+
+  if (n === 2) {
+    return {
+      rows: [
+        {
+          dayLabel: dayLabelAt(0),
+          title: 'Bench — Heavy',
+          muscles: ['chest', 'shoulders', 'triceps'],
+        },
+        {
+          dayLabel: dayLabelAt(1),
+          title: 'Bench — Volume + Lower',
+          muscles: ['chest', 'triceps', 'quads', 'hamstrings'],
+        },
+      ],
+      tagline:
+        'Bench twice a week — heavy and volume — the minimum frequency to drive 1RM progress.',
+    };
+  }
+
+  return {
+    rows: [
+      {
+        dayLabel: dayLabelAt(0),
+        title: 'Bench — Heavy',
+        muscles: ['chest', 'shoulders', 'triceps'],
+      },
+      {
+        dayLabel: dayLabelAt(1),
+        title: 'Lower Body + Back',
+        muscles: ['quads', 'hamstrings', 'back'],
+      },
+      {
+        dayLabel: dayLabelAt(2),
+        title: 'Bench — Volume',
+        muscles: ['chest', 'triceps', 'shoulders', 'back'],
+      },
+    ],
+    tagline:
+      'Bench twice, lower body once — built around your pressing 1RM.',
+  };
+}
+
+function getStrengthStructureTagline(
+  splitId: string,
+  workouts: SessionDay[],
+): string {
+  const focuses = workouts.map((w) => w.focus);
+  if (splitId === 'phul' || focuses.includes('upper_power')) {
+    return STRENGTH_TAGLINE_PHUL;
+  }
+  if (
+    splitId === 'full_body_beginner' ||
+    splitId === 'full_body_advanced' ||
+    splitId === 'full_body' ||
+    focuses.includes('full_body_a') ||
+    focuses.includes('full_body_b')
+  ) {
+    return STRENGTH_TAGLINE_FULL_BODY;
+  }
+  if (
+    splitId === 'ppl' ||
+    splitId === 'ppl_upper' ||
+    splitId === 'ppl_leg_focus' ||
+    focuses.includes('push_heavy')
+  ) {
+    return STRENGTH_TAGLINE_PPL;
+  }
+  if (
+    splitId === 'upper_lower' ||
+    focuses.includes('upper_heavy') ||
+    focuses.includes('lower_heavy')
+  ) {
+    return STRENGTH_TAGLINE_UPPER_LOWER;
+  }
+  return STRENGTH_TAGLINE_FALLBACK;
 }
 
 function getSplitDayNote(splitId: string, workoutDays: number, selectedDays: number): string {
@@ -219,6 +637,55 @@ export default function ExperienceScreen() {
     .filter((d) => d.type === 'workout')
     .sort((a, b) => a.day - b.day);
   const sortedSelected = sortTrainingDays(selectedDays);
+
+  const strengthLowerBodyStructurePreview = useMemo(() => {
+    if (
+      goal !== 'strength' ||
+      !isStrengthLowerBodyTargetLift(targetLift) ||
+      !targetLift
+    ) {
+      return null;
+    }
+    const n = selectedDays.length;
+    const sorted = sortTrainingDays(selectedDays);
+    if (n === 2 || n === 3 || n === 5 || n === 6) {
+      return buildStrengthLowerBodyStructurePreview(sorted, targetLift);
+    }
+    if (n === 7) {
+      const built = buildStrengthLowerBodyStructurePreview(
+        sorted.slice(0, 6),
+        targetLift,
+      );
+      return built
+        ? {
+            ...built,
+            restDayNote:
+              'This split uses 6 training days — your remaining 1 day becomes a rest day.',
+          }
+        : null;
+    }
+    return null;
+  }, [goal, targetLift, selectedDays]);
+
+  const strengthUpperBodyPressStructurePreview = useMemo(() => {
+    if (
+      goal !== 'strength' ||
+      !targetLift ||
+      !isStrengthUpperBodyPressTargetLift(targetLift) ||
+      isStrengthLowerBodyTargetLift(targetLift)
+    ) {
+      return null;
+    }
+    const n = selectedDays.length;
+    if (n !== 2 && n !== 3) return null;
+    return buildStrengthUpperBodyPressStructurePreview(
+      sortTrainingDays(selectedDays),
+      targetLift,
+    );
+  }, [goal, targetLift, selectedDays]);
+
+  const strengthSyntheticStructurePreview =
+    strengthLowerBodyStructurePreview ?? strengthUpperBodyPressStructurePreview;
 
   const adjustOptions: AdjustMenuOption[] =
     experience && selectedDays.length >= 2
@@ -467,40 +934,85 @@ export default function ExperienceScreen() {
               </View>
 
               <View style={styles.sessionList}>
-                {workoutsOrdered.map((session, idx) => (
-                  <View
-                    key={`${session.day}-${session.focus}-${idx}`}
-                    style={styles.sessionBlock}
-                  >
-                    <View style={styles.sessionRow}>
-                      <Text style={styles.sessionDayLabel}>
-                        {session.dayLabel ??
-                          sortedSelected[idx] ??
-                          `D${session.day}`}
-                      </Text>
-                      <Text style={styles.sessionTitleText}>
-                        {getSessionTitle(session.focus)}
-                      </Text>
-                    </View>
-                    <View style={styles.muscleChipRow}>
-                      {session.primaryMuscles.map((m) => (
-                        <View key={m} style={styles.muscleChip}>
-                          <Text style={styles.muscleChipText}>
-                            {formatMuscleLabel(m)}
+                {strengthSyntheticStructurePreview
+                  ? strengthSyntheticStructurePreview.rows.map((row, idx) => (
+                      <View
+                        key={`strength-preview-${row.dayLabel}-${idx}`}
+                        style={styles.sessionBlock}
+                      >
+                        <View style={styles.sessionRow}>
+                          <Text style={styles.sessionDayLabel}>{row.dayLabel}</Text>
+                          <Text style={styles.sessionTitleText}>{row.title}</Text>
+                        </View>
+                        <View style={styles.muscleChipRow}>
+                          {row.muscles.map((m) => (
+                            <View key={m} style={styles.muscleChip}>
+                              <Text style={styles.muscleChipText}>
+                                {formatMuscleLabel(m)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ))
+                  : workoutsOrdered.map((session, idx) => (
+                      <View
+                        key={`${session.day}-${session.focus}-${idx}`}
+                        style={styles.sessionBlock}
+                      >
+                        <View style={styles.sessionRow}>
+                          <Text style={styles.sessionDayLabel}>
+                            {session.dayLabel ??
+                              sortedSelected[idx] ??
+                              `D${session.day}`}
+                          </Text>
+                          <Text style={styles.sessionTitleText}>
+                            {getSessionTitle(session.focus)}
                           </Text>
                         </View>
-                      ))}
-                    </View>
-                  </View>
-                ))}
+                        <View style={styles.muscleChipRow}>
+                          {(goal === 'strength'
+                            ? getStrengthTrainingPreviewMuscles(
+                                session,
+                                recommendedSplit.splitId,
+                              )
+                            : session.primaryMuscles
+                          ).map((m) => (
+                            <View key={m} style={styles.muscleChip}>
+                              <Text style={styles.muscleChipText}>
+                                {formatMuscleLabel(m)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ))}
               </View>
 
               <Text style={styles.jordanRationale}>
-                &ldquo;{recommendedSplit.reason}{enhancedRecovery ? ' Given your recovery rate, I\'ve pushed your volume a bit higher than normal — you can handle it.' : ''}&rdquo;
+                &ldquo;
+                {goal === 'strength'
+                  ? strengthSyntheticStructurePreview?.tagline ??
+                    getStrengthStructureTagline(
+                      recommendedSplit.splitId,
+                      workoutsOrdered,
+                    )
+                  : recommendedSplit.reason}
+                {enhancedRecovery
+                  ? ' Given your recovery rate, I\'ve pushed your volume a bit higher than normal — you can handle it.'
+                  : ''}
+                &rdquo;
               </Text>
 
+              {strengthSyntheticStructurePreview?.restDayNote ? (
+                <Text style={styles.structureDiscrepancyNote}>
+                  {strengthSyntheticStructurePreview.restDayNote}
+                </Text>
+              ) : null}
+
               {recommendedSplit.workoutDays !== undefined &&
-                recommendedSplit.workoutDays < selectedDays.length && (
+                recommendedSplit.workoutDays < selectedDays.length &&
+                !strengthSyntheticStructurePreview?.restDayNote && (
                   <Text style={styles.structureDiscrepancyNote}>
                     {getSplitDayNote(recommendedSplit.splitId, recommendedSplit.workoutDays, selectedDays.length)}
                   </Text>

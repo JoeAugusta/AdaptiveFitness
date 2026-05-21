@@ -1,5 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import {
+  enforceSetStructureExercise,
+  finalizeStrengthGoalTargetLift,
+} from '../_shared/setStructure.ts';
+import {
+  finalizeStrengthTargetLiftPeriodisationOnDays,
+} from '../_shared/strengthTargetLiftPeriodisation.ts';
+import { stampWeek1PyramidSetTargets } from '../_shared/week1PyramidSetTargets.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -519,40 +527,31 @@ function enforceWeek1Rpe(exercises: any[]): any[] {
   });
 }
 
-/**
- * Deterministically assigns setStructure to every exercise.
- * Overwrites whatever Claude returned — same pattern as stampEquipment.
- */
+/** Sequential setStructure stamping — strength goal target lift first (shared helper). */
 // deno-lint-ignore no-explicit-any
-function enforceSetStructure(exercises: any[], goal: string): any[] {
+function enforceSetStructure(
+  exercises: any[],
+  goal: string,
+  strengthGoalLift?: string | null,
+): any[] {
   return exercises.map((ex) => {
-    const equipment: string = ex.equipment ?? 'barbell';
-    const sets: number = typeof ex.sets === 'number' ? ex.sets : 3;
-    const isBodyweight = equipment === 'bodyweight';
-
     const compoundTier = getCompoundTierFromName(String(ex.name ?? ''));
-    const isIsolation = compoundTier === 'isolation';
-    const isPrimaryCompound = compoundTier === 'primary_compound';
-    const isSecondaryCompound = compoundTier === 'secondary_compound';
-    const isHypertrophyGoal = goal === 'hypertrophy';
-    const isPhase2Accessory = ex.phase === 'hypertrophy';
+    const equipment = String(ex.equipment ?? 'barbell');
 
-    let setStructure: 'straight' | 'pyramid' = 'straight';
-
-    if (!isBodyweight && !isIsolation && !isPhase2Accessory) {
-      if (isPrimaryCompound && sets >= 3) {
-        setStructure = 'pyramid';
-      } else if (isSecondaryCompound && sets >= 3 && !isHypertrophyGoal) {
-        setStructure = 'pyramid';
-      }
-    }
-
-    return { ...ex, setStructure, compoundTier };
+    return enforceSetStructureExercise(
+      { ...ex, compoundTier, equipment },
+      goal,
+      strengthGoalLift,
+    );
   });
 }
 
 // deno-lint-ignore no-explicit-any
-function stampMuscleEmphasisOnPlan(planJson: any, goal: string): any {
+function stampMuscleEmphasisOnPlan(
+  planJson: any,
+  goal: string,
+  strengthTargetLift?: string | null,
+): any {
   return {
     ...planJson,
     weeks: (planJson.weeks ?? []).map((week: any) => ({
@@ -569,7 +568,7 @@ function stampMuscleEmphasisOnPlan(planJson: any, goal: string): any {
         if (week.weekNumber === 1) {
           exercises = enforceWeek1Rpe(exercises);
         }
-        exercises = enforceSetStructure(exercises, goal);
+        exercises = enforceSetStructure(exercises, goal, strengthTargetLift);
         return { ...day, exercises };
       }),
     })),
@@ -581,9 +580,68 @@ interface SessionDay {
   dayLabel?: string;
   type: 'workout' | 'rest' | 'cardio';
   focus: string;
+  /** Matches onboarding / splitRecommendation when set */
+  label?: string;
+  targetLiftDay?: boolean;
+  /** Canonical catalogue id — same as goalLift */
+  primaryLift?: string;
   primaryMuscles: string[];
   sessionIntensity: 'heavy' | 'volume' | 'moderate';
   liftDay?: 'heavy' | 'volume';
+}
+
+/**
+ * Strength volume days: target lift is exercise #1 (PRD). Stamp 8 reps on first barbell compound
+ * after plan_json is fully assembled (title includes "volume"; no goalLift name matching).
+ */
+// deno-lint-ignore no-explicit-any
+function applyStrengthVolumeDayFirstExerciseEightReps(
+  planJson: any,
+  goal: string,
+  goalLift: string | null | undefined,
+): void {
+  console.log('[POST-PROCESSOR ENTRY]', {
+    goal,
+    goalLift,
+    hasWeeks: !!(planJson?.weeks),
+    weeksCount: planJson?.weeks?.length ?? 0,
+  });
+
+  if (goal !== 'strength') return;
+
+  for (const week of planJson?.weeks ?? []) {
+    for (const day of week?.days ?? []) {
+      if (day.type !== 'workout') continue;
+
+      const title = (day.title ?? '').toLowerCase();
+      if (!title.includes('volume')) continue;
+
+      const firstExercise = day.exercises?.[0];
+      if (!firstExercise) continue;
+
+      const equip = String(firstExercise.equipment ?? '').toLowerCase();
+      const isBarbell = equip === 'barbell';
+      const compoundTierEffective =
+        (firstExercise.compoundTier ??
+          getCompoundTierFromName(String(firstExercise.name ?? ''))) as string;
+      const isCompound = ['primary_compound', 'secondary_compound'].includes(compoundTierEffective);
+
+      if (!isBarbell || !isCompound) continue;
+
+      firstExercise.reps = '8';
+      firstExercise.repsMin = 8;
+      firstExercise.repsMax = 8;
+      firstExercise.setStructure = 'straight';
+      delete firstExercise.setTargets;
+
+      console.log('[PLAN GEN VOLUME REPS]', {
+        week: week.weekNumber,
+        day: day.title,
+        exercise: firstExercise.name,
+        volumeReps: 8,
+      });
+    }
+  }
 }
 
 interface GeneratePlanBody {
@@ -602,6 +660,8 @@ interface GeneratePlanBody {
   splitName?: string;
   splitRationale?: string;
   sessionStructure?: SessionDay[];
+  /** Alias / snake_case catalogue id — takes precedence over `targetLift` when both sent */
+  goalLift?: string;
   targetLift?: string;
   current1RM?: number | string;
   target1RM?: number | string;
@@ -1036,10 +1096,14 @@ function buildSessionBreakdown(sessionStructure: SessionDay[]): string {
       }
       const muscles = Array.isArray(day.primaryMuscles) ? day.primaryMuscles.join(', ') : '';
       const intensity = day.sessionIntensity;
+      const label =
+        typeof day.label === 'string' && day.label.trim() !== ''
+          ? day.label.trim()
+          : day.focus;
       const liftNote = day.liftDay
         ? ` — this is the ${day.liftDay} day for the target lift`
         : '';
-      return `Day ${day.day}${dow}: ${day.focus} — primary muscles: ${muscles}, intensity: ${intensity}${liftNote}`;
+      return `Day ${day.day}${dow}: ${label} (${day.focus}) — primary muscles: ${muscles}, intensity: ${intensity}${liftNote}`;
     })
     .join('\n');
 }
@@ -1072,7 +1136,34 @@ const LIFT_ACCESSORIES: Record<
     stability: ['Face Pulls', 'Band Pull-Aparts', 'Y-T-W Raises'],
     upperBack: ['Barbell Row', 'Lat Pulldown', 'Rear Delt Row'],
   },
+  'barbell row': {
+    direct: ['Lat Pulldown', 'Cable Row', 'Chest-Supported Row'],
+    tricepLockout: [],
+    stability: ['Face Pull', 'Band Pull-Aparts', 'Reverse Fly'],
+    upperBack: ['Straight-Arm Pulldown', 'Single-Arm Row', 'Seated Cable Row'],
+  },
+  'pull-up': {
+    direct: ['Lat Pulldown', 'Chin-up', 'Straight-Arm Pulldown'],
+    tricepLockout: [],
+    stability: ['Face Pull', 'Dead Hang', 'Scap Pull-up'],
+    upperBack: ['Barbell Row', 'Cable Row', 'Chest-Supported Row'],
+  },
 };
+
+function resolveStrengthTargetLiftKey(targetLift: string): string {
+  const k = targetLift.replace(/_/g, ' ').toLowerCase().trim();
+  if (k.includes('bench')) return 'bench press';
+  if (k.includes('front squat') || k === 'squat' || k.includes('back squat')) {
+    return 'back squat';
+  }
+  if (k.includes('sumo') && k.includes('deadlift')) return 'deadlift';
+  if (k.includes('romanian')) return 'deadlift';
+  if (k.includes('deadlift')) return 'deadlift';
+  if (k.includes('overhead') || k === 'ohp') return 'overhead press';
+  if (k.includes('row')) return 'barbell row';
+  if (k.includes('pull')) return 'pull-up';
+  return 'bench press';
+}
 
 const MOVEMENT_PATTERN_BLOCK = `MOVEMENT PATTERN REQUIREMENTS — every weekly plan must include at least one exercise from each of these patterns:
 - Horizontal push: Bench Press, DB Press, Push-up variants
@@ -1193,6 +1284,7 @@ serve(async (req) => {
       splitRationale = '',
       sessionStructure,
       targetLift,
+      goalLift: goalLiftIn,
       current1RM,
       target1RM,
       liftFrequency,
@@ -1226,6 +1318,15 @@ serve(async (req) => {
     // post-processes female +2 after Claude — single source of truth, no double application.
 
     const goal = goalIn ?? 'general';
+
+    /** Primary key for strength 1RM lift — `goalLift` aliases catalogue ids; falls back to `targetLift`. */
+    const strengthProgramLiftId =
+      typeof goalLiftIn === 'string' && goalLiftIn.trim() !== ''
+        ? goalLiftIn.trim()
+        : targetLift != null && String(targetLift).trim() !== ''
+          ? String(targetLift).trim()
+          : null;
+
     const trainingDays: string[] = (() => {
       if (Array.isArray(scheduledDaysBody) && scheduledDaysBody.length > 0) {
         return scheduledDaysBody.filter((d): d is string => typeof d === 'string' && d.length > 0);
@@ -1329,10 +1430,65 @@ point — fill in the exercises using goal, experience, equipment, and volume ta
     const splitName = hasStructure ? (splitNameIn ?? splitId) : effectiveSplit;
     const sessionBreakdown = hasStructure ? buildSessionBreakdown(sessionStructure as SessionDay[]) : '';
 
+    const hasTargetLiftDays =
+      hasStructure &&
+      structureArr.some((d) => d.type === 'workout' && d.targetLiftDay === true);
+
+    const strengthTargetLiftStructuredBlock =
+      goal === 'strength' && hasTargetLiftDays && sessionStructure
+        ? (() => {
+            const workouts = structureArr.filter((d) => d.type === 'workout');
+            const workoutLines = workouts
+              .map((d) => {
+                const title =
+                  typeof d.label === 'string' && d.label.trim() !== ''
+                    ? d.label.trim()
+                    : d.focus;
+                const plRaw = d.primaryLift ?? strengthProgramLiftId ?? '';
+                const pl = String(plRaw).replace(/_/g, ' ');
+                return `- "${title}": ${d.focus} day. The target lift (${pl}) is exercise #1. Nothing fatiguing before it.`;
+              })
+              .join('\n');
+            const anyUpper = workouts.some(
+              (d) => d.focus === 'heavy_upper' || d.focus === 'volume_upper',
+            );
+            const anyLower = workouts.some(
+              (d) => d.focus === 'heavy_lower' || d.focus === 'volume_lower',
+            );
+
+            let bodyConstraint = '';
+            if (anyUpper) {
+              bodyConstraint +=
+                '\n\nUPPER BODY DAYS (heavy_upper, volume_upper):\n' +
+                '  ONLY upper body exercises. NEVER program squats, deadlifts, leg press,\n' +
+                '  lunges, RDL, leg curl, calf raises, or any lower body movement.';
+            }
+            if (anyLower) {
+              bodyConstraint +=
+                '\n\nLOWER BODY DAYS (heavy_lower, volume_lower):\n' +
+                '  ONLY lower body exercises. NEVER program bench press, rows,\n' +
+                '  overhead press, pull-ups, curls, or any upper body movement.';
+            }
+
+            return `
+
+CRITICAL SESSION STRUCTURE — do not deviate:
+${workoutLines}
+
+For "Heavy Upper" or "Heavy Lower" days:
+  Target lift: W1 5×5 @ RPE 7. Accessories: 2–3 exercises.
+For "Volume Upper" or "Volume Lower" days:
+  Target lift Week 1: follow VOLUME DAY rules in RULE 3 (heavy load × 0.85 rounded 2.5 lb; target-lift reps = 8 per set on every volume day; same set count).
+${bodyConstraint}
+`;
+          })()
+        : '';
+
     const weeklyStructureBlock = hasStructure
       ? `
 WEEKLY STRUCTURE (do not deviate from this):
 ${sessionBreakdown}
+${strengthTargetLiftStructuredBlock}
 
 Split (philosophy / exercise selection only — not a template for how many days to generate): ${splitName}
 Rationale: ${splitRationale || '—'}
@@ -1359,12 +1515,104 @@ Do NOT add additional workout days or combine rest days with training.
       const current1RMNum = parseFloat(String(current1RM ?? '0'));
       const target1RMNum = parseFloat(String(target1RM ?? current1RM ?? '0'));
       const week1Weight = calculateStartingWeight(current1RMNum, 0.75);
+      const heavyDayWeight = Math.round((current1RMNum * 0.75) / 2.5) * 2.5;
+      const volumeDayWeight = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5;
+      const heavyTargetSets = 5;
+      const heavyTargetRepsPerSet = 5;
+      const volumeDayRepsPerSet = 8;
       const liftName = targetLift.replace(/_/g, ' ');
-      const liftKey = targetLift.replace(/_/g, ' ').toLowerCase();
-      const accessories = LIFT_ACCESSORIES[liftKey] ?? LIFT_ACCESSORIES['bench press'];
+      const liftKeyResolved = resolveStrengthTargetLiftKey(targetLift);
+      const accessories = LIFT_ACCESSORIES[liftKeyResolved] ?? LIFT_ACCESSORIES['bench press'];
 
       goalContext = `Primary lift: ${liftName}. Current 1RM: ${current1RMNum} lbs. Target 1RM: ${target1RMNum} lbs over ${totalWeeks} weeks.`;
       weightAnchor = `
+STRENGTH GOAL — TARGET LIFT PROGRAMMING RULES:
+
+When goal === 'strength' and a targetLift is specified:
+
+RULE 1 — FREQUENCY: The target lift MUST appear in each workout session that sessionStructure designates for it (typically two sessions per week: one heavy-oriented, one volume-oriented). Week 1 target-lift rep/load prescriptions are pinned below — do NOT substitute generic "4×6 vs 5×5" templates that contradict RULE 6 + RULE 3 + the FIXED ATHLETE WEEK 1 block.
+
+RULE 2 — HEAVY DAY: The target lift is the FIRST exercise of the heavy session. Nothing fatiguing precedes it. If it's a squat-pattern lift (Back Squat, Front Squat), no deadlifts or heavy RDLs earlier in that session.
+
+RULE 3 — VOLUME DAY (focus: volume_upper or volume_lower):
+
+VOLUME DAY target lift: always 8 reps regardless of week.
+The volume day is hypertrophy-focused — higher reps, lower intensity than the heavy day.
+
+VOLUME DAY rules (focus: volume_upper or volume_lower):
+ - Target lift weight: heavy day weight × 0.85, rounded to nearest 2.5 lbs
+   Example: heavy day = 275 lbs → volume day = 235 lbs
+ - Target lift reps: 8 per set on the target lift (fixed; not tied to heavy-day rep prescription)
+   Example: heavy day = 5×5 → volume day = 5×8 at the volume-day weight above
+ - Target lift sets: same as heavy day
+ - sessionFocus text MUST match the exercise prescription exactly — for volume_upper use the pattern:
+   'Volume upper — {sets}×{reps} bench at {weight}lbs.' (adapt "bench" to the actual lift noun: press, squat, deadlift, etc.)
+   For volume_lower use the parallel pattern 'Volume lower — {sets}×{reps} … at {weight}lbs.'
+   where {sets}, {reps}, {weight} match the FIRST target lift exercise JSON for that day, and {weight} = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5
+ - Accessories: higher rep ranges (3×8–12), same upper body muscles
+
+
+FIXED ATHLETE WEEK 1 TARGET-LIFT SESSION LOADS (for this athlete only — JSON must match):
+
+Heavy day W1: ${heavyDayWeight} lbs × ${heavyTargetRepsPerSet} reps (${heavyTargetSets}×${heavyTargetRepsPerSet})
+Volume day W1: ${volumeDayWeight} lbs × ${volumeDayRepsPerSet} reps (${heavyTargetSets}×${volumeDayRepsPerSet})
+
+These numbers are fixed — do not change them.
+
+On any day with focus volume_upper or volume_lower, the FIRST target-lift exercise must use: targetWeight = ${volumeDayWeight}, sets = ${heavyTargetSets}, reps = "${volumeDayRepsPerSet}" (straight sets — same wording in reps field across sets). sessionFocus for that workout day MUST state exactly ${heavyTargetSets}×${volumeDayRepsPerSet} and ${volumeDayWeight} lbs for the primary lift description (same lift name spelling as elsewhere in JSON). Do NOT program 5×5 on volume day.
+
+
+
+RULE 4 — ACCESSORIES: Program 2-3 accessory exercises that directly support the target lift:
+  Back Squat:    Romanian Deadlift, Leg Press, Bulgarian Split Squat
+  Deadlift:      Romanian Deadlift, Good Morning, Barbell Row
+  Bench Press:   Dumbbell Press, Tricep Extension, Cable Fly
+  Overhead Press: Lateral Raise, Dumbbell Shoulder Press, Tricep Extension
+  Barbell Row:   Lat Pulldown, Cable Row, Face Pull
+
+RULE 5 — WEEK STRUCTURE by split:
+
+  Full Body (3-day):
+    All 3 sessions include the target lift.
+    Session A: Heavy (4-6 reps)
+    Session B: Volume (6-8 reps)
+    Session C: Technique (8-10 reps, 70% of heavy weight)
+
+  Upper/Lower or PHUL (4-day):
+    Heavy day: target lift first, 4-6 reps
+    Volume day (3-4 days later): target lift first, 6-8 reps
+    Upper days: no target lift if lower body, and vice versa
+
+  5-day Squat-Focused (lower body target lift):
+    Day 1 (Mon): Heavy Squat day — target lift first
+    Day 2 (Tue): Upper body
+    Day 3 (Wed): REST or light conditioning — NOT legs
+    Day 4 (Thu): Volume Squat day — target lift first
+    Day 5 (Fri): Upper body
+    This is NOT PPL. Do not generate PPL for squat goals on 5-day splits.
+
+  5-day PPL (upper body target lift only):
+    Push Heavy: target lift first
+    Push Volume: target lift included (volume prescription)
+
+RULE 6 — PROGRESSION MODEL: Strength plans use weekly periodization, not RPE-based auto-regulation alone:
+  Week 1: 5×5 @ RPE 7 (establish baseline)
+  Week 2: 4×4 @ RPE 8 (increase intensity)
+  Week 3: 3×3 @ RPE 8.5 (peak intensity)
+  Week 4: DELOAD — 3×5 @ RPE 6
+  Repeat with higher baseline.
+
+This rep scheme applies to the TARGET LIFT only. Accessories use standard hypertrophy rep ranges (8-12).
+
+RULE 7 — NEVER do this on a strength plan:
+  - Never put the target lift as exercise 2 or later on heavy day
+  - Never program the target lift only once per week
+  - Never use PPL for a squat or deadlift goal
+  - Never use 8-12 rep ranges on the heavy day of the target lift
+  - Never write sessionFocus copy (e.g. "4×6") that does not match the target lift exercise JSON (sets, reps, targetWeight) on that day
+
+Reconcile prescribed targetWeight in JSON with the athlete's 1RM: Week 1 target lift loads should align with RULE 6 (5×5 @ RPE 7 baseline) while respecting the 1RM anchor from CRITICAL WEIGHT RULES below.
+
 CRITICAL WEIGHT RULES for strength goal:
 - ${liftName} Week 1 working sets MUST start at ${week1Weight} lbs (75% of ${current1RMNum} lb 1RM).
 - All other compound lifts: estimate based on the athlete's ${liftName} strength (they are ${experience} level).
@@ -1372,10 +1620,10 @@ CRITICAL WEIGHT RULES for strength goal:
 - Use straight sets (same weight across all sets) for the primary lift.
 - Secondary lifts should be calibrated proportionally to their strength level.
 
-STRENGTH FREQUENCY RULES:
-- The primary lift (${liftName}) should appear on BOTH push/upper days at different intensities:
-  - Heavy day: 5 sets × 3-5 reps @ 75-85% 1RM (Week 1 = 75%)
-  - Volume day: 4 sets × 4-6 reps @ 70-75% 1RM (Week 1 = 70%)
+STRENGTH FREQUENCY RULES — Week 1 target lift ONLY (percentage bands below DO NOT replace FIXED ATHLETE WEEK 1 + RULE 3):
+- Heavy session (heavy / heavy_*): ${heavyTargetSets}×${heavyTargetRepsPerSet} @ ~75% current 1RM → targetWeight = ${heavyDayWeight} lbs fixed for JSON
+- Volume session (volume_*): same set count ${heavyTargetSets}, reps per set = ${volumeDayRepsPerSet}, targetWeight = ${volumeDayWeight} lbs fixed (= ${heavyDayWeight} × 0.85, 2.5 lb plate rounding)
+  Do NOT use ~70–75% 1RM guesses on volume day; use ${volumeDayWeight} exactly.
 - This gives the athlete 2 exposures per week to the target movement
 - If only 3 days/week (PPL): Day 1 = heavy push, Day 2 = pull, Day 3 = legs
   The following week would rotate: Day 1 = volume push, etc.
@@ -1971,7 +2219,8 @@ Include all 7 days. Workout days have exercises. Rest days have empty exercises 
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 16000,
+        // Minimum 8000 per product spec; raised further to reduce “Response may be truncated” corrupt JSON.
+        max_tokens: 24000,
         system: `You are Jordan, an expert personal coach building Week 1 of a training plan. 
 
 Your job: create a properly structured, goal-appropriate training week.${
@@ -2093,7 +2342,12 @@ ${
       daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
       scheduledDays: scheduledDaysResolved,
       sessionLength: body.sessionLength ?? null,
+      /** Persist onboarding choices — Profile + downstream read plan_json as source of truth */
+      experience: body.experience ?? null,
+      equipment: body.equipment ?? null,
       goal: goal,
+      targetLift: strengthProgramLiftId,
+      goalLift: strengthProgramLiftId,
       split: splitForNormalized,
       enhancedRecovery,
       concurrentSport,
@@ -2101,6 +2355,10 @@ ${
       subMusclePreferences,
       currentWeek: 1,
       weeks: [week1Data],
+      deloadCycle: (() => {
+        const v = Number((body as { deloadCycle?: unknown }).deloadCycle);
+        return Number.isFinite(v) && v >= 2 ? v : 4;
+      })(),
     };
 
     if (normalized.weeks[0] && !normalized.weeks[0].weekNumber) {
@@ -2131,10 +2389,39 @@ ${
 
     // GAP-8: Enforce female rep range adjustments post-Claude — Claude reverts some exercises
     // GAP-7: Stamp muscleEmphasis from embedded lookup (same pattern as enforceRepRanges)
-    const processedPlanJson = stampMuscleEmphasisOnPlan(
-      enforceRepRanges(normalized, biologicalSex),
+    const processedPlanJson = finalizeStrengthGoalTargetLift(
+      stampWeek1PyramidSetTargets(
+        stampMuscleEmphasisOnPlan(
+          enforceRepRanges(normalized, biologicalSex),
+          goal,
+          strengthProgramLiftId,
+        ),
+      ),
       goal,
+      strengthProgramLiftId,
     );
+
+    const dc =
+      typeof (processedPlanJson as { deloadCycle?: number }).deloadCycle === 'number' &&
+      Number.isFinite((processedPlanJson as { deloadCycle: number }).deloadCycle)
+        ? (processedPlanJson as { deloadCycle: number }).deloadCycle
+        : 4;
+
+    const planJsonWithStrengthLift = {
+      ...processedPlanJson,
+      weeks: (processedPlanJson.weeks ?? []).map((week: any) => ({
+        ...week,
+        days: finalizeStrengthTargetLiftPeriodisationOnDays(
+          week.days,
+          goal,
+          strengthProgramLiftId,
+          Number(week.weekNumber) || 1,
+          dc,
+        ),
+      })),
+    };
+
+    applyStrengthVolumeDayFirstExerciseEightReps(planJsonWithStrengthLift, goal, strengthProgramLiftId);
 
     if (biologicalSex === 'female') {
       // deno-lint-ignore no-explicit-any
@@ -2149,7 +2436,19 @@ ${
       console.log('[generate-plan] Female rep range check:', JSON.stringify(sampleExercises));
     }
 
-    return new Response(JSON.stringify({ plan: processedPlanJson }), {
+    const week1BaselineWeight =
+      goal === 'strength' &&
+      current1RM != null &&
+      String(current1RM).trim() !== ''
+        ? calculateStartingWeight(parseFloat(String(current1RM)), 0.75)
+        : undefined;
+
+    return new Response(JSON.stringify({
+      plan: {
+        ...planJsonWithStrengthLift,
+        ...(typeof week1BaselineWeight === 'number' ? { week1BaselineWeight } : {}),
+      },
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {

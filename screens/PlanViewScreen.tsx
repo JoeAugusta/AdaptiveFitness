@@ -520,6 +520,7 @@ export default function PlanViewScreen() {
       weekNumber: selectedWeek,
       dayNumber: day.dayNumber,
       workoutTitle: day.title,
+      lockToRouteWeek: true,
     });
   };
 

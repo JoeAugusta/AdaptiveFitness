@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AdaptiveFitness",
-    "slug": "AdaptiveFitness",
+    "name": "Hone",
+    "slug": "hone",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.adaptivefitness.app"
+      "bundleIdentifier": "com.hone.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +23,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.adaptivefitness.app"
+      "package": "com.hone.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

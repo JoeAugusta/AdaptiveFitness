@@ -16,7 +16,9 @@ import {
   SIGNAL_COLOR_KEY,
   SIGNAL_ICON,
   type LastWeekData,
+  type AdaptationExtras,
 } from '../utils/adaptationReason';
+import { isStrengthProgramTargetLiftExercise } from '../utils/strengthGoalLift';
 import { useMetric, formatTrendDeltaLbs } from '../utils/units';
 import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
@@ -70,6 +72,10 @@ export interface SetTarget {
 export interface Exercise {
   id: string;
   name: string;
+  /** When set, overrides `name` for library-style matching (optional) */
+  exerciseName?: string;
+  /** From exercise library — drives bodyweight vs loaded UI with `usesWeight` */
+  equipment?: string;
   muscleGroup: string;
   usesWeight?: boolean;
   isUnilateral?: boolean;
@@ -87,6 +93,8 @@ export interface Exercise {
   coachingNote?: string;
   /** Denormalized rep prescription (usually matches first set) */
   reps?: string;
+  /** Prescribed RPE anchor from plan_json (adaptation sheet & session summary) */
+  targetRpe?: number;
   /** Per generate-plan — pyramid uses independent weights per set */
   setStructure?: 'straight' | 'pyramid' | 'wave';
   /** W2+ pyramid: per-set targets from generate-next-week (plan keeps `sets` as count on server) */
@@ -97,6 +105,97 @@ export interface Exercise {
   cues?: string[];
   /** P3-C1 fatigue adjustment — drives adaptation copy */
   adjustedBySignal?: string;
+}
+
+function shouldShowWarmups(exercise: any): boolean {
+  const name = (
+    exercise.exerciseName ?? exercise.name ?? ''
+  ).toLowerCase();
+  const equipment = (exercise.equipment ?? '').toLowerCase();
+  const tier = (exercise.compoundTier ?? '').toLowerCase();
+  const targetWeight = exercise.targetWeight ?? 0;
+
+  // Derive equipment from name if missing
+  const inferredEquipment = (() => {
+    if (!equipment) {
+      if (
+        name.includes('barbell') ||
+        name.includes('squat') ||
+        name.includes('deadlift') ||
+        name.includes('bench press') ||
+        name.includes('overhead press') ||
+        name.includes('row') ||
+        name.includes('curl') ||
+        name.includes('good morning')
+      ) {
+        return 'barbell';
+      }
+      if (name.includes('dumbbell') || name.includes('db ')) {
+        return 'dumbbell';
+      }
+      if (name.includes('cable')) return 'cable';
+      if (
+        name.includes('machine') ||
+        name.includes('leg press') ||
+        name.includes('lat pulldown') ||
+        name.includes('seated row')
+      ) {
+        return 'machine';
+      }
+      if (
+        name.includes('pull-up') ||
+        name.includes('pullup') ||
+        name.includes('dip') ||
+        name.includes('push-up')
+      ) {
+        return 'bodyweight';
+      }
+    }
+    return equipment;
+  })();
+
+  // NEVER show warmups for:
+  if (inferredEquipment === 'cable') return false;
+  if (inferredEquipment === 'machine') return false;
+  if (inferredEquipment === 'bodyweight') return false;
+
+  // ALWAYS show warmups for barbell compounds:
+  if (
+    inferredEquipment === 'barbell' &&
+    (tier === 'primary_compound' ||
+      tier === 'secondary_compound' ||
+      name.includes('squat') ||
+      name.includes('deadlift') ||
+      name.includes('bench') ||
+      name.includes('row') ||
+      name.includes('overhead press') ||
+      name.includes('good morning'))
+  ) {
+    return true;
+  }
+
+  // Barbell isolation (curls etc): weight-dependent
+  if (inferredEquipment === 'barbell') return targetWeight >= 50;
+
+  // Dumbbell compounds: weight-dependent
+  if (
+    inferredEquipment === 'dumbbell' &&
+    (tier === 'primary_compound' ||
+      tier === 'secondary_compound' ||
+      name.includes('press') ||
+      name.includes('row'))
+  ) {
+    return targetWeight >= 40;
+  }
+
+  // Dumbbell isolation: weight-dependent
+  if (inferredEquipment === 'dumbbell') return targetWeight >= 30;
+
+  // Name-based fallbacks when equipment truly unknown:
+  if (name.includes('curl') && targetWeight >= 50) return true;
+  if (name.includes('press') && targetWeight >= 30) return true;
+
+  return false;
 }
 
 export interface LoggedSet {
@@ -145,8 +244,10 @@ function rpeValueColor(rpe: number) {
   return Colors.danger;
 }
 
-function isTimedExercise(repsString: string): boolean {
-  return /second|sec|s$|\d+s\b/i.test(repsString.trim());
+function isTimedExercise(repsValue: any): boolean {
+  const repsString = String(repsValue ?? '');
+  return repsString.trim().toLowerCase().includes('sec') ||
+         repsString.trim().toLowerCase().includes('min');
 }
 
 function getAdaptationSignalColor(signal: AdaptationReason['signal']) {
@@ -166,7 +267,8 @@ function getAdaptationSignalColor(signal: AdaptationReason['signal']) {
   }
 }
 
-function parseTimedDuration(repsString: string): number {
+function parseTimedDuration(repsValue: any): number {
+  const repsString = String(repsValue ?? '');
   const match = repsString.match(/(\d+)/);
   return match ? parseInt(match[1], 10) : 30;
 }
@@ -197,6 +299,8 @@ interface ExerciseCardProps {
   weekNumber?: number;
   /** From plan_json.goal */
   goal?: PlanGoalType;
+  /** From plan_json.goalLift / targetLift — strength primary lift id */
+  programGoalLift?: string | null;
   experience?: 'beginner' | 'intermediate' | 'advanced';
   onLogSet: (
     exerciseId: string,
@@ -218,6 +322,7 @@ export default function ExerciseCard({
   isActiveCard = false,
   weekNumber = 1,
   goal = 'strength',
+  programGoalLift = null,
   experience: _experience = 'intermediate',
   onLogSet,
   onSwapExercise,
@@ -225,14 +330,23 @@ export default function ExerciseCard({
   const { lbsToDisplay, displayToLbs, formatWorkoutWeight, isMetric } = useMetric();
 
   const displayName = swappedName || exercise.name;
-  const isBodyweightExercise = exercise.usesWeight === false;
+  const exerciseNameLower = (
+    exercise.exerciseName ??
+    exercise.name ??
+    ''
+  ).toLowerCase();
+  const isWeightedVariant = exerciseNameLower.includes('weighted');
+  const isBodyweightExercise =
+    (exercise.equipment === 'bodyweight' ||
+      (exercise.equipment === undefined && exercise.usesWeight === false)) &&
+    !isWeightedVariant;
   const tw =
     exercise.targetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
   const isSelfSelectMode =
     !isBodyweightExercise && tw === 0 && goal !== 'strength';
 
   const repsForWarmup =
-    exercise.reps ?? exercise.sets[0]?.targetReps ?? '';
+    String(exercise.reps ?? exercise.sets[0]?.targetReps ?? '');
 
   const [enteredWeight, setEnteredWeight] = useState(0);
   const [set1EnteredWeight, setSet1EnteredWeight] = useState(0);
@@ -326,36 +440,25 @@ export default function ExerciseCard({
     ? frozenWarmupBase
     : reactiveWarmupBase;
 
-  const warmupCompoundSlot =
-    exercise.category ?? exercise.compoundTier ?? 'isolation';
-  const needsWarmup =
-    warmupBaseWeight >= 95 &&
-    !isBodyweightExercise &&
-    !isTimedExercise(repsForWarmup) &&
-    (warmupCompoundSlot === 'primary_compound' ||
-      warmupCompoundSlot === 'secondary_compound' ||
-      exercise.movementPattern === 'horizontal_push' ||
-      exercise.movementPattern === 'horizontal_pull' ||
-      exercise.movementPattern === 'vertical_push' ||
-      exercise.movementPattern === 'squat' ||
-      exercise.movementPattern === 'hinge');
+  const wantsWarmupByRule = shouldShowWarmups(exercise);
 
   useEffect(() => {
     if (__DEV__) {
       console.log('[warmup]', {
         name: exercise.name,
         warmupBaseWeight,
-        needsWarmup,
+        wantsWarmupByRule,
       });
     }
-  }, [exercise.name, warmupBaseWeight, needsWarmup]);
+  }, [exercise.name, warmupBaseWeight, wantsWarmupByRule]);
 
   const warmupSets = useMemo(
-    () => (needsWarmup ? calculateWarmupSets(warmupBaseWeight) : []),
-    [needsWarmup, warmupBaseWeight],
+    () => (wantsWarmupByRule ? calculateWarmupSets(warmupBaseWeight) : []),
+    [wantsWarmupByRule, warmupBaseWeight],
   );
 
-  const showWarmup = needsWarmup && warmupSets.length > 0 && warmupSectionExpanded;
+  const showWarmup =
+    wantsWarmupByRule && warmupSets.length > 0 && warmupSectionExpanded;
 
   const [inputValues, setInputValues] = useState<
     Record<number, { weight: string; reps: string; rpe: number | null }>
@@ -422,12 +525,16 @@ export default function ExerciseCard({
         if (setTarget?.targetReps) {
           return isTimedExercise(setTarget.targetReps)
             ? String(parseTimedDuration(setTarget.targetReps))
-            : setTarget.targetReps.split(/[–\-]/)[0]!.trim();
+            : String(setTarget.targetReps ?? '')
+              .split(/[–\-]/)[0]!
+              .trim();
         }
         if (!target) return '';
         return isTimedExercise(target.targetReps)
           ? String(parseTimedDuration(target.targetReps))
-          : target.targetReps.split(/[–\-]/)[0]!.trim();
+          : String(target.targetReps ?? '')
+            .split(/[–\-]/)[0]!
+            .trim();
       })(),
       rpe: null as number | null,
     };
@@ -561,22 +668,43 @@ export default function ExerciseCard({
   const firstTargetIsTimed = firstTarget ? isTimedExercise(firstTarget.targetReps) : false;
   const firstTargetDuration = firstTarget ? parseTimedDuration(firstTarget.targetReps) : 0;
   const firstTargetRpe = firstTarget?.targetRpe ?? 0;
-  const rawReps = exercise.reps ?? firstTarget?.targetReps ?? '';
+  const rawReps = String(exercise.reps ?? firstTarget?.targetReps ?? '');
   const eachSideSuffix = exercise.isUnilateral ? ' each side' : '';
   const repsSubtitlePart = firstTargetIsTimed
     ? `${firstTargetDuration} sec`
     : `${rawReps}${eachSideSuffix}`;
+  const displayWeight = (() => {
+    const targets = exercise.setTargets;
+    if (
+      exercise.setStructure === 'pyramid' &&
+      Array.isArray(targets) &&
+      targets.length > 0
+    ) {
+      return Math.max(0, ...targets.map((t) => t.targetWeight ?? 0));
+    }
+    return exercise.targetWeight ?? firstTarget?.targetWeight ?? 0;
+  })();
   const targetSummary =
     firstTarget != null
       ? isSelfSelectMode
         ? `${exercise.sets.length} sets × ${repsSubtitlePart} — choose load for RPE target`
         : isBodyweightExercise
-          ? `${exercise.sets.length} sets × ${repsSubtitlePart}`
-          : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${formatWorkoutWeight(exercise.targetWeight ?? firstTarget.targetWeight)}`
+          ? `${exercise.sets.length} sets × ${repsSubtitlePart} @ Bodyweight`
+          : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${
+              displayWeight > 0 ? formatWorkoutWeight(displayWeight) : 'Add weight'
+            }`
       : '';
 
-  const prescribedDisplayWeight =
-    exercise.targetWeight ?? firstTarget?.targetWeight ?? 0;
+  const strengthBlockLabel =
+    goal === 'strength' &&
+    programGoalLift != null &&
+    String(programGoalLift).trim() !== '' &&
+    isStrengthProgramTargetLiftExercise(exercise, programGoalLift) &&
+    firstTarget != null
+      ? `${exercise.sets.length}×${repsSubtitlePart}`
+      : undefined;
+
+  const prescribedDisplayWeight = displayWeight;
 
   useEffect(() => {
     if (!prescribedDisplayWeight || prescribedDisplayWeight === 0) {
@@ -594,23 +722,41 @@ export default function ExerciseCard({
       };
     }
 
+    const extras: AdaptationExtras = {
+      isStrengthProgramTargetLift:
+        goal === 'strength' &&
+        programGoalLift != null &&
+        String(programGoalLift).trim() !== '' &&
+        isStrengthProgramTargetLiftExercise(exercise, programGoalLift),
+      currentRepsPrescription:
+        String(exercise.reps ?? exercise.sets[0]?.targetReps ?? ''),
+      strengthBlockLabel,
+    };
+
     setAdaptationReason(
       deriveAdaptationReason(
         exercise.name,
         prescribedDisplayWeight,
-        firstTarget?.targetRpe ?? 8,
+        typeof exercise.targetRpe === 'number' && Number.isFinite(exercise.targetRpe)
+          ? exercise.targetRpe
+          : (firstTarget?.targetRpe ?? 8),
         weekNumber,
         lastWeekData,
         exercise.adjustedBySignal,
         previousSets,
         exercise.setStructure,
         isMetric,
+        goal,
+        exercise.sets.length,
+        extras,
       ),
     );
   }, [
     previousSets,
     exercise.targetWeight,
     exercise.name,
+    exercise.targetRpe,
+    exercise.reps,
     exercise.adjustedBySignal,
     exercise.sets,
     exercise.setStructure,
@@ -618,7 +764,10 @@ export default function ExerciseCard({
     weekNumber,
     firstTarget?.targetRpe,
     prescribedDisplayWeight,
+    programGoalLift,
     isMetric,
+    goal,
+    strengthBlockLabel,
   ]);
 
   const showTappableTargetWeight =
@@ -630,7 +779,7 @@ export default function ExerciseCard({
   const showSelfSelectWarmupHint =
     isSelfSelectMode &&
     enteredWeight <= 0 &&
-    !(needsWarmup && warmupSets.length > 0);
+    !(wantsWarmupByRule && warmupSets.length > 0);
 
   const showCoachingBlock =
     loggedSets.length > 0 && (coachingNote != null || coachingLoading);
@@ -660,17 +809,25 @@ export default function ExerciseCard({
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.exerciseName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <View style={styles.muscleTag}>
-            <Text style={styles.muscleTagText}>{exercise.muscleGroup}</Text>
+          <View style={styles.cardHeaderTitleBlock}>
+            <Text
+              style={styles.exerciseName}
+              numberOfLines={2}
+              adjustsFontSizeToFit={false}
+            >
+              {displayName}
+            </Text>
           </View>
-          {exercise.setStructure === 'pyramid' ? (
-            <View style={styles.pyramidBadge}>
-              <Text style={styles.pyramidBadgeText}>PYRAMID</Text>
+          <View style={styles.cardHeaderTagsRow}>
+            <View style={styles.muscleTag}>
+              <Text style={styles.muscleTagText}>{exercise.muscleGroup}</Text>
             </View>
-          ) : null}
+            {exercise.setStructure === 'pyramid' ? (
+              <View style={styles.pyramidBadge}>
+                <Text style={styles.pyramidBadgeText}>PYRAMID</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
 
@@ -770,7 +927,7 @@ export default function ExerciseCard({
         </View>
       ) : null}
 
-      {needsWarmup && warmupSets.length > 0 ? (
+      {wantsWarmupByRule && warmupSets.length > 0 ? (
         <View style={styles.warmupSection}>
           <TouchableOpacity
             style={styles.warmupHeaderRow}
@@ -829,7 +986,7 @@ export default function ExerciseCard({
         <Text style={styles.howToLink}>How To →</Text>
       </TouchableOpacity>
 
-      {needsWarmup && warmupSets.length > 0 ? (
+      {wantsWarmupByRule && warmupSets.length > 0 ? (
         <View style={styles.workingSetsDividerWrap}>
           <View style={styles.workingSetsDividerLine} />
           <View style={styles.workingSetsDividerLabelBg}>
@@ -846,7 +1003,7 @@ export default function ExerciseCard({
         const timedSet = isTimedExercise(set.targetReps);
         const timedDuration = parseTimedDuration(set.targetReps);
         const isFirstWorkingAfterWarmup =
-          setIdx === 0 && needsWarmup && warmupSets.length > 0;
+          setIdx === 0 && wantsWarmupByRule && warmupSets.length > 0;
         // BUG-7: Active highlight now derived from first exercise with remaining
         // unlogged sets. Cannot bleed onto next exercise until previous is complete.
         const isActiveRow =
@@ -1187,8 +1344,15 @@ export default function ExerciseCard({
             <View style={styles.sheetContextRow}>
               <Text style={styles.sheetContextLabel}>THIS SESSION</Text>
               <Text style={styles.sheetContextValue}>
-                {formatWorkoutWeight(prescribedDisplayWeight)} × {rawReps} reps @ RPE{' '}
-                {firstTarget?.targetRpe ?? '—'}
+                {adaptationReason?.sessionContextValue != null &&
+                adaptationReason.sessionContextValue !== ''
+                  ? adaptationReason.sessionContextValue
+                  : `${formatWorkoutWeight(prescribedDisplayWeight)} × ${rawReps} reps @ RPE ${
+                      typeof exercise.targetRpe === 'number' &&
+                      Number.isFinite(exercise.targetRpe)
+                        ? exercise.targetRpe
+                        : (firstTarget?.targetRpe ?? '—')
+                    }`}
               </Text>
             </View>
 
@@ -1229,23 +1393,35 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: Spacing.xs,
   },
   cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     flex: 1,
     marginRight: Spacing.sm,
+    minWidth: 0,
+  },
+  cardHeaderTitleBlock: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  cardHeaderTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexWrap: 'wrap',
+    marginTop: Spacing.xs,
   },
   exerciseName: {
-    fontSize: FontSizes.heading2,
+    fontSize: FontSizes.title,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
     flexShrink: 1,
   },
   muscleTag: {
-    marginLeft: Spacing.sm,
+    marginRight: Spacing.sm,
     backgroundColor: Colors.bgElevated,
     paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
@@ -1257,7 +1433,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   pyramidBadge: {
-    marginLeft: Spacing.xs,
     backgroundColor: Colors.warningMuted,
     borderRadius: Radius.full,
     paddingHorizontal: 6,

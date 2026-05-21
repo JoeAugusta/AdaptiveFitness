@@ -1,35 +1,23 @@
-import { supabase } from '../Lib/supabase';
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 
+/**
+ * Deletes all user-owned rows and auth user via Edge Function (service role).
+ */
 export async function deleteUserAccount(userId: string): Promise<void> {
-  const { error: fnError, data: fnData } = await supabase.functions.invoke<{
-    ok?: boolean;
-  }>('delete-account', { body: { userId } });
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
 
-  if (
-    !fnError &&
-    fnData &&
-    typeof fnData === 'object' &&
-    fnData.ok === true
-  ) {
-    return;
+  let json: { success?: boolean; error?: string };
+  try {
+    json = (await res.json()) as { success?: boolean; error?: string };
+  } catch {
+    throw new Error('Invalid response from server');
   }
 
-  const tables = [
-    'workout_logs',
-    'weekly_summaries',
-    'meal_suggestions',
-    'macro_logs',
-    'macro_plans',
-    'weight_logs',
-    'plans',
-    'goals',
-    'user_profiles',
-  ] as const;
-
-  for (const table of tables) {
-    const { error } = await supabase.from(table).delete().eq('user_id', userId);
-    if (error) {
-      throw new Error(`Failed to delete from ${table}: ${error.message}`);
-    }
+  if (!res.ok || json.success !== true) {
+    throw new Error(json.error ?? `Delete failed (${res.status})`);
   }
 }

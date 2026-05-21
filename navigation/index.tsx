@@ -5,6 +5,9 @@ import type { RootStackParamList } from './types';
 import { Colors, Fonts, FontSizes } from '../constants/design';
 
 import SplashScreen from '../screens/SplashScreen';
+import AuthScreen from '../screens/auth/AuthScreen';
+import SignUpScreen from '../screens/auth/SignUpScreen';
+import SignInScreen from '../screens/auth/SignInScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import GoalDetailsScreen from '../screens/onboarding/GoalDetailsScreen';
 import ExperienceScreen from '../screens/onboarding/ExperienceScreen';
@@ -173,8 +176,11 @@ export default function RootNavigator() {
       }}
     >
       {/* ── Onboarding ── */}
-      <Root.Screen name="Splash"       component={SplashScreen} />
-      <Root.Screen name="Onboarding"   component={OnboardingScreen} />
+      <Root.Screen name="Splash" component={SplashScreen} />
+      <Root.Screen name="Auth" component={AuthScreen} />
+      <Root.Screen name="SignUp" component={SignUpScreen} />
+      <Root.Screen name="SignIn" component={SignInScreen} />
+      <Root.Screen name="Onboarding" component={OnboardingScreen} />
       <Root.Screen name="GoalDetails"  component={GoalDetailsScreen} />
       <Root.Screen name="Experience"    component={ExperienceScreen} />
       <Root.Screen name="RPEEducation"  component={RPEEducationScreen} />

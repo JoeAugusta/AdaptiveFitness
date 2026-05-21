@@ -165,33 +165,50 @@ export default function WeeklyCoachSummaryScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No authenticated user');
 
-      const { data: planRow } = await supabase
-        .from('plans')
-        .select('current_week')
-        .eq('id', planId)
-        .maybeSingle();
+      const [{ data: planRow }, { data: exactRow, error: exactErr }] = await Promise.all([
+        supabase.from('plans').select('current_week').eq('id', planId).maybeSingle(),
+        supabase
+          .from('weekly_summaries')
+          .select('id, week_number, summary_json, generated_at')
+          .eq('plan_id', planId)
+          .eq('week_number', weekNumber)
+          .maybeSingle(),
+      ]);
 
       const currentWeek: number = planRow?.current_week ?? (weekNumber + 1);
       setCurrentWeekNum(currentWeek);
 
+      if (exactErr) throw new Error(exactErr.message);
+
+      if (exactRow) {
+        const { data: histRows, error: histErr } = await supabase
+          .from('weekly_summaries')
+          .select('id, week_number, summary_json, generated_at')
+          .eq('plan_id', planId)
+          .neq('week_number', weekNumber)
+          .order('week_number', { ascending: false })
+          .limit(8);
+
+        if (histErr) throw new Error(histErr.message);
+
+        setCurrentSummary(exactRow.summary_json);
+        setHistory((histRows ?? []) as WeeklySummaryRow[]);
+        await AsyncStorage.removeItem('afc_unviewed_summary_week');
+        setLoading(false);
+        return;
+      }
+
+      /* Prior rows-only — avoids re-invoking when this week wasn't in the truncated top-N list */
+      let existing: WeeklySummaryRow[] = [];
       const { data: rows, error: fetchErr } = await supabase
         .from('weekly_summaries')
         .select('id, week_number, summary_json, generated_at')
         .eq('plan_id', planId)
         .order('week_number', { ascending: false })
-        .limit(4);
+        .limit(8);
 
       if (fetchErr) throw new Error(fetchErr.message);
-
-      const existing = (rows ?? []) as WeeklySummaryRow[];
-      const currentRow = existing.find((r) => r.week_number === weekNumber);
-
-      if (currentRow) {
-        setCurrentSummary(currentRow.summary_json);
-        setHistory(existing.filter((r) => r.week_number !== weekNumber));
-        setLoading(false);
-        return;
-      }
+      existing = (rows ?? []) as WeeklySummaryRow[];
 
       if (weekNumber >= currentWeek) {
         setWeekInProgress(true);
@@ -223,7 +240,8 @@ export default function WeeklyCoachSummaryScreen() {
       if (insertErr) console.warn('Failed to save summary:', insertErr.message);
 
       setCurrentSummary(summary);
-      setHistory(existing);
+      setHistory(existing.filter((r) => r.week_number !== weekNumber));
+      await AsyncStorage.removeItem('afc_unviewed_summary_week');
       setLoading(false);
     } catch (e: any) {
       setError(String(e?.message ?? e));

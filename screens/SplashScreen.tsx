@@ -3,36 +3,74 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes } from '../constants/design';
+import { useAuth } from '../contexts/AuthContext';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
 export default function SplashScreen() {
   const navigation = useNavigation<SplashNavProp>();
+  const { session, authReady, hasPlans } = useAuth();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    if (!authReady) return;
+
     let cancelled = false;
 
-    const checkAuth = async () => {
+    const run = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
         await new Promise((resolve) => setTimeout(resolve, 1500));
-
         if (cancelled) return;
+        if (!authReady) return;
 
-        if (session) {
-          navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
-        } else {
-          navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+        console.log('[SPLASH]', {
+          authReady,
+          hasSession: !!session,
+          isAnonymous: session?.user?.is_anonymous,
+          hasPlans,
+          userId: session?.user?.id,
+        });
+        console.log('[SPLASH]', {
+          hasSession: !!session,
+          isAnonymous: session?.user?.is_anonymous,
+          hasPlans,
+        });
+
+        if (!session) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Auth' }],
+          });
+          return;
         }
+
+        if (session.user.is_anonymous) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Dashboard' }],
+          });
+          return;
+        }
+
+        if (!hasPlans) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Onboarding' }],
+          });
+          return;
+        }
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
       } catch {
         if (!cancelled) {
-          navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Auth' }],
+          });
         }
       } finally {
         if (!cancelled) {
@@ -41,22 +79,18 @@ export default function SplashScreen() {
       }
     };
 
-    void checkAuth();
+    void run();
 
     return () => {
       cancelled = true;
     };
-  }, [navigation]);
+  }, [authReady, session, hasPlans, navigation]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>AdaptiveFitness</Text>
       {checking ? (
-        <ActivityIndicator
-          color={Colors.accent}
-          size="small"
-          style={styles.spinner}
-        />
+        <ActivityIndicator color={Colors.accent} size="small" style={styles.spinner} />
       ) : null}
     </View>
   );

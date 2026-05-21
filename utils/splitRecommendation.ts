@@ -8,6 +8,12 @@ export interface SessionDay {
   dayLabel?: string;
   type: 'workout' | 'rest';
   focus: string;
+  /** UI / generate-plan — e.g. Heavy Upper (optional) */
+  label?: string;
+  /** When true, session is built around the athlete’s strength goal lift (passed to generate-plan) */
+  targetLiftDay?: boolean;
+  /** Canonical lift id (e.g. barbell_bench_press) — matches plan_json goalLift */
+  primaryLift?: string;
   primaryMuscles: string[];
   sessionIntensity: 'heavy' | 'volume' | 'moderate';
   liftDay?: 'heavy' | 'volume';
@@ -43,6 +49,7 @@ export function getSplitLabel(splitId: string): string {
     full_body: 'Full Body',
     strength_2x: 'Strength Focus',
     strength_3x: 'Strength Focus',
+    squat_focused_5: 'Squat-Focused',
     bro_split: 'Bro Split',
     custom: 'Custom',
   };
@@ -122,6 +129,10 @@ export function getSplitInfoDescription(splitId: string): string {
     case 'phul':
       return (
         'Power Hypertrophy Upper Lower. Two power days (low reps, heavy load) paired with two hypertrophy days (moderate reps, higher volume). Builds strength and size simultaneously — the most effective 4-day structure for advanced intermediate lifters.'
+      );
+    case 'squat_focused_5':
+      return (
+        'A five-day lower-body strength layout: two dedicated squat days (heavy and volume), two upper days, and a mid-week recovery day. Designed so your squat gets two quality exposures per week without running PPL.'
       );
     case 'ppl':
       return (
@@ -322,6 +333,8 @@ export function splitHistoryLabelToId(label: string | null): string | null {
   if (label === 'Upper / Lower') return 'upper_lower';
   if (label === 'Push / Pull / Legs') return 'ppl';
   if (label === 'Full Body') return 'full_body_beginner';
+  if (label === 'PHUL') return 'phul';
+  if (label === 'Squat-Focused (5-day)') return 'squat_focused_5';
   if (label === 'Bro Split') return 'bro_split';
   if (label === 'Not following a program') return 'not_following';
   if (label === 'Other') return 'other';
@@ -355,18 +368,30 @@ export function getRecommendedSplit(
   });
 
   if (goal === 'strength') {
+    const liftKey = (targetLift ?? '').toLowerCase();
+    const isLowerBodyLift = liftKey.includes('squat') || liftKey.includes('deadlift');
     const isBeginnerStrength =
       expLower === 'beginner' || trainingBackground === 'New to structured training';
-    const freq = isBeginnerStrength ? 'strength_3x' : 'strength_2x';
+    const hist = splitHistoryLabelToId(currentSplit);
+    let splitId: string = isBeginnerStrength ? 'strength_3x' : 'strength_2x';
+    if (hist === 'squat_focused_5' && isLowerBodyLift && d === 5) {
+      splitId = 'squat_focused_5';
+    }
     const liftName = (targetLift ?? 'your target lift').replace(/_/g, ' ');
-    console.log('[getRecommendedSplit] → STRENGTH early return:', freq);
-    return {
-      splitId: freq,
-      splitName: getSplitLabel(freq),
+    console.log('[getRecommendedSplit] → STRENGTH early return:', splitId);
+    const rec: SplitRecommendation = {
+      splitId,
+      splitName: getSplitLabel(splitId),
       reason: isBeginnerStrength
         ? `Hitting ${liftName} three times per week builds the movement pattern fastest at this stage.`
         : `Heavy day + volume day for ${liftName} — the structure that drives 1RM progress.`,
     };
+    if (isLowerBodyLift && d >= 6) {
+      rec.workoutDays = 5;
+      rec.warning =
+        'Six training days is a lot for heavy lower-body 1RM work — Jordan recommends five or fewer sessions per week for recovery.';
+    }
+    return rec;
   }
 
   if (goal === 'power_hypertrophy') {
@@ -717,6 +742,19 @@ function upperLower5(priorityMuscles: string[], weakPoints: string[]): SessionDa
   ];
 }
 
+/** Strength 5-day lower-body emphasis: heavy + volume squat days, two upper days, mid-week rest. */
+function squatFocusedStrength5(): SessionDay[] {
+  return [
+    W(1, 'squat_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
+    R(3),
+    W(4, 'squat_volume', ['quads', 'hamstrings', 'glutes', 'calves'], 'volume'),
+    W(5, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
+    R(6),
+    R(7),
+  ];
+}
+
 function phul4(): SessionDay[] {
   return [
     W(1, 'upper_power', ['chest', 'back', 'shoulders'], 'heavy'),
@@ -839,6 +877,39 @@ function strengthThreeX4(): SessionDay[] {
   ];
 }
 
+/** Catalogue ids eligible for heavy + volume upper-only 2-day strength splits */
+export const STRENGTH_2DAY_UPPER_LIFTS = new Set([
+  'barbell_bench_press',
+  'overhead_press',
+  'weighted_pull_up',
+  'weighted_pullup',
+]);
+
+/** Catalogue ids eligible for heavy + volume lower-only 2-day strength splits */
+export const STRENGTH_2DAY_LOWER_LIFTS = new Set([
+  'barbell_squat',
+  'deadlift',
+  'sumo_deadlift',
+]);
+
+/** Normalise catalogue id for comparisons */
+function normalizeGoalLiftKey(lift: string | null | undefined): string {
+  return String(lift ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
+/** Bench/OHP/pull-up catalogue ids used for upper-only 2-day strength splits */
+export function isStrengthBenchOhpTwoDayTarget(lift: string | null | undefined): boolean {
+  return STRENGTH_2DAY_UPPER_LIFTS.has(normalizeGoalLiftKey(lift));
+}
+
+/** Squat/DL catalogue ids used for lower-only 2-day strength splits */
+export function isStrengthSquatDlTwoDayTarget(lift: string | null | undefined): boolean {
+  return STRENGTH_2DAY_LOWER_LIFTS.has(normalizeGoalLiftKey(lift));
+}
+
 function liftMuscles(targetLift: string | null): string[] {
   if (!targetLift) return ['chest', 'shoulders', 'triceps'];
   const k = targetLift.toLowerCase().replace(/\s+/g, '_');
@@ -846,7 +917,75 @@ function liftMuscles(targetLift: string | null): string[] {
   if (k.includes('squat')) return ['quads', 'hamstrings', 'glutes'];
   if (k.includes('deadlift')) return ['hamstrings', 'glutes', 'back'];
   if (k.includes('ohp') || k.includes('overhead')) return ['shoulders', 'triceps', 'chest'];
+  if (k.includes('row')) return ['back', 'biceps', 'rear_delts'];
+  if (k.includes('pullup') || k.includes('pull_up')) return ['lats', 'back', 'biceps'];
   return ['chest', 'shoulders', 'triceps'];
+}
+
+function strengthTwoDayUpperTargetSessions(goalLift: string): SessionDay[] {
+  const upperMuscles = uniqMuscles(['chest', 'shoulders', 'triceps', 'back']);
+  return [
+    {
+      day: 1,
+      type: 'workout',
+      focus: 'heavy_upper',
+      label: 'Heavy Upper',
+      primaryLift: goalLift,
+      primaryMuscles: upperMuscles,
+      sessionIntensity: 'heavy',
+      liftDay: 'heavy',
+      targetLiftDay: true,
+    },
+    {
+      day: 2,
+      type: 'workout',
+      focus: 'volume_upper',
+      label: 'Volume Upper',
+      primaryLift: goalLift,
+      primaryMuscles: upperMuscles,
+      sessionIntensity: 'moderate',
+      liftDay: 'volume',
+      targetLiftDay: true,
+    },
+    R(3),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
+}
+
+function strengthTwoDayLowerTargetSessions(goalLift: string): SessionDay[] {
+  const m = liftMuscles(goalLift);
+  return [
+    {
+      day: 1,
+      type: 'workout',
+      focus: 'heavy_lower',
+      label: 'Heavy Lower',
+      targetLiftDay: true,
+      primaryLift: goalLift,
+      primaryMuscles: uniqMuscles([...m, 'quads', 'hamstrings', 'glutes']),
+      sessionIntensity: 'heavy',
+      liftDay: 'heavy',
+    },
+    {
+      day: 2,
+      type: 'workout',
+      focus: 'volume_lower',
+      label: 'Volume Lower',
+      targetLiftDay: true,
+      primaryLift: goalLift,
+      primaryMuscles: uniqMuscles([...m, 'quads', 'hamstrings', 'glutes', 'calves']),
+      sessionIntensity: 'volume',
+      liftDay: 'volume',
+    },
+    R(3),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
 }
 
 function applyStrengthLiftDays(
@@ -859,8 +998,16 @@ function applyStrengthLiftDays(
 
   const muscles = liftMuscles(targetLift);
   const out = days.map((d) => ({ ...d }));
+  const liftKey = targetLift.toLowerCase().replace(/\s+/g, '_');
 
-  const tagUpperPair = (heavyFocus: string, volFocus: string) => {
+  const isLowerBodyTarget =
+    liftKey.includes('squat') || liftKey.includes('deadlift');
+  const isPullTarget =
+    liftKey.includes('row') ||
+    liftKey.includes('pullup') ||
+    liftKey.includes('pull_up');
+
+  const tagPair = (heavyFocus: string, volFocus: string) => {
     for (const s of out) {
       if (s.type !== 'workout') continue;
       if (s.focus === heavyFocus) {
@@ -874,28 +1021,56 @@ function applyStrengthLiftDays(
   };
 
   if (splitId === 'upper_lower' || splitId === 'strength_2x') {
-    tagUpperPair('upper_heavy', 'upper_volume');
+    tagPair('heavy_upper', 'volume_upper');
+    tagPair('heavy_lower', 'volume_lower');
+    if (isLowerBodyTarget) {
+      tagPair('lower_heavy', 'lower_volume');
+    } else {
+      tagPair('upper_heavy', 'upper_volume');
+    }
     return out;
   }
   if (splitId === 'strength_3x') {
-    tagUpperPair('upper_heavy', 'upper_volume');
+    tagPair('heavy_upper', 'volume_upper');
+    tagPair('heavy_lower', 'volume_lower');
+    if (isLowerBodyTarget) {
+      tagPair('lower_heavy', 'lower_volume');
+    } else {
+      tagPair('upper_heavy', 'upper_volume');
+    }
     for (const s of out) {
-      if (s.type === 'workout' && s.focus === 'upper_moderate') {
+      if (
+        s.type === 'workout' &&
+        s.focus === 'upper_moderate' &&
+        !isLowerBodyTarget
+      ) {
         s.primaryMuscles = uniqMuscles([...muscles, ...s.primaryMuscles]);
       }
     }
     return out;
   }
   if (splitId === 'ppl') {
-    tagUpperPair('push_heavy', 'push_volume');
+    if (isPullTarget) {
+      tagPair('pull_heavy', 'pull_volume');
+    } else {
+      tagPair('push_heavy', 'push_volume');
+    }
     return out;
   }
   if (splitId === 'phul') {
-    tagUpperPair('upper_power', 'upper_hypertrophy');
+    if (isLowerBodyTarget) {
+      tagPair('lower_power', 'lower_hypertrophy');
+    } else {
+      tagPair('upper_power', 'upper_hypertrophy');
+    }
+    return out;
+  }
+  if (splitId === 'squat_focused_5') {
+    tagPair('squat_heavy', 'squat_volume');
     return out;
   }
   if (splitId === 'batman' || splitId === 'arnold') {
-    tagUpperPair('chest_back_heavy', 'chest_back_volume');
+    tagPair('chest_back_heavy', 'chest_back_volume');
     return out;
   }
 
@@ -1004,14 +1179,42 @@ export function getSessionStructure(
 ): SessionDay[] {
   let structure: SessionDay[];
 
-  const exp = normExp(experienceLevel ?? 'intermediate');
-  const muscleFocus = getMuscleFocusFlags(priorityMuscles, weakPoints);
-
   const finish = (raw: SessionDay[], liftSplitId: string = splitId): SessionDay[] => {
     const lifted = applyStrengthLiftDays(raw, goal, targetLift, liftSplitId);
     if (!selectedDays?.length) return lifted;
     return mapSessionsToDays(lifted, selectedDays);
   };
+
+  const _rawLift = normalizeGoalLiftKey(targetLift);
+  const _days = selectedDays?.length ?? daysPerWeek ?? 0;
+  console.log('[splitRec] goal:', goal, 'lift:', _rawLift, 'days:', _days);
+  // ── STRENGTH 2-DAY HARD OVERRIDE ──────────────────────────────
+
+  if (goal === 'strength' && _days === 2) {
+    const _isUpper =
+      _rawLift === 'barbell_bench_press' ||
+      _rawLift === 'bench_press' ||
+      _rawLift === 'overhead_press' ||
+      _rawLift === 'weighted_pull_up' ||
+      _rawLift === 'weighted_pullup';
+
+    const _isLower =
+      _rawLift === 'barbell_squat' ||
+      _rawLift === 'squat' ||
+      _rawLift === 'deadlift' ||
+      _rawLift === 'sumo_deadlift';
+
+    if (_isUpper) {
+      return finish(strengthTwoDayUpperTargetSessions(_rawLift));
+    }
+    if (_isLower) {
+      return finish(strengthTwoDayLowerTargetSessions(_rawLift));
+    }
+  }
+  // ── END OVERRIDE ─────────────────────────────────────────────
+
+  const exp = normExp(experienceLevel ?? 'intermediate');
+  const muscleFocus = getMuscleFocusFlags(priorityMuscles, weakPoints);
 
   if (hint === 'more_upper' && (splitId === 'upper_lower' || splitId === 'strength_3x')) {
     return finish(upperUpperFocus4());
@@ -1045,12 +1248,22 @@ export function getSessionStructure(
     case 'upper_focus':
       structure = upperFocus4();
       break;
-    case 'strength_2x':
-      if (daysPerWeek >= 6) structure = ppl6();
-      else if (daysPerWeek === 5) structure = ppl5();
-      else if (daysPerWeek >= 4) structure = upperLower4();
+    case 'squat_focused_5':
+      structure = squatFocusedStrength5();
+      break;
+    case 'strength_2x': {
+      const lk = (targetLift ?? '').toLowerCase();
+      const isLowerT = lk.includes('squat') || lk.includes('deadlift');
+      if (daysPerWeek >= 6 && !isLowerT) structure = ppl6();
+      else if (daysPerWeek >= 6 && isLowerT) {
+        structure = upperLower5(priorityMuscles, weakPoints);
+      } else if (daysPerWeek === 5 && !isLowerT) structure = ppl5();
+      else if (daysPerWeek === 5 && isLowerT) {
+        structure = upperLower5(priorityMuscles, weakPoints);
+      } else if (daysPerWeek >= 4) structure = upperLower4();
       else structure = upperLower4();
       break;
+    }
     case 'strength_3x':
       if (daysPerWeek >= 4) structure = strengthThreeX4();
       else structure = upperLower4();
@@ -1115,6 +1328,10 @@ export function getSessionStructure(
 }
 
 const SESSION_TITLES: Record<string, string> = {
+  heavy_upper: 'Heavy Upper',
+  volume_upper: 'Volume Upper',
+  heavy_lower: 'Heavy Lower',
+  volume_lower: 'Volume Lower',
   upper_heavy: 'Upper Body — Power',
   upper_volume: 'Upper Body — Volume',
   upper_moderate: 'Upper Body',
@@ -1124,6 +1341,8 @@ const SESSION_TITLES: Record<string, string> = {
   lower_volume: 'Lower Body — Volume',
   lower_hypertrophy: 'Lower Body — Hypertrophy',
   lower_power: 'Lower Body — Power',
+  squat_heavy: 'Squat — Heavy',
+  squat_volume: 'Squat — Volume',
   push_heavy: 'Push — Heavy',
   push_volume: 'Push — Volume',
   pull_heavy: 'Pull — Heavy',

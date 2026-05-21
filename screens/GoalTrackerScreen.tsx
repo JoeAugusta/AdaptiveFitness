@@ -154,6 +154,17 @@ function liftIdMatchesExerciseName(
       /\bohp\b/.test(exerciseNameLower)
     );
   }
+  if (raw === 'weighted_pullup' || raw.includes('pullup') || raw.includes('pull-up')) {
+    return (
+      exerciseNameLower.includes('pull-up') ||
+      exerciseNameLower.includes('pullup') ||
+      exerciseNameLower.includes('chin-up') ||
+      exerciseNameLower.includes('chinup')
+    );
+  }
+  if (raw === 'barbell_row' || (raw.includes('row') && !raw.includes('deadlift'))) {
+    return exerciseNameLower.includes('row');
+  }
   const slug = raw.replace(/^barbell_/, '').replace(/_/g, ' ');
   const parts = slug.split(/\s+/).filter((p) => p.length > 0);
   if (parts.length === 0) return false;

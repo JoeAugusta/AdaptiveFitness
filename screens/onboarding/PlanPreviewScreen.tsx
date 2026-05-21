@@ -376,12 +376,22 @@ function formatLift(lift: string): string {
       return 'Bench Press';
     case 'squat':
       return 'Back Squat';
+    case 'front_squat':
+      return 'Front Squat';
     case 'deadlift':
       return 'Deadlift';
+    case 'sumo_deadlift':
+      return 'Sumo Deadlift';
+    case 'romanian_deadlift':
+      return 'Romanian Deadlift';
     case 'ohp':
       return 'Overhead Press';
+    case 'barbell_row':
+      return 'Barbell Row';
+    case 'weighted_pullup':
+      return 'Weighted Pull-up';
     default:
-      return lift.charAt(0).toUpperCase() + lift.slice(1);
+      return lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 }
 

@@ -28,7 +28,6 @@ import {
   LineHeights,
   Spacing,
   Radius,
-  CommonStyles,
 } from '../constants/design';
 import { deleteUserAccount } from '../utils/deleteAccount';
 import { useMetric } from '../utils/units';
@@ -37,26 +36,25 @@ import { useEntitlement } from '../hooks/useEntitlement';
 
 // ── Label maps ──
 
-const GOAL_LABELS: Record<string, string> = {
-  strength: 'Strength Focus',
-  hypertrophy: 'Hypertrophy',
-  recomp: 'Body Recomp',
-  fat_loss: 'Fat Loss',
-  general: 'General Fitness',
-};
 
-const TRAINING_AGE_LABELS: Record<string, string> = {
-  beginner: 'Beginner',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-};
+function formatGoal(goalId: string): string {
+  const id = String(goalId ?? '').trim();
+  const map: Record<string, string> = {
+    fat_loss: 'Fat Loss',
+    hypertrophy: 'Build Muscle',
+    strength: 'Get Stronger',
+    power_hypertrophy: 'Strength & Size',
+    recomp: 'Body Recomposition',
+    general: 'General Fitness',
+  };
+  if (!id) return '—';
+  return (
+    map[id] ??
+    id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
 
-const EQUIPMENT_LABELS: Record<string, string> = {
-  full_gym: 'Full Gym',
-  home_gym: 'Home Gym',
-  dumbbells: 'Dumbbells Only',
-  bodyweight: 'Bodyweight',
-};
+
 
 const SEX_LABELS: Record<string, string> = {
   male: 'Male',
@@ -74,6 +72,11 @@ interface UserProfile {
   session_duration_mins: number;
   preferred_split: string;
   equipment: string;
+  /** Mon–Sun labels from onboarding — length is days/week */
+  training_days?: string[] | null;
+  /** If present alongside training_age — prefer onboarding column names per row shape */
+  experience?: string | null;
+  session_length?: string | number | null;
   weight_lbs: number;
   height_ft: number;
   height_in: number;
@@ -144,25 +147,58 @@ function formatSessionLength(val: string | number | null | undefined): string {
   return `${str} min`;
 }
 
-function formatSplit(split: string | undefined | null): string {
-  const SPLIT_LABELS: Record<string, string> = {
+/** Split catalogue id → display label (experience suffix stripped for full_body_*). */
+function formatSplit(splitId: string): string {
+  const id = String(splitId).trim();
+  if (id === '' || id === '—') return '—';
+
+  const map: Record<string, string> = {
     full_body: 'Full Body',
     full_body_beginner: 'Full Body',
+    full_body_advanced: 'Full Body',
+    full_body_intermediate: 'Full Body',
     upper_lower: 'Upper / Lower',
-    push_pull_legs: 'Push / Pull / Legs',
-    ppl: 'Push / Pull / Legs',
-    bro_split: 'Bro Split',
     phul: 'PHUL',
     phat: 'PHAT',
+    ppl: 'PPL',
+    ppl_upper: 'PPL + Upper',
+    ppl_leg_focus: 'PPL + Leg Focus',
+    leg_focus: 'Leg Focus',
+    upper_focus: 'Upper Focus',
+    arnold: 'Arnold Split',
+    batman: 'Batman Split',
+    strength_2x: 'Strength Focus',
+    strength_3x: 'Strength Focus',
+    push_pull_legs: 'Push / Pull / Legs',
+    bro_split: 'Bro Split',
     custom: 'Custom',
   };
-  if (split == null || String(split).trim() === '') return '—';
-  const s = String(split);
-  const lower = s.toLowerCase();
+
+  const key = id.toLowerCase();
   return (
-    SPLIT_LABELS[lower] ??
-    s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    map[key] ??
+    id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   );
+}
+
+function formatExperienceForDisplay(exp: unknown): string {
+  if (exp === null || exp === undefined || exp === '') return '—';
+  const raw = String(exp).trim().toLowerCase();
+  if (raw === 'beginner') return 'Beginner';
+  if (raw === 'intermediate') return 'Intermediate';
+  if (raw === 'advanced') return 'Advanced';
+  return String(exp).trim();
+}
+
+function formatEquipmentForDisplay(eq: unknown): string {
+  if (eq === null || eq === undefined || eq === '' || eq === '—') return '—';
+  const key = String(eq).trim().toLowerCase().replace(/\s+/g, '_');
+  if (key === 'full_gym') return 'Full Gym';
+  if (key === 'home_gym') return 'Home Gym';
+  if (key === 'dumbbells') return 'Dumbbells Only';
+  if (key === 'barbell') return 'Barbell Only';
+  if (key === 'bodyweight') return 'Bodyweight';
+  return String(eq).trim();
 }
 
 function trainingPrefsDisplay(
@@ -175,40 +211,74 @@ function trainingPrefsDisplay(
   splitDisplay: string;
   equipmentDisplay: string;
 } {
-  const pj = (plan?.plan_json ?? null) as Record<string, unknown> | null;
+  const pj = (plan?.plan_json ?? {}) as Record<string, unknown>;
 
-  const expRaw = pj?.experience ?? profile?.training_age;
-  const daysRaw = pj?.daysPerWeek ?? profile?.days_per_week;
-  const rawSessionLength = (pj?.sessionLength ??
-    pj?.sessionDuration ??
-    null) as string | number | null;
-  const sessionLengthDisplay = rawSessionLength
-    ? formatSessionLength(rawSessionLength)
-    : profile?.session_duration_mins
-      ? formatSessionLength(String(profile.session_duration_mins))
+  console.log('[TRAINING PREFS]', {
+    experience: pj?.experience,
+    split: pj?.split,
+    equipment: pj?.equipment,
+    sessionLength: pj?.sessionLength,
+    daysPerWeek: pj?.daysPerWeek,
+    allPlanJsonKeys: Object.keys(pj),
+  });
+
+  // plan_json first; profile fallback (DB uses training_age / session_duration_mins).
+  const experienceVal =
+    pj.experience ??
+    profile?.experience ??
+    profile?.training_age ??
+    '—';
+
+  const equipmentVal =
+    pj.equipment ??
+    profile?.equipment ??
+    '—';
+
+  const sessionLengthVal =
+    pj.sessionLength ??
+    profile?.session_length ??
+    profile?.session_duration_mins ??
+    '—';
+
+  const daysPerWeek = pj?.daysPerWeek
+    ?? profile?.days_per_week
+    ?? profile?.training_days?.length
+    ?? null;
+
+  const daysDisplay = daysPerWeek != null
+    ? `${daysPerWeek} days / week`
+    : '—';
+
+  const splitRaw = pj.split ?? profile?.preferred_split ?? '—';
+  const splitDisplay =
+    splitRaw !== '—' && splitRaw != null && String(splitRaw).trim() !== ''
+      ? formatSplit(String(splitRaw))
       : '—';
-  const splitRaw = (pj?.split ?? profile?.preferred_split) as
-    | string
-    | undefined;
-  const equipRaw = pj?.equipment ?? profile?.equipment;
 
-  const expStr =
-    expRaw != null && expRaw !== '' ? String(expRaw as string) : '';
-  const equipStr =
-    equipRaw != null && equipRaw !== '' ? String(equipRaw as string) : '';
+  const sessionDisplay =
+    sessionLengthVal !== '—' &&
+    sessionLengthVal != null &&
+    sessionLengthVal !== '' &&
+    !(
+      typeof sessionLengthVal === 'number' && !Number.isFinite(sessionLengthVal)
+    )
+      ? formatSessionLength(sessionLengthVal as string | number)
+      : '—';
 
-  let daysDisplay = '—';
-  if (daysRaw != null && daysRaw !== '') {
-    const n = Number(daysRaw);
-    if (Number.isFinite(n)) daysDisplay = `${n} days`;
-  }
+  const experienceDisplay = formatExperienceForDisplay(experienceVal);
+  const equipmentDisplay =
+    equipmentVal === undefined || equipmentVal === null || equipmentVal === ''
+      ? '—'
+      : equipmentVal !== '—'
+        ? formatEquipmentForDisplay(equipmentVal)
+        : '—';
 
   return {
-    experienceDisplay: expStr ? mapped(TRAINING_AGE_LABELS, expStr) : '—',
+    experienceDisplay,
     daysDisplay,
-    sessionDisplay: sessionLengthDisplay,
-    splitDisplay: formatSplit(splitRaw),
-    equipmentDisplay: equipStr ? mapped(EQUIPMENT_LABELS, equipStr) : '—',
+    sessionDisplay,
+    splitDisplay,
+    equipmentDisplay,
   };
 }
 
@@ -260,7 +330,6 @@ export default function ProfileSettingsScreen() {
     log_date: string;
   } | null>(null);
 
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [showHeightSheet, setShowHeightSheet] = useState(false);
@@ -363,6 +432,19 @@ export default function ProfileSettingsScreen() {
         console.error('user_profiles error:', profileRes.error);
         throw profileRes.error;
       }
+
+      const profile = profileRes.data as (UserProfile & {
+        biological_sex?: string | null;
+        gender?: string | null;
+      }) | null;
+
+      console.log('[PROFILE METRICS]', {
+        age: profile?.age,
+        height_ft: profile?.height_ft,
+        height_in: profile?.height_in,
+        sex: profile?.sex ?? profile?.biological_sex ?? profile?.gender,
+        allKeys: profile ? Object.keys(profile) : [],
+      });
 
       const weightLog = weightLogRes.data as { weight_lbs: number; log_date: string } | null;
       setLatestWeightLog(weightLog);
@@ -520,27 +602,7 @@ export default function ProfileSettingsScreen() {
     );
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            try {
-              await supabase.auth.signOut();
-              resetToOnboarding();
-            } catch (error) {
-              console.error('Sign out error:', error);
-            }
-          })();
-        },
-      },
-    ]);
-  };
-
-  const handleConfirmDeleteAccount = () => {
+  const executeDeleteAccount = () => {
     void (async () => {
       try {
         setIsDeleting(true);
@@ -553,15 +615,44 @@ export default function ProfileSettingsScreen() {
         }
         await deleteUserAccount(user.id);
         await supabase.auth.signOut();
-        setShowDeleteModal(false);
         resetToSplash();
       } catch (e) {
         console.error('Delete account error:', e);
-        Alert.alert('Something went wrong. Please try again.');
+        Alert.alert(
+          '',
+          'Something went wrong. Please try again or contact support.',
+        );
       } finally {
         setIsDeleting(false);
       }
     })();
+  };
+
+  const promptDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      'This will permanently delete your account and all your data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete My Account',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert(
+              'Are you sure?',
+              'All your workout history, progress, and coaching data will be lost forever.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, Delete Everything',
+                  style: 'destructive',
+                  onPress: () => executeDeleteAccount(),
+                },
+              ],
+            ),
+        },
+      ],
+    );
   };
 
   // ── Error state ──
@@ -680,7 +771,13 @@ export default function ProfileSettingsScreen() {
               <Text style={styles.rowLabel}>Goal</Text>
               <View style={styles.goalRowRight}>
                 <Text style={[styles.rowValue, styles.goalRowValue]} numberOfLines={1}>
-                  {mapped(GOAL_LABELS, data?.goal?.goal_type)}
+                  {formatGoal(
+                    String(
+                      (data?.plan?.plan_json?.goal ??
+                        data?.goal?.goal_type ??
+                        '') as string,
+                    ),
+                  )}
                 </Text>
                 {Platform.OS !== 'web' && !rcEntitlementLoading && !rcIsPro ? (
                   <Text style={styles.goalLockMark}>🔒</Text>
@@ -699,7 +796,18 @@ export default function ProfileSettingsScreen() {
             />
             <Row
               label="Active Plan"
-              value={data?.plan ? truncate(data.plan.title, 20) : '—'}
+              value={
+                data?.plan
+                  ? truncate(
+                      String(
+                        data.plan.plan_json?.title ?? data.plan.title ?? '—',
+                      )
+                        .replace(/_/g, ' ')
+                        .replace(/-/g, ' – '),
+                      20,
+                    )
+                  : '—'
+              }
               isLast
             />
           </View>
@@ -881,19 +989,63 @@ export default function ProfileSettingsScreen() {
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.row, styles.rowLast]}
-            onPress={() => setShowDeleteModal(true)}
+            style={[styles.row, styles.rowLast, isDeleting && styles.rowDeleting]}
+            onPress={promptDeleteAccount}
+            disabled={isDeleting}
             activeOpacity={0.7}
           >
             <Text style={styles.supportRowLabelDanger}>Delete Account</Text>
-            <Text style={styles.rowChevron}>›</Text>
+            {isDeleting ? (
+              <ActivityIndicator size="small" color={Colors.danger} />
+            ) : null}
           </TouchableOpacity>
         </View>
 
         {/* ── 7. Sign Out ── */}
         <TouchableOpacity
           style={styles.signOutBtn}
-          onPress={handleSignOut}
+          onPress={() => {
+            const confirmed = Platform.OS === 'web'
+              ? window.confirm('Are you sure you want to sign out?')
+              : true; // On native, skip confirm and sign out directly
+                      // OR keep Alert for native only
+
+            if (Platform.OS !== 'web') {
+              // Native: use Alert
+              Alert.alert(
+                'Sign Out',
+                'Are you sure you want to sign out?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: () => {
+                      supabase.auth.signOut()
+                        .finally(() => {
+                          navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Auth' as never }],
+                          });
+                        });
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+
+            // Web: use window.confirm
+            if (window.confirm('Are you sure you want to sign out?')) {
+              supabase.auth.signOut()
+                .finally(() => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Auth' as never }],
+                  });
+                });
+            }
+          }}
           activeOpacity={0.8}
         >
           <Text style={styles.signOutText}>Sign Out</Text>
@@ -1145,53 +1297,6 @@ export default function ProfileSettingsScreen() {
         </View>
       </Modal>
 
-      <Modal
-        transparent
-        visible={showDeleteModal}
-        animationType="fade"
-        onRequestClose={() => {
-          if (!isDeleting) setShowDeleteModal(false);
-        }}
-      >
-        <View style={styles.deleteModalOverlay}>
-          <View style={styles.deleteModalCard}>
-            <Text style={styles.deleteModalTitle}>Delete Account</Text>
-            <Text style={styles.deleteModalBody}>
-              This will permanently delete your account, all workout history, and your plan.
-              This cannot be undone.
-            </Text>
-            <TouchableOpacity
-              style={[
-                CommonStyles.primaryButton,
-                styles.deleteModalBtnFullWidth,
-                isDeleting && styles.deleteModalBtnDisabled,
-              ]}
-              onPress={() => setShowDeleteModal(false)}
-              disabled={isDeleting}
-              activeOpacity={0.85}
-            >
-              <Text style={CommonStyles.primaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.deleteModalDangerBtn,
-                styles.deleteModalBtnFullWidth,
-                styles.deleteModalDangerBtnMargin,
-                isDeleting && styles.deleteModalBtnDisabled,
-              ]}
-              onPress={handleConfirmDeleteAccount}
-              disabled={isDeleting}
-              activeOpacity={0.85}
-            >
-              {isDeleting ? (
-                <ActivityIndicator color={Colors.danger} />
-              ) : (
-                <Text style={styles.deleteModalDangerBtnText}>Delete My Account</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1646,61 +1751,15 @@ const styles = StyleSheet.create({
   retryText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
 
   supportRowLabelDanger: {
+    flex: 1,
+    flexShrink: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.danger,
   },
 
-  deleteModalOverlay: {
-    flex: 1,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  deleteModalCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-  },
-  deleteModalTitle: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  deleteModalBody: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginVertical: Spacing.xxxl,
-    lineHeight: LineHeights.body,
-  },
-  deleteModalBtnFullWidth: {
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  deleteModalDangerBtnMargin: {
-    marginTop: Spacing.md,
-  },
-  deleteModalDangerBtn: {
-    height: 56,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteModalDangerBtnText: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.title,
-    color: Colors.danger,
-  },
-  deleteModalBtnDisabled: {
-    opacity: 0.5,
+  rowDeleting: {
+    opacity: 0.65,
   },
 
 });

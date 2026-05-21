@@ -6,11 +6,136 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { enforceSetStructureExercise, isStrengthGoalTargetLift, isTargetLift } from '../_shared/setStructure.ts';
+import {
+  finalizeStrengthTargetLiftPeriodisationOnDays,
+  strengthWeekInCycle,
+} from '../_shared/strengthTargetLiftPeriodisation.ts';
+import {
+  buildWeek1PyramidSetTargets,
+  type Week1PyramidTargetSet,
+} from '../_shared/week1PyramidSetTargets.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+/** §2 POSITIVE = logged easier than target; NEGATIVE = harder. Single source — do not redefine elsewhere in this module. */
+function computeRpeGap(avgLoggedRpe: number, targetRpe: number): number {
+  return targetRpe - avgLoggedRpe;
+}
+
+/** §3 Strength primary lift periodisation row by position in deload-skipped cycle. */
+function strengthPeriodisation(weekInCycle: number): {
+  sets: number;
+  reps: number;
+  targetRpe: number;
+} {
+  switch (weekInCycle) {
+    case 1:
+      return { sets: 5, reps: 5, targetRpe: 7.0 };
+    case 2:
+      return { sets: 4, reps: 4, targetRpe: 8.0 };
+    case 3:
+      return { sets: 3, reps: 3, targetRpe: 8.5 };
+    case 4:
+      return { sets: 3, reps: 5, targetRpe: 6.0 }; // deload week of cycle
+    default:
+      return { sets: 5, reps: 5, targetRpe: 7.0 };
+  }
+}
+
+function isVolumeDay(
+  session: any,
+  planJson?: any,
+  _weekNumber?: number,
+): boolean {
+  // Signal 1: direct title on session (canonical plan_json.weeks[].days[])
+  const title = (session.title ?? '').toLowerCase();
+  if (title.includes('volume')) return true;
+
+  // Signal 2: focus/label/liftDay (forward compat)
+  const focus = (session.focus ?? '').toLowerCase();
+  if (focus.includes('volume')) return true;
+  const label = (session.label ?? '').toLowerCase();
+  if (label.includes('volume')) return true;
+  const liftDay = (session.liftDay ?? '').toLowerCase();
+  if (liftDay === 'volume') return true;
+
+  // Signal 3: look up in plan_json.weeks[0].days by dayNumber
+  if (planJson?.weeks?.length > 0) {
+    const week1 = planJson.weeks[0];
+    const days = week1?.days ?? week1?.sessions ?? [];
+    const dayNum = session.day ?? session.dayNumber;
+    const matchedDay = days.find(
+      (d: any) => d.dayNumber === dayNum || d.day === dayNum,
+    );
+    if (matchedDay) {
+      const matchedTitle = (matchedDay.title ?? '').toLowerCase();
+      if (matchedTitle.includes('volume')) return true;
+    }
+  }
+
+  return false;
+}
+
+/** Strength volume days: target lift only → 8 straight reps (accessories / timed moves unchanged). */
+function applyStrengthVolumeDayTargetLiftReps(
+  days: any[] | undefined,
+  goal: string,
+  goalLift: string | null | undefined,
+  planJson?: any,
+): any[] {
+  if (goal !== 'strength' || !goalLift || String(goalLift).trim() === '') {
+    return days ?? [];
+  }
+
+  const volumeRepsStr = '8';
+  const volumeRepsNum = 8;
+
+  return (days ?? []).map((session: any) => {
+    if (session.type !== 'workout') return session;
+
+    const volume = isVolumeDay(session, planJson);
+    console.log('[SESSION TYPE]', {
+      title: session.title,
+      dayNumber: session.dayNumber ?? session.day,
+      isVolume: volume,
+    });
+
+    if (!volume) return session;
+
+    const exercisesIn = session.exercises ?? [];
+    const exercisesOut: any[] = [];
+
+    for (const exercise of exercisesIn) {
+      if (!isStrengthGoalTargetLift(exercise, goalLift)) {
+        exercisesOut.push(exercise);
+        continue;
+      }
+
+      console.log('[VOLUME DAY REPS]', {
+        sessionTitle: session.title,
+        isVolume: true,
+        volumeReps: volumeRepsNum,
+        exercise: exercise.exerciseName ?? exercise.name,
+      });
+
+      exercisesOut.push({
+        ...exercise,
+        reps: volumeRepsStr,
+        repsMin: volumeRepsNum,
+        repsMax: volumeRepsNum,
+      });
+    }
+
+    return {
+      ...session,
+      exercises: exercisesOut,
+    };
+  });
+}
 
 const COMPOUND_KEYWORDS = ['squat', 'deadlift', 'bench press', 'row', 'press', 'lunge', 'hip thrust'];
 
@@ -216,52 +341,312 @@ function getWeek1BaselineFromLogs(
   return best;
 }
 
-function calculateIncrease(
-  currentWeight: number,
-  avgRpe: number,
+function getEquipmentForExerciseName(exerciseName: string): string {
+  const key = String(exerciseName ?? '').toLowerCase().trim();
+  if (EQUIPMENT_MAP[key]) return EQUIPMENT_MAP[key];
+  const sortedEntries = [
+    ...Object.entries(EQUIPMENT_MAP),
+    ...Object.entries(EQUIPMENT_ALIASES ?? {}),
+  ].sort((a, b) => b[0].length - a[0].length);
+  for (const [mapKey, equip] of sortedEntries) {
+    if (key.includes(mapKey) || mapKey.includes(key)) return equip;
+  }
+  return 'barbell';
+}
+
+
+/** §5 Accessory increments from gap × equipment class. */
+function accessoryWeightIncrement(
+  avgLoggedRpe: number,
   targetRpe: number,
-  trainingAge: string,
-  compound: boolean,
+  equipmentRaw: string,
 ): number {
-  const rpeGap = avgRpe - targetRpe; // negative = too light
+  const gap = computeRpeGap(avgLoggedRpe, targetRpe);
+  const equipment = String(equipmentRaw ?? 'barbell').toLowerCase();
 
-  // Base percentage by RPE gap
-  let basePct: number;
-  if (rpeGap <= -4) {
-    basePct = 0.10; // Way too light — +10%
-  } else if (rpeGap <= -2) {
-    basePct = 0.05; // Too light — +5%
+  const isBarOrDumb = ['barbell', 'dumbbell'].includes(equipment);
+  const isCableOrMachine = ['cable', 'machine'].includes(equipment);
+
+  if (gap >= 3) return isBarOrDumb ? 20 : isCableOrMachine ? 15 : 10;
+  if (gap >= 2) return isBarOrDumb ? 10 : isCableOrMachine ? 10 : 5;
+  if (gap >= 1) return isBarOrDumb ? 5 : isCableOrMachine ? 5 : 2.5;
+  if (gap >= 0) return isBarOrDumb ? 5 : isCableOrMachine ? 5 : 2.5;
+  if (gap >= -1) return 0;
+  if (gap >= -2) return isBarOrDumb ? -5 : isCableOrMachine ? -5 : -2.5;
+  return isBarOrDumb ? -10 : isCableOrMachine ? -10 : -5;
+}
+
+/** §5 round helper: barbell/dumbbell → 2.5, else stack (cable/machine/etc.) → 5 */
+function accessoryRoundNewWeight(weight: number, equipmentRaw: string): number {
+  const equipment = String(equipmentRaw ?? 'barbell').toLowerCase();
+  const roundTo = ['barbell', 'dumbbell'].includes(equipment) ? 2.5 : 5;
+  return Math.round(weight / roundTo) * roundTo;
+}
+
+/** Top working set ≈ pyramid anchor × this factor (inverse when solving anchor from desired top weight). */
+function pyramidTopSetPct(setCount: number): number {
+  const n = Math.floor(Number(setCount)) || 0;
+  return n === 5 ? 0.9 : 1;
+}
+
+/** Rebuild ladder after progressed anchor weight (delegates canonical W2+ pyramid builder). */
+function buildProgressionPyramidSetTargets(
+  anchor: number,
+  setCount: number,
+  priorSetTargets?: Array<{ targetRpe?: number; targetReps?: string }>,
+): Week1PyramidTargetSet[] {
+  let n = Math.floor(Number(setCount));
+  if (!Number.isFinite(n) || !(n >= 3 && n <= 5)) n = 4;
+  const reps = String(priorSetTargets?.[0]?.targetReps ?? '8');
+  const rpeHint = Number(priorSetTargets?.[0]?.targetRpe ?? 8);
+  return buildWeek1PyramidSetTargets(anchor, n, reps, rpeHint) ?? [];
+}
+
+function formatJordanSessionPrescription(
+  weight: number,
+  reps: string,
+  targetRpe: number,
+): string {
+  const r =
+    reps && String(reps).trim().length > 0 ? String(reps).trim() : '4';
+  return `${weight} lbs × ${r} reps @ RPE ${targetRpe.toFixed(1)}`;
+}
+
+/** §6 Gap-tiers — accessories only (canonical gap vs accessory target RPE). */
+function accessoryJordanCopyFromGap(
+  gap: number,
+  priorWeight: number,
+  newWeight: number,
+  avgLoggedRpe: number,
+  weightDeltaLbs: number,
+  repsPrescription: string,
+  accessoryTargetRpe: number,
+): { headline: string; body: string; sessionLine: string } {
+  const avgStr = avgLoggedRpe.toFixed(1);
+  const pw = Math.round(priorWeight);
+  const nw = Math.round(newWeight);
+  const incDisp = Math.abs(Math.round(weightDeltaLbs));
+
+  let headline: string;
+  let body: string;
+
+  if (gap >= 3) {
+    headline = 'Resetting the load — finding your real working weight';
+    body =
+      `${pw} lbs at RPE ${avgStr} is well below working intensity — jumping to ${nw} lbs to find a load that actually challenges you.`;
+  } else if (gap >= 2) {
+    headline = `Up ${incDisp} lbs — closing the gap`;
+    body = `${pw} lbs at RPE ${avgStr} left too much in the tank.`;
+  } else if (gap >= 1) {
+    headline = `Up ${incDisp} lbs — building on last week`;
+    body =
+      `${pw} lbs at RPE ${avgStr} was within your range — adding load to keep the stimulus honest.`;
+  } else if (gap >= 0) {
+    headline = `Up ${incDisp} lbs — progressing as planned`;
+    body =
+      'On target last week. Small load increase for continued adaptation.';
+  } else if (gap >= -1 && gap < 0) {
+    headline = 'Same load — recovery priority';
+    body =
+      'Last week ran harder than the target — holding weight to let the adaptation land before pushing again.';
   } else {
-    basePct = 0; // On target — use standard increment
+    headline = 'Pulling back the load';
+    body =
+      "Last week's effort was above sustainable intensity. Reducing weight to restore quality reps.";
   }
 
-  // Training age multiplier
-  let multiplier: number;
-  if (trainingAge === 'beginner') {
-    multiplier = 1.3; // Beginners adapt faster — larger jumps
-  } else if (trainingAge === 'advanced') {
-    multiplier = 0.7; // Advanced athletes near ceiling — smaller jumps
+  return {
+    headline,
+    body,
+    sessionLine: formatJordanSessionPrescription(nw, repsPrescription, accessoryTargetRpe),
+  };
+}
+
+/** §6 Strength programme target lift copy (weights vs logged top-set anchor). */
+function strengthTargetJordanCopyFromProgress(
+  priorTopSetWeight: number,
+  newWeight: number,
+  newPeriodisationSets: number,
+  newPeriodisationReps: number,
+  newPeriodisationTargetRpe: number,
+  nextWeekNumber: number,
+  weightIncrement: number,
+): { headline: string; body: string; sessionLine: string } {
+  const nwRounded = Math.round(newWeight / 2.5) * 2.5;
+  const repsStr = String(newPeriodisationReps);
+  const sessionLine = formatJordanSessionPrescription(
+    nwRounded,
+    repsStr,
+    newPeriodisationTargetRpe,
+  );
+
+  const incRounded = Math.abs(Math.round(weightIncrement));
+  if (priorTopSetWeight <= 0) {
+    return {
+      headline: `Week ${nextWeekNumber} intensity block`,
+      body: `Moving into ${newPeriodisationSets}×${repsStr}.`,
+      sessionLine,
+    };
+  }
+
+  const pctChange = (nwRounded - priorTopSetWeight) / priorTopSetWeight;
+  if (pctChange > 0.01) {
+    return {
+      headline: `Up ${incRounded} lbs — Week ${nextWeekNumber} intensity block`,
+      body:
+        `Moving into ${newPeriodisationSets}×${repsStr} — fewer reps, more load. This is where the strength build begins.`,
+      sessionLine,
+    };
+  }
+  if (pctChange < -0.01) {
+    return {
+      headline: 'Pulling back the load',
+      body:
+        "Last week's effort was above sustainable intensity. Reducing weight to restore quality reps.",
+      sessionLine,
+    };
+  }
+  return {
+    headline: 'Same load — higher intensity',
+    body:
+      'Last week ran at the upper edge of the target. Keeping the weight and letting the rep scheme do the work.',
+    sessionLine,
+  };
+}
+
+/**
+ * Writes coaching / adaptation sheet fields AFTER targetWeight progression so copy matches prescription.
+ * Pass accessoryTargetRpeForGap from last week's prescribed target RPE (prior periodisation row for heavy primary).
+ */
+// deno-lint-ignore no-explicit-any
+function stampExerciseAdaptationCopyAfterProgression(params: {
+  exercise: any;
+  planBaseline: number;
+  avgLoggedRpe: number;
+  accessoryTargetRpeForGap: number;
+  isTargetLiftEx: boolean;
+  dayIsVolume: boolean;
+  nextWeekNumber: number;
+}): void {
+  const {
+    exercise,
+    planBaseline,
+    avgLoggedRpe,
+    accessoryTargetRpeForGap,
+    isTargetLiftEx,
+    dayIsVolume,
+    nextWeekNumber,
+  } = params;
+
+  const newWeight = Number(exercise.targetWeight ?? 0);
+  const delta = Math.round(newWeight - planBaseline);
+  const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpeForGap);
+
+  let headline: string;
+  let body: string;
+
+  if (gap >= 3) {
+    headline = 'Resetting the load — finding your real working weight';
+    body =
+      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} is well below working intensity — jumping to ${newWeight} lbs to find a load that actually challenges you.`;
+  } else if (gap >= 2) {
+    headline = `Up ${delta} lbs — closing the gap`;
+    body =
+      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} left too much in the tank. Adding load to bring the stimulus in line with your target.`;
+  } else if (gap >= 1) {
+    headline = `Up ${delta} lbs — building on last week`;
+    body =
+      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} was within your range — adding load to keep the stimulus honest.`;
+  } else if (gap >= 0) {
+    headline = `Up ${delta} lbs — progressing as planned`;
+    body = `On target last week. Small load increase for continued adaptation.`;
+  } else if (gap >= -1) {
+    headline = 'Same load — recovery priority';
+    body =
+      `Last week ran harder than the target — holding weight this session to let the adaptation land before pushing again.`;
   } else {
-    multiplier = 1.0; // Intermediate — base percentage
+    headline = 'Pulling back the load';
+    body =
+      `Last week's effort was above sustainable intensity. Reducing weight to restore quality reps.`;
   }
 
-  // If RPE is near target, use standard fixed increment
-  if (basePct === 0) {
-    return compound ? 2.5 : 1.0;
+  if (isTargetLiftEx && !dayIsVolume) {
+    const newPeriodisationReps = exercise.reps;
+    if (delta > 0) {
+      headline = `Up ${delta} lbs — Week ${nextWeekNumber} intensity block`;
+      body =
+        `Moving into ${exercise.sets}×${newPeriodisationReps} — fewer reps, more load. This is where the strength build begins.`;
+    } else {
+      headline = 'Same load — higher intensity';
+      body =
+        `Last week ran at the upper edge of the target. Keeping the weight and letting the rep scheme do the work this week.`;
+    }
   }
 
-  // Calculate percentage-based increase
-  const rawIncrease = currentWeight * basePct * multiplier;
+  exercise.coachingNote = body;
 
-  // Round to nearest 2.5 lbs
-  const rounded = Math.round(rawIncrease / 2.5) * 2.5;
+  if ('adaptationReason' in exercise) {
+    exercise.adaptationReason = headline;
+  }
 
-  // Minimum increase of 2.5 lbs — never less
-  const withMinimum = Math.max(2.5, rounded);
+  exercise.adaptationHeadline = headline;
+  exercise.adaptationBody = body;
+  const tr = Number(exercise.targetRpe ?? 0);
+  exercise.adaptationThisSession =
+    `${newWeight} lbs × ${String(exercise.reps)} reps @ RPE ${
+      Number.isFinite(tr) ? tr.toFixed(1) : String(exercise.targetRpe ?? '?')
+    }`;
+}
 
-  // Cap at 12% of current weight — safety ceiling
-  const cap = Math.round((currentWeight * 0.12) / 2.5) * 2.5;
-  return Math.min(withMinimum, cap);
+/** Re-stamp adaptationThisSession after pipeline steps that tweak reps/targetRpe (e.g. periodisation finalize, volume reps). */
+// deno-lint-ignore no-explicit-any
+function refreshAdaptationThisSessionSummaries(days: any[] | undefined): any[] {
+  return (days ?? []).map((day: any) => {
+    if (day.type !== 'workout') return day;
+    return {
+      ...day,
+      exercises: (day.exercises ?? []).map((exercise: any) => {
+        if (
+          exercise.adaptationHeadline === undefined &&
+          exercise.adaptationThisSession === undefined
+        ) {
+          return exercise;
+        }
+        const nw = Number(exercise.targetWeight ?? 0);
+        const tr = Number(exercise.targetRpe ?? 0);
+        return {
+          ...exercise,
+          adaptationThisSession: `${nw} lbs × ${String(exercise.reps)} reps @ RPE ${
+            Number.isFinite(tr)
+              ? tr.toFixed(1)
+              : String(exercise.targetRpe ?? '?')
+          }`,
+        };
+      }),
+    };
+  });
+}
+
+/** Keep every exercise slot from the completed week; overlay safe AI narrative fields only. */
+function mergeExerciseListsPreservePrior(
+  priorList: any[] | undefined | null,
+  aiList: any[] | undefined | null,
+): any[] {
+  const prev = Array.isArray(priorList) ? priorList : [];
+  const ai = Array.isArray(aiList) ? aiList : [];
+  return prev.map((p, j) => {
+    const out = JSON.parse(JSON.stringify(p));
+    const a = ai[j];
+    if (a && typeof a === 'object') {
+      for (const k of ['coachingNote', 'sessionPhase', 'phase'] as const) {
+        const v = a[k];
+        if (v !== undefined && v !== null && v !== '') {
+          (out as any)[k] = v;
+        }
+      }
+    }
+    return out;
+  });
 }
 
 /** Keep day numbers, rest/workout layout, titles, muscleGroups from the week that was completed. */
@@ -273,9 +658,24 @@ function mergeNextWeekWithPreviousStructure(
 ): any {
   const prevDays = previousWeek?.days ?? [];
   if (prevDays.length === 0) {
-    return { ...claudeWeek, weekNumber, phase };
+    const daysOnly = Array.isArray(claudeWeek?.days)
+      ? claudeWeek.days
+      : Array.isArray(claudeWeek?.sessions)
+      ? claudeWeek.sessions
+      : [];
+    const { sessions: _s0, workouts: _w0, ...restCw } = claudeWeek ?? {};
+    return {
+      ...restCw,
+      weekNumber,
+      phase,
+      days: daysOnly,
+    };
   }
-  const aiDays = Array.isArray(claudeWeek?.days) ? claudeWeek.days : [];
+  const aiDays = Array.isArray(claudeWeek?.days)
+    ? claudeWeek.days
+    : Array.isArray(claudeWeek?.sessions)
+    ? claudeWeek.sessions
+    : [];
   const mergedDays = prevDays.map((prevDay: any, i: number) => {
     const aiDay = aiDays[i] ?? {};
     if (prevDay.type === 'rest') {
@@ -291,15 +691,24 @@ function mergeNextWeekWithPreviousStructure(
       ...prevDay,
       dayNumber: prevDay.dayNumber,
       type: 'workout',
+      title: prevDay.title ?? aiDay.title,
+      muscleGroups: Array.isArray(prevDay.muscleGroups)
+        ? prevDay.muscleGroups
+        : (Array.isArray(aiDay.muscleGroups) ? aiDay.muscleGroups : []),
       sessionFocus:
         typeof aiDay.sessionFocus === 'string'
           ? aiDay.sessionFocus
           : (prevDay.sessionFocus ?? ''),
-      exercises: Array.isArray(aiDay.exercises) ? aiDay.exercises : (prevDay.exercises ?? []),
+      weekNumber,
+      exercises: mergeExerciseListsPreservePrior(
+        prevDay.exercises,
+        aiDay.exercises,
+      ),
     };
   });
+  const { sessions: _s1, workouts: _w1, ...claudeRest } = claudeWeek ?? {};
   return {
-    ...claudeWeek,
+    ...claudeRest,
     weekNumber,
     phase,
     days: mergedDays,
@@ -574,39 +983,22 @@ function stampEquipment(exercises: any[]): any[] {
   });
 }
 
-/**
- * Deterministically assigns setStructure to every exercise.
- * Overwrites whatever Claude returned — same pattern as stampEquipment.
- */
+/** Tier + programme target lift + equipment stamping (matches generate-plan). */
 // deno-lint-ignore no-explicit-any
-function enforceSetStructure(exercises: any[], goal: string): any[] {
+function enforceSetStructure(
+  exercises: any[],
+  goal: string,
+  strengthTargetLift?: string | null,
+): any[] {
   return exercises.map((ex) => {
-    const equipment: string = ex.equipment ?? 'barbell';
-    const sets: number = Array.isArray(ex.sets)
-      ? ex.sets.length
-      : typeof ex.sets === 'number'
-        ? ex.sets
-        : 3;
-    const isBodyweight = equipment === 'bodyweight';
-
     const compoundTier = getCompoundTierFromName(String(ex.name ?? ''));
-    const isIsolation = compoundTier === 'isolation';
-    const isPrimaryCompound = compoundTier === 'primary_compound';
-    const isSecondaryCompound = compoundTier === 'secondary_compound';
-    const isHypertrophyGoal = goal === 'hypertrophy';
-    const isPhase2Accessory = ex.phase === 'hypertrophy';
+    const equipment = String(ex.equipment ?? 'barbell');
 
-    let setStructure: 'straight' | 'pyramid' = 'straight';
-
-    if (!isBodyweight && !isIsolation && !isPhase2Accessory) {
-      if (isPrimaryCompound && sets >= 3) {
-        setStructure = 'pyramid';
-      } else if (isSecondaryCompound && sets >= 3 && !isHypertrophyGoal) {
-        setStructure = 'pyramid';
-      }
-    }
-
-    return { ...ex, setStructure, compoundTier };
+    return enforceSetStructureExercise(
+      { ...ex, compoundTier, equipment },
+      goal,
+      strengthTargetLift,
+    );
   });
 }
 
@@ -630,669 +1022,417 @@ function getRoundingIncrement(equipment: string): number {
   }
 }
 
+/** Drop stale pyramid rows before applying new weight (W2+ rebuild fills setTargets downstream). */
+// deno-lint-ignore no-explicit-any
+function stripSetTargetsFromExercise(ex: any): any {
+  if (ex == null || typeof ex !== 'object') return ex;
+  const { setTargets: _omit, ...rest } = ex;
+  return rest;
+}
+
 /**
- * Calculates the correct weight increase based on RPE gap and exercise type.
- * This is TypeScript post-processing — Claude never computes weight targets.
- *
- * rpeGap = avgLoggedRpe - targetRpe
- * Negative = weights too light | Positive = weights too heavy
+ * After all targetWeights are final: stamp setTargets from PRD ladder (`buildWeek1PyramidSetTargets`).
+ * Runs before strength-programme periodisation stamp.
  */
-function calculateWeightIncrease(
-  currentWeight: number,
-  rpeGap: number,
-  isCompound: boolean,
-  experience: string,
-): number {
-  if (currentWeight <= 0) return 0;
-
-  let basePct: number;
-  let fixedIncrease: number | null = null;
-
-  // RPE gap buckets — negative means athlete found it easier than target
-  if (rpeGap <= -2.5) {
-    basePct = 0.08; // 8% — very easy, big jump needed
-  } else if (rpeGap <= -1.5) {
-    basePct = 0.05; // 5% — clearly too light
-  } else if (rpeGap <= -0.5) {
-    basePct = 0.03; // 3% — slightly light, modest increase
-  } else {
-    // On target (gap within ±0.5) — standard progression
-    fixedIncrease = isCompound ? 2.5 : 1.0;
-    basePct = 0;
-  }
-
-  // Experience multiplier — beginners respond faster, advanced slower
-  const expMultiplier =
-    experience === 'beginner' ? 1.3 :
-    experience === 'advanced' ? 0.7 : 1.0;
-
-  const rawIncrease = fixedIncrease !== null
-    ? fixedIncrease
-    : currentWeight * basePct * expMultiplier;
-
-  // Round to nearest 2.5 lbs
-  const rounded = Math.round(rawIncrease / 2.5) * 2.5;
-
-  // Floor: always at least 2.5 lbs on compound, 1 lb on isolation
-  const floor = isCompound ? 2.5 : 1.0;
-
-  // Cap: never more than 12% of current weight in one jump
-  const cap = Math.round((currentWeight * 0.12) / 2.5) * 2.5;
-
-  return Math.min(Math.max(rounded, floor), cap);
-}
-
-function calculateWeightDecrease(
-  currentWeight: number,
-  rpeGap: number,
-): number {
-  if (currentWeight <= 0) return 0;
-
-  // rpeGap positive = harder than target
-  if (rpeGap >= 2.0) {
-    return Math.round((currentWeight * 0.05) / 2.5) * 2.5; // 5% reduction
-  }
-  return 2.5; // minimal pullback for slight overshoot
-}
-
-function buildPyramidSets(
-  topSetWeight: number,
-  totalSets: number,
-  baseReps: string,
-  targetRpe: number,
+// deno-lint-ignore no-explicit-any
+function rebuildPyramidAccessorySetTargetsAfterWeights(
+  days: any[] | undefined,
   goal: string,
-  _equipment: string,
-  _loggedWeights: number[],
-): Array<{
-  setNumber: number;
-  targetWeight: number;
-  targetReps: string;
-  targetRpe: number;
-}> {
-  const isStrengthGoal =
-    goal === 'strength' || goal === 'power_hypertrophy';
-
-  const STRENGTH_PCTS: Record<number, number[]> = {
-    3: [0.75, 1.0, 0.88],
-    4: [0.68, 0.85, 1.0, 0.88],
-    5: [0.62, 0.75, 0.88, 1.0, 0.88],
-    6: [0.60, 0.70, 0.82, 1.0, 0.90, 0.82],
-  };
-
-  const HYPERTROPHY_PCTS: Record<number, number[]> = {
-    3: [0.72, 1.0, 0.88],
-    4: [0.68, 0.84, 1.0, 0.88],
-    5: [0.65, 0.78, 0.90, 1.0, 0.88],
-    6: [0.62, 0.74, 0.84, 1.0, 0.90, 0.82],
-  };
-
-  const pcts = (isStrengthGoal ? STRENGTH_PCTS : HYPERTROPHY_PCTS)[totalSets] ??
-    Array.from({ length: totalSets }, (_, i) =>
-      i === totalSets - 1 ? 1.0 : 0.75 + (i * 0.2 / totalSets)
-    );
-
-  const STRENGTH_REPS: Record<number, string[]> = {
-    3: ['6-8', '3-5', '5-7'],
-    4: ['6-8', '4-6', '2-4', '4-6'],
-    5: ['6-8', '5-7', '3-5', '1-3', '4-6'],
-    6: ['8-10', '6-8', '4-6', '2-4', '2-4', '4-6'],
-  };
-
-  function hypertrophyRepsForPosition(
-    pos: number,
-    base: string,
-    pctsLocal: number[],
-  ): string {
-    const parts = base.split(/[–\-]/).map((n) => parseInt(n.trim(), 10));
-    let lo = parts[0] ?? 8;
-    let hi = parts[1] ?? 12;
-    if (!Number.isFinite(lo)) lo = 8;
-    if (!Number.isFinite(hi)) hi = lo + 4;
-    if (hi < lo) {
-      const t = lo;
-      lo = hi;
-      hi = t;
-    }
-
-    const topSetIdx = pctsLocal.reduce(
-      (bestI, p, i, arr) => (p > arr[bestI]! ? i : bestI),
-      0,
-    );
-
-    if (pos === topSetIdx) {
-      const a = lo;
-      const b = Math.min(lo + 2, hi);
-      return `${a}-${b}`;
-    }
-    if (pos < topSetIdx) {
-      const a = Math.min(lo + 2, hi);
-      const b = hi;
-      return a <= b ? `${a}-${b}` : `${lo}-${hi}`;
-    }
-    const a = Math.min(lo + 1, hi);
-    const b = Math.max(Math.min(hi - 1, hi), a);
-    return `${a}-${b}`;
-  }
-
-  const topSetIdx = pcts.reduce(
-    (bestI, p, i, arr) => (p > arr[bestI]! ? i : bestI),
-    0,
-  );
-
-  return pcts.map((pct, i) => {
-    const repRange = isStrengthGoal
-      ? (STRENGTH_REPS[totalSets]?.[i] ?? baseReps)
-      : hypertrophyRepsForPosition(i, baseReps, pcts);
-
-    const targetWeight =
-      i === topSetIdx
-        ? Math.round(topSetWeight / 2.5) * 2.5
-        : Math.round(topSetWeight * pct / 10) * 10;
-
+  goalLift: string | null,
+): any[] {
+  return (days ?? []).map((day: any) => {
+    if (day.type !== 'workout') return day;
     return {
-      setNumber: i + 1,
-      targetWeight,
-      targetReps: repRange,
-      targetRpe: i === topSetIdx
-        ? targetRpe
-        : Math.max(5, targetRpe - 1),
+      ...day,
+      exercises: (day.exercises ?? []).map((ex: any) => {
+        if (goal === 'strength' && goalLift && isStrengthGoalTargetLift(ex, goalLift)) {
+          const stripped = stripSetTargetsFromExercise(ex);
+          return { ...stripped, setStructure: 'straight' };
+        }
+
+        const tw = Number(ex.targetWeight ?? 0);
+
+        if ((ex.setStructure ?? '') === 'straight' || !Number.isFinite(tw) || tw <= 0) {
+          return stripSetTargetsFromExercise(ex);
+        }
+
+        if ((ex.setStructure ?? '') !== 'pyramid') {
+          return stripSetTargetsFromExercise(ex);
+        }
+
+        const setCount =
+          typeof ex.sets === 'number' && Number.isFinite(ex.sets)
+            ? Math.floor(Number(ex.sets))
+            : Array.isArray(ex.setTargets) && ex.setTargets.length > 0
+              ? ex.setTargets.length
+              : 4;
+
+        const targets = buildWeek1PyramidSetTargets(
+          tw,
+          setCount,
+          String(ex.reps ?? ''),
+          Number(ex.targetRpe ?? 8),
+        );
+        if (targets == null) {
+          return stripSetTargetsFromExercise(ex);
+        }
+        return {
+          ...stripSetTargetsFromExercise(ex),
+          targetWeight: tw,
+          setTargets: targets,
+          setStructure: 'pyramid' as const,
+        };
+      }),
     };
   });
 }
 
-// deno-lint-ignore no-explicit-any
-function applyPyramidPerSetTargets(
-  ex: any,
-  newTargetWeight: number,
-  fallbackTargetRpe: number,
-  planGoal: string,
-  priorSetsAll: PriorSetRow[],
-  completedWeekNumber: number,
-  priorPlanExercise: any | null,
-): any {
-  const isPyramid =
-    ex.setStructure === 'pyramid' ||
-    ex.compoundTier === 'primary_compound';
-
-  if (!isPyramid || newTargetWeight <= 0) {
-    return { ...ex, targetWeight: newTargetWeight };
-  }
-
-  const setCount =
-    typeof ex.sets === 'number'
-      ? ex.sets
-      : Array.isArray(ex.sets)
-        ? ex.sets.length
-        : 3;
-
-  if (setCount <= 0) {
-    return { ...ex, targetWeight: newTargetWeight };
-  }
-
-  const loggedWeightsSorted = [...priorSetsAll]
-    .sort((a, b) => a.setNumber - b.setNumber)
-    .map((s) => Number(s.weightLbs ?? 0));
-
-  const positiveWeights = loggedWeightsSorted.filter((w) => w > 0);
-  const allIdentical =
-    positiveWeights.length >= 2 &&
-    positiveWeights.every((w) => w === positiveWeights[0]);
-  const hadPyramidTargets =
-    Array.isArray(priorPlanExercise?.setTargets) &&
-    priorPlanExercise.setTargets.length > 0;
-  if (
-    allIdentical &&
-    hadPyramidTargets &&
-    completedWeekNumber >= 2
-  ) {
-    return { ...ex, targetWeight: newTargetWeight };
-  }
-
-  const isStrengthGoal =
-    planGoal === 'strength' || planGoal === 'power_hypertrophy';
-  const baseReps = ex.reps ?? (isStrengthGoal ? '3-5' : '8-12');
-
-  const pyramidSets = buildPyramidSets(
-    newTargetWeight,
-    setCount,
-    baseReps,
-    ex.targetRpe ?? fallbackTargetRpe ?? 8,
-    planGoal,
-    String(ex.equipment ?? 'barbell'),
-    loggedWeightsSorted,
-  );
-
-  console.log(
-    '[pyramid]',
-    ex.name,
-    pyramidSets.map((s) => s.targetWeight),
-  );
-
-  const out = {
-    ...ex,
-    targetWeight: newTargetWeight,
-    setTargets: pyramidSets,
-  };
-
-  const devPyramidLog =
-    typeof Deno !== 'undefined' &&
-    Deno.env.get('ENVIRONMENT') === 'development';
-
-  if (devPyramidLog) {
-    console.log('[pyramid sets]', ex.name, {
-      topSet: newTargetWeight,
-      perSetWeights: pyramidSets.map((s) => s.targetWeight),
-    });
+/** Map plan_json exercise id / exerciseId → display name so logs keyed by UUID still resolve. */
+function mergeExerciseIdMapFromPriorPlanDays(
+  base: Record<string, string>,
+  priorWeekPlanDays: any[],
+): Record<string, string> {
+  const out: Record<string, string> = { ...base };
+  for (const day of priorWeekPlanDays ?? []) {
+    for (const pex of day.exercises ?? []) {
+      const nm = String(pex?.name ?? '').trim();
+      if (!nm) continue;
+      if (pex?.id != null && String(pex.id).trim() !== '') {
+        out[String(pex.id).trim()] = nm;
+      }
+      if (pex?.exerciseId != null && String(pex.exerciseId).trim() !== '') {
+        out[String(pex.exerciseId).trim()] = nm;
+      }
+    }
   }
   return out;
 }
 
-/**
- * Finds the best matching key in exerciseData for a given exercise name.
- * Handles plural variants, word order differences, and partial matches.
- * Returns the matching key or null if no match found.
- */
-function findExerciseDataKey(
-  name: string,
-  exerciseData: Record<string, any>,
-): string | null {
-  const key = name.toLowerCase().trim();
+function getExerciseSets(allSets: any[], exercise: any): any[] {
+  const targetName = (
+    exercise.exerciseName ?? exercise.name ?? ''
+  ).toLowerCase().trim();
 
-  // 1. Exact match
-  if (exerciseData[key]) return key;
+  if (!targetName) return [];
 
-  // 2. Strip plural 's'
-  if (key.endsWith('s') && exerciseData[key.slice(0, -1)]) {
-    return key.slice(0, -1);
+  // Normalize: remove trailing 's', common variations
+  function normalize(s: string): string {
+    return s
+      .toLowerCase()
+      .trim()
+      .replace(/s$/, '') // remove trailing 's' (curl/curls)
+      .replace(/[-_]/g, ' ') // normalize dashes/underscores
+      .replace(/\s+/g, ' ') // normalize whitespace
+      .trim();
   }
 
-  // 3. Add plural 's'
-  if (exerciseData[key + 's']) return key + 's';
+  const normTarget = normalize(targetName);
 
-  // 4. Partial match — check if any data key is contained in this name
-  //    or this name is contained in any data key
-  //    Sort by length descending to prefer longer (more specific) matches
-  const dataKeys = Object.keys(exerciseData).sort((a, b) => b.length - a.length);
-  for (const dataKey of dataKeys) {
-    if (key.includes(dataKey) || dataKey.includes(key)) {
-      return dataKey;
-    }
-  }
+  return allSets.filter((s: any) => {
+    const setName = (
+      s.exerciseName ?? s.name ?? ''
+    ).toLowerCase().trim();
 
-  return null;
-}
+    // Try exact match first
+    if (setName === targetName) return true;
 
-interface PriorSetRow {
-  setNumber: number;
-  weightLbs: number;
-  rpe: number;
-}
-
-function getPriorSetsForExerciseFromLogs(
-  exerciseName: string,
-  priorWeekLogs: any[],
-  exerciseIdToName: Record<string, string>,
-): PriorSetRow[] {
-  const target = exerciseName.toLowerCase().trim();
-  const rows: PriorSetRow[] = [];
-  for (const log of priorWeekLogs) {
-    const sets: any[] = log.sets_json ?? [];
-    for (const set of sets) {
-      const resolvedName = String(
-        (set.exerciseId ? exerciseIdToName[set.exerciseId] : null) ??
-          set.exerciseName ??
-          set.name ??
-          '',
-      ).toLowerCase().trim();
-      if (resolvedName !== target) continue;
-      const weight = Number(set.weightLbs ?? set.weight ?? 0);
-      const rpe = Number(set.rpe ?? 0);
-      const sn = Number(set.setNumber ?? 0);
-      rows.push({
-        setNumber: sn > 0 ? sn : rows.length + 1,
-        weightLbs: weight,
-        rpe,
+    // Try normalized match (handles plural/singular, dashes)
+    if (normalize(setName) === normTarget) {
+      console.log('[NAME MATCH]', {
+        planName: targetName,
+        loggedName: setName,
+        matchType: setName === targetName ? 'exact' : 'normalized',
       });
+      return true;
     }
-  }
-  return rows;
-}
 
-/** Claude prompt: how last week's loads are summarized (matches enforceWeightProgression top-set rule). */
-function getLoggedWeightSummaryLine(
-  priorSetsForExercise: PriorSetRow[],
-): string | null {
-  const weights = priorSetsForExercise
-    .filter((s) => (s.weightLbs ?? 0) > 0)
-    .map((s) => Number(s.weightLbs));
-  if (weights.length === 0) return null;
-
-  const avgLoggedWeight = Math.round(
-    weights.reduce((a: number, b: number) => a + b, 0) / weights.length,
-  );
-  const maxLoggedWeight = Math.max(...weights);
-  const weightVariance = maxLoggedWeight - avgLoggedWeight;
-  const useTopSet = weightVariance > avgLoggedWeight * 0.05;
-
-  return useTopSet
-    ? `Top set: ${maxLoggedWeight} lbs (avg: ${avgLoggedWeight} lbs) — progression based on top set`
-    : `Avg weight: ${avgLoggedWeight} lbs`;
-}
-
-function findPriorExerciseInPlanDays(
-  exerciseName: string,
-  planDays: any[],
-): { setStructure?: string; compoundTier?: string } | null {
-  const t = exerciseName.toLowerCase().trim();
-  for (const day of planDays ?? []) {
-    for (const ex of day.exercises ?? []) {
-      if (String(ex.name ?? '').toLowerCase().trim() === t) {
-        return ex as { setStructure?: string; compoundTier?: string };
-      }
-    }
-  }
-  return null;
-}
-
-function computePyramidFlags(
-  priorSetsAll: PriorSetRow[],
-  priorExercise: { setStructure?: string; compoundTier?: string } | null,
-  exerciseNameForFallback: string,
-): {
-  isPyramidLogging: boolean;
-  isPyramidStructure: boolean;
-  weights: number[];
-  sortedBySet: PriorSetRow[];
-} {
-  const sortedBySet = [...priorSetsAll]
-    .filter((s) => s.weightLbs > 0)
-    .sort((a, b) => a.setNumber - b.setNumber);
-
-  const weights = sortedBySet.map((s) => s.weightLbs);
-
-  const isPyramidLogging =
-    sortedBySet.length >= 2 &&
-    sortedBySet.every((s, i) =>
-      i === 0 || s.weightLbs >= sortedBySet[i - 1]!.weightLbs,
-    ) &&
-    sortedBySet[sortedBySet.length - 1]!.weightLbs > sortedBySet[0]!.weightLbs;
-
-  const isPyramidStructure =
-    priorExercise?.setStructure === 'pyramid' ||
-    (priorExercise?.compoundTier
-      ? priorExercise.compoundTier === 'primary_compound'
-      : getCompoundTierFromName(exerciseNameForFallback) === 'primary_compound');
-
-  return { isPyramidLogging, isPyramidStructure, weights, sortedBySet };
-}
-
-/**
- * Post-processes Claude's next-week plan and enforces correct weight targets.
- * Claude provides structure, coaching notes, and exercise selection.
- * This function owns all weight arithmetic — Claude's weight values are overwritten.
- */
-function enforceWeightProgression(
-  nextWeekDays: any[],
-  priorWeekLogs: any[], // sets_json from prior week's workout_logs
-  priorWeekPlanDays: any[], // the prior week's plan day objects from plan_json
-  experience: string,
-  isDeloadWeek: boolean,
-  exerciseIdToName: Record<string, string>,
-  planGoal: string,
-  completedWeekNumber: number,
-): any[] {
-  if (isDeloadWeek) return nextWeekDays; // deload weights handled by ×0.8 logic separately
-
-  // Build lookup: exerciseName → { avgLoggedWeight, avgLoggedRpe, targetRpe, targetWeight }
-  type ExerciseLog = {
-    totalWeight: number;
-    totalRpe: number;
-    count: number;
-    targetRpe: number;
-    targetWeight: number;
-    equipment: string;
-    isCompound: boolean;
-  };
-  const exerciseData: Record<string, ExerciseLog> = {};
-  const exerciseSetsByKey: Record<string, PriorSetRow[]> = {};
-
-  // Load target data from prior week plan
-  for (const day of priorWeekPlanDays) {
-    for (const ex of day.exercises ?? []) {
-      if (!ex.name) continue;
-      const key = ex.name.toLowerCase().trim();
-      exerciseData[key] = {
-        totalWeight: 0,
-        totalRpe: 0,
-        count: 0,
-        targetRpe: ex.targetRpe ?? 8,
-        targetWeight: ex.targetWeight ?? 0,
-        equipment: ex.equipment ?? 'barbell',
-        // Compound if low reps (≤8 low end) — same proxy as enforceWeek1Rpe
-        isCompound: (() => {
-          const lowEnd = parseInt(String(ex.reps ?? '').split('-')[0], 10);
-          return isNaN(lowEnd) || lowEnd < 9;
-        })(),
-      };
-    }
-  }
-
-  console.log('[enforceWeight] exerciseData keys:', Object.keys(exerciseData));
-
-  // Accumulate actual logged data
-  for (const log of priorWeekLogs) {
-    const sets: any[] = log.sets_json ?? [];
-    for (const set of sets) {
-      // sets_json stores exerciseId — resolve to name via map
-      // Fallback chain: exerciseId lookup → exerciseName field → name field
-      const resolvedName =
-        (set.exerciseId ? exerciseIdToName[set.exerciseId] : null) ??
-        set.exerciseName ??
-        set.name ??
-        '';
-
-      const key = String(resolvedName).toLowerCase().trim();
-      if (!key || !exerciseData[key]) continue;
-
-      const weight = Number(set.weightLbs ?? set.weight ?? 0);
-      const rpe = Number(set.rpe ?? 0);
-
-      if (weight > 0) {
-        exerciseData[key].totalWeight += weight;
-        exerciseData[key].count += 1;
-      }
-      if (rpe > 0) {
-        exerciseData[key].totalRpe += rpe;
-      }
-
-      if (!exerciseSetsByKey[key]) exerciseSetsByKey[key] = [];
-      const sn = Number(set.setNumber ?? 0);
-      exerciseSetsByKey[key].push({
-        setNumber: sn > 0 ? sn : exerciseSetsByKey[key].length + 1,
-        weightLbs: weight,
-        rpe,
-      });
-    }
-  }
-
-  for (const [name, data] of Object.entries(exerciseData)) {
-    if (data.count > 0) {
-      console.log(`[enforceWeight] accumulated: "${name}" count=${data.count} avgWeight=${data.totalWeight/data.count} avgRpe=${data.totalRpe > 0 ? data.totalRpe/data.count : 0}`);
-    }
-  }
-
-  // Enforce correct weights on next week's plan — new day + exercise objects (no in-place mutation)
-  return nextWeekDays.map((day: any, dayIdx: number) => {
-    if (day.type !== 'workout') return day;
-
-    const priorDay = priorWeekPlanDays[dayIdx];
-    const priorExercises = priorDay?.exercises ?? [];
-
-    return {
-      ...day,
-      exercises: (day.exercises ?? []).map((ex: any, exIdx: number) => {
-      const priorPlanExercise = priorExercises[exIdx] ?? null;
-      const rawKey = String(ex.name ?? '').toLowerCase().trim();
-      const matchedKey = findExerciseDataKey(rawKey, exerciseData);
-      const data = matchedKey ? exerciseData[matchedKey] : null;
-      console.log(`[enforceWeight] looking up: "${rawKey}" → matched: "${matchedKey}" count=${data?.count ?? 'null'}`);
-
-      // No logged sets for this exercise — keep Claude's value
-      // NOTE: data.targetWeight === 0 is intentionally NOT checked here.
-      // Week 1 self-select exercises have targetWeight: 0 in the plan,
-      // but the user logs their actual weight. We must use avgLoggedWeight.
-      if (!data || data.count === 0) return ex;
-
-      const priorSetsAll = matchedKey
-        ? (exerciseSetsByKey[matchedKey] ?? [])
-        : [];
-
-      const weights = priorSetsAll
-        .filter((s) => (s.weightLbs ?? 0) > 0)
-        .map((s) => Number(s.weightLbs));
-
-      if (weights.length === 0) return ex;
-
-      const maxLoggedWeight =
-        weights.length > 0 ? Math.max(...weights) : 0;
-
-      const avgLoggedWeight = weights.length > 0
-        ? Math.round(
-          weights.reduce((a: number, b: number) => a + b, 0) / weights.length,
-        )
-        : 0;
-
-      const weightVariance = maxLoggedWeight - avgLoggedWeight;
-      const useTopSet = weightVariance > avgLoggedWeight * 0.05;
-
-      const baselineWeight = Math.round(
-        useTopSet ? maxLoggedWeight : avgLoggedWeight,
-      );
-
-      const eqForBaseline = data.equipment ?? 'barbell';
-      const incrementForBaseline = getRoundingIncrement(eqForBaseline);
-      const roundedBaseline =
-        incrementForBaseline > 0
-          ? Math.round(baselineWeight / incrementForBaseline) *
-            incrementForBaseline
-          : baselineWeight;
-
-      const topSetEntry = useTopSet
-        ? [...priorSetsAll]
-          .filter((s) => (s.weightLbs ?? 0) > 0)
-          .sort((a, b) => Number(b.weightLbs) - Number(a.weightLbs))[0] ?? null
-        : null;
-
-      const avgLoggedRpe = (() => {
-        const positivePrior = priorSetsAll.filter((s) => (s.weightLbs ?? 0) > 0);
-        if (ex.setStructure === 'pyramid' && positivePrior.length >= 2) {
-          const maxW = Math.max(...positivePrior.map((s) => Number(s.weightLbs)));
-          const topRpes = positivePrior
-            .filter((s) => Number(s.weightLbs) === maxW)
-            .map((s) => Number(s.rpe))
-            .filter((r) => r > 0);
-          if (topRpes.length > 0) {
-            return topRpes.reduce((a: number, b: number) => a + b, 0) /
-              topRpes.length;
-          }
-          return 0;
-        }
-        if (topSetEntry?.rpe && topSetEntry.rpe > 0) {
-          return topSetEntry.rpe;
-        }
-        const rpeVals = priorSetsAll
-          .filter((s) => s.rpe && s.rpe > 0)
-          .map((s) => Number(s.rpe));
-        return rpeVals.length > 0
-          ? rpeVals.reduce((a: number, b: number) => a + b, 0) / rpeVals.length
-          : 0;
-      })();
-
-      // No RPE data — hold weight
-      if (avgLoggedRpe === 0) {
-        const eq = data.equipment ?? 'barbell';
-        let w = roundedBaseline;
-        const increment = getRoundingIncrement(eq);
-        if (increment > 0) {
-          w = Math.round(w / increment) * increment;
-        }
-        const weightFloor = (eq === 'bodyweight')
-          ? 0
-          : (eq === 'dumbbell' || eq === 'cable' ||
-              eq === 'machine')
-            ? 5
-            : 45;
-        w = Math.max(weightFloor, w);
-        // Sanity cap: dumbbell exercises can't exceed realistic rack weights
-        // Most gyms max out at 120-150 lbs dumbbells
-        if (eq === 'dumbbell') {
-          w = Math.min(w, 150);
-        }
-        return applyPyramidPerSetTargets(
-          ex,
-          w,
-          data.targetRpe,
-          planGoal,
-          priorSetsAll,
-          completedWeekNumber,
-          priorPlanExercise,
-        );
-      }
-
-      const rpeGap = avgLoggedRpe - data.targetRpe;
-
-      let newWeight: number;
-
-      if (rpeGap > 1.0) {
-        // Harder than target — decrease
-        const decrease = calculateWeightDecrease(roundedBaseline, rpeGap);
-        newWeight = roundedBaseline - decrease;
-      } else if (rpeGap < -0.5 || avgLoggedRpe <= 6) {
-        // Easier than target — increase
-        const increase = calculateWeightIncrease(
-          roundedBaseline,
-          rpeGap,
-          data.isCompound,
-          experience,
-        );
-        newWeight = roundedBaseline + increase;
-      } else {
-        // On target — hold
-        newWeight = roundedBaseline;
-      }
-
-      const eq = data.equipment ?? 'barbell';
-      // Round to nearest equipment-appropriate increment
-      const increment = getRoundingIncrement(eq);
-      if (increment > 0) {
-        newWeight = Math.round(newWeight / increment) * increment;
-      }
-      // Equipment-aware floor
-      const weightFloor = (eq === 'bodyweight')
-        ? 0
-        : (eq === 'dumbbell' || eq === 'cable' ||
-            eq === 'machine')
-          ? 5
-          : 45; // barbell minimum (empty bar)
-      newWeight = Math.max(weightFloor, newWeight);
-      // Sanity cap: dumbbell exercises can't exceed realistic rack weights
-      // Most gyms max out at 120-150 lbs dumbbells
-      if (eq === 'dumbbell') {
-        newWeight = Math.min(newWeight, 150);
-      }
-
-      return applyPyramidPerSetTargets(
-        ex,
-        newWeight,
-        data.targetRpe,
-        planGoal,
-        priorSetsAll,
-        completedWeekNumber,
-        priorPlanExercise,
-      );
-      }),
-    };
+    return false;
   });
+}
+
+/** Map exercise display name → completed-week plan exercise (targetWeight baseline). Heavy vs volume split so same exercise on both days does not overwrite. */
+// deno-lint-ignore no-explicit-any
+function buildPriorPlanHeavyVolumeMaps(
+  planJson: any,
+  completedWeekNumber: number,
+): { heavy: Map<string, any>; volume: Map<string, any> } {
+  const priorHeavyExerciseMap = new Map<string, any>();
+  const priorVolumeExerciseMap = new Map<string, any>();
+  const weeks = planJson?.weeks ?? [];
+  const completedNorm = Number(completedWeekNumber);
+  /** Prefer weekNumber lookup — blindly using weeks[idx] breaks when ordering or gaps mismatch weekNumber. */
+  let resolvedVia: string = 'missing';
+  let priorWeek: any =
+    weeks.find((w: any) => Number(w.weekNumber) === completedNorm);
+  if (priorWeek) {
+    resolvedVia = 'weekNumber-find-number';
+  } else {
+    priorWeek = weeks.find(
+      (w: any) => String(w.weekNumber) === String(completedWeekNumber),
+    );
+    if (priorWeek) resolvedVia = 'weekNumber-find-string';
+    else if (Number.isFinite(completedNorm) && completedNorm > 0) {
+      priorWeek = weeks[completedNorm - 1];
+      if (priorWeek != null) resolvedVia = 'array-index-fallback';
+    }
+  }
+  const priorWeekDays =
+    priorWeek?.days ?? priorWeek?.sessions ?? priorWeek?.workouts ?? [];
+
+  console.log('[PRIOR WEEK RESOLVED]', {
+    completedWeekNumber: completedNorm,
+    priorWeekNumberField: priorWeek?.weekNumber,
+    dayCount: priorWeekDays.length,
+    resolvedVia,
+  });
+  console.log('[PRIOR WEEK DAYS]', {
+    count: priorWeekDays.length,
+    summaries: priorWeekDays.map((d: any) => ({
+      title: d.title,
+      dayNumber: d.dayNumber ?? d.day,
+      type: d.type,
+      exerciseCount: (d.exercises ?? []).length,
+    })),
+  });
+  for (const day of priorWeekDays) {
+    if ((day?.type ?? 'workout') === 'rest' || day?.type === 'cardio') {
+      continue;
+    }
+    /** Match progression SESSION TYPE — title-only misses focus/label/liftDay/week1-slot volume hints. */
+    const isVol = isVolumeDay(day, planJson);
+    console.log('[MAP BUILD]', {
+      dayTitle: day.title,
+      dayNumber: day.dayNumber ?? day.day,
+      isVolume: isVol,
+      exerciseCount: (day.exercises ?? []).length,
+      exerciseNamesPreview: (day.exercises ?? []).slice(0, 12).map(
+        (e: any) =>
+          String(e.exerciseName ?? e.name ?? '')
+            .toLowerCase()
+            .trim(),
+      ),
+      backSquatWeight: day.exercises?.find(
+        (e: any) =>
+          ((e.name ?? '') || (e.exerciseName ?? '')).toLowerCase() ===
+            'back squat',
+      )?.targetWeight ?? 'not found',
+      benchPressWeight: day.exercises?.find(
+        (e: any) =>
+          ((e.name ?? '') || (e.exerciseName ?? '')).toLowerCase() ===
+            'bench press',
+      )?.targetWeight ?? 'not found',
+    });
+    const map = isVol ? priorVolumeExerciseMap : priorHeavyExerciseMap;
+
+    for (const ex of day.exercises ?? []) {
+      const name = String(ex.exerciseName ?? ex.name ?? '')
+        .toLowerCase()
+        .trim();
+      if (name) map.set(name, ex);
+    }
+  }
+  console.log('[MAP CONTENTS]', {
+    heavyMapSize: priorHeavyExerciseMap.size,
+    heavyMapKeys: [...priorHeavyExerciseMap.keys()],
+    volumeMapSize: priorVolumeExerciseMap.size,
+    volumeMapKeys: [...priorVolumeExerciseMap.keys()],
+  });
+  return { heavy: priorHeavyExerciseMap, volume: priorVolumeExerciseMap };
+}
+
+/** Baseline increment anchor from prior week's prescription (not logged weights). */
+// deno-lint-ignore no-explicit-any
+function getPlanBaselineWeight(priorPlanExercise: any): number {
+  if (!priorPlanExercise) return 0;
+
+  if (
+    priorPlanExercise.setStructure === 'pyramid' &&
+    Array.isArray(priorPlanExercise.setTargets) &&
+    priorPlanExercise.setTargets.length > 0
+  ) {
+    return Math.max(
+      ...priorPlanExercise.setTargets.map(
+        (s: any) => Number(s.targetWeight ?? 0),
+      ),
+    );
+  }
+
+  return Number(priorPlanExercise.targetWeight ?? 0);
+}
+
+function runProgressionTests(): void {
+  const results: { name: string; pass: boolean; expected: unknown; got: unknown }[] = [];
+
+  function check(name: string, expected: unknown, got: unknown) {
+    const pass = JSON.stringify(expected) === JSON.stringify(got);
+    results.push({ name, pass, expected, got });
+  }
+
+  function buildSetTargets(
+    anchor: number,
+    setCount: number,
+    priorSetTargets?: Array<{ targetRpe?: number; targetReps?: string }>,
+  ): Week1PyramidTargetSet[] {
+    const reps = String(priorSetTargets?.[0]?.targetReps ?? '8');
+    const rpeHint = Number(priorSetTargets?.[0]?.targetRpe ?? 8);
+    return buildWeek1PyramidSetTargets(anchor, setCount, reps, rpeHint) ?? [];
+  }
+
+  // ── isTargetLift ──────────────────────────────────────────
+  check('isTargetLift: exact match bench_press',
+    true, isTargetLift({ name: 'bench press' }, 'bench_press'));
+  check('isTargetLift: close grip should NOT match',
+    false, isTargetLift({ name: 'close grip bench press' }, 'bench_press'));
+  check('isTargetLift: incline should NOT match',
+    false, isTargetLift({ name: 'incline bench press' }, 'bench_press'));
+  check('isTargetLift: squat exact match',
+    true, isTargetLift({ name: 'back squat' }, 'barbell_squat'));
+  check('isTargetLift: bulgarian split should NOT match squat',
+    false, isTargetLift({ name: 'bulgarian split squat' }, 'barbell_squat'));
+  check('isTargetLift: deadlift exact match',
+    true, isTargetLift({ name: 'deadlift' }, 'deadlift'));
+
+  // ── getExerciseSets (flat sets_json — one row per session) ──
+  const mockSetsFlat = [
+    { exerciseId: 'e1', exerciseName: 'Bench Press', weightLbs: 140, rpe: 6 },
+    { exerciseId: 'e1', exerciseName: 'Bench Press', weightLbs: 170, rpe: 6 },
+    { exerciseId: 'e2', exerciseName: 'Back Squat', weightLbs: 315, rpe: 7 },
+    { exerciseId: 'e3', exerciseName: 'Barbell Row', weightLbs: 185, rpe: 6 },
+  ];
+  const benchSets = getExerciseSets(mockSetsFlat, { name: 'Bench Press' });
+  check('getExerciseSets: bench only', 2, benchSets.length);
+  const benchMax = Math.max(
+    0,
+    ...benchSets.map((s: any) => s.weightLbs ?? s.weight ?? 0),
+  );
+  check('bench priorTopSetWeight = 170', 170, benchMax);
+  const squatSets = getExerciseSets(mockSetsFlat, { name: 'Back Squat' });
+  check('getExerciseSets: squat only', 1, squatSets.length);
+
+  // ── computeRpeGap ─────────────────────────────────────────
+  check('gap: RPE 6 vs target 7 = +1 (increase)',   1.0,
+    parseFloat(computeRpeGap(6.0, 7.0).toFixed(1)));
+  check('gap: RPE 8 vs target 7 = -1 (hold)',       -1.0,
+    parseFloat(computeRpeGap(8.0, 7.0).toFixed(1)));
+  check('gap: RPE 4 vs target 7 = +3 (reset)',      3.0,
+    parseFloat(computeRpeGap(4.0, 7.0).toFixed(1)));
+  check('gap: RPE 7 vs target 7 = 0 (on target)',   0.0,
+    parseFloat(computeRpeGap(7.0, 7.0).toFixed(1)));
+
+  // ── accessoryWeightIncrement ──────────────────────────────
+  // Barbell
+  check('barbell RPE 4.0 (gap+3) = +20', 20,
+    accessoryWeightIncrement(4.0, 7.0, 'barbell'));
+  check('barbell RPE 5.0 (gap+2) = +10', 10,
+    accessoryWeightIncrement(5.0, 7.0, 'barbell'));
+  check('barbell RPE 5.5 (gap+1.5) = +5', 5,
+    accessoryWeightIncrement(5.5, 7.0, 'barbell'));
+  check('barbell RPE 6.0 (gap+1) = +5', 5,
+    accessoryWeightIncrement(6.0, 7.0, 'barbell'));
+  check('barbell RPE 7.0 (gap 0) = +5', 5,
+    accessoryWeightIncrement(7.0, 7.0, 'barbell'));
+  check('barbell RPE 8.0 (gap-1) = 0', 0,
+    accessoryWeightIncrement(8.0, 7.0, 'barbell'));
+  check('barbell RPE 9.0 (gap-2) = -5', -5,
+    accessoryWeightIncrement(9.0, 7.0, 'barbell'));
+  check('barbell RPE 10 (gap-3) = -10', -10,
+    accessoryWeightIncrement(10.0, 7.0, 'barbell'));
+  // Cable
+  check('cable RPE 4.0 (gap+3) = +15', 15,
+    accessoryWeightIncrement(4.0, 7.0, 'cable'));
+  check('cable RPE 5.0 (gap+2) = +10', 10,
+    accessoryWeightIncrement(5.0, 7.0, 'cable'));
+  check('cable RPE 8.0 (gap-1) = 0', 0,
+    accessoryWeightIncrement(8.0, 7.0, 'cable'));
+  // Dumbbell
+  check('dumbbell RPE 5.0 (gap+2) = +10', 10,
+    accessoryWeightIncrement(5.0, 7.0, 'dumbbell'));
+
+  // ── strengthPeriodisation ─────────────────────────────────
+  check('W1: 5x5 RPE7', { sets:5, reps:5, targetRpe:7.0 },
+    strengthPeriodisation(1));
+  check('W2: 4x4 RPE8', { sets:4, reps:4, targetRpe:8.0 },
+    strengthPeriodisation(2));
+  check('W3: 3x3 RPE8.5', { sets:3, reps:3, targetRpe:8.5 },
+    strengthPeriodisation(3));
+  check('W4 deload: 3x5 RPE6', { sets:3, reps:5, targetRpe:6.0 },
+    strengthPeriodisation(4));
+
+  // ── Target lift weight increments ────────────────────────
+  // W1 RPE 6.0, target 7.0 → gap +1 → +5 → 280
+  const benchW1Rpe6 = Math.round((275 + 5) / 2.5) * 2.5;
+  check('bench W1 RPE6.0 → W2 = 280', 280, benchW1Rpe6);
+
+  // W1 RPE 7.0, target 7.0 → gap 0 → +5 → 280
+  const benchW1Rpe7 = Math.round((275 + 5) / 2.5) * 2.5;
+  check('bench W1 RPE7.0 → W2 = 280', 280, benchW1Rpe7);
+
+  // W1 RPE 9.0, target 7.0 → gap -2 → 0 → 275
+  const benchW1Rpe9 = Math.round((275 + 0) / 2.5) * 2.5;
+  check('bench W1 RPE9.0 → W2 = 275 (hold)', 275, benchW1Rpe9);
+
+  // ── Accessory real-world cases from screenshots ───────────
+  // Barbell Row: top set 185, RPE 5.5, target 7.0 → +5 → 190
+  const rowIncrement = accessoryWeightIncrement(5.5, 7.0, 'barbell');
+  const rowW2 = Math.round((185 + rowIncrement) / 2.5) * 2.5;
+  check('Barbell Row RPE5.5 → W2 top set = 190', 190, rowW2);
+
+  // Incline Dumbbell: top set 80, RPE 5.0, target 7.0 → +10 → 90
+  const inclineIncrement = accessoryWeightIncrement(5.0, 7.0, 'dumbbell');
+  const inclineW2 = Math.round((80 + inclineIncrement) / 2.5) * 2.5;
+  check('Incline DB RPE5.0 → W2 top set = 90', 90, inclineW2);
+
+  // Face Pulls: top set 50, RPE 4.0, target 7.0 → +15 → 65
+  const faceIncrement = accessoryWeightIncrement(4.0, 7.0, 'cable');
+  const faceW2 = Math.round((50 + faceIncrement) / 5) * 5;
+  check('Face Pulls RPE4.0 → W2 = 65', 65, faceW2);
+
+  // Close Grip Bench: NOT target lift, barbell, RPE 6.0, top 195 → +5 → 200
+  const cgbpIsTarget = isTargetLift({ name: 'close grip bench press' }, 'bench_press');
+  check('Close Grip NOT target lift', false, cgbpIsTarget);
+  const cgbpIncrement = accessoryWeightIncrement(6.0, 7.0, 'barbell');
+  const cgbpW2 = Math.round((195 + cgbpIncrement) / 2.5) * 2.5;
+  check('Close Grip RPE6.0 → W2 = 200', 200, cgbpW2);
+
+  // ── buildSetTargets → objects (delegates buildWeek1PyramidSetTargets) ──
+  const rowTargets = buildSetTargets(190, 4);
+  check('Barbell Row 4-set targets[0] (80%→10)', 150, rowTargets[0]?.targetWeight);
+  check('Barbell Row 4-set targets[1] (90%→10)', 170, rowTargets[1]?.targetWeight);
+  check('Barbell Row 4-set targets[2] (top→2.5)', 190, rowTargets[2]?.targetWeight);
+  check('Barbell Row 4-set targets[3] (85%→10)', 160, rowTargets[3]?.targetWeight);
+
+  // Pyramid back-calculation: accessory increment applies to logged top — anchor T rebuilt from ladder
+  const newTW5 = Math.round((210 / 0.9) / 10) * 10;
+  check('5-set back-calc targetWeight', 230, newTW5);
+  const targets5 = buildSetTargets(230, 5);
+  const top5 = Math.max(...targets5.map((s) => s.targetWeight));
+  check('5-set new top set = 210', 210, top5);
+
+  const newTW4 = Math.round(190 / 2.5) * 2.5;
+  check('4-set back-calc targetWeight', 190, newTW4);
+  const targets4 = buildSetTargets(190, 4);
+  const top4 = Math.max(...targets4.map((s) => s.targetWeight));
+  check('4-set new top set = 190', 190, top4);
+
+  // ── PRINT RESULTS ─────────────────────────────────────────
+  const passed = results.filter((r) => r.pass).length;
+  const failed = results.filter((r) => !r.pass);
+
+  console.log(`\n══════════════════════════════════════════`);
+  console.log(`PROGRESSION TESTS: ${passed}/${results.length} passed`);
+  console.log(`══════════════════════════════════════════`);
+
+  if (failed.length > 0) {
+    console.log('\nFAILED:');
+    failed.forEach((r) => {
+      console.log(`  ✗ ${r.name}`);
+      console.log(`    expected: ${JSON.stringify(r.expected)}`);
+      console.log(`    got:      ${JSON.stringify(r.got)}`);
+    });
+  } else {
+    console.log('All tests passed ✓');
+  }
+  console.log('══════════════════════════════════════════\n');
 }
 
 serve(async (req) => {
@@ -1301,7 +1441,527 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, planId, completedWeekNumber } = await req.json();
+    const body = (await req.json()) as Record<string, unknown>;
+
+    if (body?.mode === 'test') {
+      runProgressionTests();
+
+      type ScenarioPayload = {
+        input?: unknown;
+        output: unknown;
+        expected?: unknown;
+        pass: boolean;
+      };
+
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      );
+
+      const inspect_plan_structure = await (async (): Promise<ScenarioPayload> => {
+        const { data: plan, error } = await supabase
+          .from('plans')
+          .select('id, plan_json, current_week')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          return { pass: false, output: error.message };
+        }
+        if (!plan) return { pass: false, output: 'no active plan found' };
+
+        const planJson = plan.plan_json;
+
+        const topLevelLegacySlots = planJson?.sessions ?? [];
+        const weeksArray = planJson?.weeks ?? [];
+        const week1Days = weeksArray[0]?.days ?? [];
+        const week2Days = weeksArray[1]?.days ?? [];
+
+        const findVolumeDays = (days: any[]) =>
+          days.filter((d: any) => {
+            const t =
+              `${d.title ?? ''} ${d.sessionFocus ?? ''}`.toLowerCase();
+            return t.includes('volume');
+          }).map((d: any) => ({
+            dayNumber: d.dayNumber ?? d.day,
+            title: d.title,
+            type: d.type,
+            sessionFocus: d.sessionFocus,
+          }));
+
+        return {
+          pass: true,
+          output: {
+            planId: plan.id,
+            currentWeek: plan.current_week,
+            topLegacySessionSlots: topLevelLegacySlots.length,
+            week1DayCount: week1Days.length,
+            week1VolumeDaysFound: findVolumeDays(week1Days),
+            week2DayCount: week2Days.length,
+            week2VolumeDaysFound: findVolumeDays(week2Days),
+            planJsonTopLevelKeys: Object.keys(planJson ?? {}),
+          },
+        };
+      })();
+
+      const inspect_week_structure = await (async (): Promise<ScenarioPayload> => {
+        const { data: plan, error } = await supabase
+          .from('plans')
+          .select('plan_json')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          return { pass: false, output: error.message };
+        }
+        if (!plan) return { pass: false, output: 'no active plan found' };
+
+        const planJson = plan.plan_json;
+        const weeksArray = planJson?.weeks ?? [];
+        const week1 = weeksArray[0] ?? {};
+
+        const slots = (
+          arr: Record<string, unknown> | Record<string, unknown>[] | unknown,
+        ): any[] =>
+          Array.isArray(arr) ? arr as any[] : [];
+
+        return {
+          pass: true,
+          output: {
+            weeksCount: weeksArray.length,
+            week1Keys: Object.keys(week1),
+            week1SessionsKey: week1.days
+              ? 'days'
+              : week1.sessions
+              ? 'sessions'
+              : week1.workouts
+              ? 'workouts'
+              : 'NOT FOUND',
+            week1DaySlotCount:
+              slots(week1.days ?? week1.sessions ?? week1.workouts ?? [])
+                .length,
+            firstDayKeys: slots(
+              week1.days ?? week1.sessions ?? week1.workouts ?? [],
+            )[0]
+              ? Object.keys(
+                slots(
+                  week1.days ?? week1.sessions ?? week1.workouts ?? [],
+                )[0] as Record<string, unknown>,
+              )
+              : [],
+            firstDaySample: slots(
+              week1.days ?? week1.sessions ?? week1.workouts ?? [],
+            )[0] ?? null,
+            secondDaySample: slots(
+              week1.days ?? week1.sessions ?? week1.workouts ?? [],
+            )[1] ?? null,
+          },
+        };
+      })();
+
+      const scenarios: Record<string, ScenarioPayload> = {
+        bench_w1_to_w2: (() => {
+          const mockExercise = {
+            exerciseId: 'bench_press',
+            exerciseName: 'Bench Press',
+            equipment: 'barbell',
+            setStructure: 'straight',
+            sets: 5,
+            reps: 5,
+            targetRpe: 7.0,
+            targetWeight: 275,
+          };
+          const mockSets = Array(5).fill(null).map((_, i) => ({
+            exerciseName: 'Bench Press',
+            weightLbs: 275,
+            rpe: 6.0,
+            isWarmup: false,
+            setNumber: i + 1,
+          }));
+          const exerciseSets = getExerciseSets(mockSets, mockExercise);
+          const priorTopSetWeight = Math.max(
+            ...exerciseSets.map((s: any) => Number(s.weightLbs)),
+          );
+          const avgLoggedRpe = exerciseSets.reduce(
+            (sum: number, s: any) => sum + s.rpe,
+            0,
+          ) / exerciseSets.length;
+          const priorTargetRpe = strengthPeriodisation(1).targetRpe;
+          const gap = computeRpeGap(avgLoggedRpe, priorTargetRpe);
+          const increment = gap >= 2
+            ? 10
+            : gap >= 0
+            ? 5
+            : gap >= -1
+            ? 5
+            : gap >= -2
+            ? 0
+            : -5;
+          const newWeight =
+            Math.round((priorTopSetWeight + increment) / 2.5) * 2.5;
+          const newPeriodisation = strengthPeriodisation(2);
+          return {
+            input: { priorTopSetWeight, avgLoggedRpe, gap },
+            output: { newWeight, ...newPeriodisation },
+            expected: {
+              newWeight: 280,
+              sets: 4,
+              reps: 4,
+              targetRpe: 8.0,
+            },
+            pass:
+              newWeight === 280 && newPeriodisation.reps === 4,
+          };
+        })(),
+
+        volume_day_reps: (() => {
+          const mockSession = {
+            title: 'Volume Upper',
+            type: 'workout',
+          };
+          const detected = isVolumeDay(mockSession, undefined);
+          const volumeReps = 8;
+          return {
+            input: { session: mockSession },
+            output: { detected, volumeReps },
+            expected: { detected: true, volumeReps: 8 },
+            pass: detected === true && volumeReps === 8,
+          };
+        })(),
+
+        dedup_most_recent_log: (() => {
+          const mockLogs = [
+            {
+              day_number: 4,
+              logged_at: '2026-05-01T10:00:00Z',
+              sets_json: [
+                { exerciseName: 'Good Morning', weightLbs: 315, rpe: 5 },
+                { exerciseName: 'Good Morning', weightLbs: 315, rpe: 5 },
+                { exerciseName: 'Good Morning', weightLbs: 315, rpe: 5 },
+              ],
+            },
+            {
+              day_number: 4,
+              logged_at: '2026-05-10T10:00:00Z',
+              sets_json: [
+                { exerciseName: 'Good Morning', weightLbs: 95, rpe: 4.3 },
+                { exerciseName: 'Good Morning', weightLbs: 95, rpe: 4.3 },
+                { exerciseName: 'Good Morning', weightLbs: 95, rpe: 4.3 },
+              ],
+            },
+          ];
+
+          const sorted = [...mockLogs].sort(
+            (a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime(),
+          );
+
+          const seenDays = new Set<number>();
+          const deduped = sorted.filter((log: any) => {
+            const day = log.day_number;
+            if (seenDays.has(day)) return false;
+            seenDays.add(day);
+            return true;
+          });
+
+          const allSets = deduped.flatMap((l: any) => l.sets_json);
+          const gmSets = getExerciseSets(allSets, { exerciseName: 'Good Morning' });
+          const topSet = gmSets.length > 0
+            ? Math.max(...gmSets.map((s: any) => s.weightLbs))
+            : 0;
+
+          return {
+            input: { logsForDay4: 2, oldWeight: 315, recentWeight: 95 },
+            output: { dedupedCount: deduped.length, topSet },
+            expected: { dedupedCount: 1, topSet: 95 },
+            pass: deduped.length === 1 && topSet === 95,
+          };
+        })(),
+
+        plan_baseline_w2: (() => {
+          const mockPlanJson = {
+            weeks: [{
+              weekNumber: 1,
+              days: [{
+                dayNumber: 2,
+                title: 'Lower Heavy',
+                exercises: [{
+                  name: 'Back Squat',
+                  targetWeight: 237.5,
+                  setStructure: 'straight',
+                }],
+              }],
+            }],
+          };
+
+          const priorWeekIndex = 0;
+          const priorWeek = mockPlanJson.weeks[priorWeekIndex];
+          const priorWeekDays = priorWeek?.days ?? [];
+          const map = new Map<string, any>();
+          for (const day of priorWeekDays) {
+            for (const ex of (day.exercises ?? [])) {
+              map.set(String(ex.name ?? '').toLowerCase().trim(), ex);
+            }
+          }
+
+          const priorEx = map.get('back squat');
+          const baseline = getPlanBaselineWeight(priorEx);
+
+          return {
+            input: { w1TargetWeight: 237.5 },
+            output: { baseline },
+            expected: { baseline: 237.5 },
+            pass: baseline === 237.5,
+          };
+        })(),
+
+        plan_baseline_pyramid: (() => {
+          const mockEx = {
+            name: 'Barbell Row',
+            setStructure: 'pyramid',
+            targetWeight: 185,
+            setTargets: [
+              { setNumber: 1, targetWeight: 150 },
+              { setNumber: 2, targetWeight: 170 },
+              { setNumber: 3, targetWeight: 185 },
+              { setNumber: 4, targetWeight: 160 },
+            ],
+          };
+          const baseline = getPlanBaselineWeight(mockEx);
+          return {
+            input: { setTargets: [150, 170, 185, 160] },
+            output: { baseline },
+            expected: { baseline: 185 },
+            pass: baseline === 185,
+          };
+        })(),
+
+        heavy_vs_volume_baseline: (() => {
+          const mockW1Days = [
+            {
+              title: 'Lower Heavy',
+              exercises: [{
+                name: 'Back Squat',
+                targetWeight: 237.5,
+                setStructure: 'straight',
+              }],
+            },
+            {
+              title: 'Lower Volume',
+              exercises: [{
+                name: 'Back Squat',
+                targetWeight: 202.5,
+                setStructure: 'straight',
+              }],
+            },
+          ];
+
+          const heavyMap = new Map<string, any>();
+          const volumeMap = new Map<string, any>();
+          for (const day of mockW1Days) {
+            const isVol = day.title.toLowerCase().includes('volume');
+            const map = isVol ? volumeMap : heavyMap;
+            for (const ex of day.exercises) {
+              map.set(ex.name.toLowerCase(), ex);
+            }
+          }
+
+          const heavyBaseline = getPlanBaselineWeight(
+            heavyMap.get('back squat'),
+          );
+          const volumeBaseline = getPlanBaselineWeight(
+            volumeMap.get('back squat'),
+          );
+
+          return {
+            input: { heavyWeight: 237.5, volumeWeight: 202.5 },
+            output: { heavyBaseline, volumeBaseline },
+            expected: { heavyBaseline: 237.5, volumeBaseline: 202.5 },
+            pass:
+              heavyBaseline === 237.5 && volumeBaseline === 202.5,
+          };
+        })(),
+
+        volume_day_real_structure: (() => {
+          const mockSession = {
+            dayNumber: 3,
+            title: 'Volume Upper',
+            type: 'workout',
+          };
+          const mockPlanJson = {
+            weeks: [{
+              days: [
+                { dayNumber: 1, title: 'Upper Heavy', type: 'workout' },
+                { dayNumber: 2, title: 'Lower Heavy', type: 'workout' },
+                { dayNumber: 3, title: 'Volume Upper', type: 'workout' },
+                { dayNumber: 4, title: 'Lower Volume', type: 'workout' },
+              ],
+            }],
+          };
+          const detected = isVolumeDay(mockSession, mockPlanJson);
+          return {
+            input: { title: 'Volume Upper' },
+            output: { detected },
+            expected: { detected: true },
+            pass: detected === true,
+          };
+        })(),
+
+        heavy_day_real_structure: (() => {
+          const mockSession = {
+            dayNumber: 1,
+            title: 'Upper Heavy',
+            type: 'workout',
+          };
+          const mockPlanJson = {
+            weeks: [{ days: [{ dayNumber: 1, title: 'Upper Heavy' }] }],
+          };
+          const detected = isVolumeDay(mockSession, mockPlanJson);
+          return {
+            input: { title: 'Upper Heavy' },
+            output: { detected },
+            expected: { detected: false },
+            pass: detected === false,
+          };
+        })(),
+
+        volume_lookup_by_day_number: (() => {
+          const mockSession = { dayNumber: 3 };
+          const mockPlanJson = {
+            weeks: [{
+              days: [
+                { dayNumber: 1, title: 'Upper Heavy' },
+                { dayNumber: 3, title: 'Volume Upper' },
+              ],
+            }],
+          };
+          const detected = isVolumeDay(mockSession, mockPlanJson);
+          return {
+            input: {
+              sessionHasNoTitle: true,
+              planDayTitle: 'Volume Upper',
+            },
+            output: { detected },
+            expected: { detected: true },
+            pass: detected === true,
+          };
+        })(),
+
+        name_normalization: (() => {
+          const mockSets = [
+            { exerciseName: 'Barbell Curls', weightLbs: 85, rpe: 6.7 },
+            { exerciseName: 'Barbell Curls', weightLbs: 85, rpe: 6.5 },
+            { exerciseName: 'Barbell Curls', weightLbs: 85, rpe: 7.0 },
+            {
+              exerciseName: 'Close Grip Bench Press',
+              weightLbs: 165,
+              rpe: 5,
+            },
+          ];
+          const exercise = { exerciseName: 'Barbell Curl', equipment: 'barbell' };
+          const found = getExerciseSets(mockSets, exercise);
+          const topSet = found.length > 0
+            ? Math.max(...found.map((s: any) => s.weightLbs))
+            : 0;
+          return {
+            input: {
+              planName: 'Barbell Curl',
+              loggedNames: [
+                'Barbell Curls',
+                'Close Grip Bench Press',
+              ],
+            },
+            output: { setsFound: found.length, topSet },
+            expected: { setsFound: 3, topSet: 85 },
+            pass: found.length === 3 && topSet === 85,
+          };
+        })(),
+
+        session_scoping: (() => {
+          const day2Sets = [
+            { exerciseName: 'Back Squat', weightLbs: 315, rpe: 7 },
+            { exerciseName: 'Leg Press', weightLbs: 360, rpe: 4.5 },
+            { exerciseName: 'Good Morning', weightLbs: 135, rpe: 5.3 },
+          ];
+          const legPress = {
+            exerciseName: 'Leg Press',
+            equipment: 'machine',
+          };
+          const found = getExerciseSets(day2Sets, legPress);
+          const topSet = found.length > 0
+            ? Math.max(...found.map((s: any) => s.weightLbs))
+            : 0;
+          return {
+            input: {
+              sessionSets: day2Sets.map((s) => s.exerciseName),
+            },
+            output: { setsFound: found.length, topSet },
+            expected: { setsFound: 1, topSet: 360 },
+            pass: found.length === 1 && topSet === 360,
+          };
+        })(),
+
+        inspect_plan_structure,
+        inspect_week_structure,
+      };
+
+      let scenarioEntries = Object.entries(scenarios);
+      if (
+        typeof body.scenario === 'string' &&
+        body.scenario.trim().length > 0
+      ) {
+        const want = body.scenario.trim();
+        scenarioEntries = scenarioEntries.filter(([name]) => name === want);
+        if (scenarioEntries.length === 0) {
+          return new Response(
+            JSON.stringify({
+              error: `Unknown scenario: "${want}". Available: ${
+                Object.keys(scenarios).join(', ')
+              }`,
+            }),
+            {
+              status: 400,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+        }
+      }
+
+      const scenarioResults = scenarioEntries.map(([name, result]) => ({
+        scenario: name,
+        pass: result.pass,
+        expected: result.expected,
+        output: result.output,
+      }));
+
+      const allPassed = scenarioResults.every((r) => r.pass);
+
+      return new Response(
+        JSON.stringify({
+          testHarness:
+            'See Supabase logs for full progression suite output',
+          scenarios: scenarioResults,
+          allPassed,
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+          status: 200,
+        },
+      );
+    }
+
+    runProgressionTests();
+
+    const { userId, planId, completedWeekNumber } = body;
 
     if (!userId || !planId || completedWeekNumber == null) {
       return new Response(
@@ -1327,7 +1987,11 @@ serve(async (req) => {
         .select('*')
         .eq('user_id', userId)
         .eq('plan_id', planId)
-        .eq('week_number', completedWeekNumber),
+        // Prior week only: completed week === week index user just finished (= nextWeekNumber - 1)
+        .eq('week_number', completedWeekNumber)
+        .not('skipped', 'eq', true)
+        // Most recent first — duplicated day_number rows (repeated tests) dedupe below
+        .order('logged_at', { ascending: false }),
       supabase
         .from('user_profiles')
         .select('training_age, weight_lbs, equipment')
@@ -1352,19 +2016,64 @@ serve(async (req) => {
 
     const plan = planResult.data;
     const planJson = plan.plan_json;
-    const logs = logsResult.data ?? [];
+    const priorLogs = logsResult.data ?? [];
+
+    const seenDays = new Set<number>();
+    const dedupedLogs = priorLogs.filter((log: any) => {
+      const day = Number(log.day_number);
+      if (!Number.isFinite(day)) return true;
+      if (seenDays.has(day)) return false;
+      seenDays.add(day);
+      return true;
+    });
+
+    if (dedupedLogs[0]) {
+      console.log(
+        '[LOG ROW FIELDS]',
+        JSON.stringify({
+          allKeys: Object.keys(dedupedLogs[0]),
+          exerciseField:
+            dedupedLogs[0].exercise_name ??
+            dedupedLogs[0].exerciseName ??
+            dedupedLogs[0].exercise_id ??
+            dedupedLogs[0].exerciseId ??
+            'NOT FOUND',
+        }),
+      );
+    }
+
+    const nextWeekNumber = completedWeekNumber + 1;
+    console.log('[GNW START] weekNumber:', nextWeekNumber,
+      'planWeeksCount:', planJson?.weeks?.length);
+    console.log('[LOGS QUERY]', {
+      planId,
+      completedWeekNumber,
+      nextWeekNumber,
+      priorWeekNumber: completedWeekNumber,
+      logsFoundRaw: priorLogs.length,
+      logsFoundDeduped: dedupedLogs.length,
+      sampleWeights: dedupedLogs.slice(0, 3).map((l: any) => ({
+        exercise: l.exercise_name ?? l.exerciseName,
+        week: l.week_number,
+        sets: (l.sets_json ?? []).map((s: any) => s.weightLbs ?? s.weight),
+      })),
+    });
     const profile = profileResult.data;
     const trainingAge: string = profile?.training_age ?? 'intermediate';
 
-    // Fetch goal type via goal_id
+    // Fetch goal type + strength target lift (for setStructure stamping)
     let goalType = 'general';
+    let strengthTargetLiftFromGoal: string | null = null;
     if (plan.goal_id) {
       const { data: goalRow } = await supabase
         .from('goals')
-        .select('goal_type')
+        .select('goal_type, target_lift')
         .eq('id', plan.goal_id)
         .single();
       if (goalRow?.goal_type) goalType = goalRow.goal_type;
+      if (goalRow?.target_lift != null && String(goalRow.target_lift).trim() !== '') {
+        strengthTargetLiftFromGoal = String(goalRow.target_lift).trim();
+      }
     }
 
     const totalWeeks: number = plan.total_weeks ?? planJson.totalWeeks ?? 12;
@@ -1393,100 +2102,11 @@ serve(async (req) => {
     const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
 
-    const weeksArr = planJson.weeks ?? [];
-    const isCompletedWeekDeload =
-      String(weekData?.phase ?? '').toLowerCase() === 'deload';
-    let baselineWeekForWeights: typeof weekData = weekData;
-    if (isCompletedWeekDeload && completedWeekNumber >= 2) {
-      baselineWeekForWeights =
-        weeksArr.find(
-          (w: any) => Number(w.weekNumber) === completedWeekNumber - 1,
-        ) ?? weekData;
-    }
-    const baselineWorkoutDays = (baselineWeekForWeights?.days ?? []).filter(
-      (d: any) => d.type === 'workout',
-    );
-    const preDeloadTargetWeightByName: Record<string, number> = {};
-    for (const day of baselineWorkoutDays) {
-      for (const ex of day.exercises ?? []) {
-        if (ex?.name) {
-          preDeloadTargetWeightByName[ex.name] = ex.targetWeight ?? 0;
-        }
-      }
-    }
-
-    const priorWeeksData = (planJson.weeks ?? [])
-      .filter(
-        (w: any) =>
-          w.weekNumber >= completedWeekNumber - 2 &&
-          w.weekNumber < completedWeekNumber,
-      )
-      .sort((a: any, b: any) => a.weekNumber - b.weekNumber);
-
-    // Build exerciseId → exerciseName map from ALL weeks in plan_json
-    const exerciseIdToName: Record<string, string> = {};
-    for (const week of planJson.weeks ?? []) {
-      for (const day of week.days ?? []) {
-        for (const ex of day.exercises ?? []) {
-          if (ex.id && ex.name) {
-            exerciseIdToName[ex.id] = ex.name;
-          }
-        }
-      }
-    }
-
-    type PrescribedEx = {
-      targetWeight: number;
-      /** Raw plan value — use for self-select / zero-target guards (null vs 0). */
-      targetWeightFromPlan: number | null | undefined;
-      targetRpe: number;
-      targetReps: number;
-      minReps: number;
-      sets: number;
-      reps: string;
-    };
-    const prescribedMap: Record<string, PrescribedEx> = {};
-    for (const day of workoutDays) {
-      for (const ex of day.exercises ?? []) {
-        prescribedMap[ex.name] = {
-          targetWeight: ex.targetWeight ?? 0,
-          targetWeightFromPlan: ex.targetWeight,
-          targetRpe: ex.targetRpe ?? 0,
-          targetReps: parseMidReps(ex.reps ?? '0'),
-          minReps: parseMinReps(ex.reps ?? '1'),
-          sets: ex.sets ?? 3,
-          reps: ex.reps ?? '8-10',
-        };
-      }
-    }
-
-    const hasAnyZeroPriorTarget = Object.values(prescribedMap).some(
-      (p) => p.targetWeightFromPlan === 0 || p.targetWeightFromPlan == null,
-    );
-
-    const weightHistoryMap: Record<string, number[]> = {};
-    const plateauedExercises = new Set<string>();
-
-    for (const priorWeek of priorWeeksData) {
-      for (const day of (priorWeek.days ?? []).filter((d: any) => d.type === 'workout')) {
-        for (const ex of day.exercises ?? []) {
-          if (!weightHistoryMap[ex.name]) weightHistoryMap[ex.name] = [];
-          weightHistoryMap[ex.name].push(ex.targetWeight ?? 0);
-        }
-      }
-    }
-
-    for (const [name, prescribed] of Object.entries(prescribedMap)) {
-      if (!weightHistoryMap[name]) weightHistoryMap[name] = [];
-      const histWeight =
-        isCompletedWeekDeload && completedWeekNumber >= 2
-          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
-          : prescribed.targetWeight;
-      weightHistoryMap[name].push(histWeight);
-    }
+    const { heavy: priorHeavyExerciseMap, volume: priorVolumeExerciseMap } =
+      buildPriorPlanHeavyVolumeMaps(planJson, completedWeekNumber);
 
     // Step 4 — Compute performance metrics
-    const distinctDays = new Set(logs.map((l: any) => l.day_number)).size;
+    const distinctDays = new Set(dedupedLogs.map((l: any) => l.day_number)).size;
     const sessionsCompleted = distinctDays;
     const sessionsPlanned = daysPerWeek;
     const completionRate = sessionsPlanned > 0 ? sessionsCompleted / sessionsPlanned : 0;
@@ -1496,215 +2116,23 @@ serve(async (req) => {
     else if (completionRate >= 0.6) completionTier = 'partial';
     else completionTier = 'low';
 
-    type ActualData = {
-      totalWeight: number;
-      totalReps: number;
-      totalRpe: number;
-      count: number;
-      maxWeight: number;
-    };
-    const actualMap: Record<string, ActualData> = {};
+    const planGoalStr =
+      typeof (planJson as { goal?: string }).goal === 'string' &&
+        String((planJson as { goal?: string }).goal).length > 0
+        ? String((planJson as { goal: string }).goal)
+        : goalType;
 
-    for (const log of logs) {
-      const setsJson: any[] = log.sets_json ?? [];
-      for (const set of setsJson) {
-        // Resolve exercise name — try exerciseId lookup first, then fallbacks
-        const name: string =
-          (set.exerciseId ? exerciseIdToName[set.exerciseId] : null) ??
-          set.exerciseName ??
-          set.name ??
-          '';
-        if (!name) continue;
-        if (!actualMap[name]) {
-          actualMap[name] = { totalWeight: 0, totalReps: 0, totalRpe: 0, count: 0, maxWeight: 0 };
-        }
-        // FIX: use weightLbs (the actual field name in sets_json) not weight
-        const weight = Number(set.weightLbs ?? set.weight ?? set.loggedWeight ?? 0);
-        const reps = Number(set.reps ?? set.loggedReps ?? 0);
-        const rpe = Number(set.rpe ?? set.loggedRpe ?? 0);
-        actualMap[name].totalWeight += weight;
-        actualMap[name].totalReps += reps;
-        actualMap[name].totalRpe += rpe;
-        actualMap[name].count += 1;
-        if (weight > actualMap[name].maxWeight) actualMap[name].maxWeight = weight;
-      }
-    }
+    const strengthGoalLiftResolved =
+      (planJson as { goalLift?: string | null }).goalLift ??
+      (planJson as { targetLift?: string | null }).targetLift ??
+      strengthTargetLiftFromGoal ??
+      null;
 
-    const nextWeekNumber = completedWeekNumber + 1;
+    const week1BaselineFloorStored =
+      Number((planJson as { week1BaselineWeight?: number }).week1BaselineWeight) || 0;
 
-    // Build exercise adaptations
-    const exerciseAdaptations: any[] = [];
-
-    for (const [name, prescribed] of Object.entries(prescribedMap)) {
-      const actual = actualMap[name];
-      const priorSetsForPyramid = getPriorSetsForExerciseFromLogs(
-        name,
-        logs,
-        exerciseIdToName,
-      );
-      const priorExForPyramid = findPriorExerciseInPlanDays(
-        name,
-        weekData?.days ?? [],
-      );
-      const pyramidFlags = computePyramidFlags(
-        priorSetsForPyramid,
-        priorExForPyramid,
-        name,
-      );
-      const avgWeightForPyramid =
-        actual && actual.count > 0 ? actual.totalWeight / actual.count : 0;
-      const priorTargetForPyramid = prescribed.targetWeight ?? 0;
-      const pyramidNote =
-        pyramidFlags.weights.length > 0 &&
-        (pyramidFlags.isPyramidLogging || pyramidFlags.isPyramidStructure) &&
-        (priorTargetForPyramid > 0 || avgWeightForPyramid > 0)
-          ? `Note: ${name} was logged as ascending weights (pyramid style). Week ${nextWeekNumber} target is based on top set of ${Math.max(...pyramidFlags.weights)} lbs.`
-          : '';
-
-      const weightSummaryLine = getLoggedWeightSummaryLine(priorSetsForPyramid);
-
-      const avgReps = actual && actual.count > 0 ? actual.totalReps / actual.count : 0;
-      const avgRpe = actual && actual.count > 0 ? actual.totalRpe / actual.count : 0;
-      const compound = isCompound(name);
-      const hasRpeData = avgRpe > 0;
-      const tw = prescribed.targetWeightFromPlan;
-      // When priorTargetWeight is 0 (self-select week), enforceWeightProgression
-      // handles all weight arithmetic after Claude responds. Skip old adaptation
-      // logic entirely to prevent conflict.
-      if (tw === 0 || tw == null) {
-        const week1Baseline = getWeek1BaselineFromLogs(logs, exerciseIdToName, name);
-        const baselineWeight = week1Baseline.baselineWeight;
-        const rpeForAdaptation =
-          week1Baseline.baselineRpe > 0 ? week1Baseline.baselineRpe : avgRpe;
-        const hasRpeForSelfSelect = rpeForAdaptation > 0;
-        const baselineWDisplay = Math.round(baselineWeight);
-
-        console.log('[weight adaptation]', {
-          exerciseName: name,
-          priorTargetWeight: tw ?? 0,
-          baselineWeight,
-          isRampPattern: week1Baseline.isRampPattern,
-          rpeForAdaptation,
-          hasRpeData: hasRpeForSelfSelect,
-          deferWeightToPostProcessing: true,
-        });
-
-        exerciseAdaptations.push({
-          name,
-          baselineWeight,
-          isRampPattern: week1Baseline.isRampPattern,
-          avgRpe: Math.round(rpeForAdaptation * 10) / 10,
-          hasRpeData: hasRpeForSelfSelect,
-          avgReps: Math.round(avgReps * 10) / 10,
-          targetRpe: prescribed.targetRpe,
-          targetReps: prescribed.targetReps,
-          minReps: prescribed.minReps,
-          oldReps: prescribed.reps,
-          sets: prescribed.sets,
-          isUnilateral: isUnilateralExercise(name),
-          oldWeight: baselineWDisplay,
-          deferWeightToPostProcessing: true,
-          ...(pyramidNote ? { pyramidNote } : {}),
-          ...(weightSummaryLine ? { weightSummaryLine } : {}),
-        });
-        continue;
-      }
-
-      const priorTargetWeight = prescribed.targetWeight ?? 0;
-
-      let weightAction: 'increase' | 'decrease' | 'hold';
-      let weightDelta: number;
-      let newTargetWeight: number;
-      const progressionBaseWeight =
-        isCompletedWeekDeload && completedWeekNumber >= 2
-          ? (preDeloadTargetWeightByName[name] ?? prescribed.targetWeight)
-          : prescribed.targetWeight;
-
-      if (completionTier === 'full') {
-        const rpeIsLow = hasRpeData && avgRpe <= 6;
-        const rpeIsHigh = hasRpeData && avgRpe >= 9;
-        const repsExceeded = avgReps > 0 && avgReps >= prescribed.targetReps * 1.05;
-        // Only decrease if user failed to hit the minimum of the rep range
-        // Hitting 3 reps on a "3-5" range is valid — do not decrease
-        const repsFell = avgReps > 0 && avgReps < prescribed.minReps;
-
-        if (!hasRpeData && !repsFell && !repsExceeded) {
-          // No RPE data logged and reps were within range — hold weight
-          // Jordan's note will ask user to log RPE next session
-          weightAction = 'hold';
-          weightDelta = 0;
-        } else if (rpeIsLow || repsExceeded) {
-          weightAction = 'increase';
-          weightDelta = calculateIncrease(
-            progressionBaseWeight,
-            avgRpe,
-            prescribed.targetRpe,
-            trainingAge,
-            compound,
-          );
-        } else if (rpeIsHigh || repsFell) {
-          weightAction = 'decrease';
-          weightDelta = -2.5;
-        } else {
-          weightAction = 'hold';
-          weightDelta = 0;
-        }
-      } else if (completionTier === 'partial') {
-        weightAction = 'hold';
-        weightDelta = 0;
-      } else {
-        // Low completion — decrease
-        weightAction = 'decrease';
-        weightDelta = -2.5;
-      }
-
-      newTargetWeight = Math.max(0, progressionBaseWeight + weightDelta);
-
-      exerciseAdaptations.push({
-        name,
-        oldWeight: progressionBaseWeight,
-        newTargetWeight,
-        weightAction,
-        rpeGap: Math.round((avgRpe - prescribed.targetRpe) * 10) / 10,
-        avgRpe: Math.round(avgRpe * 10) / 10,
-        hasRpeData,
-        avgReps: Math.round(avgReps * 10) / 10,
-        targetRpe: prescribed.targetRpe,
-        targetReps: prescribed.targetReps,
-        minReps: prescribed.minReps,
-        oldReps: prescribed.reps,
-        sets: prescribed.sets,
-        isUnilateral: isUnilateralExercise(name),
-        ...(pyramidNote ? { pyramidNote } : {}),
-        ...(weightSummaryLine ? { weightSummaryLine } : {}),
-      });
-    }
-
-    for (const adaptation of exerciseAdaptations) {
-      if (adaptation.weightAction === 'hold') {
-        const history = weightHistoryMap[adaptation.name] ?? [];
-        if (history.length >= 3) {
-          const last3 = history.slice(-3);
-          const allSame = last3.every((w: number) => w === last3[0]);
-          if (allSame) {
-            plateauedExercises.add(adaptation.name);
-            adaptation.plateaued = true;
-            adaptation.plateauWeeks = history.filter((w: number) => w === last3[0]).length;
-          }
-        }
-      }
-    }
-
-    for (const adaptation of exerciseAdaptations) {
-      if (adaptation.plateaued) {
-        if (adaptation.plateauWeeks >= 4) {
-          adaptation.sets = Math.min(adaptation.sets + 1, 6);
-          adaptation.plateauResponse = 'volume_increase';
-        } else {
-          adaptation.plateauResponse = 'rotation_needed';
-        }
-      }
-    }
+    const deloadCycleStored =
+      Number((planJson as { deloadCycle?: number }).deloadCycle) || 4;
 
     // Step 5 — Determine next week phase
     // Female and enhanced recovery both use 5-week deload cadence
@@ -1718,6 +2146,8 @@ serve(async (req) => {
     } else {
       phase = 'intensification';
     }
+
+    const exerciseAdaptations: any[] = [];
 
     // Deload overrides
     if (phase === 'deload') {
@@ -1802,17 +2232,14 @@ Terse, data-driven, peer-level. This athlete knows what they're doing.
     };
     const toneInstruction = toneInstructionMap[toneTier] ?? toneInstructionMap.new;
 
-    const weightProgressionBaselineSection = hasAnyZeroPriorTarget
-      ? `
-WEIGHT TARGETS (self-select / zero prior target): Some adaptations include "deferWeightToPostProcessing": true, meaning final weights are enforced after your response. For those exercises only: do not copy progression weights or hold/increase/decrease from adaptations. Use baselineWeight, avgRpe, avgReps, and ramp flags for qualitative coaching only.
-For exercises without deferWeightToPostProcessing: set targetWeight to the same value as last week's logged weight. Do NOT calculate increases or decreases — weight progression is handled in post-processing. Your job is exercise selection, rep ranges, set structure, and coaching notes only.
-`
-      : `
+    const weightProgressionBaselineSection = `
 WEIGHT TARGETS: Set targetWeight to the same value as last week's logged weight for each exercise. Do NOT calculate increases or decreases — weight progression is handled in post-processing. Your job is exercise selection, rep ranges, set structure, and coaching notes only.
 `;
 
     const freeSessionSummary = buildFreeSessionSummary(freeSessions ?? []);
 
+    // DISABLED: exercise generation now uses W1 clone
+    /*
     const claudeResponse = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1829,9 +2256,7 @@ WEIGHT TARGETS: Set targetWeight to the same value as last week's logged weight 
 You are Jordan, the athlete's personal coach. You have their last week of performance data and you are writing their next week plan. Generate the training plan as structured JSON with varied exercise selection, smart ordering, and coaching notes that reference the user's actual performance.
 ${weightProgressionBaselineSection}
 RAMP-UP WORKING SETS (Week 1 self-select and similar):
-${hasAnyZeroPriorTarget ? `- If an exercise has deferWeightToPostProcessing: true and isRampPattern: true, the user ramped up to their working weight across sets within a session. Use baselineWeight for peak context only; do not tie coaching notes to newTargetWeight or progression from adaptations (final weights are post-processed).
-- If deferWeightToPostProcessing: true: ignore newTargetWeight in adaptations for that exercise.
-` : `- If an exercise adaptation has isRampPattern: true, the user ramped up to their working weight across sets within a session (e.g. lighter early sets, heaviest working sets at the end). The baselineWeight and newTargetWeight in the data already use their PEAK working weight, not an average across ramp sets.
+${`- If an exercise adaptation has isRampPattern: true, the user ramped up to their working weight across sets within a session (e.g. lighter early sets, heaviest working sets at the end). The baselineWeight and newTargetWeight in the data already use their PEAK working weight, not an average across ramp sets.
 - For isRampPattern: true: use that peak as their true baseline for Week 2. Do not argue for a lower working weight because earlier sets in the log were lighter.
 `}
 UNILATERAL RULE: For exercises flagged isUnilateral, reps in sets_json are per-side.
@@ -1877,8 +2302,7 @@ ${(biologicalSex === 'female' || enhancedRecovery) ? `DELOAD CADENCE: Week 5 (no
 For each exercise coachingNote:
 - Speak as Jordan directly to the athlete in first person
 - Reference actual numbers from the exercise adaptations (avgRpe, avgReps, weightAction) to describe last week and the intent for this week — do not invent specific next-week pound targets; those are finalized in post-processing
-${hasAnyZeroPriorTarget ? `- If deferWeightToPostProcessing is true for an exercise: do not reference weightAction or prescribe hold/increase/decrease from adaptations. Use baselineWeight, avgRpe, avgReps, and isRampPattern for qualitative coaching only.
-` : ''}- If weightAction is 'increase': explain that load should progress because last week ran light vs target — stay qualitative, no invented pound amounts for this week
+- If weightAction is 'increase': explain that load should progress because last week ran light vs target — stay qualitative, no invented pound amounts for this week
 - If weightAction is 'hold': explain that last week was calibrated — focus on execution
 - If weightAction is 'decrease': acknowledge last week ran heavy — quality reps matter
 - If weightAction is 'deload': frame deload positively as intentional recovery
@@ -1940,7 +2364,7 @@ Equipment: ${equipment}
 Training age: ${trainingAge}
 Completion tier last week: ${completionTier} (${sessionsCompleted}/${sessionsPlanned} sessions)
 
-Exercise adaptations for next week (context for coaching${hasAnyZeroPriorTarget ? ' — for exercises without deferWeightToPostProcessing, copy targetWeight from newTargetWeight; for deferWeightToPostProcessing, use baseline/performance fields only' : ' — copy targetWeight from newTargetWeight'}; arithmetic is finalized in post-processing):
+Exercise adaptations for next week (context for coaching — copy targetWeight from newTargetWeight; arithmetic is finalized in post-processing):
 ${JSON.stringify(exerciseAdaptations, null, 2)}
 ${freeSessionSummary}${freeSessionSummary ? `
 
@@ -1960,8 +2384,7 @@ Specifically:
 ` : ''}
 
 Rules:
-${hasAnyZeroPriorTarget ? `- If deferWeightToPostProcessing is true for an exercise: do not set targetWeight from a prescribed progression or use weightAction for coaching notes. Set targetWeight to 0 in JSON. Do not invent hold, increase, or specific next-week pound amounts for that exercise. Final weights are applied in post-processing.
-` : ''}- Set each exercise targetWeight to the newTargetWeight value from the list above (last week's working weight) for exercises without deferWeightToPostProcessing. Do not substitute your own calculated weights
+- Set each exercise targetWeight to the newTargetWeight value from the list above (last week's working weight) for exercises without deferWeightToPostProcessing. Do not substitute your own calculated weights
 - Maintain the same core exercise selection as last week unless weightAction is 'decrease' for 3+ sets (then suggest a regression)
 - If phase is 'deload': sets are already reduced in the data above, keep reps in lower range
 - If completionTier is 'low': add a note in the first workout suggesting the user review their schedule
@@ -2047,19 +2470,18 @@ Return ONLY this exact JSON structure:
       console.error('Parse error. Raw text:', text.substring(0, 500));
       throw new Error('JSON parse failed: ' + String(e));
     }
+    */
+
+    const week1 = planJson.weeks?.[0];
+    // W1 clone aligns day indices / shells for merged output; prescriptions are mutated on merged days
+    // post-stamp (merge keeps completed-week exercise rows → IDs/order preserved).
+    const newWeekDays = JSON.parse(JSON.stringify(week1?.days ?? []));
+    let nextWeekData: any = { days: newWeekDays };
 
     // Ensure weekNumber and phase are set correctly; lock layout to completed week
     nextWeekData.weekNumber = nextWeekNumber;
     nextWeekData.phase = phase;
     nextWeekData = mergeNextWeekWithPreviousStructure(weekData, nextWeekData, nextWeekNumber, phase);
-
-    const experienceForProgression =
-      (planJson as { experience?: string }).experience ?? trainingAge;
-
-    const priorWeekPlanDaysWithEquipment = (weekData?.days ?? []).map((day: any) => ({
-      ...day,
-      exercises: stampEquipment(day.exercises ?? []),
-    }));
 
     const planGoalForSetStructure =
       typeof (planJson as { goal?: string }).goal === 'string' &&
@@ -2067,8 +2489,13 @@ Return ONLY this exact JSON structure:
         ? (planJson as { goal: string }).goal
         : goalType;
 
-    // Stamp equipment + setStructure BEFORE weight progression so applyPyramidPerSetTargets
-    // sees setStructure === 'pyramid' / compoundTier (Claude often omits these).
+    const strengthTargetLiftForSetStructure =
+      (planJson as { goalLift?: string | null }).goalLift ??
+      (planJson as { targetLift?: string | null }).targetLift ??
+      strengthTargetLiftFromGoal ??
+      null;
+
+    // Stamp equipment + setStructure so downstream sees pyramid / compoundTier (Claude often omits these).
     nextWeekData = {
       ...nextWeekData,
       days: (nextWeekData.days ?? []).map((day: any) => {
@@ -2078,23 +2505,226 @@ Return ONLY this exact JSON structure:
           exercises: enforceSetStructure(
             stampEquipment(day.exercises ?? []),
             planGoalForSetStructure,
+            planGoalForSetStructure === 'strength' ? strengthTargetLiftForSetStructure : null,
           ),
         };
       }),
     };
 
-    const processedDays = enforceWeightProgression(
-      nextWeekData.days ?? [],
-      logs,
-      priorWeekPlanDaysWithEquipment,
-      experienceForProgression,
-      phase === 'deload',
-      exerciseIdToName,
-      planGoalForSetStructure,
-      completedWeekNumber,
-    );
+    // ── PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────────
+    // mergeNextWeekWithPreviousStructure keeps completed-week slots (preserves IDs).
+    // Progress targetWeight / reps / pyramid ladders from prior plan baselines + RPE logs.
+    for (const day of nextWeekData.days ?? []) {
+      if (day.type !== 'workout') continue;
 
-    nextWeekData = { ...nextWeekData, days: processedDays };
+      const dayIsVolume = isVolumeDay(day, planJson);
+
+      const matchingPriorLog = dedupedLogs.find(
+        (log: any) => log.day_number === day.dayNumber,
+      );
+      const sessionSets: any[] = matchingPriorLog?.sets_json ?? [];
+
+      for (const exercise of day.exercises ?? []) {
+        const exName = (exercise.exerciseName ?? exercise.name ?? '')
+          .toLowerCase()
+          .trim();
+
+        const isTargetLiftEx =
+          planGoalForSetStructure === 'strength' &&
+          strengthTargetLiftForSetStructure &&
+          isTargetLift(exercise, strengthTargetLiftForSetStructure);
+
+        let priorPlanExercise: any;
+        if (isTargetLiftEx && !dayIsVolume) {
+          priorPlanExercise = priorHeavyExerciseMap.get(exName) ?? null;
+        } else if (isTargetLiftEx && dayIsVolume) {
+          priorPlanExercise =
+            priorVolumeExerciseMap.get(exName) ??
+            priorHeavyExerciseMap.get(exName) ??
+            null;
+        } else {
+          priorPlanExercise =
+            priorHeavyExerciseMap.get(exName) ??
+            priorVolumeExerciseMap.get(exName) ??
+            null;
+        }
+
+        const planBaseline = getPlanBaselineWeight(priorPlanExercise);
+
+        if (planBaseline === 0) {
+          console.log('[SKIP]', exName, '— planBaseline 0');
+          continue;
+        }
+
+        const exerciseSets = getExerciseSets(sessionSets, exercise);
+        const workingSets = exerciseSets.filter(
+          (s: any) => s.isWarmup !== true,
+        );
+        const avgLoggedRpe = workingSets.length > 0
+          ? workingSets.reduce(
+              (sum: number, s: any) => sum + Number(s.rpe ?? 7),
+              0,
+            ) / workingSets.length
+          : 7.0;
+
+        console.log('[PLAN BASELINE]', {
+          name: exName,
+          planBaseline,
+          avgLoggedRpe,
+          dayIsVolume,
+          source: priorPlanExercise ? 'prior week plan' : 'none',
+        });
+
+        /** Last week's programmed target RPE (heavy primary matches progression gap math). */
+        const adaptationMessagingCycle = strengthWeekInCycle(
+          completedWeekNumber,
+          deloadCycleStored,
+        );
+        const adaptationMessagingPriorRow = strengthPeriodisation(adaptationMessagingCycle);
+        const accessoryTargetRpeForCopy =
+          isTargetLiftEx && !dayIsVolume
+            ? adaptationMessagingPriorRow.targetRpe
+            : Number(exercise.targetRpe) > 0
+              ? Number(exercise.targetRpe)
+              : Number(priorPlanExercise?.targetRpe) > 0
+                ? Number(priorPlanExercise.targetRpe)
+                : 7.0;
+
+        if (isTargetLiftEx && !dayIsVolume) {
+          const priorWeekInCycle = strengthWeekInCycle(
+            completedWeekNumber,
+            deloadCycleStored,
+          );
+          const newWeekInCycle = strengthWeekInCycle(nextWeekNumber, deloadCycleStored);
+          const priorPeriodisation = strengthPeriodisation(priorWeekInCycle);
+          const newPeriodisation = strengthPeriodisation(newWeekInCycle);
+
+          const gap = computeRpeGap(avgLoggedRpe, priorPeriodisation.targetRpe);
+          let increment = 5;
+          if (gap >= 2) increment = 10;
+          else if (gap >= 0) increment = 5;
+          else if (gap >= -2) increment = 0;
+          else increment = -5;
+
+          const newWeight = Math.max(
+            Math.round((planBaseline + increment) / 2.5) * 2.5,
+            week1BaselineFloorStored,
+          );
+
+          exercise.targetWeight = newWeight;
+          exercise.sets = newPeriodisation.sets;
+          exercise.reps = String(newPeriodisation.reps);
+          exercise.repsMin = newPeriodisation.reps;
+          exercise.repsMax = newPeriodisation.reps;
+          exercise.targetRpe = newPeriodisation.targetRpe;
+          exercise.setStructure = 'straight';
+          delete exercise.setTargets;
+
+          console.log('[TARGET LIFT]', {
+            name: exName,
+            planBaseline,
+            increment,
+            newWeight,
+            newReps: newPeriodisation.reps,
+          });
+        } else if (isTargetLiftEx && dayIsVolume) {
+          const accessoryTargetRpe =
+            exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
+          const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+          const increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
+          const roundTo = 2.5;
+          exercise.targetWeight =
+            Math.round((planBaseline + increment) / roundTo) * roundTo;
+          exercise.reps = '8';
+          exercise.repsMin = 8;
+          exercise.repsMax = 8;
+        } else {
+          const accessoryTargetRpe =
+            exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
+          const increment = accessoryWeightIncrement(
+            avgLoggedRpe,
+            accessoryTargetRpe,
+            exercise.equipment ?? '',
+          );
+
+          if (exercise.setStructure === 'pyramid') {
+            const setCount = Array.isArray(exercise.setTargets)
+              ? exercise.setTargets.length
+              : exercise.sets ?? 4;
+            const topPct = pyramidTopSetPct(setCount);
+            const desiredTopSet = planBaseline + increment;
+            const newTargetWeight = topPct === 1
+              ? Math.round(desiredTopSet / 2.5) * 2.5
+              : Math.round((desiredTopSet / topPct) / 10) * 10;
+            exercise.targetWeight = newTargetWeight;
+            const nextTargets = buildProgressionPyramidSetTargets(
+              newTargetWeight,
+              setCount,
+              exercise.setTargets,
+            );
+            if (nextTargets.length > 0) {
+              exercise.setTargets = nextTargets;
+            }
+          } else {
+            const roundTo = ['barbell', 'dumbbell'].includes(
+                String(exercise.equipment ?? '').toLowerCase(),
+              )
+              ? 2.5
+              : 5;
+            exercise.targetWeight =
+              Math.round((planBaseline + increment) / roundTo) * roundTo;
+          }
+        }
+
+        stampExerciseAdaptationCopyAfterProgression({
+          exercise,
+          planBaseline,
+          avgLoggedRpe,
+          accessoryTargetRpeForGap: accessoryTargetRpeForCopy,
+          isTargetLiftEx: Boolean(isTargetLiftEx),
+          dayIsVolume: Boolean(dayIsVolume),
+          nextWeekNumber: Number(nextWeekNumber),
+        });
+      }
+    }
+    // ── END PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────
+
+    nextWeekData = {
+      ...nextWeekData,
+      days: rebuildPyramidAccessorySetTargetsAfterWeights(
+        nextWeekData.days,
+        planGoalForSetStructure,
+        planGoalForSetStructure === 'strength'
+          ? strengthTargetLiftForSetStructure
+          : null,
+      ),
+    };
+
+    nextWeekData = {
+      ...nextWeekData,
+      days: finalizeStrengthTargetLiftPeriodisationOnDays(
+        nextWeekData.days,
+        planGoalForSetStructure,
+        planGoalForSetStructure === 'strength' ? strengthTargetLiftForSetStructure : null,
+        nextWeekNumber,
+        deloadCycleStored,
+      ),
+    };
+
+    nextWeekData = {
+      ...nextWeekData,
+      days: applyStrengthVolumeDayTargetLiftReps(
+        nextWeekData.days,
+        planGoalForSetStructure,
+        planGoalForSetStructure === 'strength' ? strengthTargetLiftForSetStructure : null,
+        planJson,
+      ),
+    };
+
+    nextWeekData = {
+      ...nextWeekData,
+      days: refreshAdaptationThisSessionSummaries(nextWeekData.days),
+    };
 
     // Step 8 — Save to Supabase atomically (fresh read to avoid race)
     const { data: freshPlan, error: freshErr } = await supabase
@@ -2125,24 +2755,41 @@ Return ONLY this exact JSON structure:
     updatedPlanJson.weeks = updatedWeeks;
     updatedPlanJson.currentWeek = nextWeekNumber;
 
-    const firstWorkoutDay = nextWeekData.days?.find(
+    const lastMergedWeek = updatedWeeks[updatedWeeks.length - 1];
+    const sampleWorkoutDay = lastMergedWeek?.days?.find(
       (d: any) => d.type === 'workout' && (d.exercises?.length ?? 0) > 0,
     );
-    const firstEx = firstWorkoutDay?.exercises?.[0];
-    console.log('[setTargets debug]', {
-      exerciseName: firstEx?.name,
-      targetWeight: firstEx?.targetWeight,
-      hasSetTargets: !!firstEx?.setTargets,
-      setTargetsCount: firstEx?.setTargets?.length ?? 0,
-      setTargetWeights: firstEx?.setTargets?.map((s: any) => s.targetWeight),
+    const sampleEx = sampleWorkoutDay?.exercises?.[0];
+
+    console.log('[WEEK TARGET]', {
+      mutatingWeek: lastMergedWeek?.weekNumber ?? 'unknown',
+      expectedWeek: nextWeekNumber,
+      weeksLengthAfterMerge: updatedWeeks.length,
     });
 
-    const { error: updateErr } = await supabase
+    console.log('[DB WRITE] About to write plan_json', {
+      planId,
+      weekNumber: nextWeekNumber,
+      sampleExercise: sampleEx
+        ? {
+            name: sampleEx.exerciseName ?? sampleEx.name,
+            targetWeight: sampleEx.targetWeight,
+            setTargets: sampleEx.setTargets,
+          }
+        : null,
+    });
+
+    const { error: writeError } = await supabase
       .from('plans')
       .update({ plan_json: updatedPlanJson, current_week: nextWeekNumber })
       .eq('id', planId);
 
-    if (updateErr) throw new Error(`Failed to update plan: ${updateErr.message}`);
+    console.log('[DB WRITE RESULT]', {
+      error: writeError?.message ?? null,
+      success: !writeError,
+    });
+
+    if (writeError) throw new Error(`Failed to update plan: ${writeError.message}`);
 
     // Step 9 — Return success
     return new Response(

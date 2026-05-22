@@ -1206,6 +1206,26 @@ export default function ProfileSettingsScreen() {
                 DEV: Jump to Plan Complete Screen
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.devButton,
+                styles.devButtonAfter,
+                { zIndex: 999, elevation: 999 },
+              ]}
+              onPress={() => {
+                void AsyncStorage.removeItem('hone_beta_welcome_seen')
+                  .then(() => {
+                    Alert.alert('Done', 'Beta welcome screen will show on next launch');
+                  })
+                  .catch((e: unknown) => {
+                    Alert.alert('Error', e instanceof Error ? e.message : String(e));
+                  });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.devButtonText}>DEV: Reset Beta Welcome Screen</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -1417,10 +1437,12 @@ export default function ProfileSettingsScreen() {
         </View>
       </Modal>
 
-      <BetaFeedbackModal
-        visible={showFeedback}
-        onClose={() => setShowFeedback(false)}
-      />
+      {showFeedback && (
+        <BetaFeedbackModal
+          visible={showFeedback}
+          onClose={() => setShowFeedback(false)}
+        />
+      )}
 
     </SafeAreaView>
   );

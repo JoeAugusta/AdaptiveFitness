@@ -32,6 +32,7 @@ import {
 import { useMetric } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
+import BetaFeedbackModal from '../components/BetaFeedbackModal';
 
 // ── Label maps ──
 
@@ -362,6 +363,7 @@ export default function ProfileSettingsScreen() {
   const [showAgeSheet, setShowAgeSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2>(1);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [heightFtDraft, setHeightFtDraft] = useState('');
   const [heightInDraft, setHeightInDraft] = useState('');
   const [ageDraft, setAgeDraft] = useState('');
@@ -1022,6 +1024,14 @@ export default function ProfileSettingsScreen() {
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            style={styles.row}
+            onPress={() => setShowFeedback(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.feedbackRowLabel}>Send Feedback</Text>
+            <Text style={styles.rowChevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.row, styles.rowLast, isDeleting && styles.rowDeleting]}
             onPress={() => {
               void handleDeleteAccount();
@@ -1407,6 +1417,11 @@ export default function ProfileSettingsScreen() {
         </View>
       </Modal>
 
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
+
     </SafeAreaView>
   );
 }
@@ -1564,6 +1579,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 18,
     color: Colors.textTertiary,
+  },
+  feedbackRowLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
   },
   goalRowRight: {
     flex: 1,

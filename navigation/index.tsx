@@ -5,6 +5,7 @@ import type { RootStackParamList } from './types';
 import { Colors, Fonts, FontSizes } from '../constants/design';
 
 import SplashScreen from '../screens/SplashScreen';
+import BetaWelcomeScreen from '../screens/BetaWelcomeScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import SignInScreen from '../screens/auth/SignInScreen';
@@ -177,6 +178,11 @@ export default function RootNavigator() {
     >
       {/* ── Onboarding ── */}
       <Root.Screen name="Splash" component={SplashScreen} />
+      <Root.Screen
+        name="BetaWelcome"
+        component={BetaWelcomeScreen}
+        options={{ headerShown: false }}
+      />
       <Root.Screen name="Auth" component={AuthScreen} />
       <Root.Screen name="SignUp" component={SignUpScreen} />
       <Root.Screen name="SignIn" component={SignInScreen} />

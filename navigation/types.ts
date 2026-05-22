@@ -43,6 +43,7 @@ type PlanStructureParams = {
 
 export type RootStackParamList = {
   Splash: undefined;
+  BetaWelcome: undefined;
   Auth: undefined;
   SignUp: undefined;
   SignIn: undefined;

@@ -1,7 +1,6 @@
 {
   "cli": {
-    "version": ">= 18.4.0",
-    "appVersionSource": "remote"
+    "version": ">= 16.0.0"
   },
   "build": {
     "development": {
@@ -9,13 +8,25 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "buildConfiguration": "Release"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "jaugusta42@icloud.com",
+        "ascAppId": "FILL_IN_PHASE_5",
+        "appleTeamId": "FILL_IN_PHASE_5"
+      }
+    }
   }
 }

@@ -7,6 +7,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { Colors, Fonts } from '../constants/design';
 import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
@@ -38,6 +39,16 @@ export default function SplashScreen() {
         });
 
         if (!session) {
+          // Beta welcome — show once only
+          const hasSeenWelcome = await AsyncStorage.getItem('hone_beta_welcome_seen');
+          if (!hasSeenWelcome) {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'BetaWelcome' }],
+            });
+            return;
+          }
+
           navigation.reset({
             index: 0,
             routes: [{ name: 'Auth' }],

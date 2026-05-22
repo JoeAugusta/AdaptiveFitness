@@ -193,7 +193,7 @@ export default function WeeklyCoachSummaryScreen() {
 
         setCurrentSummary(exactRow.summary_json);
         setHistory((histRows ?? []) as WeeklySummaryRow[]);
-        await AsyncStorage.removeItem('afc_unviewed_summary_week');
+        await AsyncStorage.removeItem('hone_unviewed_summary_week');
         setLoading(false);
         return;
       }
@@ -241,7 +241,7 @@ export default function WeeklyCoachSummaryScreen() {
 
       setCurrentSummary(summary);
       setHistory(existing.filter((r) => r.week_number !== weekNumber));
-      await AsyncStorage.removeItem('afc_unviewed_summary_week');
+      await AsyncStorage.removeItem('hone_unviewed_summary_week');
       setLoading(false);
     } catch (e: any) {
       setError(String(e?.message ?? e));

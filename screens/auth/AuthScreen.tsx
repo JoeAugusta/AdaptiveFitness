@@ -4,7 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 
@@ -13,87 +13,69 @@ export default function AuthScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={[styles.outer, { paddingHorizontal: Spacing.xl }]}>
-        <View style={styles.topZone}>
-          <View style={styles.logoContainer}>
-            <Svg width={72} height={72} viewBox="0 0 72 72">
-              <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
-              <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
-              <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
-              <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
-            </Svg>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.logoZone}>
+        <Svg width={120} height={120} viewBox="0 0 72 72">
+          <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
+          <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
+          <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
+          <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
+        </Svg>
+        <Text style={styles.wordmark}>hone</Text>
+        <Text style={styles.tagline}>Your coach. Built around you.</Text>
+      </View>
 
-            <Text style={styles.wordmark}>hone</Text>
-            <Text style={styles.tagline}>Your coach. Built around you.</Text>
-          </View>
-        </View>
+      <View style={[styles.bottomZone, { paddingBottom: 36 + insets.bottom }]}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          activeOpacity={0.88}
+          onPress={() => navigation.navigate('SignUp')}
+        >
+          <Text style={styles.primaryButtonText}>Get Started →</Text>
+        </TouchableOpacity>
 
-        <View style={[styles.bottomZone, { paddingBottom: Spacing.xl + insets.bottom }]}>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            activeOpacity={0.88}
-            onPress={() => navigation.navigate('SignUp')}
-          >
-            <Text style={styles.primaryButtonText}>Get Started →</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryWrap}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('SignIn')}
-          >
-            <Text style={styles.secondaryLine}>
-              Already have an account?{' '}
-              <Text style={styles.secondaryAccent}>Sign in</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.subText}>
+          Already have an account?{' '}
+          <Text style={styles.signInLink} onPress={() => navigation.navigate('SignIn')}>
+            Sign in
+          </Text>
+        </Text>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  container: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
   },
-  outer: {
+  logoZone: {
     flex: 1,
-    backgroundColor: Colors.bgPrimary,
-  },
-  topZone: {
-    flex: 4,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoContainer: {
-    alignItems: 'center',
-    gap: 12,
+    paddingTop: 20,
   },
   wordmark: {
+    marginTop: 24,
     fontFamily: Fonts.bold,
-    fontSize: 42,
+    fontSize: 38,
     color: Colors.textPrimary,
     letterSpacing: 3,
   },
-  bottomZone: {
-    flex: 6,
-    justifyContent: 'flex-end',
-    width: '100%',
-    gap: Spacing.lg,
-  },
   tagline: {
+    marginTop: 12,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
-    letterSpacing: 0.5,
+  },
+  bottomZone: {
+    paddingHorizontal: 24,
   },
   primaryButton: {
-    width: '100%',
     height: 56,
+    marginBottom: 16,
     borderRadius: Radius.lg,
     backgroundColor: Colors.accent,
     alignItems: 'center',
@@ -104,17 +86,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     color: Colors.bgPrimary,
   },
-  secondaryWrap: {
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-  },
-  secondaryLine: {
+  subText: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-  secondaryAccent: {
+  signInLink: {
     fontFamily: Fonts.bold,
     color: Colors.accent,
   },

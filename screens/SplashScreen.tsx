@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { Colors, Fonts, FontSizes } from '../constants/design';
+import { Colors, Fonts } from '../constants/design';
 import { useAuth } from '../contexts/AuthContext';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
@@ -11,8 +13,6 @@ type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 export default function SplashScreen() {
   const navigation = useNavigation<SplashNavProp>();
   const { session, authReady, hasPlans } = useAuth();
-  const [checking, setChecking] = useState(true);
-
   useEffect(() => {
     if (!authReady) return;
 
@@ -72,10 +72,6 @@ export default function SplashScreen() {
             routes: [{ name: 'Auth' }],
           });
         }
-      } finally {
-        if (!cancelled) {
-          setChecking(false);
-        }
       }
     };
 
@@ -87,29 +83,45 @@ export default function SplashScreen() {
   }, [authReady, session, hasPlans, navigation]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>AdaptiveFitness</Text>
-      {checking ? (
-        <ActivityIndicator color={Colors.accent} size="small" style={styles.spinner} />
-      ) : null}
-    </View>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.centerContent}>
+        <Svg width={96} height={96} viewBox="0 0 72 72">
+          <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
+          <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
+          <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
+          <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
+        </Svg>
+
+        <Text style={styles.wordmark}>hone</Text>
+
+        <ActivityIndicator
+          style={styles.spinner}
+          color={Colors.accent}
+          size="small"
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
+  },
+  centerContent: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: FontSizes.display,
+  wordmark: {
+    marginTop: 20,
     fontFamily: Fonts.bold,
-    color: Colors.accent,
-    letterSpacing: 0.5,
+    fontSize: 32,
+    color: Colors.textPrimary,
+    letterSpacing: 3,
   },
   spinner: {
-    marginTop: 24,
+    marginTop: 32,
   },
 });

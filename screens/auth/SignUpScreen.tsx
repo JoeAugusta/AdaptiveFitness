@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -34,8 +35,6 @@ const EMPTY_ERRORS: FieldErrors = {
   confirm: '',
 };
 
-type FocusField = 'fullName' | 'email' | 'password' | 'confirm' | null;
-
 export default function SignUpScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
@@ -47,7 +46,17 @@ export default function SignUpScreen() {
   const [submitError, setSubmitError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [focusedField, setFocusedField] = useState<FocusField>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const inputBorderColor = (
+    field: 'fullName' | 'email' | 'password' | 'confirm',
+    errorKey: keyof FieldErrors,
+  ) =>
+    fieldErrors[errorKey]
+      ? Colors.danger
+      : focusedField === field
+        ? Colors.accentBorder
+        : Colors.border;
 
   const validate = useCallback(() => {
     const next: FieldErrors = { ...EMPTY_ERRORS };
@@ -127,15 +136,6 @@ export default function SignUpScreen() {
     }
   }, [email, password, navigation, validate, fullName]);
 
-  const inputBorderStyle = (key: FocusField, errorKey: keyof FieldErrors) => {
-    const err = fieldErrors[errorKey];
-    return [
-      styles.input,
-      focusedField === key && styles.inputFocused,
-      err ? styles.inputError : null,
-    ];
-  };
-
   if (showConfirmation) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -173,7 +173,7 @@ export default function SignUpScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -192,13 +192,26 @@ export default function SignUpScreen() {
             <Ionicons name="chevron-back" size={28} color={Colors.accent} />
           </TouchableOpacity>
 
+          <View style={styles.brandHeader}>
+            <Svg width={32} height={32} viewBox="0 0 72 72">
+              <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
+              <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
+              <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
+              <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
+            </Svg>
+            <Text style={styles.brandWord}>hone</Text>
+          </View>
+
           <Text style={styles.screenTitle}>Create account</Text>
           <Text style={styles.screenSubtitle}>Sign up to get started</Text>
 
           <View style={styles.fieldBlock}>
-            <Text style={styles.label}>FULL NAME</Text>
+            <Text style={styles.labelFirst}>FULL NAME</Text>
             <TextInput
-              style={inputBorderStyle('fullName', 'fullName')}
+              style={[
+                styles.inputBase,
+                { borderColor: inputBorderColor('fullName', 'fullName') },
+              ]}
               placeholder="Joe Smith"
               placeholderTextColor={Colors.textTertiary}
               autoCapitalize="words"
@@ -208,8 +221,11 @@ export default function SignUpScreen() {
                 setFullName(t);
                 if (fieldErrors.fullName) setFieldErrors((prev) => ({ ...prev, fullName: '' }));
               }}
-              onFocus={() => setFocusedField('fullName')}
-              onBlur={() => setFocusedField((f) => (f === 'fullName' ? null : f))}
+              onFocus={() => {
+                setFocusedField('fullName');
+                setSubmitError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
             {fieldErrors.fullName ? (
@@ -220,7 +236,10 @@ export default function SignUpScreen() {
           <View style={styles.fieldBlock}>
             <Text style={styles.label}>EMAIL</Text>
             <TextInput
-              style={inputBorderStyle('email', 'email')}
+              style={[
+                styles.inputBase,
+                { borderColor: inputBorderColor('email', 'email') },
+              ]}
               placeholder="you@example.com"
               placeholderTextColor={Colors.textTertiary}
               keyboardType="email-address"
@@ -231,8 +250,11 @@ export default function SignUpScreen() {
                 setEmail(t);
                 if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: '' }));
               }}
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
+              onFocus={() => {
+                setFocusedField('email');
+                setSubmitError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
             {fieldErrors.email ? (
@@ -243,7 +265,10 @@ export default function SignUpScreen() {
           <View style={styles.fieldBlock}>
             <Text style={styles.label}>PASSWORD</Text>
             <TextInput
-              style={inputBorderStyle('password', 'password')}
+              style={[
+                styles.inputBase,
+                { borderColor: inputBorderColor('password', 'password') },
+              ]}
               placeholder="Minimum 8 characters"
               placeholderTextColor={Colors.textTertiary}
               secureTextEntry
@@ -252,8 +277,11 @@ export default function SignUpScreen() {
                 setPassword(t);
                 if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
               }}
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+              onFocus={() => {
+                setFocusedField('password');
+                setSubmitError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
             {fieldErrors.password ? (
@@ -264,7 +292,10 @@ export default function SignUpScreen() {
           <View style={styles.fieldBlock}>
             <Text style={styles.label}>CONFIRM PASSWORD</Text>
             <TextInput
-              style={inputBorderStyle('confirm', 'confirm')}
+              style={[
+                styles.inputBase,
+                { borderColor: inputBorderColor('confirm', 'confirm') },
+              ]}
               placeholder="Re-enter password"
               placeholderTextColor={Colors.textTertiary}
               secureTextEntry
@@ -273,16 +304,17 @@ export default function SignUpScreen() {
                 setConfirmPassword(t);
                 if (fieldErrors.confirm) setFieldErrors((prev) => ({ ...prev, confirm: '' }));
               }}
-              onFocus={() => setFocusedField('confirm')}
-              onBlur={() => setFocusedField((f) => (f === 'confirm' ? null : f))}
+              onFocus={() => {
+                setFocusedField('confirm');
+                setSubmitError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
             {fieldErrors.confirm ? (
               <Text style={styles.fieldError}>{fieldErrors.confirm}</Text>
             ) : null}
           </View>
-
-          {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.primaryButtonLoading]}
@@ -297,16 +329,14 @@ export default function SignUpScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.bottomLinkWrap}
-            onPress={() => navigation.navigate('SignIn')}
-          >
-            <Text style={styles.bottomLink}>
-              Already have an account?{' '}
-              <Text style={styles.bottomLinkAccent}>Sign in</Text>
+          {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+
+          <Text style={styles.footerSubText}>
+            Already have an account?{' '}
+            <Text style={styles.footerLink} onPress={() => navigation.navigate('SignIn')}>
+              Sign in
             </Text>
-          </TouchableOpacity>
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -330,6 +360,19 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     paddingVertical: Spacing.xs,
   },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: Spacing.xxxl,
+    marginTop: Spacing.sm,
+  },
+  brandWord: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    letterSpacing: 2,
+  },
   screenTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
@@ -344,44 +387,48 @@ const styles = StyleSheet.create({
     lineHeight: FontSizes.body * 1.35,
   },
   fieldBlock: {
-    marginBottom: Spacing.md,
+    marginBottom: 0,
+  },
+  labelFirst: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 0,
+    marginBottom: 8,
   },
   label: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
     color: Colors.textSecondary,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginTop: 20,
+    marginBottom: 8,
   },
-  input: {
+  inputBase: {
     height: 52,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
     borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     color: Colors.textPrimary,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
-  },
-  inputFocused: {
-    borderColor: Colors.accent,
-  },
-  inputError: {
-    borderColor: Colors.danger,
   },
   fieldError: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.danger,
-    marginTop: 4,
+    marginTop: 6,
   },
   submitError: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.danger,
-    marginBottom: Spacing.md,
+    marginTop: 6,
+    textAlign: 'center',
     lineHeight: FontSizes.caption * 1.35,
   },
   primaryButton: {
@@ -400,17 +447,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     color: Colors.bgPrimary,
   },
-  bottomLinkWrap: {
+  footerSubText: {
     marginTop: Spacing.xl,
-    alignItems: 'center',
-  },
-  bottomLink: {
+    alignSelf: 'center',
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-  bottomLinkAccent: {
+  footerLink: {
     fontFamily: Fonts.bold,
     color: Colors.accent,
   },

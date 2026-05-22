@@ -43,55 +43,101 @@ serve(async (req) => {
       },
     );
 
-    const steps: Array<{ label: string; run: () => Promise<{ error: { message: string } | null }> }> = [
-      { label: 'macro_logs', run: () => supabase.from('macro_logs').delete().eq('user_id', userId) },
-      {
-        label: 'meal_suggestions',
-        run: () => supabase.from('meal_suggestions').delete().eq('user_id', userId),
-      },
-      { label: 'weight_logs', run: () => supabase.from('weight_logs').delete().eq('user_id', userId) },
-      {
-        label: 'body_measurements',
-        run: () => supabase.from('body_measurements').delete().eq('user_id', userId),
-      },
-      { label: 'sport_logs', run: () => supabase.from('sport_logs').delete().eq('user_id', userId) },
-      { label: 'free_sessions', run: () => supabase.from('free_sessions').delete().eq('user_id', userId) },
-      {
-        label: 'workout_logs',
-        run: () => supabase.from('workout_logs').delete().eq('user_id', userId),
-      },
-      {
-        label: 'weekly_summaries',
-        run: () => supabase.from('weekly_summaries').delete().eq('user_id', userId),
-      },
-      { label: 'macro_plans', run: () => supabase.from('macro_plans').delete().eq('user_id', userId) },
-      { label: 'plans', run: () => supabase.from('plans').delete().eq('user_id', userId) },
-      { label: 'goals', run: () => supabase.from('goals').delete().eq('user_id', userId) },
-      {
-        label: 'user_profiles',
-        run: () => supabase.from('user_profiles').delete().eq('user_id', userId),
-      },
-    ];
+    const adminClient = supabase;
 
-    for (const { label, run } of steps) {
-      const { error } = await run();
-      if (error) {
-        console.error(`[delete-account] ${label}:`, error.message);
-        return new Response(
-          JSON.stringify({ error: `${label}: ${error.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
+    type PgLikeError = { message?: string; code?: string };
+
+    const recoverableMissingTableOrRelation = (error: PgLikeError | null): boolean => {
+      if (!error) return false;
+      const msg = (error.message ?? '').toLowerCase();
+      const code = error.code ?? '';
+      return (
+        code === 'PGRST205' ||
+        code === '42P01' ||
+        msg.includes('could not find the table') ||
+        (msg.includes('does not exist') && (msg.includes('relation') || msg.includes('table')))
+      );
+    };
+
+    const deleteByUserIdOrSkipMissing = async (table: string): Promise<void> => {
+      try {
+        const { error } = await adminClient.from(table).delete().eq('user_id', userId);
+        if (!error) return;
+        if (recoverableMissingTableOrRelation(error)) {
+          console.warn(`[delete-account] ${table}: skip (${error.message})`);
+          return;
+        }
+        throw new Error(`${table}: ${error.message}`);
+      } catch (e: unknown) {
+        if (
+          recoverableMissingTableOrRelation({
+            message: e instanceof Error ? e.message : String(e),
+          })
+        ) {
+          console.warn(`[delete-account] ${table}: skip (${e instanceof Error ? e.message : e})`);
+          return;
+        }
+        throw e instanceof Error ? e : new Error(String(e));
       }
-    }
+    };
 
-    const { error: authErr } = await supabase.auth.admin.deleteUser(userId);
-    if (authErr) {
-      console.error('[delete-account] auth.admin.deleteUser:', authErr.message);
-      return new Response(JSON.stringify({ error: authErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const deleteWorkoutLogsForUser = async (): Promise<void> => {
+      try {
+        const first = await adminClient.from('workout_logs').delete().eq('user_id', userId);
+        if (!first.error) return;
+
+        if (recoverableMissingTableOrRelation(first.error)) {
+          console.warn(`[delete-account] workout_logs: skip (${first.error.message})`);
+          return;
+        }
+
+        const em = first.error.message?.toLowerCase() ?? '';
+        const unknownUserIdColumn =
+          first.error.code === 'PGRST204' ||
+          (em.includes('user_id') &&
+            (em.includes('schema cache') || em.includes('column') || em.includes('could not find')));
+
+        if (!unknownUserIdColumn) throw new Error(`workout_logs: ${first.error.message}`);
+
+        const { data: userPlans } = await adminClient.from('plans').select('id').eq('user_id', userId);
+        const planIds = userPlans?.map((p: { id: string }) => p.id) ?? [];
+        if (planIds.length === 0) return;
+
+        const second = await adminClient.from('workout_logs').delete().in('plan_id', planIds);
+        if (!second.error) return;
+        if (recoverableMissingTableOrRelation(second.error)) {
+          console.warn(`[delete-account] workout_logs (by plan_id): skip (${second.error.message})`);
+          return;
+        }
+        throw new Error(`workout_logs: ${second.error.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (recoverableMissingTableOrRelation({ message: msg })) {
+          console.warn(`[delete-account] workout_logs: skip (${msg})`);
+          return;
+        }
+        throw e instanceof Error ? e : new Error(String(e));
+      }
+    };
+
+    // FK-safe order — child/user-scoped rows before auth.admin.deleteUser
+    await deleteByUserIdOrSkipMissing('macro_logs');
+    await deleteByUserIdOrSkipMissing('meal_suggestions');
+    await deleteByUserIdOrSkipMissing('weight_logs');
+    await deleteByUserIdOrSkipMissing('body_measurements');
+    await deleteByUserIdOrSkipMissing('sport_logs');
+    await deleteByUserIdOrSkipMissing('free_sessions');
+
+    await deleteWorkoutLogsForUser();
+
+    await deleteByUserIdOrSkipMissing('weekly_summaries');
+    await deleteByUserIdOrSkipMissing('macro_plans');
+    await deleteByUserIdOrSkipMissing('plans');
+    await deleteByUserIdOrSkipMissing('goals');
+    await deleteByUserIdOrSkipMissing('user_profiles');
+
+    const { error } = await adminClient.auth.admin.deleteUser(userId);
+    if (error) throw error;
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

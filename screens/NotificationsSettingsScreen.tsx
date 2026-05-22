@@ -251,7 +251,7 @@ export default function NotificationsSettingsScreen() {
             const id = await Notifications.scheduleNotificationAsync({
               content: {
                 title: 'Time to weigh in 🌅',
-                body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
+                body: 'Step on the scale and log today\'s weight in Hone.',
                 sound: true,
               },
               trigger: {
@@ -283,7 +283,7 @@ export default function NotificationsSettingsScreen() {
       const id = await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Time to weigh in 🌅',
-          body: 'Step on the scale and log today\'s weight in Adaptive Fitness.',
+          body: 'Step on the scale and log today\'s weight in Hone.',
           sound: true,
         },
         trigger: {
@@ -337,7 +337,7 @@ export default function NotificationsSettingsScreen() {
       } else {
         Alert.alert(
           'Notifications Disabled',
-          'To receive workout reminders, enable notifications for Adaptive Fitness in your device Settings.',
+          'To receive workout reminders, enable notifications for Hone in your device Settings.',
           [{ text: 'OK' }],
         );
       }

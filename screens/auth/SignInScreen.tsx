@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -21,8 +22,6 @@ import { useAuth } from '../../contexts/AuthContext';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
 
-type FocusField = 'email' | 'password' | null;
-
 export default function SignInScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
@@ -32,7 +31,13 @@ export default function SignInScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetBanner, setResetBanner] = useState('');
-  const [focusedField, setFocusedField] = useState<FocusField>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const emailBorderColor =
+    focusedField === 'email' ? Colors.accentBorder : error ? Colors.danger : Colors.border;
+
+  const passwordBorderColor =
+    focusedField === 'password' ? Colors.accentBorder : error ? Colors.danger : Colors.border;
 
   const onForgotPassword = useCallback(async () => {
     setError('');
@@ -78,23 +83,11 @@ export default function SignInScreen() {
     }
   }, [email, password, navigation, refreshPlans]);
 
-  const emailBorder = [
-    styles.input,
-    focusedField === 'email' && styles.inputFocused,
-    error && styles.inputError,
-  ];
-
-  const passwordBorder = [
-    styles.input,
-    focusedField === 'password' && styles.inputFocused,
-    error && styles.inputError,
-  ];
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -113,13 +106,23 @@ export default function SignInScreen() {
             <Ionicons name="chevron-back" size={28} color={Colors.accent} />
           </TouchableOpacity>
 
+          <View style={styles.brandHeader}>
+            <Svg width={32} height={32} viewBox="0 0 72 72">
+              <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
+              <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
+              <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
+              <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
+            </Svg>
+            <Text style={styles.brandWord}>hone</Text>
+          </View>
+
           <Text style={styles.screenTitle}>Welcome back</Text>
           <Text style={styles.screenSubtitle}>Sign in to continue</Text>
 
           <View style={styles.fieldBlock}>
-            <Text style={styles.label}>EMAIL</Text>
+            <Text style={styles.labelFirst}>EMAIL</Text>
             <TextInput
-              style={emailBorder}
+              style={[styles.inputBase, { borderColor: emailBorderColor }]}
               placeholder="you@example.com"
               placeholderTextColor={Colors.textTertiary}
               keyboardType="email-address"
@@ -130,8 +133,11 @@ export default function SignInScreen() {
                 setEmail(t);
                 if (error) setError('');
               }}
-              onFocus={() => setFocusedField('email')}
-              onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
+              onFocus={() => {
+                setFocusedField('email');
+                if (error) setError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
           </View>
@@ -139,7 +145,7 @@ export default function SignInScreen() {
           <View style={styles.fieldBlock}>
             <Text style={styles.label}>PASSWORD</Text>
             <TextInput
-              style={passwordBorder}
+              style={[styles.inputBase, { borderColor: passwordBorderColor }]}
               placeholder="Your password"
               placeholderTextColor={Colors.textTertiary}
               secureTextEntry
@@ -148,13 +154,14 @@ export default function SignInScreen() {
                 setPassword(t);
                 if (error) setError('');
               }}
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+              onFocus={() => {
+                setFocusedField('password');
+                if (error) setError('');
+              }}
+              onBlur={() => setFocusedField(null)}
               editable={!loading}
             />
           </View>
-
-          {error ? <Text style={styles.fieldError}>{error}</Text> : null}
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.primaryButtonLoading]}
@@ -169,6 +176,8 @@ export default function SignInScreen() {
             )}
           </TouchableOpacity>
 
+          {error ? <Text style={styles.errorBelowButton}>{error}</Text> : null}
+
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.forgotWrap}
@@ -179,16 +188,12 @@ export default function SignInScreen() {
 
           {resetBanner ? <Text style={styles.resetBanner}>{resetBanner}</Text> : null}
 
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.bottomLinkWrap}
-            onPress={() => navigation.navigate('SignUp')}
-          >
-            <Text style={styles.bottomLink}>
-              Don&apos;t have an account?{' '}
-              <Text style={styles.bottomLinkAccent}>Get Started →</Text>
+          <Text style={styles.footerSubText}>
+            Don&apos;t have an account?{' '}
+            <Text style={styles.footerLink} onPress={() => navigation.navigate('SignUp')}>
+              Get Started →
             </Text>
-          </TouchableOpacity>
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -212,6 +217,19 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     paddingVertical: Spacing.xs,
   },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: Spacing.xxxl,
+    marginTop: Spacing.sm,
+  },
+  brandWord: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    letterSpacing: 2,
+  },
   screenTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
@@ -226,39 +244,42 @@ const styles = StyleSheet.create({
     lineHeight: FontSizes.body * 1.35,
   },
   fieldBlock: {
-    marginBottom: Spacing.md,
+    marginBottom: 0,
+  },
+  labelFirst: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 0,
+    marginBottom: 8,
   },
   label: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
     color: Colors.textSecondary,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginTop: 20,
+    marginBottom: 8,
   },
-  input: {
+  inputBase: {
     height: 52,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
     borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     color: Colors.textPrimary,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
   },
-  inputFocused: {
-    borderColor: Colors.accent,
-  },
-  inputError: {
-    borderColor: Colors.danger,
-  },
-  fieldError: {
+  errorBelowButton: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.danger,
-    marginTop: 4,
-    marginBottom: Spacing.sm,
+    marginTop: 6,
+    textAlign: 'center',
     lineHeight: FontSizes.caption * 1.35,
   },
   primaryButton: {
@@ -279,12 +300,13 @@ const styles = StyleSheet.create({
   },
   forgotWrap: {
     alignItems: 'center',
-    marginTop: Spacing.lg,
+    marginTop: 16,
   },
   forgotText: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
+    textAlign: 'center',
   },
   resetBanner: {
     fontFamily: Fonts.regular,
@@ -295,17 +317,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     lineHeight: FontSizes.caption * 1.35,
   },
-  bottomLinkWrap: {
+  footerSubText: {
     marginTop: Spacing.xl,
-    alignItems: 'center',
-  },
-  bottomLink: {
+    alignSelf: 'center',
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-  bottomLinkAccent: {
+  footerLink: {
     fontFamily: Fonts.bold,
     color: Colors.accent,
   },

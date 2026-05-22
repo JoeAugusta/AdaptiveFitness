@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const LBS_TO_KG = 0.453592;
 export const KG_TO_LBS = 2.20462;
 
-export const AFC_UNITS_METRIC_KEY = 'afc_units_metric';
+/** AsyncStorage key for metric/imperial toggle; string kept as `afc_units_metric` for upgrade compatibility (Hone rebrand May 2026). */
+export const HONE_UNITS_METRIC_KEY = 'afc_units_metric';
 
 type MetricListener = () => void;
 const metricListeners = new Set<MetricListener>();
@@ -88,7 +89,7 @@ export function useMetric(): {
 
   const readMetricFromStorage = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(AFC_UNITS_METRIC_KEY);
+      const raw = await AsyncStorage.getItem(HONE_UNITS_METRIC_KEY);
       setIsMetricState(raw === 'true');
     } catch {
       setIsMetricState(false);
@@ -99,7 +100,7 @@ export function useMetric(): {
     let cancelled = false;
     void (async () => {
       try {
-        const raw = await AsyncStorage.getItem(AFC_UNITS_METRIC_KEY);
+        const raw = await AsyncStorage.getItem(HONE_UNITS_METRIC_KEY);
         if (cancelled) return;
         setIsMetricState(raw === 'true');
       } catch {
@@ -121,7 +122,7 @@ export function useMetric(): {
   const setIsMetric = useCallback(async (value: boolean) => {
     setIsMetricState(value);
     try {
-      await AsyncStorage.setItem(AFC_UNITS_METRIC_KEY, value ? 'true' : 'false');
+      await AsyncStorage.setItem(HONE_UNITS_METRIC_KEY, value ? 'true' : 'false');
     } catch {
       /* non-fatal */
     }

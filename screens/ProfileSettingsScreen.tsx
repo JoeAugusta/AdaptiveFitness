@@ -29,7 +29,6 @@ import {
   Spacing,
   Radius,
 } from '../constants/design';
-import { deleteUserAccount } from '../utils/deleteAccount';
 import { useMetric } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
@@ -82,6 +81,8 @@ interface UserProfile {
   height_in: number;
   age: number;
   sex: string;
+  full_name?: string | null;
+  display_name?: string | null;
 }
 
 interface GoalData {
@@ -108,9 +109,34 @@ interface ScreenData {
 
 // ── Helpers ──
 
-function initialLetter(displayName: string): string {
-  const t = displayName.trim();
-  return (t[0] ?? '?').toUpperCase();
+function profileDisplayNameHeader(
+  profile: UserProfile | null | undefined,
+  fromMeta: (k: string) => string,
+  emailFallback: string,
+): string {
+  const trim = (s: unknown) => (typeof s === 'string' ? s.trim() : '');
+  return (
+    trim(profile?.full_name) ||
+    trim(profile?.display_name) ||
+    fromMeta('full_name') ||
+    fromMeta('name') ||
+    emailFallback ||
+    ''
+  );
+}
+
+/** Avatar initial: display_name → full_name → email (matches HomeScreen fallback chain). */
+function profileHeaderInitialLetter(
+  profile: UserProfile | null | undefined,
+  emailFallback: string,
+): string {
+  const trim = (s: unknown) => (typeof s === 'string' ? s.trim() : '');
+  const parts = [trim(profile?.display_name), trim(profile?.full_name), emailFallback.trim()];
+  for (const s of parts) {
+    const c = s.charAt(0);
+    if (c) return c.toUpperCase();
+  }
+  return '?';
 }
 
 function truncate(str: string, maxLen: number): string {
@@ -334,6 +360,8 @@ export default function ProfileSettingsScreen() {
 
   const [showHeightSheet, setShowHeightSheet] = useState(false);
   const [showAgeSheet, setShowAgeSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2>(1);
   const [heightFtDraft, setHeightFtDraft] = useState('');
   const [heightInDraft, setHeightInDraft] = useState('');
   const [ageDraft, setAgeDraft] = useState('');
@@ -452,7 +480,12 @@ export default function ProfileSettingsScreen() {
       const meta = user.user_metadata as Record<string, unknown> | undefined;
       const fromMeta = (k: string) =>
         typeof meta?.[k] === 'string' ? (meta[k] as string).trim() : '';
-      const displayName = fromMeta('full_name') || fromMeta('name') || user.email || '';
+      const loadedProfile = profileRes.data as UserProfile | null;
+      const displayName = profileDisplayNameHeader(
+        loadedProfile,
+        fromMeta,
+        user.email ?? '',
+      );
 
       setData({
         email: user.email ?? '',
@@ -592,67 +625,50 @@ export default function ProfileSettingsScreen() {
     })();
   };
 
-  const resetToSplash = () => {
-    const rootNav = navigation.getParent()?.getParent();
-    rootNav?.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Splash' }],
-      }),
-    );
+  const handleDeleteAccount = () => {
+    setDeleteConfirmStep(1);
+    setShowDeleteConfirm(true);
   };
 
-  const executeDeleteAccount = () => {
-    void (async () => {
-      try {
-        setIsDeleting(true);
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (userError || !user) {
-          throw userError ?? new Error('Not authenticated');
-        }
-        await deleteUserAccount(user.id);
-        await supabase.auth.signOut();
-        resetToSplash();
-      } catch (e) {
-        console.error('Delete account error:', e);
-        Alert.alert(
-          '',
-          'Something went wrong. Please try again or contact support.',
-        );
-      } finally {
-        setIsDeleting(false);
+  const confirmDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user?.id) throw new Error('No session');
+
+      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.user.id }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? 'Deletion failed');
       }
-    })();
-  };
 
-  const promptDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account?',
-      'This will permanently delete your account and all your data. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete My Account',
-          style: 'destructive',
-          onPress: () =>
-            Alert.alert(
-              'Are you sure?',
-              'All your workout history, progress, and coaching data will be lost forever.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Yes, Delete Everything',
-                  style: 'destructive',
-                  onPress: () => executeDeleteAccount(),
-                },
-              ],
-            ),
-        },
-      ],
-    );
+      await supabase.auth.signOut();
+      setShowDeleteConfirm(false);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Auth' as never }],
+      });
+    } catch (error: unknown) {
+      setShowDeleteConfirm(false);
+      setIsDeleting(false);
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Something went wrong. Please try again.',
+        [{ text: 'OK' }],
+      );
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // ── Error state ──
@@ -736,7 +752,7 @@ export default function ProfileSettingsScreen() {
           >
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {data ? initialLetter(data.displayName) : ''}
+                {data ? profileHeaderInitialLetter(data.profile, data.email) : ''}
               </Text>
             </View>
             <View style={styles.profileInfo}>
@@ -963,7 +979,7 @@ export default function ProfileSettingsScreen() {
               onPress={() => Linking.openURL('https://apps.apple.com')}
               activeOpacity={0.7}
             >
-              <Text style={styles.rowLabel}>Rate Adaptive Fitness</Text>
+              <Text style={styles.rowLabel}>Rate Hone</Text>
               <Text style={styles.rowChevron}>›</Text>
             </TouchableOpacity>
           ) : null}
@@ -971,10 +987,19 @@ export default function ProfileSettingsScreen() {
 
         {/* ── 6. Support ── */}
         <Text style={styles.sectionHeading}>SUPPORT</Text>
+        {/* TODO: replace with live URL before public launch */}
         <View style={styles.sectionCard}>
           <TouchableOpacity
             style={styles.row}
-            onPress={() => Linking.openURL('https://adaptive.fitness/privacy')}
+            onPress={() => {
+              void (async () => {
+                try {
+                  await Linking.openURL('https://hone.app/privacy');
+                } catch {
+                  /* Placeholder URL may be unreachable */
+                }
+              })();
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Privacy Policy</Text>
@@ -982,7 +1007,15 @@ export default function ProfileSettingsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.row}
-            onPress={() => Linking.openURL('https://adaptive.fitness/terms')}
+            onPress={() => {
+              void (async () => {
+                try {
+                  await Linking.openURL('https://hone.app/terms');
+                } catch {
+                  /* Placeholder URL may be unreachable */
+                }
+              })();
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.rowLabel}>Terms of Service</Text>
@@ -990,14 +1023,17 @@ export default function ProfileSettingsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.row, styles.rowLast, isDeleting && styles.rowDeleting]}
-            onPress={promptDeleteAccount}
+            onPress={() => {
+              void handleDeleteAccount();
+            }}
             disabled={isDeleting}
             activeOpacity={0.7}
           >
-            <Text style={styles.supportRowLabelDanger}>Delete Account</Text>
             {isDeleting ? (
               <ActivityIndicator size="small" color={Colors.danger} />
-            ) : null}
+            ) : (
+              <Text style={styles.deleteAccountText}>Delete Account</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -1164,7 +1200,7 @@ export default function ProfileSettingsScreen() {
         ) : null}
 
         {/* ── 8. Version footer ── */}
-        <Text style={styles.versionText}>Adaptive Fitness • v1.0.0</Text>
+        <Text style={styles.versionText}>Hone • v1.0.0</Text>
       </ScrollView>
 
       <Modal
@@ -1293,6 +1329,80 @@ export default function ProfileSettingsScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDeleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeleting) setShowDeleteConfirm(false);
+        }}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalCard}>
+            {deleteConfirmStep === 1 ? (
+              <>
+                <Text style={styles.deleteModalTitle}>Delete Account</Text>
+                <Text style={styles.deleteModalBody}>
+                  This will permanently delete your account, all workout history, and your plan. This cannot be undone.
+                </Text>
+                <View style={styles.deleteModalActions}>
+                  <TouchableOpacity
+                    style={styles.deleteModalBtnSecondary}
+                    onPress={() => setShowDeleteConfirm(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.deleteModalBtnSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteModalBtnDanger}
+                    onPress={() => setDeleteConfirmStep(2)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.deleteModalBtnDangerText}>Continue</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.deleteModalTitle}>Are you sure?</Text>
+                <Text style={styles.deleteModalBody}>
+                  Your account and all data will be permanently deleted.
+                </Text>
+                <View style={styles.deleteModalActions}>
+                  <TouchableOpacity
+                    style={styles.deleteModalBtnSecondary}
+                    onPress={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.deleteModalBtnSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.deleteModalBtnDanger,
+                      isDeleting && { opacity: 0.6 },
+                    ]}
+                    onPress={() => {
+                      void confirmDeleteAccount();
+                    }}
+                    disabled={isDeleting}
+                    activeOpacity={0.7}
+                  >
+                    {isDeleting ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.deleteModalBtnDangerText}>
+                        Delete My Account
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -1756,6 +1866,69 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.danger,
+  },
+  deleteAccountText: {
+    flex: 1,
+    flexShrink: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.danger,
+  },
+
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  deleteModalCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: 24,
+    width: '100%',
+  },
+  deleteModalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  deleteModalBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  deleteModalBtnSecondary: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  deleteModalBtnSecondaryText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  deleteModalBtnDanger: {
+    backgroundColor: Colors.danger,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  deleteModalBtnDangerText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: '#FFFFFF',
   },
 
   rowDeleting: {

@@ -542,7 +542,10 @@ export default function HomeScreen() {
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
-  const [profile, setProfile] = useState<{ full_name?: string | null } | null>(null);
+  const [profile, setProfile] = useState<{
+    display_name?: string | null;
+    full_name?: string | null;
+  } | null>(null);
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
@@ -1007,7 +1010,14 @@ export default function HomeScreen() {
         setCoachSummary(null);
       }
 
-      const unviewedWeekStr = await AsyncStorage.getItem('afc_unviewed_summary_week');
+      // One-time key migration: afc_ → hone_ (Hone rebrand, May 2026)
+      const legacyValue = await AsyncStorage.getItem('afc_unviewed_summary_week');
+      if (legacyValue !== null) {
+        await AsyncStorage.setItem('hone_unviewed_summary_week', legacyValue);
+        await AsyncStorage.removeItem('afc_unviewed_summary_week');
+      }
+
+      const unviewedWeekStr = await AsyncStorage.getItem('hone_unviewed_summary_week');
       const parsedUnviewed =
         unviewedWeekStr != null && unviewedWeekStr.trim() !== ''
           ? parseInt(unviewedWeekStr.trim(), 10)
@@ -1277,9 +1287,13 @@ export default function HomeScreen() {
     const emailLocal = session?.user?.email?.split('@')[0] ?? '';
     return emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1);
   })();
-  const profileInitial = displayName
-    ? displayName.charAt(0).toUpperCase()
-    : 'U';
+  const profileInitial = (() => {
+    const d = typeof profile?.display_name === 'string' ? profile.display_name.trim() : '';
+    const f = typeof profile?.full_name === 'string' ? profile.full_name.trim() : '';
+    const mail = session?.user?.email?.trim() ?? '';
+    const ch = (d.charAt(0) || f.charAt(0) || mail.charAt(0)) as string;
+    return ch ? ch.toUpperCase() : 'U';
+  })();
   const completionRatio =
     daysPerWeek > 0 ? Math.min(1, completedSessions / daysPerWeek) : 0;
   const progressFillWidth: DimensionValue =
@@ -1432,9 +1446,15 @@ export default function HomeScreen() {
               <Text style={styles.greetingName}>{displayName}</Text>
             ) : null}
           </View>
-          <View style={styles.profileButton}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.profileButton,
+              pressed ? { opacity: 0.7 } : null,
+            ]}
+            onPress={() => navigation.navigate('ProfileTab' as never)}
+          >
             <Text style={styles.profileInitial}>{profileInitial}</Text>
-          </View>
+          </Pressable>
         </View>
 
         {planStatus === 'completed' ? (

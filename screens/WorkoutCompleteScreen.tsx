@@ -366,7 +366,7 @@ export default function WorkoutCompleteScreen() {
         const completedWeekNumber = weekNumber;
         try {
           await AsyncStorage.setItem(
-            'afc_unviewed_summary_week',
+            'hone_unviewed_summary_week',
             String(completedWeekNumber),
           );
           console.log(

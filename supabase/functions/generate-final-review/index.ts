@@ -228,7 +228,7 @@ serve(async (req) => {
         ? `Bodyweight change: ${bodyweightDelta > 0 ? '+' : ''}${bodyweightDelta} lbs`
         : 'No bodyweight data';
 
-    const prompt = `You are Jordan, the user's personal coach in the Adaptive Fitness Coach app.
+    const prompt = `You are Jordan, the user's personal coach in the Hone app.
 
 The user has just completed their full ${totalWeeks}-week ${goalDisplayNames[goal] ?? goal} program.
 

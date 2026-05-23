@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hone",
-    "slug": "hone",
+    "slug": "AdaptiveFitness",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,11 +13,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.hone.app",
-      "buildNumber": "1"
+      "bundleIdentifier": "com.gethone.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.hone.app",
+      "package": "com.gethone.app",
       "versionCode": 1,
       "predictiveBackGestureEnabled": false
     },

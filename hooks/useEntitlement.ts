@@ -2,14 +2,19 @@ import Purchases from 'react-native-purchases';
 import { Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 
+const BETA_BYPASS = true;
+
 export function useEntitlement() {
   const [isPro, setIsPro] = useState<boolean>(
-    Platform.OS === 'web', // web dev bypass — always Pro on web
+    BETA_BYPASS || Platform.OS === 'web',
   );
-  const [loading, setLoading] = useState(Platform.OS !== 'web');
+  const [loading, setLoading] = useState(
+    !BETA_BYPASS && Platform.OS !== 'web',
+  );
 
   useEffect(() => {
-    if (Platform.OS === 'web') return; // skip on web
+    if (BETA_BYPASS) return;
+    if (Platform.OS === 'web') return;
 
     async function check() {
       try {
@@ -18,7 +23,7 @@ export function useEntitlement() {
           typeof info.entitlements.active['pro'] !== 'undefined',
         );
       } catch {
-        setIsPro(false); // fail closed — no entitlement on error
+        setIsPro(false);
       } finally {
         setLoading(false);
       }

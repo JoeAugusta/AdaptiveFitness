@@ -350,6 +350,9 @@ export default function ActiveWorkoutScreen() {
   const [coachingLoading, setCoachingLoading] = useState<
     Record<string, boolean>
   >({});
+  const [overlayNote, setOverlayNote] = useState<string | null>(null);
+  const [overlayNoteVisible, setOverlayNoteVisible] = useState(false);
+  const overlayNoteAnim = useRef(new Animated.Value(0)).current;
 
   // Timers
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -897,6 +900,22 @@ export default function ActiveWorkoutScreen() {
       } else {
         const text = data?.feedback ?? 'Good work — keep it up.';
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
+        setOverlayNote(text);
+        setOverlayNoteVisible(true);
+        overlayNoteAnim.setValue(0);
+        Animated.timing(overlayNoteAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        // Auto-dismiss after 6 seconds
+        setTimeout(() => {
+          Animated.timing(overlayNoteAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }).start(() => setOverlayNoteVisible(false));
+        }, 6000);
       }
     } catch {
       setCoachingNotes((prev) => {
@@ -977,12 +996,19 @@ export default function ActiveWorkoutScreen() {
 
   const handleBack = () => {
     Alert.alert(
-      'End workout early?',
-      'Your progress will be saved.',
+      'Leave workout?',
+      'What would you like to do?',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'End Workout',
+          text: 'Keep Going',
+          style: 'cancel',
+        },
+        {
+          text: 'Finish & Save',
+          onPress: () => setShowFatigueSheet(true),
+        },
+        {
+          text: 'Discard Workout',
           style: 'destructive',
           onPress: () => navigation.goBack(),
         },
@@ -1265,6 +1291,24 @@ export default function ActiveWorkoutScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+      {overlayNoteVisible && overlayNote && (
+        <Animated.View
+          style={[
+            styles.jordanNoteOverlay,
+            { opacity: overlayNoteAnim },
+          ]}
+        >
+          <Text style={styles.jordanNoteOverlayLabel}>JORDAN</Text>
+          <Text style={styles.jordanNoteOverlayText}>{overlayNote}</Text>
+          <TouchableOpacity
+            onPress={() => setOverlayNoteVisible(false)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.jordanNoteOverlayDismiss}>✕</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* Toast */}
       {toastMessage && (
@@ -1573,6 +1617,44 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     fontFamily: Fonts.semiBold,
     color: Colors.textPrimary,
+  },
+
+  jordanNoteOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: Spacing.xl,
+    right: Spacing.xl,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    zIndex: 200,
+  },
+  jordanNoteOverlayLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  jordanNoteOverlayText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  jordanNoteOverlayDismiss: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+    paddingLeft: 4,
   },
 
   toast: {

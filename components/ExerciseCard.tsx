@@ -8,6 +8,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
   Animated,
+  Keyboard,
 } from 'react-native';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import {
@@ -806,7 +807,8 @@ export default function ExerciseCard({
   }, []);
 
   return (
-    <View style={styles.card}>
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
           <View style={styles.cardHeaderTitleBlock}>
@@ -1066,6 +1068,8 @@ export default function ExerciseCard({
                         focusedField === `w-${set.setNumber}` && styles.inputFocused,
                       ]}
                       keyboardType="numeric"
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
                       value={
                         isSelfSelectMode
                           ? parseFloat(input.weight) > 0
@@ -1094,6 +1098,8 @@ export default function ExerciseCard({
                           focusedField === `r-${set.setNumber}` && styles.inputFocused,
                         ]}
                         keyboardType="numeric"
+                        returnKeyType="done"
+                        onSubmitEditing={() => Keyboard.dismiss()}
                         value={input.reps}
                         onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
                         placeholder="0"
@@ -1377,7 +1383,8 @@ export default function ExerciseCard({
         onClose={() => setShowEducation(false)}
         exerciseName={exercise.name}
       />
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 

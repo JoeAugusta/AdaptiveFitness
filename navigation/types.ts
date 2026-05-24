@@ -47,6 +47,7 @@ export type RootStackParamList = {
   Auth: undefined;
   SignUp: undefined;
   SignIn: undefined;
+  JordanIntro: undefined;
   Onboarding: undefined;
   /** S02b — optional experience for sub-muscle defaults (advanced = no pre-select); usually set only when re-entering flow */
   GoalDetails: { goal: string; experience?: string };

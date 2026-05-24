@@ -12,6 +12,8 @@ import {
   Modal,
   TextInput,
   Platform,
+  KeyboardAvoidingView,
+  Keyboard,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -597,6 +599,8 @@ export default function HomeScreen() {
   } | null>(null);
   /** BUG-8: DEV — persisted; skip day-of-week gating and use next-unlogged session */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
+  /** Week 1 calibration — no workouts logged yet; drives UI hint only */
+  const [isWeek1NoSessionsYet, setIsWeek1NoSessionsYet] = useState(false);
 
   const [missedSessionResult, setMissedSessionResult] =
     useState<MissedSessionResult | null>(null);
@@ -649,6 +653,7 @@ export default function HomeScreen() {
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         setDevBypassDayGate(false);
+        setIsWeek1NoSessionsYet(false);
         setPlanSnapshotForMissed(null);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
@@ -709,6 +714,7 @@ export default function HomeScreen() {
         setPlanSnapshotForMissed(null);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
+        setIsWeek1NoSessionsYet(false);
         return;
       }
 
@@ -728,6 +734,7 @@ export default function HomeScreen() {
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
+        setIsWeek1NoSessionsYet(false);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
         loadStats(userId, planRow.id, planRow.current_week ?? 1);
@@ -752,6 +759,7 @@ export default function HomeScreen() {
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
+        setIsWeek1NoSessionsYet(false);
         setPlanSnapshotForMissed(null);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
@@ -778,10 +786,29 @@ export default function HomeScreen() {
         planJson as Record<string, unknown>,
         profileTrainingDays,
       );
+
+      const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
+
+      const { data: logsWeek } = await supabase
+        .from('workout_logs')
+        .select('day_number')
+        .eq('plan_id', plan.id)
+        .eq('week_number', plan.current_week);
+
+      const completedDayNumbers = new Set(
+        logsWeek?.map((l: { day_number: number }) => l.day_number) ?? [],
+      );
+      const completedSessions = completedDayNumbers.size;
+      const isWeek1NoSessionsYet =
+        (plan.current_week ?? 1) === 1 && completedDayNumbers.size === 0;
+      setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
+
+      const calendarTrainingToday =
+        !hasDayLabels || isTodayTrainingDay(scheduledDays, todayLabel);
       const isTrainingToday =
         devBypassRead ||
-        !hasDayLabels ||
-        isTodayTrainingDay(scheduledDays, todayLabel);
+        calendarTrainingToday ||
+        isWeek1NoSessionsYet;
       const nextTraining =
         hasDayLabels && !isTrainingToday
           ? getNextTrainingDay(scheduledDays, todayLabel)
@@ -801,23 +828,12 @@ export default function HomeScreen() {
         todayLabel,
         'isTrainingDay:',
         isTrainingToday,
+        'isWeek1NoSessionsYet:',
+        isWeek1NoSessionsYet,
       );
 
       setIsTrainingDay(isTrainingToday);
       setNextTrainingDay(nextTraining);
-
-      const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
-
-      const { data: logs } = await supabase
-        .from('workout_logs')
-        .select('day_number')
-        .eq('plan_id', plan.id)
-        .eq('week_number', plan.current_week);
-
-      const completedDayNumbers = new Set(
-        logs?.map((l: { day_number: number }) => l.day_number) ?? [],
-      );
-      const completedSessions = completedDayNumbers.size;
 
       const nextWeekData =
         planJson.weeks?.find(
@@ -830,14 +846,17 @@ export default function HomeScreen() {
       const nextWeekFirstWorkout: WorkoutDay | null = nextWeekWorkoutDays[0] ?? null;
       const nextWeekReady = !!nextWeekFirstWorkout;
 
+      // Week 1 calibration exception: Day 1 is always available
+      // until the first session is logged, regardless of calendar day.
       const todayWorkout = resolveTodayWorkout({
         weekDays,
-        completedDayNumbers: completedDayNumbers,
-        devBypassDayGate: devBypassRead,
+        completedDayNumbers,
+        devBypassDayGate: devBypassRead || isWeek1NoSessionsYet,
         hasDayLabels,
         scheduledDays,
         todayLabel,
-        isTrainingToday,
+        isTrainingToday:
+          (devBypassRead || calendarTrainingToday) || isWeek1NoSessionsYet,
         nextWeekReady,
         nextWeekFirstWorkout,
       });
@@ -1721,6 +1740,12 @@ export default function HomeScreen() {
               ))}
             </View>
 
+            {isWeek1NoSessionsYet ? (
+              <Text style={styles.startAnytimeHint}>
+                Start whenever you're ready — your schedule begins Week 2.
+              </Text>
+            ) : null}
+
             {displaySessionFocus ? (
               <View style={styles.sessionFocusCard}>
                 <Text style={styles.sessionFocusText}>{displaySessionFocus}</Text>
@@ -2128,73 +2153,85 @@ export default function HomeScreen() {
         animationType="slide"
         onRequestClose={() => setShowWeightModal(false)}
       >
-        <View style={styles.weightModalOverlay}>
-          <View style={styles.weightModalSheet}>
-            <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
-            <Text style={styles.weightModalSubtitle}>
-              🌅 For best accuracy, weigh yourself first thing in the morning
-            </Text>
-            <TextInput
-              style={styles.weightModalInput}
-              keyboardType="numeric"
-              value={weightInput}
-              onChangeText={setWeightInput}
-              placeholderTextColor={Colors.textSecondary}
-            />
-            <Text style={styles.weightModalUnit}>{unitLabel}</Text>
-            <View style={styles.sleepRow}>
-              <View style={styles.sleepRowLeft}>
-                <Text style={styles.sleepMoon}>🌙</Text>
-                <Text style={styles.sleepLabel}>Sleep</Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable
+            style={styles.weightModalOverlay}
+            onPress={() => Keyboard.dismiss()}
+          >
+            <Pressable onPress={() => {}}>
+              <View style={styles.weightModalSheet}>
+                <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
+                <Text style={styles.weightModalSubtitle}>
+                  🌅 For best accuracy, weigh yourself first thing in the morning
+                </Text>
+                <TextInput
+                  style={styles.weightModalInput}
+                  keyboardType="numeric"
+                  value={weightInput}
+                  onChangeText={setWeightInput}
+                  placeholderTextColor={Colors.textSecondary}
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+                <Text style={styles.weightModalUnit}>{unitLabel}</Text>
+                <View style={styles.sleepRow}>
+                  <View style={styles.sleepRowLeft}>
+                    <Text style={styles.sleepMoon}>🌙</Text>
+                    <Text style={styles.sleepLabel}>Sleep</Text>
+                  </View>
+                  <View style={styles.sleepPillsRow}>
+                    {SLEEP_PILL_OPTIONS.map(({ value, label }) => {
+                      const selected = selectedSleepHours === value;
+                      return (
+                        <TouchableOpacity
+                          key={value}
+                          style={[styles.sleepPill, selected ? styles.sleepPillSelected : null]}
+                          onPress={() =>
+                            setSelectedSleepHours((prev) => (prev === value ? null : value))
+                          }
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.sleepPillText,
+                              selected ? styles.sleepPillTextSelected : null,
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.weightModalBtns}>
+                  <TouchableOpacity
+                    style={styles.weightModalCancelBtn}
+                    onPress={() => setShowWeightModal(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.weightModalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.weightModalSaveBtn}
+                    onPress={handleSaveWeight}
+                    disabled={weightSaving}
+                    activeOpacity={0.8}
+                  >
+                    {weightSaving ? (
+                      <ActivityIndicator color={Colors.textPrimary} />
+                    ) : (
+                      <Text style={styles.weightModalSaveText}>Save</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.sleepPillsRow}>
-                {SLEEP_PILL_OPTIONS.map(({ value, label }) => {
-                  const selected = selectedSleepHours === value;
-                  return (
-                    <TouchableOpacity
-                      key={value}
-                      style={[styles.sleepPill, selected ? styles.sleepPillSelected : null]}
-                      onPress={() =>
-                        setSelectedSleepHours((prev) => (prev === value ? null : value))
-                      }
-                      activeOpacity={0.75}
-                    >
-                      <Text
-                        style={[
-                          styles.sleepPillText,
-                          selected ? styles.sleepPillTextSelected : null,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-            <View style={styles.weightModalBtns}>
-              <TouchableOpacity
-                style={styles.weightModalCancelBtn}
-                onPress={() => setShowWeightModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.weightModalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.weightModalSaveBtn}
-                onPress={handleSaveWeight}
-                disabled={weightSaving}
-                activeOpacity={0.8}
-              >
-                {weightSaving ? (
-                  <ActivityIndicator color={Colors.textPrimary} />
-                ) : (
-                  <Text style={styles.weightModalSaveText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {planConcurrentSport != null && planData != null && sportDashboardUserId != null ? (
@@ -2490,6 +2527,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
     marginBottom: Spacing.sm,
+  },
+  startAnytimeHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginBottom: 4,
   },
   chipRow: {
     flexDirection: 'row',

@@ -9,6 +9,7 @@ import BetaWelcomeScreen from '../screens/BetaWelcomeScreen';
 import AuthScreen from '../screens/auth/AuthScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import SignInScreen from '../screens/auth/SignInScreen';
+import JordanIntroScreen from '../screens/onboarding/JordanIntroScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import GoalDetailsScreen from '../screens/onboarding/GoalDetailsScreen';
 import ExperienceScreen from '../screens/onboarding/ExperienceScreen';
@@ -186,6 +187,7 @@ export default function RootNavigator() {
       <Root.Screen name="Auth" component={AuthScreen} />
       <Root.Screen name="SignUp" component={SignUpScreen} />
       <Root.Screen name="SignIn" component={SignInScreen} />
+      <Root.Screen name="JordanIntro" component={JordanIntroScreen} />
       <Root.Screen name="Onboarding" component={OnboardingScreen} />
       <Root.Screen name="GoalDetails"  component={GoalDetailsScreen} />
       <Root.Screen name="Experience"    component={ExperienceScreen} />

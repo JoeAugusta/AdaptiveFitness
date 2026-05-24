@@ -19,8 +19,14 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchHasPlans(userId: string): Promise<boolean> {
-  const { data } = await supabase.from('plans').select('id').eq('user_id', userId).limit(1);
-  return (data?.length ?? 0) > 0;
+  const { data: planData } = await supabase
+    .from('plans')
+    .select('id')
+    .eq('user_id', userId)
+    .in('status', ['active', 'completed'])
+    .limit(1)
+    .maybeSingle();
+  return !!planData;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -43,47 +49,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    let initialEventReceived = false;
 
-    void (async () => {
-      const {
-        data: { session: initialSession },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
-      setSession(initialSession ?? null);
-      const uid = initialSession?.user?.id;
-      if (!uid) {
-        setHasPlans(false);
-        setAuthReady(true);
-        return;
-      }
-      const hp = await fetchHasPlans(uid);
-      if (!cancelled) {
-        setHasPlans(hp);
-        setAuthReady(true);
-      }
-    })();
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, newSession) => {
+        const s = newSession ?? null;
+        setSession(s);
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession ?? null);
-      const uid = newSession?.user?.id;
-      if (!uid) {
-        setHasPlans(false);
-        setAuthReady(true);
-        return;
-      }
-      void (async () => {
-        const hp = await fetchHasPlans(uid);
-        if (!cancelled) {
+        if (s?.user) {
+          const hp = await fetchHasPlans(s.user.id);
           setHasPlans(hp);
+        } else {
+          setHasPlans(false);
+        }
+
+        // Only mark ready after INITIAL_SESSION fires.
+        // This is always the first event on cold launch —
+        // it confirms Supabase has finished reading AsyncStorage.
+        // TOKEN_REFRESHED, SIGNED_IN etc. may fire afterward
+        // but authReady stays true once set.
+        if (!initialEventReceived) {
+          initialEventReceived = true;
           setAuthReady(true);
         }
-      })();
-    });
+      },
+    );
 
     return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
   }, []);
 

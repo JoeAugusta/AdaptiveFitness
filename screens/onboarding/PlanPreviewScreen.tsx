@@ -41,6 +41,8 @@ import ProjectionChart, {
   type ProjectionChartLine,
 } from '../../components/ProjectionChart';
 
+const BETA_BYPASS = true;
+
 const CHART_ORANGE = '#F97316';
 const CHART_GREEN = '#22C55E';
 const CHART_AMBER = '#F59E0B';
@@ -559,16 +561,12 @@ export default function PlanPreviewScreen() {
   }, []);
 
   useEffect(() => {
+    if (BETA_BYPASS) return;
     fetchOfferings();
   }, [fetchOfferings]);
 
   const handlePurchase = async () => {
-    if (Platform.OS === 'web') {
-      console.log('[PlanPreview] duration in params:', {
-        planDuration: params.planDuration,
-        recommendedWeeks: params.recommendedWeeks,
-        targetDate: params.targetDate,
-      });
+    if (BETA_BYPASS || Platform.OS === 'web') {
       navigation.navigate('BuildingPlan', buildingPlanParams);
       return;
     }
@@ -952,10 +950,12 @@ export default function PlanPreviewScreen() {
             Platform.OS === 'web' && styles.ctaButtonDev,
             Platform.OS !== 'web' && (isPurchasing || isLoadingOfferings) && styles.ctaButtonDisabled,
           ]}
-          onPress={Platform.OS !== 'web' && offeringsError ? fetchOfferings : handlePurchase}
-          disabled={Platform.OS !== 'web' && (isPurchasing || isLoadingOfferings)}
+          onPress={BETA_BYPASS ? handlePurchase : (Platform.OS !== 'web' && offeringsError ? fetchOfferings : handlePurchase)}
+          disabled={!BETA_BYPASS && Platform.OS !== 'web' && (isPurchasing || isLoadingOfferings)}
         >
-          {Platform.OS === 'web' ? (
+          {BETA_BYPASS ? (
+            <Text style={styles.ctaText}>Build My Plan →</Text>
+          ) : Platform.OS === 'web' ? (
             <Text style={styles.ctaText}>Continue (Dev Mode)</Text>
           ) : isPurchasing ? (
             <ActivityIndicator color={Colors.textPrimary} />

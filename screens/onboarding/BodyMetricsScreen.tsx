@@ -13,6 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
+import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BodyMetrics'>;
@@ -43,6 +44,7 @@ export default function BodyMetricsScreen() {
   const [weightLbs, setWeightLbs] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
   const [focusedField, setFocusedField] = useState<FocusField>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const canContinue =
     sex !== null &&
@@ -79,7 +81,17 @@ export default function BodyMetricsScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>6 of 8</Text>
+        <View style={styles.stepHeaderTrailing}>
+          <Text style={styles.stepIndicator}>6 of 8</Text>
+          <TouchableOpacity
+            onPress={() => setShowFeedback(true)}
+            style={styles.feedbackLink}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.feedbackLinkText}>Feedback</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -248,6 +260,10 @@ export default function BodyMetricsScreen() {
           <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </View>
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -277,6 +293,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  stepHeaderTrailing: {
+    alignItems: 'flex-end',
+  },
+  feedbackLink: {
+    marginTop: Spacing.xs,
+  },
+  feedbackLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
 
   scroll: {

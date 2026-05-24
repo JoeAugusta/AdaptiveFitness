@@ -15,19 +15,15 @@ export default function AuthScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.logoZone}>
-        <Svg width={120} height={120} viewBox="0 0 100 100">
-          {/* Dark background circle to ensure clean edges */}
+        <Svg width={56} height={56} viewBox="0 0 100 100">
           <Polygon
             points="50,7 89,28 89,72 50,93 11,72 11,28"
             fill="#09090B"
             stroke="#F97316"
             strokeWidth="5"
           />
-          {/* Left vertical */}
           <Rect x="24" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          {/* Right vertical */}
           <Rect x="58" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          {/* Crossbar */}
           <Rect x="24" y="42" width="52" height="14" rx="3" fill="#F97316"/>
         </Svg>
         <Text style={styles.wordmark}>hone</Text>

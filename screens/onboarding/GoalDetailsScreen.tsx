@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { getStrengthProjectionRange } from '../../utils/projections';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GoalDetails'>;
@@ -1499,6 +1500,7 @@ function ScreenShell({
 }) {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
+  const [showFeedback, setShowFeedback] = useState(false);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -1510,7 +1512,17 @@ function ScreenShell({
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>2 of 8</Text>
+        <View style={styles.stepHeaderTrailing}>
+          <Text style={styles.stepIndicator}>2 of 8</Text>
+          <TouchableOpacity
+            onPress={() => setShowFeedback(true)}
+            style={styles.feedbackLink}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.feedbackLinkText}>Feedback</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -1540,6 +1552,10 @@ function ScreenShell({
           <Text style={styles.buttonText}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1600,6 +1616,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  stepHeaderTrailing: {
+    alignItems: 'flex-end',
+  },
+  feedbackLink: {
+    marginTop: Spacing.xs,
+  },
+  feedbackLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
 
   scroll: {

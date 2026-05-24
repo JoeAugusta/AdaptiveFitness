@@ -18,6 +18,7 @@ import { scheduleReEngagementPush } from '../../utils/notifications';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
 import { useAuth } from '../../contexts/AuthContext';
+import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -193,6 +194,12 @@ function isGeneratePlanOverloaded(data: unknown): boolean {
   );
 }
 
+const cleanJordanMessage = (msg: string | null): string | null => {
+  if (!msg) return null;
+  // Remove opening "I'm Jordan..." sentence if present
+  return msg.replace(/^I'm Jordan[^.]*\.\s*/i, '').trim() || msg;
+};
+
 export default function BuildingPlanScreen() {
   const navigation = useNavigation<NavProp>();
   const { refreshPlans } = useAuth();
@@ -206,6 +213,7 @@ export default function BuildingPlanScreen() {
   const [animDone, setAnimDone] = useState(false);
   const [sequenceEpoch, setSequenceEpoch] = useState(0);
   const [planReady, setPlanReady] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [jordanMessage, setJordanMessage] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [weekNumber] = useState(1);
@@ -615,6 +623,8 @@ export default function BuildingPlanScreen() {
     outputRange: [0, Math.max(0, progressBarWidth)],
   });
 
+  const isWaitingForApi = animDone && !apiDone && !errorState;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.content}>
@@ -632,6 +642,19 @@ export default function BuildingPlanScreen() {
           >
             {errorState ? errorState.message : displaySubtitle}
           </Animated.Text>
+
+          {isWaitingForApi && (
+            <View style={styles.waitingRow}>
+              <ActivityIndicator
+                size="small"
+                color={Colors.accent}
+                style={styles.waitingSpinner}
+              />
+              <Text style={styles.waitingText}>
+                Jordan is finalizing your plan...
+              </Text>
+            </View>
+          )}
 
           {errorState?.canRetry ? (
             <Pressable
@@ -713,7 +736,9 @@ export default function BuildingPlanScreen() {
             {jordanMessage ? (
               <View style={styles.handoffJordanCard}>
                 <Text style={styles.handoffJordanLabel}>JORDAN</Text>
-                <Text style={styles.handoffJordanText}>{jordanMessage}</Text>
+                <Text style={styles.handoffJordanText}>
+                  {cleanJordanMessage(jordanMessage)}
+                </Text>
               </View>
             ) : (
               <Text style={styles.handoffSubtitle}>
@@ -763,9 +788,24 @@ export default function BuildingPlanScreen() {
                 Go to Dashboard
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowFeedback(true)}
+              style={styles.setupFeedbackLink}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.setupFeedbackText}>
+                How was your setup experience? →
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -812,6 +852,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     paddingHorizontal: Spacing.xl,
+  },
+  waitingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  waitingSpinner: {
+    marginRight: 4,
+  },
+  waitingText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
   },
   loadRetryButton: {
     marginTop: Spacing.lg,
@@ -992,5 +1047,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.title,
     color: Colors.accent,
+  },
+  setupFeedbackLink: {
+    marginTop: Spacing.lg,
+    alignItems: 'center',
+  },
+  setupFeedbackText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
 });

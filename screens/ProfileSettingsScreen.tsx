@@ -732,6 +732,7 @@ export default function ProfileSettingsScreen() {
   // ── Render ──
 
   return (
+    <>
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         style={styles.scroll}
@@ -1437,14 +1438,12 @@ export default function ProfileSettingsScreen() {
         </View>
       </Modal>
 
-      {showFeedback && (
-        <BetaFeedbackModal
-          visible={showFeedback}
-          onClose={() => setShowFeedback(false)}
-        />
-      )}
-
     </SafeAreaView>
+    <BetaFeedbackModal
+      visible={showFeedback}
+      onClose={() => setShowFeedback(false)}
+    />
+    </>
   );
 }
 

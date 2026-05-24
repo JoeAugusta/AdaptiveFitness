@@ -25,6 +25,7 @@ import {
   type SessionDay,
   type AdjustMenuOption,
 } from '../../utils/splitRecommendation';
+import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -521,6 +522,7 @@ export default function ExperienceScreen() {
   const [cardHighlight, setCardHighlight] = useState(false);
   const [showConfirmHint, setShowConfirmHint] = useState(false);
   const [enhancedRecovery, setEnhancedRecovery] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const structureLayoutYRef = useRef(0);
@@ -782,7 +784,17 @@ export default function ExperienceScreen() {
         >
           <Text style={styles.backArrow}>{'‹'}</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicator}>3 of 8</Text>
+        <View style={styles.stepHeaderTrailing}>
+          <Text style={styles.stepIndicator}>3 of 8</Text>
+          <TouchableOpacity
+            onPress={() => setShowFeedback(true)}
+            style={styles.feedbackLink}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.feedbackLinkText}>Feedback</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -1148,6 +1160,10 @@ export default function ExperienceScreen() {
           </ScrollView>
         </View>
       </Modal>
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1177,6 +1193,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  stepHeaderTrailing: {
+    alignItems: 'flex-end',
+  },
+  feedbackLink: {
+    marginTop: Spacing.xs,
+  },
+  feedbackLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
 
   scroll: {

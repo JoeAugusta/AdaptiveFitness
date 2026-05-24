@@ -23,7 +23,7 @@ export default function JordanIntroScreen() {
           <View style={styles.messageCard}>
             <Text style={styles.jordanLabel}>JORDAN</Text>
             <Text style={styles.messageText}>
-              {`Hey — I'm Jordan, your coach throughout this app.\n\nI'll ask you a few questions to build a training plan around your goals, schedule, and experience.\n\nThe more honest you are, the better your plan will be. Let's get started.`}
+              {`I'm Jordan. I've been built around one idea — that training should adapt to you, not the other way around.\n\nEvery session I'll coach you through your sets and ask how hard each one felt. That's how I track whether to push you harder next week or ease off.\n\nThe more honest you are with me, the better your training gets. Let's build something.`}
             </Text>
           </View>
         </View>

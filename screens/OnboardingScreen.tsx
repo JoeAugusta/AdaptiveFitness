@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import BetaFeedbackModal from '../components/BetaFeedbackModal';
 
 interface Goal {
   id: string;
@@ -34,6 +35,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 export default function OnboardingScreen() {
   const navigation = useNavigation<NavProp>();
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
   const insets = useSafeAreaInsets();
 
   const handleContinue = () => {
@@ -44,7 +46,17 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.stepHeader}>
-        <Text style={styles.stepIndicator}>1 of 8</Text>
+        <View style={styles.stepHeaderTrailing}>
+          <Text style={styles.stepIndicator}>1 of 8</Text>
+          <TouchableOpacity
+            onPress={() => setShowFeedback(true)}
+            style={styles.feedbackLink}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.feedbackLinkText}>Feedback</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -108,6 +120,10 @@ export default function OnboardingScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      <BetaFeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -121,6 +137,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.sm,
     alignItems: 'flex-end',
+  },
+  stepHeaderTrailing: {
+    alignItems: 'flex-end',
+  },
+  feedbackLink: {
+    marginTop: Spacing.xs,
+  },
+  feedbackLinkText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
   stepIndicator: {
     fontFamily: Fonts.regular,

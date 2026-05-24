@@ -1,12 +1,16 @@
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-config.resolver.extraNodeModules = {
-  ws: path.resolve(__dirname, 'shims/ws.js'),
-  stream: require.resolve('stream-browserify'),
-  events: require.resolve('events'),
+// Tell Metro to use React Native's built-in WebSocket instead of the Node ws package
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'ws') {
+    return {
+      filePath: require.resolve('./shims/ws.js'),
+      type: 'sourceFile',
+    };
+  }
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

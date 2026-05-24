@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import Svg, { Polygon, Rect } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,62 +8,24 @@ import type { RootStackParamList } from '../navigation/types';
 import { Colors, Fonts } from '../constants/design';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../Lib/supabase';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
 export default function SplashScreen() {
   const navigation = useNavigation<SplashNavProp>();
   const { session, authReady, hasPlans } = useAuth();
-
-  useEffect(() => {
-    // Safety net: if authReady hasn't fired in 3 seconds,
-    // force a session check directly
-    const timeout = setTimeout(async () => {
-      const { data: { session: s } } = await supabase.auth.getSession();
-      if (!s) {
-        const seen = await AsyncStorage.getItem('hone_beta_welcome_seen');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: seen ? 'Auth' : 'BetaWelcome' }],
-        });
-      } else {
-        const { data: planData } = await supabase
-          .from('plans')
-          .select('id')
-          .eq('user_id', s.user.id)
-          .in('status', ['active', 'completed'])
-          .limit(1)
-          .maybeSingle();
-        navigation.reset({
-          index: 0,
-          routes: [{ name: planData ? 'Dashboard' : 'JordanIntro' }],
-        });
-      }
-    }, 3000);
-
-    return () => clearTimeout(timeout);
-  }, [navigation]);
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     if (!authReady) return;
-
-    let cancelled = false;
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
 
     AsyncStorage.getItem('hone_beta_welcome_seen').then((seenWelcome) => {
-      if (cancelled) return;
-
       if (!session) {
-        if (!seenWelcome) {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'BetaWelcome' }],
-          });
-          return;
-        }
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Auth' }],
+          routes: [{ name: seenWelcome ? 'Auth' : 'BetaWelcome' }],
         });
         return;
       }
@@ -76,23 +38,11 @@ export default function SplashScreen() {
         return;
       }
 
-      if (!hasPlans) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'JordanIntro' }],
-        });
-        return;
-      }
-
       navigation.reset({
         index: 0,
-        routes: [{ name: 'Dashboard' }],
+        routes: [{ name: hasPlans ? 'Dashboard' : 'JordanIntro' }],
       });
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [authReady, session, hasPlans, navigation]);
 
   return (

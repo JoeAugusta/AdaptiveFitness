@@ -125,7 +125,7 @@ export default function SignUpScreen() {
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'Onboarding' }],
+            routes: [{ name: 'JordanIntro' }],
           }),
         );
       } else {

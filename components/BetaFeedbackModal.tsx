@@ -141,11 +141,11 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView
-        style={styles.kavRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.overlay}>
+      <View style={styles.overlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.kavInner}
+        >
           {!submitted ? (
             <View
               style={[
@@ -282,15 +282,15 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
               </View>
             </View>
           )}
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  kavRoot: {
-    flex: 1,
+  kavInner: {
+    width: '100%',
   },
   overlay: {
     flex: 1,

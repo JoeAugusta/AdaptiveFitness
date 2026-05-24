@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,13 +11,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { supabase } from '../Lib/supabase';
 
 export interface BetaFeedbackModalProps {
   visible: boolean;
   onClose: () => void;
+  defaultArea?: string;
+  lockArea?: boolean;
 }
 
 const CATEGORIES: readonly { label: string; value: string }[] = [
@@ -38,13 +39,18 @@ const FEATURE_AREAS: readonly { label: string; value: string }[] = [
   { label: 'Other', value: 'other' },
 ] as const;
 
-const SHEET_MAX_HEIGHT = Dimensions.get('window').height * 0.88;
 const HEADER_SIDE_MIN_WIDTH = 72;
 
-export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModalProps) {
-  const insets = useSafeAreaInsets();
+export default function BetaFeedbackModal({
+  visible,
+  onClose,
+  defaultArea,
+  lockArea = false,
+}: BetaFeedbackModalProps) {
   const [category, setCategory] = useState<string | null>(null);
-  const [featureArea, setFeatureArea] = useState<string | null>(null);
+  const [featureArea, setFeatureArea] = useState<string | null>(
+    defaultArea ?? null,
+  );
   const [rating, setRating] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -52,9 +58,15 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
   const [error, setError] = useState<string | null>(null);
   const [descFocused, setDescFocused] = useState(false);
 
+  useEffect(() => {
+    if (visible && defaultArea) {
+      setFeatureArea(defaultArea);
+    }
+  }, [visible, defaultArea]);
+
   const resetForm = () => {
     setCategory(null);
-    setFeatureArea(null);
+    setFeatureArea(defaultArea ?? null);
     setRating(null);
     setDescription('');
     setError(null);
@@ -67,8 +79,12 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
     onClose();
   };
 
+  const resolveFeatureArea = (): string | null =>
+    lockArea ? (defaultArea ?? featureArea) : featureArea;
+
   const handleSubmit = async () => {
-    if (!category || !featureArea || description.trim().length < 3) return;
+    const area = resolveFeatureArea();
+    if (!category || !area || description.trim().length < 3) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -78,7 +94,7 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
       const { error: insertError } = await supabase.from('beta_feedback').insert({
         user_id: user?.id ?? null,
         category,
-        feature_area: featureArea,
+        feature_area: area,
         rating: rating ?? null,
         description: description.trim(),
         app_version: '1.0.0',
@@ -96,7 +112,11 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
   };
 
   const canSubmit =
-    Boolean(category && featureArea && description.trim().length >= 3) && !submitting;
+    Boolean(
+      category &&
+        (lockArea || featureArea) &&
+        description.trim().length >= 3,
+    ) && !submitting;
 
   const renderCategoryChip = (label: string, value: string) => {
     const selected = category === value;
@@ -112,7 +132,10 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
         activeOpacity={0.7}
       >
         <Text
-          style={[styles.chipTextBase, selected ? styles.chipTextSelected : styles.chipTextSecondary]}
+          style={[
+            styles.chipTextBase,
+            selected ? styles.chipTextSelected : styles.chipTextSecondary,
+          ]}
           numberOfLines={2}
         >
           {label}
@@ -131,7 +154,10 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
         activeOpacity={0.7}
       >
         <Text
-          style={[styles.chipTextBase, selected ? styles.chipTextSelected : styles.chipTextSecondary]}
+          style={[
+            styles.chipTextBase,
+            selected ? styles.chipTextSelected : styles.chipTextSecondary,
+          ]}
         >
           {label}
         </Text>
@@ -140,45 +166,54 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.overlay}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.kavInner}
-        >
-          {!submitted ? (
-            <View
-              style={[
-                styles.sheet,
-                {
-                  maxHeight: SHEET_MAX_HEIGHT,
-                  paddingBottom: Math.max(insets.bottom, Spacing.md),
-                },
-              ]}
-            >
-              <View style={styles.headerRow}>
-                <View style={styles.headerSide}>
-                  <TouchableOpacity onPress={handleClose} disabled={submitting} activeOpacity={0.7}>
-                    <Text style={[styles.cancelText, submitting ? styles.cancelDisabled : null]}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.headerTitleWrap}>
-                  <Text style={styles.headerTitle} numberOfLines={1}>
-                    Beta Feedback
+    <Modal
+      visible={visible}
+      transparent={false}
+      animationType="slide"
+      onRequestClose={handleClose}
+      presentationStyle="pageSheet"
+    >
+      <SafeAreaView style={styles.safeArea}>
+        {!submitted ? (
+          <>
+            <View style={styles.headerRow}>
+              <View style={styles.headerSide}>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  disabled={submitting}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.cancelText,
+                      submitting && styles.cancelDisabled,
+                    ]}
+                  >
+                    Cancel
                   </Text>
-                </View>
-                <View style={styles.headerSide} />
+                </TouchableOpacity>
               </View>
+              <View style={styles.headerTitleWrap}>
+                <Text style={styles.headerTitle}>
+                  {lockArea ? 'Onboarding Feedback' : 'Beta Feedback'}
+                </Text>
+              </View>
+              <View style={styles.headerSide} />
+            </View>
 
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
               <ScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
-                <Text style={[styles.sectionLabel, styles.sectionFirst]}>WHAT TYPE OF FEEDBACK?</Text>
+                <Text style={[styles.sectionLabel, styles.sectionFirst]}>
+                  WHAT TYPE OF FEEDBACK?
+                </Text>
                 <View style={styles.catRow}>
                   {renderCategoryChip(CATEGORIES[0].label, CATEGORIES[0].value)}
                   {renderCategoryChip(CATEGORIES[1].label, CATEGORIES[1].value)}
@@ -188,12 +223,20 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
                   {renderCategoryChip(CATEGORIES[3].label, CATEGORIES[3].value)}
                 </View>
 
-                <Text style={styles.sectionLabel}>WHICH AREA?</Text>
-                <View style={styles.featureChipWrap}>
-                  {FEATURE_AREAS.map(({ label, value }) => renderFeatureChip(label, value))}
-                </View>
+                {!lockArea && (
+                  <>
+                    <Text style={styles.sectionLabel}>WHICH AREA?</Text>
+                    <View style={styles.featureChipWrap}>
+                      {FEATURE_AREAS.map(({ label, value }) =>
+                        renderFeatureChip(label, value),
+                      )}
+                    </View>
+                  </>
+                )}
 
-                <Text style={styles.sectionLabel}>OVERALL FEEL  (optional)</Text>
+                <Text style={styles.sectionLabel}>
+                  OVERALL FEEL  (optional)
+                </Text>
                 <View style={styles.starsRow}>
                   {[1, 2, 3, 4, 5].map((star) => {
                     const filled = rating != null && star <= rating;
@@ -224,7 +267,9 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
                   style={[
                     styles.textArea,
                     {
-                      borderColor: descFocused ? Colors.accentBorder : Colors.border,
+                      borderColor: descFocused
+                        ? Colors.accentBorder
+                        : Colors.border,
                     },
                   ]}
                   value={description}
@@ -232,7 +277,6 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
                   multiline
                   numberOfLines={5}
                   textAlignVertical="top"
-                  minHeight={120}
                   maxLength={1000}
                   placeholder="Describe what you experienced..."
                   placeholderTextColor={Colors.textTertiary}
@@ -240,73 +284,66 @@ export default function BetaFeedbackModal({ visible, onClose }: BetaFeedbackModa
                   onFocus={() => setDescFocused(true)}
                   onBlur={() => setDescFocused(false)}
                 />
-                <Text style={styles.charCount}>{`${description.length}/1000`}</Text>
-                {category && featureArea && description.trim().length < 3 && (
-                  <Text style={styles.descHint}>Add a brief description to submit</Text>
-                )}
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                <Text style={styles.charCount}>
+                  {`${description.length}/1000`}
+                </Text>
+                {category &&
+                  (lockArea || featureArea) &&
+                  description.trim().length < 3 && (
+                    <Text style={styles.descHint}>
+                      Add a brief description to submit
+                    </Text>
+                  )}
+                {error ? (
+                  <Text style={styles.errorText}>{error}</Text>
+                ) : null}
 
                 <TouchableOpacity
-                  style={[styles.primaryBtn, !canSubmit ? styles.primaryBtnDisabled : null]}
+                  style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
                   onPress={() => void handleSubmit()}
-                  disabled={!category || !featureArea || description.trim().length < 3 || submitting}
+                  disabled={!canSubmit}
                   activeOpacity={0.85}
                 >
                   {submitting ? (
                     <ActivityIndicator color={Colors.bgPrimary} />
                   ) : (
-                    <Text style={styles.primaryBtnText}>Submit Feedback</Text>
+                    <Text style={styles.primaryBtnText}>
+                      Submit Feedback
+                    </Text>
                   )}
                 </TouchableOpacity>
               </ScrollView>
-            </View>
-          ) : (
-            <View style={[styles.sheet, styles.sheetSuccess, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
-              <View style={styles.successContainer}>
-                <Text style={styles.successIcon}>✓</Text>
-                <Text style={styles.successTitle}>Thanks for the feedback!</Text>
-                <Text style={styles.successBody}>
-                  It goes directly to the team and helps shape what gets built next.
-                </Text>
-                <TouchableOpacity
-                  style={styles.successBtn}
-                  onPress={() => {
-                    setSubmitted(false);
-                    resetForm();
-                    onClose();
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.successBtnText}>Done</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </KeyboardAvoidingView>
-      </View>
+            </KeyboardAvoidingView>
+          </>
+        ) : (
+          <View style={styles.successContainer}>
+            <Text style={styles.successIcon}>✓</Text>
+            <Text style={styles.successTitle}>Thanks for the feedback!</Text>
+            <Text style={styles.successBody}>
+              It goes directly to the team and helps shape what gets built next.
+            </Text>
+            <TouchableOpacity
+              style={styles.successBtn}
+              onPress={() => {
+                setSubmitted(false);
+                resetForm();
+                onClose();
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.successBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  kavInner: {
-    width: '100%',
-  },
-  overlay: {
+  safeArea: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    width: '100%',
     backgroundColor: Colors.bgCard,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-  },
-  sheetSuccess: {
-    maxHeight: SHEET_MAX_HEIGHT,
   },
   headerRow: {
     flexDirection: 'row',

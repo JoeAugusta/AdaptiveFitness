@@ -1163,6 +1163,8 @@ export default function ExperienceScreen() {
       <BetaFeedbackModal
         visible={showFeedback}
         onClose={() => setShowFeedback(false)}
+        defaultArea="onboarding"
+        lockArea={true}
       />
     </SafeAreaView>
   );

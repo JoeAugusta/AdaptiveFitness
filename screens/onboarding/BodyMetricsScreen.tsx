@@ -263,6 +263,8 @@ export default function BodyMetricsScreen() {
       <BetaFeedbackModal
         visible={showFeedback}
         onClose={() => setShowFeedback(false)}
+        defaultArea="onboarding"
+        lockArea={true}
       />
     </SafeAreaView>
   );

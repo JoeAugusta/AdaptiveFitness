@@ -462,6 +462,8 @@ export default function ConstraintsScreen() {
       <BetaFeedbackModal
         visible={showFeedback}
         onClose={() => setShowFeedback(false)}
+        defaultArea="onboarding"
+        lockArea={true}
       />
     </SafeAreaView>
   );

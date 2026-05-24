@@ -123,6 +123,8 @@ export default function OnboardingScreen() {
       <BetaFeedbackModal
         visible={showFeedback}
         onClose={() => setShowFeedback(false)}
+        defaultArea="onboarding"
+        lockArea={true}
       />
     </SafeAreaView>
   );

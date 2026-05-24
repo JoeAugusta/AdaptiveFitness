@@ -450,6 +450,8 @@ export default function MacroSetupScreen() {
       <BetaFeedbackModal
         visible={showFeedback}
         onClose={() => setShowFeedback(false)}
+        defaultArea="onboarding"
+        lockArea={true}
       />
     </SafeAreaView>
   );

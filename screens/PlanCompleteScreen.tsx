@@ -21,6 +21,7 @@ import {
   Radius,
   LineHeights,
 } from '../constants/design';
+import { JordanAvatar } from '../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanComplete'>;
@@ -204,8 +205,8 @@ export default function PlanCompleteScreen() {
           <Text style={styles.heroHeadline}>{review.headline}</Text>
           <View style={[styles.heroUnderline, { backgroundColor: underlineColor }]} />
           <View style={styles.avatarRow}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarLetter}>J</Text>
+            <View style={styles.avatarCircleWrap}>
+              <JordanAvatar size={40} />
             </View>
             <View style={styles.avatarMeta}>
               <Text style={styles.jordanLabel}>JORDAN</Text>
@@ -364,19 +365,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.xl,
   },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarCircleWrap: {
     marginRight: Spacing.md,
-  },
-  avatarLetter: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
   },
   avatarMeta: {
     flex: 1,

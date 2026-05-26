@@ -26,6 +26,7 @@ import {
   type AdjustMenuOption,
 } from '../../utils/splitRecommendation';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
+import { JordanAvatar } from '../../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -159,19 +160,19 @@ function getStrengthTrainingPreviewMuscles(
 }
 
 const STRENGTH_TAGLINE_PHUL =
-  'Heavy day + volume day for each movement — the structure that drives 1RM progress.';
+  'Heavy day + volume day for each movement. That is the structure that drives 1RM progress.';
 
 const STRENGTH_TAGLINE_PPL =
-  'Push, pull, and legs hit twice a week — frequency is what builds strength.';
+  'Push, pull, and legs hit twice a week. Frequency is what builds strength.';
 
 const STRENGTH_TAGLINE_FULL_BODY =
-  'Full body three times a week — maximum frequency for strength at this volume.';
+  'Full body three times a week. That is maximum frequency for strength at this volume.';
 
 const STRENGTH_TAGLINE_UPPER_LOWER =
-  'Upper and lower split twice each — balanced frequency with enough volume per session.';
+  'Upper and lower split twice each. You get balanced frequency with enough volume per session.';
 
 const STRENGTH_TAGLINE_FALLBACK =
-  'Structured for strength — built around your schedule.';
+  'Structured for strength, built around your schedule.';
 
 function isStrengthLowerBodyTargetLift(
   targetLift: string | null | undefined,
@@ -229,17 +230,17 @@ function buildStrengthLowerBodyStructurePreview(
       rows: [
         {
           dayLabel: dayLabelAt(0),
-          title: `${liftLabel} — Heavy`,
+          title: `${liftLabel}: Heavy`,
           muscles: ['quads', 'hamstrings', 'glutes'],
         },
         {
           dayLabel: dayLabelAt(1),
-          title: `${liftLabel} — Volume + Upper`,
+          title: `${liftLabel}: Volume + Upper`,
           muscles: ['hamstrings', 'glutes', 'back', 'core'],
         },
       ],
       tagline:
-        'Two days, two sessions — heavy and volume on your target lift is the minimum to drive progress.',
+        'Two days, two sessions. Heavy and volume on your target lift is the minimum to drive progress.',
     };
   }
 
@@ -248,7 +249,7 @@ function buildStrengthLowerBodyStructurePreview(
       rows: [
         {
           dayLabel: dayLabelAt(0),
-          title: `${liftLabel} — Heavy`,
+          title: `${liftLabel}: Heavy`,
           muscles: ['quads', 'hamstrings', 'glutes'],
         },
         {
@@ -258,11 +259,11 @@ function buildStrengthLowerBodyStructurePreview(
         },
         {
           dayLabel: dayLabelAt(2),
-          title: `${liftLabel} — Volume`,
+          title: `${liftLabel}: Volume`,
           muscles: ['quads', 'hamstrings', 'glutes', 'core'],
         },
       ],
-      tagline: `${liftLabel} twice, upper once — maximum frequency for 1RM progress on a 3-day schedule.`,
+      tagline: `${liftLabel} twice, upper once. That is maximum frequency for 1RM progress on a 3-day schedule.`,
     };
   }
 
@@ -271,31 +272,31 @@ function buildStrengthLowerBodyStructurePreview(
       rows: [
         {
           dayLabel: dayLabelAt(0),
-          title: `${liftLabel} — Heavy`,
+          title: `${liftLabel}: Heavy`,
           muscles: ['quads', 'hamstrings', 'glutes'],
         },
         {
           dayLabel: dayLabelAt(1),
-          title: 'Upper Body — Power',
+          title: 'Upper Body: Power',
           muscles: ['chest', 'back', 'shoulders'],
         },
         {
           dayLabel: dayLabelAt(2),
-          title: 'Upper Body — Volume',
+          title: 'Upper Body: Volume',
           muscles: ['chest', 'back', 'arms'],
         },
         {
           dayLabel: dayLabelAt(3),
-          title: `${liftLabel} — Volume`,
+          title: `${liftLabel}: Volume`,
           muscles: ['quads', 'hamstrings', 'glutes', 'core'],
         },
         {
           dayLabel: dayLabelAt(4),
-          title: 'Upper Body — Accessories',
+          title: 'Upper Body: Accessories',
           muscles: ['back', 'arms', 'shoulders'],
         },
       ],
-      tagline: `${liftLabel} twice a week — heavy and volume — with three upper days to build the supporting structure.`,
+      tagline: `${liftLabel} twice a week with heavy and volume work, plus three upper days to build the supporting structure.`,
     };
   }
 
@@ -303,36 +304,36 @@ function buildStrengthLowerBodyStructurePreview(
     rows: [
       {
         dayLabel: dayLabelAt(0),
-        title: `${liftLabel} — Heavy`,
+        title: `${liftLabel}: Heavy`,
         muscles: ['quads', 'hamstrings', 'glutes'],
       },
       {
         dayLabel: dayLabelAt(1),
-        title: 'Upper Body — Power',
+        title: 'Upper Body: Power',
         muscles: ['chest', 'back', 'shoulders'],
       },
       {
         dayLabel: dayLabelAt(2),
-        title: 'Upper Body — Volume',
+        title: 'Upper Body: Volume',
         muscles: ['chest', 'back', 'arms'],
       },
       {
         dayLabel: dayLabelAt(3),
-        title: `${liftLabel} — Volume`,
+        title: `${liftLabel}: Volume`,
         muscles: ['quads', 'hamstrings', 'glutes', 'core'],
       },
       {
         dayLabel: dayLabelAt(4),
-        title: 'Upper Body — Power',
+        title: 'Upper Body: Power',
         muscles: ['back', 'shoulders'],
       },
       {
         dayLabel: dayLabelAt(5),
-        title: `${liftLabel} — Technique`,
+        title: `${liftLabel}: Technique`,
         muscles: ['quads', 'glutes', 'core'],
       },
     ],
-    tagline: `Three ${liftLabel} sessions — heavy, volume, technique — the frequency serious 1RM progress requires.`,
+    tagline: `Three ${liftLabel} sessions covering heavy, volume, and technique. That is the frequency serious 1RM progress requires.`,
   };
 }
 
@@ -365,24 +366,24 @@ function buildStrengthUpperBodyPressStructurePreview(
         rows: [
           {
             dayLabel: dayLabelAt(0),
-            title: 'Overhead Press — Heavy',
+            title: 'Overhead Press: Heavy',
             muscles: ['shoulders', 'triceps', 'chest'],
           },
           {
             dayLabel: dayLabelAt(1),
-            title: 'Overhead Press — Volume + Lower',
+            title: 'Overhead Press: Volume + Lower',
             muscles: ['shoulders', 'triceps', 'quads', 'hamstrings'],
           },
         ],
         tagline:
-          'Overhead press twice a week — heavy and volume — the minimum frequency to drive 1RM progress.',
+          'Overhead press twice a week in heavy and volume work. That is the minimum frequency to drive 1RM progress.',
       };
     }
     return {
       rows: [
         {
           dayLabel: dayLabelAt(0),
-          title: 'Overhead Press — Heavy',
+          title: 'Overhead Press: Heavy',
           muscles: ['shoulders', 'triceps', 'chest'],
         },
         {
@@ -392,12 +393,12 @@ function buildStrengthUpperBodyPressStructurePreview(
         },
         {
           dayLabel: dayLabelAt(2),
-          title: 'Overhead Press — Volume',
+          title: 'Overhead Press: Volume',
           muscles: ['shoulders', 'triceps', 'chest', 'back'],
         },
       ],
       tagline:
-        'Overhead press twice, lower body once — built around your pressing 1RM.',
+        'Overhead press twice a week plus one lower-body session. Everything is built around your pressing 1RM.',
     };
   }
 
@@ -406,17 +407,17 @@ function buildStrengthUpperBodyPressStructurePreview(
       rows: [
         {
           dayLabel: dayLabelAt(0),
-          title: 'Bench — Heavy',
+          title: 'Bench: Heavy',
           muscles: ['chest', 'shoulders', 'triceps'],
         },
         {
           dayLabel: dayLabelAt(1),
-          title: 'Bench — Volume + Lower',
+          title: 'Bench: Volume + Lower',
           muscles: ['chest', 'triceps', 'quads', 'hamstrings'],
         },
       ],
       tagline:
-        'Bench twice a week — heavy and volume — the minimum frequency to drive 1RM progress.',
+        'Bench twice a week in heavy and volume work. That is the minimum frequency to drive 1RM progress.',
     };
   }
 
@@ -424,7 +425,7 @@ function buildStrengthUpperBodyPressStructurePreview(
     rows: [
       {
         dayLabel: dayLabelAt(0),
-        title: 'Bench — Heavy',
+        title: 'Bench: Heavy',
         muscles: ['chest', 'shoulders', 'triceps'],
       },
       {
@@ -434,12 +435,12 @@ function buildStrengthUpperBodyPressStructurePreview(
       },
       {
         dayLabel: dayLabelAt(2),
-        title: 'Bench — Volume',
+        title: 'Bench: Volume',
         muscles: ['chest', 'triceps', 'shoulders', 'back'],
       },
     ],
     tagline:
-      'Bench twice, lower body once — built around your pressing 1RM.',
+      'Bench twice a week plus one lower-body session. Everything is built around your pressing 1RM.',
   };
 }
 
@@ -482,12 +483,12 @@ function getSplitDayNote(splitId: string, workoutDays: number, selectedDays: num
   const restDays = selectedDays - workoutDays;
   const restLabel = restDays === 1 ? 'day' : 'days';
   if (splitId === 'phul') {
-    return `PHUL is a ${workoutDays}-day split — your other ${restDays === 1 ? 'day' : `${restDays} days`} become active recovery.`;
+    return `PHUL is a ${workoutDays}-day split. Your other ${restDays === 1 ? 'day' : `${restDays} days`} become active recovery.`;
   }
   if (splitId === 'ppl') {
-    return `PPL runs ${workoutDays} training days — your remaining ${restDays} ${restLabel} become rest or active recovery.`;
+    return `PPL runs ${workoutDays} training days. Your remaining ${restDays} ${restLabel} become rest or active recovery.`;
   }
-  return `This split uses ${workoutDays} training days — your remaining ${restDays} ${restLabel} become rest days.`;
+  return `This split uses ${workoutDays} training days. Your remaining ${restDays} ${restLabel} become rest days.`;
 }
 
 export default function ExperienceScreen() {
@@ -662,7 +663,7 @@ export default function ExperienceScreen() {
         ? {
             ...built,
             restDayNote:
-              'This split uses 6 training days — your remaining 1 day becomes a rest day.',
+              'This split uses 6 training days. Your remaining 1 day becomes a rest day.',
           }
         : null;
     }
@@ -904,7 +905,7 @@ export default function ExperienceScreen() {
          (sessionLength === '30-45' || sessionLength === '45-60') ? (
           <View style={styles.sessionLengthWarning}>
             <Text style={styles.sessionLengthWarningText}>
-              Strength & Size sessions typically run 75–90 minutes — you'll need time for both the strength and accessory phases. Consider 60–90 mins or more.
+              Strength & Size sessions typically run 75–90 minutes. You'll need time for both the strength and accessory phases. Consider 60–90 mins or more.
             </Text>
           </View>
         ) : null}
@@ -924,9 +925,7 @@ export default function ExperienceScreen() {
             <View style={styles.jordanStripe} />
             <View style={styles.jordanCardInner}>
               <View style={styles.jordanHeaderRow}>
-                <View style={styles.jordanAvatar}>
-                  <Text style={styles.jordanAvatarText}>J</Text>
-                </View>
+                <JordanAvatar size={32} />
                 <Text style={styles.jordanName}>Jordan</Text>
               </View>
 
@@ -1011,7 +1010,7 @@ export default function ExperienceScreen() {
                     )
                   : recommendedSplit.reason}
                 {enhancedRecovery
-                  ? ' Given your recovery rate, I\'ve pushed your volume a bit higher than normal — you can handle it.'
+                  ? ' Given your recovery rate, I\'ve pushed your volume a bit higher than normal. You can handle it.'
                   : ''}
                 &rdquo;
               </Text>
@@ -1482,19 +1481,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
-  },
-  jordanAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jordanAvatarText: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
   },
   jordanName: {
     fontFamily: Fonts.semiBold,

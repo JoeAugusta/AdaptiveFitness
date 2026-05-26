@@ -40,6 +40,7 @@ import {
   playRestCompleteSound,
   scheduleRestCompleteNotification,
 } from '../utils/restTimerAlerts';
+import { JordanAvatar } from '../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
@@ -898,7 +899,7 @@ export default function ActiveWorkoutScreen() {
           return next;
         });
       } else {
-        const text = data?.feedback ?? 'Good work — keep it up.';
+        const text = data?.feedback ?? 'Good work. Keep it up.';
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
         setOverlayNote(text);
         setOverlayNoteVisible(true);
@@ -1209,7 +1210,7 @@ export default function ActiveWorkoutScreen() {
                 <View key={exercise.id}>
                   {exercise.phase === 'strength' && exerciseIdx === 0 && (
                     <View style={styles.phaseHeader}>
-                      <Text style={styles.phaseHeaderText}>PHASE 1 — STRENGTH</Text>
+                      <Text style={styles.phaseHeaderText}>PHASE 1: STRENGTH</Text>
                       <Text style={styles.phaseHeaderSub}>
                         Heavy compounds · {phase1Reps} reps · RPE 8–9
                       </Text>
@@ -1217,7 +1218,7 @@ export default function ActiveWorkoutScreen() {
                   )}
                   {exercise.phase === 'hypertrophy' && prevExercise?.phase === 'strength' && (
                     <View style={styles.phaseHeader}>
-                      <Text style={styles.phaseHeaderText}>PHASE 2 — HYPERTROPHY</Text>
+                      <Text style={styles.phaseHeaderText}>PHASE 2: HYPERTROPHY</Text>
                       <Text style={styles.phaseHeaderSub}>
                         Accessories · {phase2Reps} reps · RPE 7–8
                       </Text>
@@ -1409,6 +1410,9 @@ export default function ActiveWorkoutScreen() {
           />
           <View style={styles.preSessionSheet}>
             <View style={styles.preSessionHandle} />
+            <View style={styles.preSessionAvatarWrap}>
+              <JordanAvatar size={40} />
+            </View>
             <Text style={styles.preSessionLabel}>JORDAN</Text>
             <Text style={styles.preSessionMessage}>{preSessionMessage}</Text>
             <Pressable
@@ -1796,6 +1800,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     alignSelf: 'center',
     marginBottom: Spacing.lg,
+  },
+  preSessionAvatarWrap: {
+    alignSelf: 'center',
+    marginBottom: Spacing.sm,
   },
   preSessionLabel: {
     fontFamily: Fonts.bold,

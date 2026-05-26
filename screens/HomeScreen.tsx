@@ -55,6 +55,7 @@ import SportSessionModal, {
   type ConcurrentSportPlan,
   type SportLogRow,
 } from '../components/SportSessionModal';
+import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -445,19 +446,19 @@ function getJordanRecoverySuggestion(goal: string | null | undefined): string {
   const g = String(goal ?? 'general').toLowerCase();
   const map: Record<string, string> = {
     fat_loss:
-      'Active recovery today — a 20–30 minute walk keeps metabolism up without cutting into tomorrow\'s session. Avoid anything that raises heart rate above conversational pace.',
+      'Active recovery today: a 20–30 minute walk keeps metabolism up without cutting into tomorrow\'s session. Avoid anything that raises heart rate above conversational pace.',
     hypertrophy:
-      'Muscles grow on rest days, not training days — today is doing real work. Stay out of the gym. Light walking or stretching is fine; anything that creates soreness is not.',
+      'Muscles grow on rest days, not training days. Today counts as doing real work. Stay out of the gym. Light walking or stretching is fine; anything that creates soreness is not.',
     strength:
-      'CNS recovery is the priority today. Keep activity light — a walk is fine, but skip anything that taxes your nervous system. You need to be fresh for your next heavy session.',
+      'CNS recovery is the priority today. Keep activity light. A walk is fine, but skip anything that taxes your nervous system. You need to be fresh for your next heavy session.',
     power_hypertrophy:
-      'Today is for CNS recovery. Your sessions are demanding — respect the rest. Light mobility work is fine; anything that creates fatigue is working against tomorrow\'s output.',
+      'Today is for CNS recovery. Your sessions are demanding, so respect the rest. Light mobility work is fine; anything that creates fatigue is working against tomorrow\'s output.',
     recomp:
-      'Active recovery today — a 20–30 minute walk supports fat loss without adding recovery debt. Avoid intense cardio; you need to be fresh for your next lifting session.',
+      'Active recovery today: a 20–30 minute walk supports fat loss without adding recovery debt. Avoid intense cardio; you need to be fresh for your next lifting session.',
     general:
       'Take it easy today. A walk, some light stretching, or just doing nothing are all good choices. Recovery is part of the plan, not a break from it.',
   };
-  return map[g] ?? 'Rest up today — your next session will be better for it.';
+  return map[g] ?? 'Rest up today. Your next session will be better for it.';
 }
 
 function RecoveryDayCard({
@@ -1318,13 +1319,13 @@ export default function HomeScreen() {
   const progressFillWidth: DimensionValue =
     `${Math.round(completionRatio * 100)}%`;
 
-  const streakDisplay = statsLoading ? '—' : String(currentStreak);
-  const sessionsDisplay = statsLoading ? '—' : String(totalSessions);
+  const streakDisplay = statsLoading ? '-' : String(currentStreak);
+  const sessionsDisplay = statsLoading ? '-' : String(totalSessions);
   const weeklySessionCount = workoutLogs?.length ?? 0;
   const dashboardCurrentWeek = planData?.currentWeek ?? 1;
   let volumeDisplay: string;
   if (statsLoading) {
-    volumeDisplay = '—';
+    volumeDisplay = '-';
   } else if (dashboardCurrentWeek > 1) {
     const v = weeklyVolume ?? 0;
     if (v >= 1000) {
@@ -1333,7 +1334,7 @@ export default function HomeScreen() {
       volumeDisplay = String(v);
     }
   } else if (weeklySessionCount === 0) {
-    volumeDisplay = '—';
+    volumeDisplay = '-';
   } else if (weeklyVolume >= 1000) {
     volumeDisplay = `${Math.round((weeklyVolume / 1000) * 10) / 10}k`;
   } else {
@@ -1345,9 +1346,9 @@ export default function HomeScreen() {
     planData != null && sessionCount === 0 && dashboardCurrentWeek === 1;
 
   const jordanDay1Copy =
-    "Day 1 starts now. Choose weights that feel like RPE 7–8 — challenging but controlled. Log every set honestly and I'll take it from here.";
+    "Day 1 starts now. Choose weights that feel like RPE 7–8: challenging but controlled. Log every set honestly and I'll take it from here.";
   const jordanInWeekCopy =
-    "First session logged. Keep the same approach next session — your numbers are already telling me what Week 2 needs to look like.";
+    "First session logged. Keep the same approach next session. Your numbers are already telling me what Week 2 needs to look like.";
 
   const jordanCardBodyComputed =
     planStatus === 'completed'
@@ -1513,13 +1514,11 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.missedJordanRow}>
-              <View style={styles.jordanAvatar}>
-                <Text style={styles.jordanAvatarText}>J</Text>
-              </View>
+              <JordanAvatar size={32} />
               <Text style={styles.missedJordanText}>
                 {missedSessionResult.canReschedule
-                  ? `You missed today's session — but ${missedSessionResult.tomorrowDayLabel} is free. Want to move it?`
-                  : "You missed today's session. It happens — next session we push forward and make it count."}
+                  ? `You missed today's session, but ${missedSessionResult.tomorrowDayLabel} is free. Want to move it?`
+                  : "You missed today's session. It happens. Next session we push forward and make it count."}
               </Text>
             </View>
 
@@ -1742,7 +1741,7 @@ export default function HomeScreen() {
 
             {isWeek1NoSessionsYet ? (
               <Text style={styles.startAnytimeHint}>
-                Start whenever you're ready — your schedule begins Week 2.
+                Start whenever you're ready. Your schedule begins Week 2.
               </Text>
             ) : null}
 
@@ -1785,7 +1784,7 @@ export default function HomeScreen() {
                 }
               >
                 <Text style={styles.weekUnlockTitle}>
-                  🔒 Unlock Week {sessionWeekForGate} — Go Pro
+                  🔒 Unlock Week {sessionWeekForGate}: Go Pro
                 </Text>
                 <Text style={styles.weekUnlockPrice}>$14.99/mo or $99.99/yr</Text>
               </TouchableOpacity>
@@ -1903,7 +1902,7 @@ export default function HomeScreen() {
                   <Text style={styles.weightLogTitleLogged}>Weighed In</Text>
                 </View>
                 <Text style={styles.weightLogSub}>
-                  {todayWeight != null ? formatBodyWeight(todayWeight) : '—'} today
+                  {todayWeight != null ? formatBodyWeight(todayWeight) : '-'} today
                 </Text>
               </View>
               <TouchableOpacity
@@ -2052,11 +2051,9 @@ export default function HomeScreen() {
               })
             }
           >
-            <View style={styles.summaryUnreadAvatar}>
-              <Text style={styles.summaryUnreadAvatarText}>J</Text>
-            </View>
+            <JordanAvatar size={32} />
             <Text style={styles.summaryUnreadText}>
-              {`Jordan reviewed your Week ${unviewedSummaryWeekNumber} — tap to read`}
+              {`Jordan reviewed your Week ${unviewedSummaryWeekNumber}. Tap to read`}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -2064,7 +2061,10 @@ export default function HomeScreen() {
         {/* ── 8. Coach Card ── */}
         <View style={styles.coachCard}>
           <View style={styles.coachHeaderRow}>
-            <Text style={styles.coachBrand}>JORDAN</Text>
+            <View style={styles.coachHeaderLeft}>
+              <JordanAvatar size={32} />
+              <Text style={styles.coachBrand}>JORDAN</Text>
+            </View>
             {coachSummary ? (
               <View style={styles.weekPill}>
                 <Text style={styles.weekPillText}>
@@ -2484,20 +2484,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     textAlign: 'center',
   },
-  jordanAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  jordanAvatarText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.body,
-    color: Colors.textPrimary,
-  },
   workoutTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2873,19 +2859,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.accentBorder,
     borderRadius: Radius.md,
   },
-  summaryUnreadAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryUnreadAvatarText: {
-    color: Colors.textPrimary,
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
   summaryUnreadText: {
     flex: 1,
     fontSize: FontSizes.body,
@@ -2908,6 +2881,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+  },
+  coachHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   coachBrand: {
     fontSize: FontSizes.label,

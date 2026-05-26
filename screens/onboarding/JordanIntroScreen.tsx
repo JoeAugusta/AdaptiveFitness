@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { JordanAvatar } from '../../components/JordanAvatar';
 
 type JordanIntroNav = NativeStackNavigationProp<RootStackParamList, 'JordanIntro'>;
 
@@ -14,8 +15,8 @@ export default function JordanIntroScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
         <View style={styles.content}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarLetter}>J</Text>
+          <View style={styles.avatarWrap}>
+            <JordanAvatar size={80} />
           </View>
           <Text style={styles.name}>Jordan</Text>
           <Text style={styles.subtitle}>Your Personal Fitness Coach</Text>
@@ -23,7 +24,7 @@ export default function JordanIntroScreen() {
           <View style={styles.messageCard}>
             <Text style={styles.jordanLabel}>JORDAN</Text>
             <Text style={styles.messageText}>
-              {`I'm Jordan. I've been built around one idea — that training should adapt to you, not the other way around.\n\nEvery session I'll coach you through your sets and ask how hard each one felt. That's how I track whether to push you harder next week or ease off.\n\nThe more honest you are with me, the better your training gets. Let's build something.`}
+              {`I'm Jordan. I've been built around one idea. Training should adapt to you, not the other way around.\n\nEvery session I'll coach you through your sets and ask how hard each one felt. That's how I track whether to push you harder next week or ease off.\n\nThe more honest you are with me, the better your training gets. Let's build something.`}
             </Text>
           </View>
         </View>
@@ -56,19 +57,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatar: {
+  avatarWrap: {
     marginTop: 64,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarLetter: {
-    fontFamily: Fonts.bold,
-    fontSize: 36,
-    color: Colors.bgPrimary,
   },
   name: {
     marginTop: 16,

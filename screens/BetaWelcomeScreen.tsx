@@ -47,7 +47,7 @@ export default function BetaWelcomeScreen() {
             {'"'}
             Hiring a great coach used to cost hundreds of dollars a month and required working
             around someone else's schedule.{'\n\n'}
-            I built Hone because I want to share my passion for fitness with as many people as
+            I built hone because I want to share my passion for fitness with as many people as
             possible — and I think this app is the best way I can do that. AI has finally made it
             possible to give everyone access to the same quality of programming: personalized,
             adaptive, and built around your life.{'\n\n'}
@@ -60,7 +60,7 @@ export default function BetaWelcomeScreen() {
             {'"'}
           </Text>
           <Text style={styles.signatureName}>— Joe</Text>
-          <Text style={styles.signatureTitle}>Founder of Hone</Text>
+          <Text style={styles.signatureTitle}>Founder of hone</Text>
         </View>
 
         <Text style={styles.askSectionLabel}>WHAT I NEED FROM YOU</Text>

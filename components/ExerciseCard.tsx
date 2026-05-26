@@ -24,6 +24,7 @@ import { useMetric, formatTrendDeltaLbs } from '../utils/units';
 import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
+import { JordanAvatar } from './JordanAvatar';
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
 
@@ -46,7 +47,7 @@ export function calculateWarmupSets(workingWeightLbs: number): WarmupSet[] {
       label: 'Warm-up 1',
       weightLbs: round5(w * 0.4),
       reps: 10,
-      note: 'Light — just moving the bar',
+      note: 'Light, just moving the bar',
     },
     {
       label: 'Warm-up 2',
@@ -620,7 +621,7 @@ export default function ExerciseCard({
       trend = null;
     } else if (lastWeight === 0 && weightLbs > 0) {
       trend = {
-        text: `First weighted session — baseline set at ${formatWorkoutWeight(weightLbs)}`,
+        text: `First weighted session. Baseline set at ${formatWorkoutWeight(weightLbs)}`,
         color: Colors.accent,
       };
     } else if (weightLbs > lastWeight) {
@@ -688,7 +689,7 @@ export default function ExerciseCard({
   const targetSummary =
     firstTarget != null
       ? isSelfSelectMode
-        ? `${exercise.sets.length} sets × ${repsSubtitlePart} — choose load for RPE target`
+        ? `${exercise.sets.length} sets × ${repsSubtitlePart}. Choose load for RPE target`
         : isBodyweightExercise
           ? `${exercise.sets.length} sets × ${repsSubtitlePart} @ Bodyweight`
           : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${
@@ -836,18 +837,16 @@ export default function ExerciseCard({
       {isSelfSelectMode ? (
         <View style={styles.selfSelectStrip}>
           <View style={styles.selfSelectStripRow}>
-            <View style={styles.selfSelectJCircle}>
-              <Text style={styles.selfSelectJLetter}>J</Text>
-            </View>
+            <JordanAvatar size={24} />
             <View style={styles.jordanNoteTextColumn}>
               <Text style={styles.jordanNoteText}>
                 {exercise.coachingNote ||
-                  'Week 1 baseline — log your honest effort after each set.'}
+                  'Week 1 baseline. Log your honest effort after each set.'}
               </Text>
               {weekNumber === 1 &&
                 (!exercise.targetWeight || exercise.targetWeight === 0) && (
                   <Text style={styles.jordanNoteSubtext}>
-                    {`Pick a weight that lands at RPE ${firstTargetRpe} — I'll program Week 2 from your actual numbers.`}
+                    {`Pick a weight that lands at RPE ${firstTargetRpe}. I'll program Week 2 from your actual numbers.`}
                   </Text>
                 )}
             </View>
@@ -1321,9 +1320,7 @@ export default function ExerciseCard({
             <View style={styles.sheetHandle} />
 
             <View style={styles.sheetJordanRow}>
-              <View style={styles.sheetJordanAvatar}>
-                <Text style={styles.sheetJordanAvatarText}>J</Text>
-              </View>
+              <JordanAvatar size={32} />
               <Text style={styles.sheetJordanLabel}>JORDAN</Text>
             </View>
 
@@ -1357,7 +1354,7 @@ export default function ExerciseCard({
                       typeof exercise.targetRpe === 'number' &&
                       Number.isFinite(exercise.targetRpe)
                         ? exercise.targetRpe
-                        : (firstTarget?.targetRpe ?? '—')
+                        : (firstTarget?.targetRpe ?? '-')
                     }`}
               </Text>
             </View>
@@ -1502,19 +1499,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.xs,
     marginBottom: Spacing.md,
-  },
-  sheetJordanAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetJordanAvatarText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.micro,
-    color: Colors.textPrimary,
   },
   sheetJordanLabel: {
     fontFamily: Fonts.bold,
@@ -1679,19 +1663,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-  },
-  selfSelectJCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selfSelectJLetter: {
-    fontSize: FontSizes.micro,
-    fontFamily: Fonts.bold,
-    color: Colors.accent,
   },
   jordanNoteTextColumn: {
     flex: 1,

@@ -41,14 +41,14 @@ const MUSCLE_OPTIONS: string[] = [
 
 const SUB_MUSCLE_OPTIONS: Record<string, { label: string; value: string; description: string }[]> = {
   Biceps: [
-    { label: 'Balanced', value: 'balanced', description: 'Hits all heads equally — great starting point' },
+    { label: 'Balanced', value: 'balanced', description: 'Hits all heads equally. Great starting point' },
     { label: 'Short head', value: 'short_head', description: 'Width and peak from the front' },
     { label: 'Long head', value: 'long_head', description: 'Outer thickness and length' },
-    { label: 'Brachialis', value: 'brachialis', description: 'Pushes the bicep up — adds side thickness' },
+    { label: 'Brachialis', value: 'brachialis', description: 'Pushes the bicep up and adds side thickness' },
   ],
   Triceps: [
     { label: 'Balanced', value: 'balanced', description: 'Full tricep development' },
-    { label: 'Long head', value: 'long_head', description: 'Overhead size — the biggest head by mass' },
+    { label: 'Long head', value: 'long_head', description: 'Overhead size. The biggest head by mass' },
     { label: 'Lateral head', value: 'lateral_head', description: 'Horseshoe shape visible from the side' },
   ],
   Chest: [
@@ -59,18 +59,18 @@ const SUB_MUSCLE_OPTIONS: Record<string, { label: string; value: string; descrip
   Shoulders: [
     { label: 'Balanced', value: 'balanced', description: 'Full shoulder roundness' },
     { label: 'Front', value: 'front', description: 'Pressing power and anterior fullness' },
-    { label: 'Lateral', value: 'lateral', description: 'Width — the capped shoulder look' },
+    { label: 'Lateral', value: 'lateral', description: 'Width. The capped shoulder look' },
     { label: 'Rear', value: 'rear', description: 'Thickness from behind and posture correction' },
   ],
   Back: [
     { label: 'Balanced', value: 'balanced', description: 'Full back development' },
-    { label: 'Lats', value: 'lats', description: 'Width and V-taper — the pull-up look' },
+    { label: 'Lats', value: 'lats', description: 'Width and V-taper. The pull-up look' },
     { label: 'Upper back', value: 'upper_back', description: 'Thickness and 3D depth from behind' },
   ],
   Quads: [
     { label: 'Balanced', value: 'balanced', description: 'Full quad development' },
     { label: 'Outer sweep', value: 'outer_sweep', description: 'Width and sweep visible from the side' },
-    { label: 'Teardrop', value: 'vmo', description: 'The VMO above your inner knee — a physique standout detail' },
+    { label: 'Teardrop', value: 'vmo', description: 'The VMO above your inner knee, a physique standout detail' },
   ],
 };
 
@@ -223,7 +223,7 @@ const FAT_LOSS_EXPECTATIONS: Record<string, string> = {
 };
 
 const RECOMP_EXPECTATIONS: Record<string, string> = {
-  '8w': 'Body recomp in 8 weeks will show early changes in body composition. Scale weight may stay similar — trust the mirror over the scale.',
+  '8w': 'Body recomp in 8 weeks will show early changes in body composition. Scale weight may stay similar. Trust the mirror over the scale.',
   '12w': '12 weeks is the minimum to see meaningful recomp results. Expect noticeable changes in muscle tone and fat distribution.',
   '16w': '16 weeks gives your body time to genuinely recompose. Most users see 3–5% body fat reduction alongside visible muscle gains.',
 };
@@ -336,7 +336,7 @@ function StrengthContent({
     const canReachGoal = high >= gap;
     return canReachGoal
       ? `In ${selectedWeeks} weeks, expect +${low}–${high} lbs depending on your experience level. At the right pace, reaching ${t} lbs is within reach.`
-      : `Reaching ${t} lbs typically takes around ${weeksToTarget} weeks. In ${selectedWeeks} weeks, expect +${low}–${high} lbs — your exact rate depends on your experience level.`;
+      : `Reaching ${t} lbs typically takes around ${weeksToTarget} weeks. In ${selectedWeeks} weeks, expect +${low}–${high} lbs. Your exact rate depends on your experience level.`;
   }, [current1RM, target1RM, planDuration]);
 
   const handleSecondaryLift = (id: string) => {
@@ -459,7 +459,7 @@ function StrengthContent({
               marginTop: Spacing.xs,
             }}
           >
-            {`Splits filtered for ${strengthLiftDisplayNameForNote(targetLift)} frequency — you need to hit this lift at least twice a week to drive 1RM progress.`}
+            {`Splits filtered for ${strengthLiftDisplayNameForNote(targetLift)} frequency. You need to hit this lift at least twice a week to drive 1RM progress.`}
           </Text>
           {currentSplit === 'Other' ? (
             <TextInput
@@ -639,7 +639,7 @@ function StrengthContent({
               (!planDurationChipsReady || !canContinue) && styles.skipLinkTextDisabled,
             ]}
           >
-            Skip — I&apos;ll let Jordan decide
+            Skip. I&apos;ll let Jordan decide
           </Text>
         </TouchableOpacity>
       </View>
@@ -941,7 +941,7 @@ function HypertrophyContent({
               !planDurationChipsReady && styles.skipLinkTextDisabled,
             ]}
           >
-            Skip — I&apos;ll let Jordan decide
+            Skip. I&apos;ll let Jordan decide
           </Text>
         </TouchableOpacity>
       </View>
@@ -1020,18 +1020,18 @@ function FatLossContent({
     }
     if (weeklyRate <= 1) {
       return {
-        message: `~${weeklyRate.toFixed(1)} lbs/week — this is a safe, sustainable rate. Great choice.`,
+        message: `~${weeklyRate.toFixed(1)} lbs/week. This is a safe, sustainable rate. Great choice.`,
         color: Colors.success,
       };
     }
     if (weeklyRate <= 1.5) {
       return {
-        message: `~${weeklyRate.toFixed(1)} lbs/week — aggressive but achievable with strict adherence.`,
+        message: `~${weeklyRate.toFixed(1)} lbs/week. Aggressive but achievable with strict adherence.`,
         color: Colors.warning,
       };
     }
     return {
-      message: `~${weeklyRate.toFixed(1)} lbs/week — this is very aggressive. Consider a longer timeline.`,
+      message: `~${weeklyRate.toFixed(1)} lbs/week. This is very aggressive. Consider a longer timeline.`,
       color: Colors.danger,
     };
   }, [currentWeightLbs, targetWeightLbs, targetDate]);
@@ -1238,7 +1238,7 @@ function GeneralContent({
   return (
     <ScreenShell
       title="General Fitness"
-      subtitle="No specific targets needed — we'll build a balanced program to improve your overall fitness."
+      subtitle="No specific targets needed. We'll build a balanced program to improve your overall fitness."
       canContinue
       buttonLabel="Let's Build My Plan"
       onContinue={() =>
@@ -1360,7 +1360,7 @@ function PowerHypertrophyContent({
   return (
     <ScreenShell
       title="Strength & Size"
-      subtitle="Build serious strength on the big lifts while adding muscle everywhere else. Heavy compounds first, hypertrophy work second — the best of both."
+      subtitle="Build serious strength on the big lifts while adding muscle everywhere else. Heavy compounds first, hypertrophy work second. You get the best of both."
       canContinue
       buttonLabel="Continue"
       onContinue={() =>
@@ -1377,7 +1377,7 @@ function PowerHypertrophyContent({
     >
       <Text style={styles.sectionHeadingFirst}>CURRENT 1RM ESTIMATES</Text>
       <Text style={styles.phSubLabel}>
-        Optional — rough estimates are fine. Jordan will calibrate from your Week 1 lifts.
+        Optional. Rough estimates are fine. Jordan will calibrate from your Week 1 lifts.
       </Text>
 
       <View style={styles.phLiftBlock}>
@@ -1475,7 +1475,7 @@ function PowerHypertrophyContent({
         <Text style={styles.phJordanLabel}>JORDAN</Text>
         <Text style={styles.phJordanBody}>
           {
-            "I'll program your compounds to get progressively heavier each week — both the weights and your technique. The size comes from the accessory work we stack on top."
+            "I'll program your compounds to get progressively heavier each week. Expect progress on both the weights and your technique. The size comes from the accessory work we stack on top."
           }
         </Text>
       </View>

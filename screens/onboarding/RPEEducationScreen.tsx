@@ -11,6 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { JordanAvatar } from '../../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'RPEEducation'>;
 type RouteType = RouteProp<RootStackParamList, 'RPEEducation'>;
@@ -32,7 +33,7 @@ const ANCHORS: { rpe: 6 | 8 | 10; tag: string; description: string }[] = [
     rpe: 10,
     tag: 'Max Effort',
     description:
-      'Absolute maximum. You could not do one more rep. Only for testing your 1RM — not regular training.',
+      'Absolute maximum. You could not do one more rep. Only for testing your 1RM, not regular training.',
   },
 ];
 
@@ -78,14 +79,12 @@ export default function RPEEducationScreen() {
           <View style={styles.jordanStripe} />
           <View style={styles.jordanInner}>
             <View style={styles.jordanHeaderRow}>
-              <View style={styles.jordanAvatar}>
-                <Text style={styles.jordanAvatarText}>J</Text>
-              </View>
+              <JordanAvatar size={32} />
               <Text style={styles.jordanName}>Jordan</Text>
             </View>
             <Text style={styles.jordanBody}>
               After each set, I&apos;ll ask you to rate how hard it felt on a 1–10 scale. I use
-              these ratings to adjust your weights each week — so be honest.
+              these ratings to adjust your weights each week, so be honest.
             </Text>
           </View>
         </View>
@@ -200,19 +199,6 @@ const styles = StyleSheet.create({
   jordanHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  jordanAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jordanAvatarText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
   },
   jordanName: {
     fontFamily: Fonts.semiBold,

@@ -310,7 +310,7 @@ export default function ConstraintsScreen() {
           <Text style={styles.sectionHeadingLabel}>Exercises to Avoid</Text>
           <InfoTooltip
             title="Why exclude exercises?"
-            content="Excluded exercises will never appear in your plan — not even as alternatives. Use this for movements that cause pain, that you lack equipment for, or that you simply don't want to do."
+            content="Excluded exercises will never appear in your plan as main lifts or alternate options. Use this for movements that cause pain, that you lack equipment for, or that you simply don't want to do."
           />
         </View>
         <Text style={styles.sectionCaption}>

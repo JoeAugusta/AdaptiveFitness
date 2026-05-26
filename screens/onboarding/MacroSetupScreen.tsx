@@ -48,7 +48,7 @@ const PACE_CONFIG = {
   hypertrophy: [
     {
       id: 'conservative',
-      label: 'Lean Bulk — Clean gains, minimal fat',
+      label: 'Lean Bulk: Clean gains, minimal fat',
       adjustment: 200,
       sub: '+200 cal/day',
       note: 'Minimal fat gain, slower muscle',
@@ -298,7 +298,7 @@ export default function MacroSetupScreen() {
             <Text style={styles.dailyCaloriesLabel}>Daily Calories</Text>
             <InfoTooltip
               title="How were these calculated?"
-              content="Your calories are based on your Basal Metabolic Rate (BMR) — the energy your body burns at rest — multiplied by your activity level to get your Total Daily Energy Expenditure (TDEE). We then adjust up or down based on your goal."
+              content="Your calories are based on your Basal Metabolic Rate (BMR), the energy your body burns at rest, multiplied by your activity level to get your Total Daily Energy Expenditure (TDEE). We then adjust up or down based on your goal."
             />
           </View>
           <View style={styles.calorieValueRow}>

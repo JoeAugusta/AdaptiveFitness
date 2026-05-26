@@ -24,14 +24,14 @@ const CARDIO_COPY = {
     description:
       'Walking, cycling, or elliptical at a comfortable conversation pace.',
     jordanNote:
-      "Zone 2 today — you should be able to hold a full conversation. This burns fat without taxing recovery.",
+      "Zone 2 today. You should be able to hold a full conversation. This burns fat without taxing recovery.",
   },
   medium: {
     label: 'STEADY-STATE CARDIO',
     description:
       'Treadmill jog, rowing, or stair climber at a moderate pace.',
     jordanNote:
-      "Moderate intensity today — breathing harder but controlled. This is where conditioning improves.",
+      "Moderate intensity today. You're breathing harder but controlled. This is where conditioning improves.",
   },
 };
 
@@ -96,7 +96,7 @@ export default function CardioDayCard({
         activeOpacity={0.8}
       >
         <Text style={styles.ctaText}>
-          {logging ? 'Logging...' : `Mark Done — ${suggestedDurationMinutes} min`}
+          {logging ? 'Logging...' : `Mark Done: ${suggestedDurationMinutes} min`}
         </Text>
       </TouchableOpacity>
     </View>

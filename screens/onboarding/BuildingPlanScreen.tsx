@@ -19,6 +19,7 @@ import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
 import { useAuth } from '../../contexts/AuthContext';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
+import { JordanAvatar } from '../../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -546,7 +547,7 @@ export default function BuildingPlanScreen() {
         stopLoadingSequence();
         subtitleOpacity.setValue(1);
         setErrorState({
-          message: 'Jordan is in high demand right now — tap to try again.',
+          message: 'Jordan is in high demand right now. Tap to try again.',
           canRetry: true,
         });
         return;
@@ -605,7 +606,7 @@ export default function BuildingPlanScreen() {
         stopLoadingSequence();
         subtitleOpacity.setValue(1);
         setErrorState({
-          message: 'Something went wrong while building your plan — tap to try again.',
+          message: 'Something went wrong while building your plan. Tap to try again.',
           canRetry: true,
         });
       } else {
@@ -629,10 +630,8 @@ export default function BuildingPlanScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.content}>
         <View style={styles.topSection}>
-          <Animated.View
-            style={[styles.jordanAvatar, { opacity: avatarPulseOpacity }]}
-          >
-            <Text style={styles.jordanInitial}>J</Text>
+          <Animated.View style={{ opacity: avatarPulseOpacity }}>
+            <JordanAvatar size={72} />
           </Animated.View>
 
           <Text style={styles.buildTitle}>Building your plan</Text>
@@ -719,7 +718,7 @@ export default function BuildingPlanScreen() {
           <Text style={styles.quoteText}>
             The plan is only as good as the data behind it.{'\n'}
             You gave me everything I need.{'\n'}
-            — Jordan
+            Jordan
           </Text>
         </View>
       </View>
@@ -824,21 +823,6 @@ const styles = StyleSheet.create({
   topSection: {
     alignItems: 'center',
     paddingTop: Spacing.md,
-  },
-  jordanAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: Colors.accentBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jordanInitial: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading1,
-    color: Colors.accent,
   },
   buildTitle: {
     fontFamily: Fonts.bold,

@@ -426,30 +426,30 @@ function formatSessionTitle(session: any): string {
     // Upper / Lower
     upper: 'Upper Body',
     lower: 'Lower Body',
-    upper_heavy: 'Upper Body — Power',
-    upper_volume: 'Upper Body — Volume',
-    upper_hypertrophy: 'Upper Body — Hypertrophy',
-    lower_heavy: 'Lower Body — Power',
-    lower_volume: 'Lower Body — Volume',
-    lower_hypertrophy: 'Lower Body — Hypertrophy',
+    upper_heavy: 'Upper Body: Power',
+    upper_volume: 'Upper Body: Volume',
+    upper_hypertrophy: 'Upper Body: Hypertrophy',
+    lower_heavy: 'Lower Body: Power',
+    lower_volume: 'Lower Body: Volume',
+    lower_hypertrophy: 'Lower Body: Hypertrophy',
 
     // PPL
-    push: 'Push — Chest & Shoulders',
-    pull: 'Pull — Back & Biceps',
+    push: 'Push: Chest & Shoulders',
+    pull: 'Pull: Back & Biceps',
     legs: 'Legs',
-    push_a: 'Push A — Heavy',
-    push_b: 'Push B — Volume',
-    pull_a: 'Pull A — Heavy',
-    pull_b: 'Pull B — Volume',
-    legs_a: 'Legs — Quad Focus',
-    legs_b: 'Legs — Posterior Chain',
+    push_a: 'Push A: Heavy',
+    push_b: 'Push B: Volume',
+    pull_a: 'Pull A: Heavy',
+    pull_b: 'Pull B: Volume',
+    legs_a: 'Legs: Quad Focus',
+    legs_b: 'Legs: Posterior Chain',
 
     // Specialty
     arms: 'Arms & Core',
     arms_core: 'Arms & Core',
     chest_back: 'Chest & Back',
-    chest_back_heavy: 'Chest & Back — Heavy',
-    chest_back_volume: 'Chest & Back — Volume',
+    chest_back_heavy: 'Chest & Back: Heavy',
+    chest_back_volume: 'Chest & Back: Volume',
     shoulders_arms: 'Shoulders & Arms',
     legs_shoulders: 'Legs & Shoulders',
 
@@ -798,7 +798,7 @@ export default function PlanPreviewScreen() {
           <View style={styles.jordanContextCard}>
             <Text style={styles.jordanContextLabel}>JORDAN</Text>
             <Text style={styles.jordanContextText}>
-              {`Advanced lifters gain lean mass slowly — that's the biology, not the plan.\n+${projectedGain.toFixed(1)} lbs of lean mass is visible, meaningful change at your level. This is what separates advanced training from wasted effort.`}
+              {`Advanced lifters gain lean mass slowly. That's the biology, not the plan.\n+${projectedGain.toFixed(1)} lbs of lean mass is visible, meaningful change at your level. This is what separates advanced training from wasted effort.`}
             </Text>
           </View>
         ) : null}
@@ -807,7 +807,7 @@ export default function PlanPreviewScreen() {
           <View style={styles.jordanContextCard}>
             <Text style={styles.jordanContextLabel}>JORDAN</Text>
             <Text style={styles.jordanContextText}>
-              {"You'll see real strength gains on your compounds and size from the accessory work — both tracked as your plan progresses."}
+              {"You'll see real strength gains on your compounds and size from the accessory work. Both are tracked as your plan progresses."}
             </Text>
           </View>
         ) : null}
@@ -962,9 +962,9 @@ export default function PlanPreviewScreen() {
           ) : isLoadingOfferings ? (
             <Text style={styles.ctaText}>Loading...</Text>
           ) : offeringsError ? (
-            <Text style={styles.ctaText}>Unable to load — tap to retry</Text>
+            <Text style={styles.ctaText}>Unable to load. Tap to retry</Text>
           ) : (
-            <Text style={styles.ctaText}>Start My Plan — Free 7-Day Trial</Text>
+            <Text style={styles.ctaText}>Start My Plan: Free 7-Day Trial</Text>
           )}
         </TouchableOpacity>
 

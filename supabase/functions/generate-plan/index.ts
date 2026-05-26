@@ -1687,6 +1687,11 @@ ${MOVEMENT_PATTERN_BLOCK}`;
       // Pre-calculate Week 1 target weights from currentLifts (week1Factor(experience) × 1RM, rounded to 5 lbs)
       const liftTargets: { name: string; provided: boolean; week1Weight: number }[] = [];
       const phWeek1Factor = week1Factor(experience);
+      const current1RMNum = parseFloat(String(current1RM ?? '0'));
+      const phWeek1Weight =
+        current1RMNum > 0
+          ? Math.round((current1RMNum * week1Factor(experience)) / 5) * 5
+          : 0;
       const clMap: Record<string, string> = {
         benchPress: 'Barbell Bench Press',
         backSquat: 'Back Squat',
@@ -1757,7 +1762,9 @@ FAILURE MODES TO AVOID:
 - Do NOT output more than 2 Phase 1 exercises per session
 
 CURRENT 1RM DATA (use for Phase 1 Week 1 targetWeight):
-${currentLiftsBlock}
+${currentLiftsBlock}${phWeek1Weight > 0 ? `
+
+Phase 1 (strength phase) exercises: targetWeight for the primary compound = ${phWeek1Weight} lbs (${Math.round(week1Factor(experience) * 100)}% of ${current1RMNum} lb 1RM). This is the anchor weight for stampWeek1PyramidSetTargets — do not deviate.` : ''}
 INSTRUCTION: Use these exact targetWeight values for the corresponding Phase 1 exercises in Week 1. Do not use 0 for lifts where a value is provided. Round to nearest 5 lbs. For Phase 2 exercises: targetWeight = 0 — the athlete self-selects loads in the app.
 
 SESSION COUNT CONTRACT: workoutDayCount must equal exactly sessionStructure.filter(d => d.type === 'workout').length. This is non-negotiable.

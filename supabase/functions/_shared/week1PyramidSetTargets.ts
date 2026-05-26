@@ -32,25 +32,25 @@ export function buildWeek1PyramidSetTargets(
   let topIndex: number;
 
   if (n === 3) {
-    weights = [roundTen(T * 0.85), roundPlate(T), roundTen(T * 0.9)];
-    topIndex = 1;
+    weights = [roundTen(T * 0.8), roundTen(T * 0.9), roundPlate(T)];
+    topIndex = 2;
   } else if (n === 4) {
     weights = [
-      roundTen(T * 0.8),
-      roundTen(T * 0.9),
-      roundPlate(T),
+      roundTen(T * 0.75),
       roundTen(T * 0.85),
+      roundTen(T * 0.92),
+      roundPlate(T),
     ];
-    topIndex = 2;
+    topIndex = 3;
   } else {
     weights = [
       roundTen(T * 0.7),
       roundTen(T * 0.8),
-      roundTen(T * 0.9),
       roundTen(T * 0.85),
-      roundTen(T * 0.8),
+      roundTen(T * 0.9),
+      roundPlate(T),
     ];
-    topIndex = 2;
+    topIndex = 4;
   }
 
   const reps = typeof targetReps === 'string' ? targetReps : String(targetReps ?? '');

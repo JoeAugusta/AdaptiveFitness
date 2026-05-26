@@ -15,6 +15,7 @@ import {
   Animated,
   Easing,
   AppState,
+  Keyboard,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -1330,7 +1331,8 @@ export default function ActiveWorkoutScreen() {
         >
           <View style={styles.overlay} />
         </TouchableWithoutFeedback>
-        <View style={styles.fatigueSheet}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.fatigueSheet}>
           <View style={styles.dragHandle} />
           <Text style={styles.fatigueTitle}>How do you feel?</Text>
           <Text style={styles.fatigueSubtitle}>
@@ -1374,6 +1376,8 @@ export default function ActiveWorkoutScreen() {
             multiline
             numberOfLines={3}
             maxLength={500}
+            returnKeyType="done"
+            onSubmitEditing={() => Keyboard.dismiss()}
           />
 
           <TouchableOpacity
@@ -1395,6 +1399,7 @@ export default function ActiveWorkoutScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal

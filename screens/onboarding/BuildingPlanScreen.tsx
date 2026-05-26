@@ -201,6 +201,11 @@ const cleanJordanMessage = (msg: string | null): string | null => {
     .replace(/^I'm Jordan[^.]*\.\s*/i, '')
     .replace(/^[^.]*hardest[^.]*\.\s*/i, '')
     .replace(/^[^.]*difficult[^.]*\.\s*/i, '')
+    .replace(/^[^.]*toughest[^.]*\.\s*/i, '')
+    .replace(/^[^.]*challenging[^.]*\.\s*/i, '')
+    .replace(/[^.]*begins (in )?week 2[^.]*\.\s*/gi, '')
+    .replace(/[^.]*starts (in )?week 2[^.]*\.\s*/gi, '')
+    .replace(/[^.]*your (workouts?|training|schedule) (will )?(begin|start)[^.]*\.\s*/gi, '')
     .trim() || msg;
 };
 
@@ -719,8 +724,7 @@ export default function BuildingPlanScreen() {
 
         <View style={styles.bottomQuote}>
           <Text style={styles.quoteText}>
-            Your numbers are in.{'\n'}
-            Week 1 starts now.{'\n'}
+            Your numbers are in. Let's get to work.{'\n'}
             Jordan
           </Text>
         </View>
@@ -733,7 +737,7 @@ export default function BuildingPlanScreen() {
               <Text style={styles.handoffCheck}>✓</Text>
             </View>
 
-            <Text style={styles.handoffTitle}>Your Plan is Ready</Text>
+            <Text style={styles.handoffTitle}>You're ready to go.</Text>
 
             {jordanMessage ? (
               <View style={styles.handoffJordanCard}>
@@ -744,7 +748,7 @@ export default function BuildingPlanScreen() {
               </View>
             ) : (
               <Text style={styles.handoffSubtitle}>
-                Week 1 is built and ready to go.
+                Week 1 is set. First session is waiting.
               </Text>
             )}
 

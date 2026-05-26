@@ -1277,11 +1277,21 @@ export default function HomeScreen() {
           planData.scheduledDays,
         )?.dayNumber ?? null
       : null;
-  const todaySessionFocus = getSessionIntent(
-    currentPhase,
-    today?.sessionFocus,
-    planData?.planSplit,
-  );
+  const todaySessionFocus = (() => {
+    const firstExercise = today?.exercises?.[0];
+    if (firstExercise?.targetWeight && firstExercise.targetWeight > 0) {
+      const weight = firstExercise.targetWeight;
+      const sets = firstExercise.sets ?? 0;
+      const reps = firstExercise.reps ?? '';
+      const name = firstExercise.name ?? '';
+      return `${name} ${sets}×${reps} @ ${weight} lbs`;
+    }
+    return getSessionIntent(
+      currentPhase,
+      today?.sessionFocus,
+      planData?.planSplit,
+    );
+  })();
   const displaySessionFocus = convertSessionFocus(todaySessionFocus, isMetric);
   const daysPerWeek = planData?.daysPerWeek ?? 4;
   const completedSessions = planData?.completedSessions ?? 0;

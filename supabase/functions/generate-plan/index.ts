@@ -1080,6 +1080,19 @@ function enforceRepRanges(planJson: any, bSex: string): any {
 }
 
 // Calculate starting weight from 1RM percentage
+function week1Factor(experience: string): number {
+  switch (experience?.toLowerCase()) {
+    case 'beginner':
+      return 0.7;
+    case 'intermediate':
+      return 0.75;
+    case 'advanced':
+      return 0.82;
+    default:
+      return 0.75;
+  }
+}
+
 function calculateStartingWeight(oneRM: number, percentage: number): number {
   return Math.round((oneRM * percentage) / 2.5) * 2.5;
 }
@@ -1514,8 +1527,9 @@ Do NOT add additional workout days or combine rest days with training.
     if (goal === 'strength' && current1RM != null && String(current1RM) !== '' && targetLift) {
       const current1RMNum = parseFloat(String(current1RM ?? '0'));
       const target1RMNum = parseFloat(String(target1RM ?? current1RM ?? '0'));
-      const week1Weight = calculateStartingWeight(current1RMNum, 0.75);
-      const heavyDayWeight = Math.round((current1RMNum * 0.75) / 2.5) * 2.5;
+      const strengthW1Factor = week1Factor(experience);
+      const week1Weight = calculateStartingWeight(current1RMNum, strengthW1Factor);
+      const heavyDayWeight = Math.round((current1RMNum * strengthW1Factor) / 2.5) * 2.5;
       const volumeDayWeight = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5;
       const heavyTargetSets = 5;
       const heavyTargetRepsPerSet = 5;
@@ -1614,14 +1628,14 @@ RULE 7 — NEVER do this on a strength plan:
 Reconcile prescribed targetWeight in JSON with the athlete's 1RM: Week 1 target lift loads should align with RULE 6 (5×5 @ RPE 7 baseline) while respecting the 1RM anchor from CRITICAL WEIGHT RULES below.
 
 CRITICAL WEIGHT RULES for strength goal:
-- ${liftName} Week 1 working sets MUST start at ${week1Weight} lbs (75% of ${current1RMNum} lb 1RM).
+- ${liftName} Week 1 working sets MUST start at ${week1Weight} lbs (${Math.round(strengthW1Factor * 100)}% of ${current1RMNum} lb 1RM).
 - All other compound lifts: estimate based on the athlete's ${liftName} strength (they are ${experience} level).
-- Week 1 is a baseline week. Do NOT start at their max. 75% 1RM is the starting point.
+- Week 1 is a baseline week. Do NOT start at their max. ${Math.round(strengthW1Factor * 100)}% 1RM is the starting point.
 - Use straight sets (same weight across all sets) for the primary lift.
 - Secondary lifts should be calibrated proportionally to their strength level.
 
 STRENGTH FREQUENCY RULES — Week 1 target lift ONLY (percentage bands below DO NOT replace FIXED ATHLETE WEEK 1 + RULE 3):
-- Heavy session (heavy / heavy_*): ${heavyTargetSets}×${heavyTargetRepsPerSet} @ ~75% current 1RM → targetWeight = ${heavyDayWeight} lbs fixed for JSON
+- Heavy session (heavy / heavy_*): ${heavyTargetSets}×${heavyTargetRepsPerSet} @ ~${Math.round(strengthW1Factor * 100)}% current 1RM → targetWeight = ${heavyDayWeight} lbs fixed for JSON
 - Volume session (volume_*): same set count ${heavyTargetSets}, reps per set = ${volumeDayRepsPerSet}, targetWeight = ${volumeDayWeight} lbs fixed (= ${heavyDayWeight} × 0.85, 2.5 lb plate rounding)
   Do NOT use ~70–75% 1RM guesses on volume day; use ${volumeDayWeight} exactly.
 - This gives the athlete 2 exposures per week to the target movement
@@ -1631,7 +1645,7 @@ STRENGTH FREQUENCY RULES — Week 1 target lift ONLY (percentage bands below DO 
 - If sessionStructure defines fewer workout days than above, follow it exactly (e.g. 2-day upper/lower = one upper day + one lower day only). Do not expand to more days because of split name or these frequency examples.
 
 1RM PROGRESSION PATH over ${totalWeeks} weeks:
-- Week 1: ${calculateStartingWeight(current1RMNum, 0.75)} lbs (75% of ${current1RMNum} 1RM) — baseline
+- Week 1: ${calculateStartingWeight(current1RMNum, strengthW1Factor)} lbs (${Math.round(strengthW1Factor * 100)}% of ${current1RMNum} 1RM) — baseline
 - Week ${Math.round(totalWeeks * 0.25)}: ~${calculateStartingWeight(current1RMNum, 0.8)} lbs (80%) — accumulation
 - Week ${Math.round(totalWeeks * 0.5)}: ~${calculateStartingWeight(current1RMNum, 0.85)} lbs (85%) — intensification
 - Week ${Math.round(totalWeeks * 0.75)}: ~${calculateStartingWeight(current1RMNum, 0.9)} lbs (90%) — peak
@@ -1670,8 +1684,9 @@ ${MOVEMENT_PATTERN_BLOCK}`;
     } else if (goal === 'power_hypertrophy') {
       goalContext = `Goal: power_hypertrophy — build compound strength AND muscle size simultaneously.`;
 
-      // Pre-calculate Week 1 target weights from currentLifts (75% 1RM, rounded to 2.5 lbs)
+      // Pre-calculate Week 1 target weights from currentLifts (week1Factor(experience) × 1RM, rounded to 5 lbs)
       const liftTargets: { name: string; provided: boolean; week1Weight: number }[] = [];
+      const phWeek1Factor = week1Factor(experience);
       const clMap: Record<string, string> = {
         benchPress: 'Barbell Bench Press',
         backSquat: 'Back Squat',
@@ -1681,7 +1696,7 @@ ${MOVEMENT_PATTERN_BLOCK}`;
       for (const [key, name] of Object.entries(clMap)) {
         const rm = currentLifts ? (currentLifts as Record<string, number | null>)[key] : null;
         if (rm != null && Number.isFinite(rm) && rm > 0) {
-          liftTargets.push({ name, provided: true, week1Weight: Math.round(rm * 0.75 / 5) * 5 });
+          liftTargets.push({ name, provided: true, week1Weight: Math.round(rm * phWeek1Factor / 5) * 5 });
         } else {
           liftTargets.push({ name, provided: false, week1Weight: 0 });
         }
@@ -1782,7 +1797,7 @@ Every exercise coachingNote in Week 1 must follow the coachingNote specification
 
 Week 2+ onwards: program weights normally based on what the user logged in the previous week.
 
-EXCEPTION — STRENGTH GOAL: unchanged — use current1RM × 0.75 and prescribed targetWeights as in the strength section above.`;
+EXCEPTION — STRENGTH GOAL: unchanged — use current1RM × ${week1Factor(experience)} and prescribed targetWeights as in the strength section above.`;
     }
 
     const beginnerRpeBlock =
@@ -1930,7 +1945,7 @@ The user has been following ${currentSplit} for 6+ months. Jordan's sessionStruc
         trainingBackground === 'Running a powerlifting program')
         ? `
 TRAINING BACKGROUND (strength):
-This user is already strength-training. Week 1 baseline weights should reflect their current 1RM${current1RMLabel ? ` (${current1RMLabel})` : ''} × 0.75 as normal, but the jordanWelcome should acknowledge their existing base and frame this plan as a focused specialisation block (still within the 4-sentence jordanWelcome structure — fold this into Sentence 2).
+This user is already strength-training. Week 1 baseline weights should reflect their current 1RM${current1RMLabel ? ` (${current1RMLabel})` : ''} × ${week1Factor(experience)} as normal, but the jordanWelcome should acknowledge their existing base and frame this plan as a focused specialisation block (still within the 4-sentence jordanWelcome structure — fold this into Sentence 2).
 `
         : '';
 
@@ -2192,7 +2207,7 @@ Respond with ONLY this JSON, no other text:
             "targetWeight": ${isNonStrengthGoal ? 0 : 135},
             "restSeconds": ${params.restSeconds},
             "targetRpe": ${params.targetRpe},
-            "coachingNote": "${isNonStrengthGoal ? `Your upper chest priority anchors this session — incline angle shifts the stimulus to the clavicular head where you need growth.` : `Week 1 calibration at 75% of your 1RM — log your honest RPE so I can dial in Week 2 specifically to you.`}"${goal === 'power_hypertrophy' ? ',\n            "phase": "strength",\n            "setStructure": "pyramid"' : ''}
+            "coachingNote": "${isNonStrengthGoal ? `Your upper chest priority anchors this session — incline angle shifts the stimulus to the clavicular head where you need growth.` : `Week 1 calibration at ${Math.round(week1Factor(experience) * 100)}% of your 1RM — log your honest RPE so I can dial in Week 2 specifically to you.`}"${goal === 'power_hypertrophy' ? ',\n            "phase": "strength",\n            "setStructure": "pyramid"' : ''}
           }
         ]
       },
@@ -2440,7 +2455,7 @@ ${
       goal === 'strength' &&
       current1RM != null &&
       String(current1RM).trim() !== ''
-        ? calculateStartingWeight(parseFloat(String(current1RM)), 0.75)
+        ? calculateStartingWeight(parseFloat(String(current1RM)), week1Factor(experience))
         : undefined;
 
     return new Response(JSON.stringify({

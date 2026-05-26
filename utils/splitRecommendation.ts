@@ -565,6 +565,22 @@ export function getRecommendedSplit(
     }
   }
 
+  if (splitId === 'batman' && reason.includes('Arnold')) {
+    reason =
+      'Batman Split gives chest and back twice-weekly ' +
+      'frequency with a dedicated Arms day trained fresh. ' +
+      'At your level with ' +
+      d +
+      ' days, this is the right structure.';
+  }
+
+  if (splitId === 'arnold' && reason.toLowerCase().includes('batman')) {
+    reason =
+      'Arnold Split pairs antagonist muscles ' +
+      'chest with back, shoulders with arms. ' +
+      'Both pairings train twice per week at your level.';
+  }
+
   const splitName = getSplitLabel(splitId);
   console.log('[getRecommendedSplit] FINAL:', { splitId, splitName });
 
@@ -719,9 +735,9 @@ function batman6LegPriority(): SessionDay[] {
   return [
     W(1, 'chest_back_heavy', ['chest', 'back'], 'heavy'),
     W(2, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
-    R(3),
+    W(3, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
     W(4, 'chest_back_volume', ['chest', 'back', 'shoulders'], 'volume'),
-    W(5, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
+    W(5, 'arms_core', ['biceps', 'triceps', 'shoulders'], 'volume'),
     W(6, 'legs_posterior', ['hamstrings', 'glutes', 'calves'], 'volume'),
     R(7),
   ];
@@ -808,10 +824,10 @@ function batman6(): SessionDay[] {
   return [
     W(1, 'chest_back_heavy', ['chest', 'back'], 'heavy'),
     W(2, 'legs_shoulders', ['quads', 'hamstrings', 'shoulders'], 'moderate'),
-    R(3),
+    W(3, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
     W(4, 'chest_back_volume', ['chest', 'back'], 'volume'),
-    W(5, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
-    W(6, 'legs_unilateral', ['hamstrings', 'glutes', 'quads'], 'volume'),
+    W(5, 'legs_unilateral', ['hamstrings', 'glutes', 'quads'], 'volume'),
+    W(6, 'arms_core', ['biceps', 'triceps', 'shoulders'], 'volume'),
     R(7),
   ];
 }
@@ -1131,6 +1147,13 @@ export function mapSessionsToDays(
   const labels = normalizeSelectedDayLabels(selectedDays);
   if (labels.length === 0) return sessions;
 
+  console.log(
+    '[mapSessionsToDays] labels:',
+    labels,
+    'workout sessions:',
+    sessions.filter((s) => s.type === 'workout').length,
+  );
+
   const workoutSessions = sessions
     .filter((s) => s.type === 'workout')
     .slice(0, labels.length);
@@ -1179,8 +1202,28 @@ export function getSessionStructure(
 ): SessionDay[] {
   let structure: SessionDay[];
 
+  const effectiveDays =
+    selectedDays != null && selectedDays.length > 0
+      ? selectedDays.length
+      : daysPerWeek;
+
+  console.log(
+    '[getSessionStructure] selectedDays:',
+    selectedDays,
+    'daysPerWeek:',
+    daysPerWeek,
+  );
+
   const finish = (raw: SessionDay[], liftSplitId: string = splitId): SessionDay[] => {
     const lifted = applyStrengthLiftDays(raw, goal, targetLift, liftSplitId);
+
+    console.log(
+      '[finish] raw workout count:',
+      raw.filter((s) => s.type === 'workout').length,
+      'lifted workout count:',
+      lifted.filter((s) => s.type === 'workout').length,
+    );
+
     if (!selectedDays?.length) return lifted;
     return mapSessionsToDays(lifted, selectedDays);
   };
@@ -1220,7 +1263,7 @@ export function getSessionStructure(
     return finish(upperUpperFocus4());
   }
   if (hint === 'more_upper' && splitId === 'ppl') {
-    return finish(daysPerWeek >= 6 ? ppl6() : pplUpper5());
+    return finish(effectiveDays >= 6 ? ppl6() : pplUpper5());
   }
   if (
     hint === 'more_lower' &&
@@ -1238,6 +1281,19 @@ export function getSessionStructure(
     );
   }
 
+  console.log(
+    '[getSessionStructure] splitId:',
+    splitId,
+    'daysPerWeek:',
+    daysPerWeek,
+    'selectedDays.length:',
+    selectedDays?.length,
+    'effectiveDays:',
+    selectedDays?.length != null && selectedDays.length > 0
+      ? selectedDays.length
+      : daysPerWeek,
+  );
+
   switch (splitId) {
     case 'ppl_leg_focus':
       structure = pplLegFocus5();
@@ -1254,28 +1310,28 @@ export function getSessionStructure(
     case 'strength_2x': {
       const lk = (targetLift ?? '').toLowerCase();
       const isLowerT = lk.includes('squat') || lk.includes('deadlift');
-      if (daysPerWeek >= 6 && !isLowerT) structure = ppl6();
-      else if (daysPerWeek >= 6 && isLowerT) {
+      if (effectiveDays >= 6 && !isLowerT) structure = ppl6();
+      else if (effectiveDays >= 6 && isLowerT) {
         structure = upperLower5(priorityMuscles, weakPoints);
-      } else if (daysPerWeek === 5 && !isLowerT) structure = ppl5();
-      else if (daysPerWeek === 5 && isLowerT) {
+      } else if (effectiveDays === 5 && !isLowerT) structure = ppl5();
+      else if (effectiveDays === 5 && isLowerT) {
         structure = upperLower5(priorityMuscles, weakPoints);
-      } else if (daysPerWeek >= 4) structure = upperLower4();
+      } else if (effectiveDays >= 4) structure = upperLower4();
       else structure = upperLower4();
       break;
     }
     case 'strength_3x':
-      if (daysPerWeek >= 4) structure = strengthThreeX4();
+      if (effectiveDays >= 4) structure = strengthThreeX4();
       else structure = upperLower4();
       break;
     case 'upper_lower':
       if (
-        daysPerWeek === 4 &&
+        effectiveDays === 4 &&
         goal !== 'strength' &&
         muscleFocus.isArmDominant
       ) {
         structure = upperLower4ArmFocus();
-      } else if (daysPerWeek >= 5) {
+      } else if (effectiveDays >= 5) {
         structure = upperLower5(priorityMuscles, weakPoints);
       } else {
         structure = upperLower4();
@@ -1286,18 +1342,19 @@ export function getSessionStructure(
       break;
     case 'ppl_upper': {
       const useArmsUpper =
-        daysPerWeek === 5 && goal !== 'strength' && muscleFocus.isArmDominant;
+        effectiveDays === 5 && goal !== 'strength' && muscleFocus.isArmDominant;
       structure = useArmsUpper ? pplUpper5Arms() : pplUpper5();
       break;
     }
-    case 'ppl':
-      if (daysPerWeek >= 6) structure = ppl6();
-      else if (daysPerWeek === 5) structure = ppl5();
+    case 'ppl': {
+      if (effectiveDays >= 6) structure = ppl6();
+      else if (effectiveDays === 5) structure = ppl5();
       else structure = upperLower4();
       break;
+    }
     case 'batman':
       if (
-        daysPerWeek === 6 &&
+        effectiveDays === 6 &&
         goal === 'hypertrophy' &&
         exp === 'advanced' &&
         muscleFocus.isLegDominant
@@ -1317,10 +1374,10 @@ export function getSessionStructure(
       structure = fullBodyAdvanced();
       break;
     case 'full_body':
-      structure = daysPerWeek >= 4 ? fullBody4() : fullBodyBeginner3();
+      structure = effectiveDays >= 4 ? fullBody4() : fullBodyBeginner3();
       break;
     default:
-      structure = fallbackStructure(daysPerWeek, priorityMuscles, weakPoints);
+      structure = fallbackStructure(effectiveDays, priorityMuscles, weakPoints);
       break;
   }
 

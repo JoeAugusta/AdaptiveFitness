@@ -62,41 +62,68 @@ export default function RPEEducationScreen() {
               <Text style={styles.jordanName}>Jordan</Text>
             </View>
             <Text style={styles.jordanBody}>
-              After each set, I&apos;ll ask you to rate how hard it felt on a 1–10 scale. I use
+              After each set, I&apos;ll ask you to rate how hard it felt on a 1 to 10 scale. I use
               these ratings to adjust your weights each week, so be honest.
             </Text>
           </View>
         </View>
 
-        <View style={styles.scaleRow}>
-          {[6, 7, 8, 9, 10].map((n) => (
-            <View
-              key={n}
-              style={[styles.scalePip, n === 8 ? styles.scalePipTarget : null]}
-            >
-              <Text
-                style={[
-                  styles.scalePipNum,
-                  n === 8 ? styles.scalePipNumTarget : null,
-                ]}
-              >
-                {n}
-              </Text>
+        <Text style={styles.sectionLabel}>THE THREE ANCHORS YOU NEED TO KNOW</Text>
+
+        <View style={styles.anchorCard}>
+          <View style={[styles.anchorBubble, styles.bubbleGreen]}>
+            <Text style={[styles.anchorBubbleNum, styles.bubbleNumGreen]}>6</Text>
+          </View>
+          <View style={styles.anchorBody}>
+            <View style={styles.anchorHeader}>
+              <Text style={styles.anchorTitle}>RPE 6</Text>
+              <View style={[styles.anchorBadge, styles.badgeEasy]}>
+                <Text style={[styles.anchorBadgeText, styles.badgeTextEasy]}>Too Easy</Text>
+              </View>
             </View>
-          ))}
+            <Text style={styles.anchorDesc}>
+              You could do 4 or more extra reps. Weight feels too light. Weights go up next session.
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.scaleLabels}>
-          <Text style={styles.scaleLabelLeft}>Too easy</Text>
-          <Text style={styles.scaleLabelCenter}>Target</Text>
-          <Text style={styles.scaleLabelRight}>Max effort</Text>
+        <View style={styles.anchorCard}>
+          <View style={[styles.anchorBubble, styles.bubbleOrange]}>
+            <Text style={[styles.anchorBubbleNum, styles.bubbleNumOrange]}>8</Text>
+          </View>
+          <View style={styles.anchorBody}>
+            <View style={styles.anchorHeader}>
+              <Text style={styles.anchorTitle}>RPE 8</Text>
+              <View style={[styles.anchorBadge, styles.badgeTarget]}>
+                <Text style={[styles.anchorBadgeText, styles.badgeTextTarget]}>Working Hard</Text>
+              </View>
+            </View>
+            <Text style={styles.anchorDesc}>
+              You could squeeze out 2 more reps, but it would be tough. This is the sweet spot Jordan is targeting.
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.jordanNote}>
-          <Text style={styles.jordanNoteLabel}>JORDAN</Text>
-          <Text style={styles.jordanNoteText}>
-            Aim for RPE 8. You could do 2 more reps, but it would be tough. If you finish a set
-            and could have done 4 more, the weight goes up next session.
+        <View style={styles.anchorCard}>
+          <View style={[styles.anchorBubble, styles.bubbleRed]}>
+            <Text style={[styles.anchorBubbleNum, styles.bubbleNumRed]}>10</Text>
+          </View>
+          <View style={styles.anchorBody}>
+            <View style={styles.anchorHeader}>
+              <Text style={styles.anchorTitle}>RPE 10</Text>
+              <View style={[styles.anchorBadge, styles.badgeMax]}>
+                <Text style={[styles.anchorBadgeText, styles.badgeTextMax]}>Max Effort</Text>
+              </View>
+            </View>
+            <Text style={styles.anchorDesc}>
+              Absolute maximum. You could not do one more rep. Only for testing your 1RM, not regular training.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.footerNote}>
+          <Text style={styles.footerNoteText}>
+            🎯 Most of your working sets should land between RPE 7 to 8. If you&apos;re consistently below 6, the weight goes up. Above 9, it comes down.
           </Text>
         </View>
 
@@ -190,82 +217,89 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     lineHeight: 22,
   },
-  scaleRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
+  sectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
     marginTop: Spacing.xl,
     marginBottom: Spacing.md,
   },
-  scalePip: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scalePipTarget: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  scalePipNum: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textSecondary,
-  },
-  scalePipNumTarget: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.heading2,
-  },
-  scaleLabels: {
+  anchorCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.sm,
-    marginBottom: Spacing.xl,
-  },
-  scaleLabelLeft: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-  },
-  scaleLabelCenter: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
-  },
-  scaleLabelRight: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-  },
-  jordanNote: {
+    alignItems: 'flex-start',
+    gap: 14,
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.divider,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
-    padding: Spacing.lg,
-    marginTop: Spacing.md,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
   },
-  jordanNoteLabel: {
+  anchorBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  bubbleGreen: { backgroundColor: 'rgba(34,197,94,0.15)' },
+  bubbleOrange: { backgroundColor: 'rgba(249,115,22,0.15)' },
+  bubbleRed: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  anchorBubbleNum: {
     fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 6,
+    fontSize: FontSizes.title,
   },
-  jordanNoteText: {
-    fontFamily: Fonts.regular,
+  bubbleNumGreen: { color: '#22C55E' },
+  bubbleNumOrange: { color: Colors.accent },
+  bubbleNumRed: { color: '#EF4444' },
+  anchorBody: { flex: 1 },
+  anchorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  anchorTitle: {
+    fontFamily: Fonts.bold,
     fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  anchorBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeEasy: { backgroundColor: 'rgba(34,197,94,0.15)' },
+  badgeTarget: { backgroundColor: 'rgba(249,115,22,0.15)' },
+  badgeMax: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  anchorBadgeText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.label,
+  },
+  badgeTextEasy: { color: '#22C55E' },
+  badgeTextTarget: { color: Colors.accent },
+  badgeTextMax: { color: '#EF4444' },
+  anchorDesc: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    lineHeight: 22,
+    lineHeight: 20,
+  },
+  footerNote: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  footerNoteText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 20,
   },
   primaryButton: {
     marginTop: Spacing.xl,

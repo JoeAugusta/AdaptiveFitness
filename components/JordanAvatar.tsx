@@ -29,7 +29,7 @@ export function JordanAvatar({ size = 48 }: { size?: number }) {
         opacity={0.35}
       />
       <SvgText
-        x={cx + size * 0.03}
+        x={cx}
         y={cy + size * 0.18}
         fontSize={size * 0.5}
         fontWeight="700"
@@ -39,9 +39,9 @@ export function JordanAvatar({ size = 48 }: { size?: number }) {
         J
       </SvgText>
       <Rect
-        x={cx - size * 0.16}
+        x={cx - size * 0.14}
         y={cy + size * 0.22}
-        width={size * 0.32}
+        width={size * 0.28}
         height={size > 60 ? 3 : 2}
         rx={size > 60 ? 1.5 : 1}
         fill="#F97316"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import Slider from '@react-native-community/slider';
 import type { RootStackParamList } from '../../navigation/types';
-import InfoTooltip from '../../components/InfoTooltip';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BodyMetrics'>;
 type RouteType = RouteProp<RootStackParamList, 'BodyMetrics'>;
 
-type FocusField = 'age' | 'heightFt' | 'heightIn' | 'weight' | 'bodyFat' | null;
+type FocusField = 'age' | 'heightFt' | 'heightIn' | 'weight' | null;
 
 interface SexOption {
   id: string;
@@ -32,27 +32,24 @@ const SEX_OPTIONS: SexOption[] = [
   { id: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
-function estimateBodyFatPct(
-  weightLbs: number,
-  heightFt: number,
-  heightIn: number,
-  age: number,
-  sex: string,
-): number {
-  const weightKg = weightLbs * 0.453592;
-  const heightCm = (heightFt * 12 + heightIn) * 2.54;
-  const heightM = heightCm / 100;
-  const bmi = weightKg / (heightM * heightM);
+function getBfZoneLabel(pct: number): string {
+  if (pct <= 10) return 'Very lean';
+  if (pct <= 14) return 'Lean';
+  if (pct <= 18) return 'Athletic';
+  if (pct <= 24) return 'Fit';
+  if (pct <= 29) return 'Average';
+  if (pct <= 34) return 'Above average';
+  return 'High';
+}
 
-  // Deurenberg formula
-  let bf: number;
-  if (sex === 'female') {
-    bf = 1.2 * bmi + 0.23 * age - 5.4;
-  } else {
-    bf = 1.2 * bmi + 0.23 * age - 16.2;
-  }
-
-  return Math.round(Math.max(5, Math.min(50, bf)));
+function getBfZoneDesc(pct: number): string {
+  if (pct <= 10) return 'Visible striations and veins. Competition level. Hard to maintain.';
+  if (pct <= 14) return 'Six-pack visible, minimal fat. Typical of serious athletes.';
+  if (pct <= 18) return 'Defined abs, lean arms and legs. Consistent training shows.';
+  if (pct <= 24) return 'Good muscle tone, some definition visible. Active lifestyle.';
+  if (pct <= 29) return 'Soft appearance, limited definition. Lightly active.';
+  if (pct <= 34) return 'Rounded appearance, minimal muscle definition visible.';
+  return 'High body fat. Associated with increased health risk.';
 }
 
 export default function BodyMetricsScreen() {
@@ -66,29 +63,8 @@ export default function BodyMetricsScreen() {
   const [heightIn, setHeightIn] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
-  const [bodyFatIsEstimate, setBodyFatIsEstimate] = useState(true);
   const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [showFeedback, setShowFeedback] = useState(false);
-
-  useEffect(() => {
-    const w = parseFloat(weightLbs);
-    const ft = parseInt(heightFt, 10);
-    const inches = parseInt(heightIn, 10);
-    const a = parseInt(age, 10);
-    if (
-      Number.isFinite(w) &&
-      Number.isFinite(ft) &&
-      Number.isFinite(inches) &&
-      Number.isFinite(a) &&
-      sex !== null &&
-      w > 0 &&
-      a > 0
-    ) {
-      const estimate = estimateBodyFatPct(w, ft, inches, a, sex);
-      setBodyFatPct(String(estimate));
-      setBodyFatIsEstimate(true);
-    }
-  }, [weightLbs, heightFt, heightIn, age, sex]);
 
   const canContinue =
     sex !== null &&
@@ -256,42 +232,47 @@ export default function BodyMetricsScreen() {
           </View>
         </View>
 
-        <View style={styles.bodyFatHeadingRow}>
-          <View style={styles.bodyFatTitleWrap}>
-            <Text style={styles.sectionHeadingLabel}>
-              Body Fat %{' '}
-              <Text style={styles.sectionHeadingOptional}>(optional)</Text>
-            </Text>
+        {/* Body fat slider */}
+        <View style={styles.bfSection}>
+          <Text style={styles.bfTitle}>Body Fat %</Text>
+          <Text style={styles.bfSub}>Optional. Drag to your best estimate.</Text>
+
+          <View style={styles.bfDisplay}>
+            <Text style={styles.bfNumber}>{bodyFatPct || '—'}</Text>
+            {bodyFatPct ? <Text style={styles.bfSymbol}>%</Text> : null}
           </View>
-          <InfoTooltip
-            title="How to estimate body fat"
-            content="If you're lean with visible abs: 10–15%. Average build with some muscle definition: 15–20%. Soft build with little definition: 20–30%+. Women add approximately 8–10% to each range. Leave blank and we'll estimate from your other stats."
+
+          <Text style={styles.bfZoneLabel}>{getBfZoneLabel(parseInt(bodyFatPct || '0'))}</Text>
+
+          <Text style={styles.bfZoneDesc}>{getBfZoneDesc(parseInt(bodyFatPct || '0'))}</Text>
+
+          <Slider
+            style={styles.bfSlider}
+            minimumValue={5}
+            maximumValue={45}
+            step={1}
+            value={bodyFatPct ? parseInt(bodyFatPct) : 20}
+            onValueChange={(val) => setBodyFatPct(String(Math.round(val)))}
+            minimumTrackTintColor={Colors.accent}
+            maximumTrackTintColor={Colors.border}
+            thumbTintColor={Colors.accent}
           />
+
+          <View style={styles.bfAnchors}>
+            <Text style={styles.bfAnchor}>Very lean{'\n'}5%</Text>
+            <Text style={styles.bfAnchor}>Athletic{'\n'}15%</Text>
+            <Text style={styles.bfAnchor}>Average{'\n'}25%</Text>
+            <Text style={styles.bfAnchor}>High{'\n'}35%</Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setBodyFatPct('')}
+            style={styles.bfSkip}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.bfSkipText}>Skip — I don't know my body fat</Text>
+          </TouchableOpacity>
         </View>
-        {bodyFatIsEstimate ? (
-          <Text style={styles.estimateLabel}>ESTIMATED FROM YOUR STATS</Text>
-        ) : null}
-        <TextInput
-          style={[
-            styles.textInputField,
-            focusedField === 'bodyFat' && styles.textInputFocused,
-          ]}
-          value={bodyFatPct}
-          onChangeText={(v) => {
-            setBodyFatPct(v);
-            setBodyFatIsEstimate(false);
-          }}
-          keyboardType="numeric"
-          placeholder="e.g. 18"
-          placeholderTextColor={Colors.textTertiary}
-          maxLength={4}
-          returnKeyType="done"
-          onFocus={() => setFocusedField('bodyFat')}
-          onBlur={() => setFocusedField(null)}
-        />
-        <Text style={styles.bodyFatHelper}>
-          We estimated this from your stats. Edit if you know yours.
-        </Text>
       </ScrollView>
 
       <View
@@ -391,38 +372,6 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 12,
   },
-  bodyFatHeadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 28,
-    marginBottom: 12,
-  },
-  bodyFatTitleWrap: {
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  estimateLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  sectionHeadingLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  sectionHeadingOptional: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.textSecondary,
-    letterSpacing: 0,
-    textTransform: 'none',
-  },
   sectionLead: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
@@ -505,11 +454,82 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
   },
 
-  bodyFatHelper: {
+  bfSection: {
+    marginTop: Spacing.xl,
+  },
+  bfTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  bfSub: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+    marginBottom: Spacing.lg,
+  },
+  bfDisplay: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  bfNumber: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.accent,
+  },
+  bfSymbol: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.accent,
+    marginLeft: 4,
+  },
+  bfZoneLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  bfZoneDesc: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    lineHeight: 18,
+  },
+  bfSlider: {
+    width: '100%',
+    height: 40,
+  },
+  bfAnchors: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
     marginTop: 4,
+  },
+  bfAnchor: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  bfSkip: {
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+  },
+  bfSkipText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textDecorationLine: 'underline',
   },
 
   footer: {

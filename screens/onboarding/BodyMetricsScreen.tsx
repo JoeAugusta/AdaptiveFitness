@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,29 @@ const SEX_OPTIONS: SexOption[] = [
   { id: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
+function estimateBodyFatPct(
+  weightLbs: number,
+  heightFt: number,
+  heightIn: number,
+  age: number,
+  sex: string,
+): number {
+  const weightKg = weightLbs * 0.453592;
+  const heightCm = (heightFt * 12 + heightIn) * 2.54;
+  const heightM = heightCm / 100;
+  const bmi = weightKg / (heightM * heightM);
+
+  // Deurenberg formula
+  let bf: number;
+  if (sex === 'female') {
+    bf = 1.2 * bmi + 0.23 * age - 5.4;
+  } else {
+    bf = 1.2 * bmi + 0.23 * age - 16.2;
+  }
+
+  return Math.round(Math.max(5, Math.min(50, bf)));
+}
+
 export default function BodyMetricsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -43,8 +66,29 @@ export default function BodyMetricsScreen() {
   const [heightIn, setHeightIn] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
+  const [bodyFatIsEstimate, setBodyFatIsEstimate] = useState(true);
   const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+
+  useEffect(() => {
+    const w = parseFloat(weightLbs);
+    const ft = parseInt(heightFt, 10);
+    const inches = parseInt(heightIn, 10);
+    const a = parseInt(age, 10);
+    if (
+      Number.isFinite(w) &&
+      Number.isFinite(ft) &&
+      Number.isFinite(inches) &&
+      Number.isFinite(a) &&
+      sex !== null &&
+      w > 0 &&
+      a > 0
+    ) {
+      const estimate = estimateBodyFatPct(w, ft, inches, a, sex);
+      setBodyFatPct(String(estimate));
+      setBodyFatIsEstimate(true);
+    }
+  }, [weightLbs, heightFt, heightIn, age, sex]);
 
   const canContinue =
     sex !== null &&
@@ -224,14 +268,19 @@ export default function BodyMetricsScreen() {
             content="If you're lean with visible abs: 10–15%. Average build with some muscle definition: 15–20%. Soft build with little definition: 20–30%+. Women add approximately 8–10% to each range. Leave blank and we'll estimate from your other stats."
           />
         </View>
-        <Text style={styles.sectionLead}>Optional — estimate is fine.</Text>
+        {bodyFatIsEstimate ? (
+          <Text style={styles.estimateLabel}>ESTIMATED FROM YOUR STATS</Text>
+        ) : null}
         <TextInput
           style={[
             styles.textInputField,
             focusedField === 'bodyFat' && styles.textInputFocused,
           ]}
           value={bodyFatPct}
-          onChangeText={setBodyFatPct}
+          onChangeText={(v) => {
+            setBodyFatPct(v);
+            setBodyFatIsEstimate(false);
+          }}
           keyboardType="numeric"
           placeholder="e.g. 18"
           placeholderTextColor={Colors.textTertiary}
@@ -241,7 +290,7 @@ export default function BodyMetricsScreen() {
           onBlur={() => setFocusedField(null)}
         />
         <Text style={styles.bodyFatHelper}>
-          Not sure? Leave blank and we'll estimate.
+          We estimated this from your stats. Edit if you know yours.
         </Text>
       </ScrollView>
 
@@ -353,6 +402,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: Spacing.sm,
   },
+  estimateLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
   sectionHeadingLabel: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
@@ -453,7 +509,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
-    marginTop: Spacing.sm,
+    marginTop: 4,
   },
 
   footer: {

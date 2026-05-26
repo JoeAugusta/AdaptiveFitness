@@ -197,8 +197,11 @@ function isGeneratePlanOverloaded(data: unknown): boolean {
 
 const cleanJordanMessage = (msg: string | null): string | null => {
   if (!msg) return null;
-  // Remove opening "I'm Jordan..." sentence if present
-  return msg.replace(/^I'm Jordan[^.]*\.\s*/i, '').trim() || msg;
+  return msg
+    .replace(/^I'm Jordan[^.]*\.\s*/i, '')
+    .replace(/^[^.]*hardest[^.]*\.\s*/i, '')
+    .replace(/^[^.]*difficult[^.]*\.\s*/i, '')
+    .trim() || msg;
 };
 
 export default function BuildingPlanScreen() {
@@ -716,8 +719,8 @@ export default function BuildingPlanScreen() {
 
         <View style={styles.bottomQuote}>
           <Text style={styles.quoteText}>
-            The plan is only as good as the data behind it.{'\n'}
-            You gave me everything I need.{'\n'}
+            Your numbers are in.{'\n'}
+            Week 1 starts now.{'\n'}
             Jordan
           </Text>
         </View>

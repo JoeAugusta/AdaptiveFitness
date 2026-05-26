@@ -22,9 +22,8 @@ export default function JordanIntroScreen() {
           <Text style={styles.subtitle}>Your Personal Fitness Coach</Text>
 
           <View style={styles.messageCard}>
-            <Text style={styles.jordanLabel}>JORDAN</Text>
             <Text style={styles.messageText}>
-              {`I'm Jordan. I've been built around one idea. Training should adapt to you, not the other way around.\n\nEvery session I'll coach you through your sets and ask how hard each one felt. That's how I track whether to push you harder next week or ease off.\n\nThe more honest you are with me, the better your training gets. Let's build something.`}
+              {`I'm Jordan. I'll coach you through every session and ask how hard each set felt. That's how I know what to adjust next week. Be honest with me and your plan gets better every week.`}
             </Text>
           </View>
         </View>
@@ -86,13 +85,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: Colors.accent,
     padding: Spacing.lg,
-  },
-  jordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 8,
   },
   messageText: {
     fontFamily: Fonts.regular,

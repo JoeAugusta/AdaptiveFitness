@@ -16,27 +16,6 @@ import { JordanAvatar } from '../../components/JordanAvatar';
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'RPEEducation'>;
 type RouteType = RouteProp<RootStackParamList, 'RPEEducation'>;
 
-const ANCHORS: { rpe: 6 | 8 | 10; tag: string; description: string }[] = [
-  {
-    rpe: 6,
-    tag: 'Too Easy',
-    description:
-      'You could do 4 or more extra reps. Weight feels too light. Weights go up next session.',
-  },
-  {
-    rpe: 8,
-    tag: 'Working Hard',
-    description:
-      'You could squeeze out 2 more reps, but it would be tough. This is the sweet spot Jordan is targeting.',
-  },
-  {
-    rpe: 10,
-    tag: 'Max Effort',
-    description:
-      'Absolute maximum. You could not do one more rep. Only for testing your 1RM, not regular training.',
-  },
-];
-
 export default function RPEEducationScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -89,37 +68,35 @@ export default function RPEEducationScreen() {
           </View>
         </View>
 
-        <Text style={styles.anchorsSectionLabel}>THE THREE ANCHORS YOU NEED TO KNOW</Text>
-
-        <View style={styles.anchorCards}>
-          {ANCHORS.map((a) => {
-            const tier =
-              a.rpe === 6 ? tier6Styles : a.rpe === 8 ? tier8Styles : tier10Styles;
-            return (
-              <View key={a.rpe} style={styles.anchorCard}>
-                <View style={styles.anchorRow}>
-                  <View style={[styles.anchorBadge, tier.badge]}>
-                    <Text style={[styles.anchorBadgeText, tier.badgeText]}>{a.rpe}</Text>
-                  </View>
-                  <View style={styles.anchorContent}>
-                    <View style={styles.anchorTitleRow}>
-                      <Text style={styles.anchorRpeLabel}>RPE {a.rpe}</Text>
-                      <View style={[styles.anchorTag, tier.tag]}>
-                        <Text style={[styles.anchorTagText, tier.tagText]}>{a.tag}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.anchorDescription}>{a.description}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
+        <View style={styles.scaleRow}>
+          {[6, 7, 8, 9, 10].map((n) => (
+            <View
+              key={n}
+              style={[styles.scalePip, n === 8 ? styles.scalePipTarget : null]}
+            >
+              <Text
+                style={[
+                  styles.scalePipNum,
+                  n === 8 ? styles.scalePipNumTarget : null,
+                ]}
+              >
+                {n}
+              </Text>
+            </View>
+          ))}
         </View>
 
-        <View style={styles.sweetSpotCard}>
-          <Text style={styles.sweetSpotText}>
-            🎯 Most of your working sets should land between RPE 7–8. If you&apos;re consistently
-            below 6, the weight goes up. Above 9, it comes down.
+        <View style={styles.scaleLabels}>
+          <Text style={styles.scaleLabelLeft}>Too easy</Text>
+          <Text style={styles.scaleLabelCenter}>Target</Text>
+          <Text style={styles.scaleLabelRight}>Max effort</Text>
+        </View>
+
+        <View style={styles.jordanNote}>
+          <Text style={styles.jordanNoteLabel}>JORDAN</Text>
+          <Text style={styles.jordanNoteText}>
+            Aim for RPE 8. You could do 2 more reps, but it would be tough. If you finish a set
+            and could have done 4 more, the weight goes up next session.
           </Text>
         </View>
 
@@ -213,83 +190,82 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     lineHeight: 22,
   },
-  anchorsSectionLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+  scaleRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
     marginTop: Spacing.xl,
     marginBottom: Spacing.md,
   },
-  anchorCards: {
-    gap: Spacing.md,
+  scalePip: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  anchorCard: {
+  scalePipTarget: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  scalePipNum: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textSecondary,
+  },
+  scalePipNumTarget: {
+    color: Colors.textPrimary,
+    fontSize: FontSizes.heading2,
+  },
+  scaleLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  scaleLabelLeft: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
+  scaleLabelCenter: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  scaleLabelRight: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
+  jordanNote: {
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
-    padding: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
+    marginTop: Spacing.md,
   },
-  anchorRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  anchorBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  anchorBadgeText: {
+  jordanNoteLabel: {
     fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
-  },
-  anchorContent: {
-    flex: 1,
-    marginLeft: Spacing.md,
-  },
-  anchorTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  anchorRpeLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-  },
-  anchorTag: {
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  anchorTagText: {
-    fontFamily: Fonts.semiBold,
     fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 6,
   },
-  anchorDescription: {
+  jordanNoteText: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    marginTop: Spacing.xs,
     lineHeight: 22,
-  },
-  sweetSpotCard: {
-    marginTop: Spacing.lg,
-    backgroundColor: Colors.accentMuted,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.accentBorder,
-  },
-  sweetSpotText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textPrimary,
-    lineHeight: 20,
   },
   primaryButton: {
     marginTop: Spacing.xl,
@@ -306,62 +282,4 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
   },
-
-  tier6Badge: {
-    backgroundColor: Colors.successMuted,
-  },
-  tier6BadgeText: {
-    color: Colors.success,
-  },
-  tier6Tag: {
-    backgroundColor: Colors.successMuted,
-  },
-  tier6TagText: {
-    color: Colors.success,
-  },
-  tier8Badge: {
-    backgroundColor: Colors.warningMuted,
-  },
-  tier8BadgeText: {
-    color: Colors.warning,
-  },
-  tier8Tag: {
-    backgroundColor: Colors.warningMuted,
-  },
-  tier8TagText: {
-    color: Colors.warning,
-  },
-  tier10Badge: {
-    backgroundColor: Colors.dangerMuted,
-  },
-  tier10BadgeText: {
-    color: Colors.danger,
-  },
-  tier10Tag: {
-    backgroundColor: Colors.dangerMuted,
-  },
-  tier10TagText: {
-    color: Colors.danger,
-  },
 });
-
-const tier6Styles = {
-  badge: styles.tier6Badge,
-  badgeText: styles.tier6BadgeText,
-  tag: styles.tier6Tag,
-  tagText: styles.tier6TagText,
-};
-
-const tier8Styles = {
-  badge: styles.tier8Badge,
-  badgeText: styles.tier8BadgeText,
-  tag: styles.tier8Tag,
-  tagText: styles.tier8TagText,
-};
-
-const tier10Styles = {
-  badge: styles.tier10Badge,
-  badgeText: styles.tier10BadgeText,
-  tag: styles.tier10Tag,
-  tagText: styles.tier10TagText,
-};

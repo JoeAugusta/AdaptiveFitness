@@ -1077,7 +1077,7 @@ export default function ExerciseCard({
                           : input.weight
                       }
                       onChangeText={(v) => updateInput(set.setNumber, 'weight', v)}
-                      placeholder={isSelfSelectMode ? 'Choose weight' : '0'}
+                      placeholder="lbs"
                       placeholderTextColor={Colors.textTertiary}
                       selectTextOnFocus
                       onFocus={() => setFocusedField(`w-${set.setNumber}`)}
@@ -1101,7 +1101,7 @@ export default function ExerciseCard({
                         onSubmitEditing={() => Keyboard.dismiss()}
                         value={input.reps}
                         onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
-                        placeholder="0"
+                        placeholder="reps"
                         placeholderTextColor={Colors.textTertiary}
                         selectTextOnFocus
                         onFocus={() => setFocusedField(`r-${set.setNumber}`)}

@@ -92,6 +92,7 @@ export default function NotificationsSettingsScreen() {
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const weighInNotifId = useRef<string | null>(null);
+  const workoutNotifId = useRef<string | null>(null);
   const workoutTimeSnapshotRef = useRef<Date | null>(null);
   const weighInTimeSnapshotRef = useRef<Date | null>(null);
 
@@ -211,12 +212,17 @@ export default function NotificationsSettingsScreen() {
     async (enabled: boolean, time: Date) => {
       if (Platform.OS === 'web') return;
       try {
-        await Notifications.cancelAllScheduledNotificationsAsync();
+        if (workoutNotifId.current) {
+          await Notifications.cancelScheduledNotificationAsync(
+            workoutNotifId.current,
+          );
+          workoutNotifId.current = null;
+        }
         if (enabled) {
-          await Notifications.scheduleNotificationAsync({
+          const id = await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Time to train 💪',
-              body: 'Your workout is ready. Let\'s get it done.',
+              body: "Your workout is ready. Let's get it done.",
               sound: true,
             },
             trigger: {
@@ -225,6 +231,7 @@ export default function NotificationsSettingsScreen() {
               minute: time.getMinutes(),
             },
           });
+          workoutNotifId.current = id;
         }
       } catch (e) {
         console.error('Notification scheduling error:', e);

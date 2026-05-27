@@ -2253,6 +2253,10 @@ WEIGHT TARGETS: Set targetWeight to the same value as last week's logged weight 
         max_tokens: 4000,
         system: `${toneInstruction}
 
+STYLE RULE: Never use em-dashes (—) in any response.
+Use periods or commas instead. This applies to all
+coaching copy, Jordan's voice, and any explanatory text.
+
 You are Jordan, the athlete's personal coach. You have their last week of performance data and you are writing their next week plan. Generate the training plan as structured JSON with varied exercise selection, smart ordering, and coaching notes that reference the user's actual performance.
 ${weightProgressionBaselineSection}
 RAMP-UP WORKING SETS (Week 1 self-select and similar):

@@ -1,5 +1,5 @@
 // Requires: npx expo install expo-haptics
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Easing,
   AppState,
   Keyboard,
+  type AppStateStatus,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,7 +42,15 @@ import {
   playRestCompleteSound,
   scheduleRestCompleteNotification,
 } from '../utils/restTimerAlerts';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { JordanAvatar } from '../components/JordanAvatar';
+
+function stripEmDash(text: string): string {
+  return text
+    .replace(/ — /g, '. ')
+    .replace(/—/g, '.')
+    .trim();
+}
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
@@ -357,11 +366,19 @@ export default function ActiveWorkoutScreen() {
   const overlayNoteAnim = useRef(new Animated.Value(0)).current;
 
   // Timers
+  const sessionStartTimeRef = useRef<number>(Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [restSeconds, setRestSeconds] = useState(0);
+
+  const restEndTimeRef = useRef<number | null>(null);
+  const [restSecondsRemaining, setRestSecondsRemaining] = useState(0);
   const [restDurationTotal, setRestDurationTotal] = useState(90);
   const [isRestActive, setIsRestActive] = useState(false);
   const restSubtextOpacity = useRef(new Animated.Value(0)).current;
+
+  const startRestTimer = useCallback((durationSeconds: number) => {
+    restEndTimeRef.current = Date.now() + durationSeconds * 1000;
+    setRestSecondsRemaining(durationSeconds);
+  }, []);
 
   // Fatigue check-in
   const [showFatigueSheet, setShowFatigueSheet] = useState(false);
@@ -815,33 +832,85 @@ export default function ActiveWorkoutScreen() {
     (ex) => sets.filter((s) => s.exerciseId === ex.id).length < ex.sets.length,
   );
 
-  // Elapsed session timer
   useEffect(() => {
-    const interval = setInterval(
-      () => setElapsedSeconds((s) => s + 1),
-      1000,
-    );
-    return () => clearInterval(interval);
+    void activateKeepAwakeAsync();
+    return () => {
+      deactivateKeepAwake();
+    };
   }, []);
 
-  // Rest countdown timer
+  // Elapsed session timer (timestamp-based — survives background throttling)
+  useEffect(() => {
+    sessionStartTimeRef.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsedSeconds(
+        Math.floor((Date.now() - sessionStartTimeRef.current) / 1000),
+      );
+    }, 1000);
+
+    const subscription = AppState.addEventListener(
+      'change',
+      (state: AppStateStatus) => {
+        if (state === 'active') {
+          setElapsedSeconds(
+            Math.floor((Date.now() - sessionStartTimeRef.current) / 1000),
+          );
+        }
+      },
+    );
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, []);
+
+  // Rest countdown timer (deadline-based)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (restEndTimeRef.current == null) return;
+      const remaining = Math.max(
+        0,
+        Math.ceil((restEndTimeRef.current - Date.now()) / 1000),
+      );
+      setRestSecondsRemaining(remaining);
+      if (remaining === 0) {
+        restEndTimeRef.current = null;
+      }
+    }, 1000);
+
+    const subscription = AppState.addEventListener(
+      'change',
+      (state: AppStateStatus) => {
+        if (state === 'active' && restEndTimeRef.current != null) {
+          const remaining = Math.max(
+            0,
+            Math.ceil((restEndTimeRef.current - Date.now()) / 1000),
+          );
+          setRestSecondsRemaining(remaining);
+          if (remaining === 0) {
+            restEndTimeRef.current = null;
+          }
+        }
+      },
+    );
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, []);
+
   useEffect(() => {
     if (!isRestActive) return;
-    if (restSeconds <= 0) {
-      void cancelRestTimerNotification();
-      setIsRestActive(false);
-      if (AppState.currentState === 'active') {
-        void playRestCompleteSound();
-      }
-      void hapticHeavy();
-      return;
+    if (restSecondsRemaining > 0) return;
+    void cancelRestTimerNotification();
+    setIsRestActive(false);
+    if (AppState.currentState === 'active') {
+      void playRestCompleteSound();
     }
-    const timeout = setTimeout(
-      () => setRestSeconds((s) => s - 1),
-      1000,
-    );
-    return () => clearTimeout(timeout);
-  }, [isRestActive, restSeconds]);
+    void hapticHeavy();
+  }, [isRestActive, restSecondsRemaining]);
 
   useEffect(() => {
     return () => {
@@ -960,7 +1029,7 @@ export default function ActiveWorkoutScreen() {
         ? resolveRestDurationSeconds(exercise)
         : 120;
       setRestDurationTotal(duration);
-      setRestSeconds(duration);
+      startRestTimer(duration);
       setIsRestActive(true);
       void scheduleRestCompleteNotification(duration);
     }
@@ -991,9 +1060,10 @@ export default function ActiveWorkoutScreen() {
 
   const skipRest = () => {
     void hapticLight();
+    restEndTimeRef.current = null;
     void cancelRestTimerNotification();
     setIsRestActive(false);
-    setRestSeconds(0);
+    setRestSecondsRemaining(0);
   };
 
   const handleBack = () => {
@@ -1158,7 +1228,7 @@ export default function ActiveWorkoutScreen() {
 
   const restProgressWidth: DimensionValue =
     restDurationTotal > 0
-      ? `${Math.max(0, Math.min(100, (restSeconds / restDurationTotal) * 100))}%`
+      ? `${Math.max(0, Math.min(100, (restSecondsRemaining / restDurationTotal) * 100))}%`
       : '0%';
 
   if (isLoading) {
@@ -1262,7 +1332,7 @@ export default function ActiveWorkoutScreen() {
                   Rest · {formatRestCountdown(restDurationTotal)}
                 </Animated.Text>
                 <Text style={styles.restBannerCountdown}>
-                  {formatRestCountdown(restSeconds)}
+                  {formatRestCountdown(restSecondsRemaining)}
                 </Text>
                 <Text style={styles.restBannerLabel}>REST</Text>
               </View>
@@ -1302,7 +1372,9 @@ export default function ActiveWorkoutScreen() {
           ]}
         >
           <Text style={styles.jordanNoteOverlayLabel}>JORDAN</Text>
-          <Text style={styles.jordanNoteOverlayText}>{overlayNote}</Text>
+          <Text style={styles.jordanNoteOverlayText}>
+            {stripEmDash(overlayNote ?? '')}
+          </Text>
           <TouchableOpacity
             onPress={() => setOverlayNoteVisible(false)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1419,7 +1491,9 @@ export default function ActiveWorkoutScreen() {
               <JordanAvatar size={40} />
             </View>
             <Text style={styles.preSessionLabel}>JORDAN</Text>
-            <Text style={styles.preSessionMessage}>{preSessionMessage}</Text>
+            <Text style={styles.preSessionMessage}>
+              {preSessionMessage != null ? stripEmDash(preSessionMessage) : ''}
+            </Text>
             <Pressable
               style={styles.preSessionCTA}
               onPress={() => setShowPreSessionModal(false)}

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Pressable,
   TouchableWithoutFeedback,
   Animated,
   Keyboard,
@@ -25,6 +26,13 @@ import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
+
+function stripEmDash(text: string): string {
+  return text
+    .replace(/ — /g, '. ')
+    .replace(/—/g, '.')
+    .trim();
+}
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
 
@@ -471,6 +479,7 @@ export default function ExerciseCard({
   const [showSwapSheet, setShowSwapSheet] = useState(false);
   const [showAdaptationSheet, setShowAdaptationSheet] = useState(false);
   const [showEducation, setShowEducation] = useState(false);
+  const [showPyramidInfo, setShowPyramidInfo] = useState(false);
   const [adaptationReason, setAdaptationReason] = useState<AdaptationReason | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [trendBySet, setTrendBySet] = useState<Record<number, { text: string; color: string }>>({});
@@ -826,9 +835,15 @@ export default function ExerciseCard({
               <Text style={styles.muscleTagText}>{exercise.muscleGroup}</Text>
             </View>
             {exercise.setStructure === 'pyramid' ? (
-              <View style={styles.pyramidBadge}>
-                <Text style={styles.pyramidBadgeText}>PYRAMID</Text>
-              </View>
+              <TouchableOpacity
+                onPress={() => setShowPyramidInfo(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <View style={styles.pyramidBadge}>
+                  <Text style={styles.pyramidBadgeText}>PYRAMID ⓘ</Text>
+                </View>
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
@@ -840,8 +855,9 @@ export default function ExerciseCard({
             <JordanAvatar size={24} />
             <View style={styles.jordanNoteTextColumn}>
               <Text style={styles.jordanNoteText}>
-                {exercise.coachingNote ||
-                  'Week 1 baseline. Log your honest effort after each set.'}
+                {exercise.coachingNote
+                  ? stripEmDash(exercise.coachingNote)
+                  : 'Week 1 baseline. Log your honest effort after each set.'}
               </Text>
               {weekNumber === 1 &&
                 (!exercise.targetWeight || exercise.targetWeight === 0) && (
@@ -1212,7 +1228,9 @@ export default function ExerciseCard({
               style={[styles.coachingContentWrap, { opacity: coachingContentOpacity }]}
             >
               {coachingNote ? (
-                <Text style={styles.coachingNoteText}>{coachingNote}</Text>
+                <Text style={styles.coachingNoteText}>
+                  {stripEmDash(coachingNote)}
+                </Text>
               ) : null}
             </Animated.View>
           </View>
@@ -1255,7 +1273,7 @@ export default function ExerciseCard({
               style={[styles.coachSheetContentWrap, { opacity: coachingContentOpacity }]}
             >
               {coachingNote ? (
-                <Text style={styles.coachSheetBody}>{coachingNote}</Text>
+                <Text style={styles.coachSheetBody}>{stripEmDash(coachingNote)}</Text>
               ) : !coachingLoading ? (
                 <Text style={styles.coachSheetBody}>
                   Complete a set to receive coaching feedback.
@@ -1370,6 +1388,39 @@ export default function ExerciseCard({
         </View>
       </Modal>
 
+      <Modal
+        visible={showPyramidInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPyramidInfo(false)}
+      >
+        <Pressable
+          style={styles.pyramidOverlay}
+          onPress={() => setShowPyramidInfo(false)}
+        >
+          <View style={styles.pyramidModal}>
+            <Text style={styles.pyramidModalTitle}>Pyramid Sets</Text>
+            <Text style={styles.pyramidModalBody}>
+              Each set gets heavier as you warm up into{'\n'}
+              the movement. Your top set is last.{'\n\n'}
+              Example for 5 sets at 300 lbs:{'\n'}
+              Set 1: 210 lbs (70%){'\n'}
+              Set 2: 240 lbs (80%){'\n'}
+              Set 3: 255 lbs (85%){'\n'}
+              Set 4: 270 lbs (90%){'\n'}
+              Set 5: 300 lbs (100%)
+            </Text>
+            <TouchableOpacity
+              style={styles.pyramidModalClose}
+              onPress={() => setShowPyramidInfo(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.pyramidModalCloseText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       <RPEReferenceSheet
         visible={showRpeReference}
         onClose={() => setShowRpeReference(false)}
@@ -1446,6 +1497,44 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: FontSizes.micro,
     color: Colors.warning,
+  },
+  pyramidOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  pyramidModal: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    width: '100%',
+  },
+  pyramidModalTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  pyramidModalBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 24,
+    marginBottom: Spacing.xl,
+  },
+  pyramidModalClose: {
+    backgroundColor: Colors.accent,
+    height: 48,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pyramidModalCloseText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
   targetLineRow: {
     flexDirection: 'row',

@@ -881,6 +881,7 @@ export default function ProgressChartsScreen() {
     const exerciseVolume: Record<string, number> = {};
     const logDates = new Set<string>();
 
+    // Loop 1: ALL logs — strength 1RM history + streak + dates
     for (const log of logs) {
       const wk: number = log.week_number;
       const loggedAt: string | null = log.logged_at ?? log.created_at;
@@ -897,14 +898,24 @@ export default function ProgressChartsScreen() {
         const reps = Number(s.reps ?? s.loggedReps ?? 0);
         if (!name || weight === 0) continue;
 
-        // Strength: Epley 1RM
         const est1RM = weight * (1 + reps / 30);
-
         if (!sMap[name]) sMap[name] = new Map();
         const prev = sMap[name].get(wk) ?? 0;
         if (est1RM > prev) sMap[name].set(wk, Math.round(est1RM));
+      }
+    }
 
-        // Top exercises by volume (lifetime)
+    // Loop 2: PLAN logs only — top exercises + volume
+    // Uses planLogs so old test plans don't pollute topExercises
+    for (const log of planLogs) {
+      const sets: any[] = log.sets_json ?? [];
+      for (const s of sets) {
+        const name: string =
+          s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
+        const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
+        const reps = Number(s.reps ?? s.loggedReps ?? 0);
+        if (!name || weight === 0) continue;
+
         exerciseVolume[name] = (exerciseVolume[name] ?? 0) + weight * reps;
       }
     }

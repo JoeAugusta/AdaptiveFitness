@@ -90,6 +90,13 @@ function sessionSignalFromLastLog(
   return signal;
 }
 
+function stripEmDash(text: string): string {
+  return text
+    .replace(/ — /g, '. ')
+    .replace(/—/g, '.')
+    .trim();
+}
+
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 type JordanCardState = 'day1' | 'in_week' | 'summary_available';
@@ -1431,7 +1438,7 @@ export default function HomeScreen() {
           ? 'summary_available'
           : 'in_week';
 
-  const displayedJordanText =
+  const displayedJordanTextRaw =
     planStatus === 'completed'
       ? 'Great work finishing the program. Start a new plan when you\'re ready.'
       : jordanCardBodyComputed != null && jordanCardBodyComputed.trim() !== ''
@@ -1439,6 +1446,7 @@ export default function HomeScreen() {
         : jordanCardState === 'day1'
           ? jordanDay1Copy
           : jordanInWeekCopy;
+  const displayedJordanText = stripEmDash(displayedJordanTextRaw ?? '');
 
   const jordanCardTimestamp =
     coachSummary?.generated_at ??

@@ -602,6 +602,8 @@ export default function HomeScreen() {
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
   /** Week 1 calibration — no workouts logged yet; drives UI hint only */
   const [isWeek1NoSessionsYet, setIsWeek1NoSessionsYet] = useState(false);
+  /** Logged a workout for this calendar day — show recovery hero until tomorrow */
+  const [hasLoggedWorkoutToday, setHasLoggedWorkoutToday] = useState(false);
 
   const [missedSessionResult, setMissedSessionResult] =
     useState<MissedSessionResult | null>(null);
@@ -655,6 +657,7 @@ export default function HomeScreen() {
         setStatsLoading(false);
         setDevBypassDayGate(false);
         setIsWeek1NoSessionsYet(false);
+        setHasLoggedWorkoutToday(false);
         setPlanSnapshotForMissed(null);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
@@ -716,6 +719,7 @@ export default function HomeScreen() {
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
         setIsWeek1NoSessionsYet(false);
+        setHasLoggedWorkoutToday(false);
         return;
       }
 
@@ -738,6 +742,7 @@ export default function HomeScreen() {
         setIsWeek1NoSessionsYet(false);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
+        setHasLoggedWorkoutToday(false);
         loadStats(userId, planRow.id, planRow.current_week ?? 1);
         return;
       }
@@ -764,6 +769,7 @@ export default function HomeScreen() {
         setPlanSnapshotForMissed(null);
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
+        setHasLoggedWorkoutToday(false);
         return;
       }
 
@@ -804,14 +810,28 @@ export default function HomeScreen() {
         (plan.current_week ?? 1) === 1 && completedDayNumbers.size === 0;
       setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
 
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const { data: todayLogs } = await supabase
+        .from('workout_logs')
+        .select('id, logged_at')
+        .eq('user_id', userId)
+        .eq('plan_id', plan.id)
+        .gte('logged_at', `${todayDateStr}T00:00:00.000Z`)
+        .lte('logged_at', `${todayDateStr}T23:59:59.999Z`)
+        .limit(1)
+        .maybeSingle();
+
+      const loggedWorkoutToday = !!todayLogs;
+      setHasLoggedWorkoutToday(loggedWorkoutToday);
+
       const calendarTrainingToday =
         !hasDayLabels || isTodayTrainingDay(scheduledDays, todayLabel);
-      const isTrainingToday =
+      const trainingEligibleToday =
         devBypassRead ||
         calendarTrainingToday ||
         isWeek1NoSessionsYet;
       const nextTraining =
-        hasDayLabels && !isTrainingToday
+        hasDayLabels && !trainingEligibleToday
           ? getNextTrainingDay(scheduledDays, todayLabel)
           : null;
 
@@ -828,12 +848,12 @@ export default function HomeScreen() {
         'todayLabel:',
         todayLabel,
         'isTrainingDay:',
-        isTrainingToday,
+        trainingEligibleToday,
         'isWeek1NoSessionsYet:',
         isWeek1NoSessionsYet,
       );
 
-      setIsTrainingDay(isTrainingToday);
+      setIsTrainingDay(trainingEligibleToday);
       setNextTrainingDay(nextTraining);
 
       const nextWeekData =
@@ -852,12 +872,14 @@ export default function HomeScreen() {
       const todayWorkout = resolveTodayWorkout({
         weekDays,
         completedDayNumbers,
-        devBypassDayGate: devBypassRead || isWeek1NoSessionsYet,
+        devBypassDayGate:
+          (devBypassRead || isWeek1NoSessionsYet) && !loggedWorkoutToday,
         hasDayLabels,
         scheduledDays,
         todayLabel,
         isTrainingToday:
-          (devBypassRead || calendarTrainingToday) || isWeek1NoSessionsYet,
+          (trainingEligibleToday || isWeek1NoSessionsYet) &&
+          !loggedWorkoutToday,
         nextWeekReady,
         nextWeekFirstWorkout,
       });
@@ -1644,7 +1666,21 @@ export default function HomeScreen() {
 
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
-        {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
+        {hasLoggedWorkoutToday && !showGenerateNextWeekCTA ? (
+          <View style={styles.workoutDoneCard}>
+            <Text style={styles.workoutDonePill}>WORKOUT COMPLETE</Text>
+            <Text style={styles.workoutDoneTitle}>Great work today.</Text>
+            <View style={styles.jordanSuggestionCard}>
+              <Text style={styles.jordanSuggestionBrand}>JORDAN</Text>
+              <Text style={styles.jordanSuggestionBody}>
+                Session logged. Rest up, hit your protein, and{'\n'}
+                come back tomorrow ready to work.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
           allSessionsComplete && postWeekHeroAllowed ? (
             <View style={styles.generateCTACard}>
               <View style={styles.generateCTATitleRow}>
@@ -2154,6 +2190,8 @@ export default function HomeScreen() {
             <Text style={styles.coachUpdated}>{jordanCardUpdatedLabel}</Text>
           </View>
         </View>
+          </>
+        )}
       </ScrollView>
 
       {/* ── Weight Log Modal ── */}
@@ -2433,6 +2471,31 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
   },
   recoveryDayTitle: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginTop: Spacing.sm,
+  },
+  workoutDoneCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.success,
+    padding: Spacing.md,
+  },
+  workoutDonePill: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.success,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  workoutDoneTitle: {
     fontSize: FontSizes.heading2,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,

@@ -355,6 +355,8 @@ export default function ActiveWorkoutScreen() {
   const [exerciseSwaps, setExerciseSwaps] = useState<Record<string, string>>(
     {},
   );
+  const [exerciseTargetWeightOverrides, setExerciseTargetWeightOverrides] =
+    useState<Record<string, number>>({});
   const [coachingNotes, setCoachingNotes] = useState<
     Record<string, string | null>
   >({});
@@ -1052,10 +1054,20 @@ export default function ActiveWorkoutScreen() {
     }
   };
 
-  const handleSwapExercise = (exerciseId: string, newName: string) => {
+  const handleSwapExercise = (
+    exerciseId: string,
+    newName: string,
+    resetWeight?: boolean,
+  ) => {
     void hapticMedium();
     setExerciseSwaps((prev) => ({ ...prev, [exerciseId]: newName }));
-    showToast('Exercise swapped. Your coach will note this.');
+    if (resetWeight) {
+      setExerciseTargetWeightOverrides((prev) => ({
+        ...prev,
+        [exerciseId]: 0,
+      }));
+    }
+    showToast('Exercise swapped. Weight reset. Choose your load.');
   };
 
   const skipRest = () => {
@@ -1313,6 +1325,12 @@ export default function ActiveWorkoutScreen() {
                     onLogSet={handleLogSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}
+                    targetWeightOverride={
+                      exerciseTargetWeightOverrides[exercise.id] ?? undefined
+                    }
+                    currentWorkoutExerciseNames={(workout?.exercises ?? []).map(
+                      (e) => exerciseSwaps[e.id] ?? e.name,
+                    )}
                   />
                 </View>
               );

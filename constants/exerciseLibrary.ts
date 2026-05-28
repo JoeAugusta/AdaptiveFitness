@@ -46,6 +46,8 @@ export interface Exercise {
   isUnilateral: boolean;
   /** Three setup / execution bullets for in-workout coaching */
   cues: string[];
+  /** Grip or attachment variant e.g. 'Rope', 'Wide Grip', 'Reverse Grip' */
+  gripVariant?: string;
 }
 
 // BUG-5: Unilateral exercise handling — IDs of exercises performed one side at a time.
@@ -60,6 +62,8 @@ const UNILATERAL_IDS = new Set([
   'bi06', // Incline Dumbbell Curl
   'tr05', // Dumbbell Tricep Kickback
   'co06', // Pallof Press
+  'b05d', // Cable Row (Single Arm)
+  'tr02b', // Overhead Tricep Extension (Single Arm)
 ]);
 
 const E = (
@@ -75,7 +79,7 @@ const E = (
     | 'cues'
     | 'muscleEmphasis'
   > &
-    Pick<Exercise, 'muscleEmphasis'>,
+    Pick<Exercise, 'muscleEmphasis'> & { gripVariant?: string },
   arg2: { usesWeight?: boolean } | Pick<
     Exercise,
     'secondaryMuscleTags' | 'movementPattern' | 'compoundTier' | 'rotationGroup' | 'rotationPriority'
@@ -107,6 +111,14 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'primary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 1, secondaryMuscleTags: ['triceps', 'front_delts'] },
   ),
   E(
+    { id: 'c01a', name: 'Bench Press (Wide Grip)', primaryMuscle: 'Chest', secondaryMuscles: ['Triceps', 'Shoulders'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'mid_chest', gripVariant: 'Wide Grip' },
+    { compoundTier: 'primary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 2, secondaryMuscleTags: ['front_delts', 'triceps'] },
+  ),
+  E(
+    { id: 'c01b', name: 'Bench Press (Reverse Grip)', primaryMuscle: 'Chest', secondaryMuscles: ['Triceps', 'Shoulders'], equipment: 'barbell', category: 'compound', difficulty: 'advanced', muscleEmphasis: 'upper_chest', gripVariant: 'Reverse Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 6, secondaryMuscleTags: ['front_delts', 'triceps'] },
+  ),
+  E(
     { id: 'c02', name: 'Incline Barbell Bench Press', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders', 'Triceps'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'upper_chest' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'incline_press', rotationPriority: 1, secondaryMuscleTags: ['front_delts', 'triceps'] },
   ),
@@ -121,6 +133,18 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 'c05', name: 'Cable Chest Fly', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
     { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 1, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'c05a', name: 'Cable Fly (High to Low)', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lower_chest', gripVariant: 'High to Low' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 2, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'c05b', name: 'Cable Fly (Low to High)', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'upper_chest', gripVariant: 'Low to High' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'c05c', name: 'Cable Fly (Mid Cable)', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest', gripVariant: 'Mid Cable' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 4, secondaryMuscleTags: [] },
   ),
   E(
     { id: 'c06', name: 'Dumbbell Chest Fly', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
@@ -144,6 +168,18 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'primary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'barbell_row', rotationPriority: 1, secondaryMuscleTags: ['biceps', 'rear_delts', 'core'] },
   ),
   E(
+    { id: 'b01a', name: 'Barbell Row (Overhand Wide)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'upper_back', gripVariant: 'Overhand Wide' },
+    { compoundTier: 'primary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'barbell_row', rotationPriority: 2, secondaryMuscleTags: ['rear_delts', 'upper_back', 'core'] },
+  ),
+  E(
+    { id: 'b01b', name: 'Barbell Row (Overhand Narrow)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'mid_back', gripVariant: 'Overhand Narrow' },
+    { compoundTier: 'primary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'barbell_row', rotationPriority: 3, secondaryMuscleTags: ['rhomboids', 'core'] },
+  ),
+  E(
+    { id: 'b01c', name: 'Barbell Row (Underhand)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lats', gripVariant: 'Underhand' },
+    { compoundTier: 'primary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'barbell_row', rotationPriority: 4, secondaryMuscleTags: ['biceps', 'lower_lats', 'core'] },
+  ),
+  E(
     { id: 'b02', name: 'Deadlift', primaryMuscle: 'Back', secondaryMuscles: ['Hamstrings', 'Glutes', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'advanced', muscleEmphasis: 'lats' },
     { compoundTier: 'primary_compound', movementPattern: 'hinge', rotationGroup: 'deadlift', rotationPriority: 1, secondaryMuscleTags: ['glutes', 'hamstrings', 'upper_back', 'core'] },
   ),
@@ -156,12 +192,44 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'secondary_compound', movementPattern: 'vertical_pull', rotationGroup: 'pulldown', rotationPriority: 1, secondaryMuscleTags: ['biceps'] },
   ),
   E(
+    { id: 'b04a', name: 'Lat Pulldown (Wide Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats', gripVariant: 'Wide Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'vertical_pull', rotationGroup: 'pulldown', rotationPriority: 2, secondaryMuscleTags: ['biceps', 'teres_major'] },
+  ),
+  E(
+    { id: 'b04b', name: 'Lat Pulldown (Close Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats', gripVariant: 'Close Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'vertical_pull', rotationGroup: 'pulldown', rotationPriority: 3, secondaryMuscleTags: ['biceps', 'lower_lats'] },
+  ),
+  E(
+    { id: 'b04c', name: 'Lat Pulldown (Reverse Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats', gripVariant: 'Reverse Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'vertical_pull', rotationGroup: 'pulldown', rotationPriority: 4, secondaryMuscleTags: ['biceps', 'lower_lats'] },
+  ),
+  E(
     { id: 'b05', name: 'Seated Cable Row', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Traps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'mid_back' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'cable_row', rotationPriority: 1, secondaryMuscleTags: ['biceps', 'rear_delts'] },
   ),
   E(
+    { id: 'b05a', name: 'Cable Row (Close Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Traps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'mid_back', gripVariant: 'Close Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'cable_row', rotationPriority: 2, secondaryMuscleTags: ['biceps', 'rhomboids'] },
+  ),
+  E(
+    { id: 'b05b', name: 'Cable Row (Wide Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Shoulders', 'Traps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'upper_back', gripVariant: 'Wide Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'cable_row', rotationPriority: 3, secondaryMuscleTags: ['rear_delts', 'upper_back'] },
+  ),
+  E(
+    { id: 'b05c', name: 'Cable Row (Reverse Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats', gripVariant: 'Reverse Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'cable_row', rotationPriority: 4, secondaryMuscleTags: ['biceps', 'lower_lats'] },
+  ),
+  E(
+    { id: 'b05d', name: 'Cable Row (Single Arm)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats', gripVariant: 'Single Arm' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'cable_row', rotationPriority: 5, secondaryMuscleTags: ['biceps', 'core'] },
+  ),
+  E(
     { id: 'b06', name: 'Dumbbell Row', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'lats' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'dumbbell_row', rotationPriority: 1, secondaryMuscleTags: ['biceps', 'rear_delts'] },
+  ),
+  E(
+    { id: 'b06a', name: 'Dumbbell Row (Pronated Grip)', primaryMuscle: 'Back', secondaryMuscles: ['Biceps'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'mid_back', gripVariant: 'Pronated Grip' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_pull', rotationGroup: 'dumbbell_row', rotationPriority: 2, secondaryMuscleTags: ['rhomboids', 'rear_delts'] },
   ),
   E(
     { id: 'b07', name: 'T-Bar Row', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'mid_back' },
@@ -218,6 +286,14 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 2, secondaryMuscleTags: [] },
   ),
   E(
+    { id: 'bi02a', name: 'Dumbbell Curl (Supinated)', primaryMuscle: 'Biceps', secondaryMuscles: ['Forearms'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'short_head_bicep', gripVariant: 'Supinated' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 7, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'bi02b', name: 'Dumbbell Curl (Pronated)', primaryMuscle: 'Biceps', secondaryMuscles: ['Forearms'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_bicep', gripVariant: 'Pronated' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 8, secondaryMuscleTags: ['brachioradialis'] },
+  ),
+  E(
     { id: 'bi03', name: 'Hammer Curl', primaryMuscle: 'Biceps', secondaryMuscles: ['Forearms'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_bicep' },
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 3, secondaryMuscleTags: ['brachialis'] },
   ),
@@ -239,8 +315,32 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_pushdown', rotationPriority: 1, secondaryMuscleTags: [] },
   ),
   E(
+    { id: 'tr01a', name: 'Tricep Pushdown (Rope)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_head_tricep', gripVariant: 'Rope' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_pushdown', rotationPriority: 2, secondaryMuscleTags: ['long_head_tricep'] },
+  ),
+  E(
+    { id: 'tr01b', name: 'Tricep Pushdown (Straight Bar)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_head_tricep', gripVariant: 'Straight Bar' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_pushdown', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'tr01c', name: 'Tricep Pushdown (V-Bar)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_head_tricep', gripVariant: 'V-Bar' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_pushdown', rotationPriority: 4, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'tr01d', name: 'Tricep Pushdown (Reverse Grip)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_tricep', gripVariant: 'Reverse Grip' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_pushdown', rotationPriority: 5, secondaryMuscleTags: [] },
+  ),
+  E(
     { id: 'tr02', name: 'Overhead Tricep Extension', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_tricep' },
     { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 2, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'tr02a', name: 'Overhead Tricep Extension (Rope)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_tricep', gripVariant: 'Rope' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'tr02b', name: 'Overhead Tricep Extension (Single Arm)', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_tricep', gripVariant: 'Single Arm' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 4, secondaryMuscleTags: [] },
   ),
   E(
     { id: 'tr03', name: 'Skull Crushers', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'barbell', category: 'isolation', difficulty: 'intermediate', muscleEmphasis: 'long_head_tricep' },

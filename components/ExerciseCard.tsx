@@ -26,6 +26,7 @@ import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
+import { EXERCISES } from '../constants/exerciseLibrary';
 
 function stripEmDash(text: string): string {
   return text
@@ -319,7 +320,11 @@ interface ExerciseCardProps {
     reps: number,
     rpe: number | null,
   ) => void;
-  onSwapExercise: (exerciseId: string, newName: string) => void;
+  onSwapExercise: (exerciseId: string, newName: string, resetWeight?: boolean) => void;
+  /** When set (e.g. after swap), overrides exercise.targetWeight for display and defaults */
+  targetWeightOverride?: number;
+  /** Display names already in today's workout — excludes swap candidates */
+  currentWorkoutExerciseNames?: string[];
 }
 
 export default function ExerciseCard({
@@ -336,8 +341,15 @@ export default function ExerciseCard({
   experience: _experience = 'intermediate',
   onLogSet,
   onSwapExercise,
+  targetWeightOverride,
+  currentWorkoutExerciseNames,
 }: ExerciseCardProps) {
   const { lbsToDisplay, displayToLbs, formatWorkoutWeight, isMetric } = useMetric();
+
+  const effectiveTargetWeight =
+    targetWeightOverride !== undefined
+      ? targetWeightOverride
+      : exercise.targetWeight;
 
   const displayName = swappedName || exercise.name;
   const exerciseNameLower = (
@@ -351,7 +363,7 @@ export default function ExerciseCard({
       (exercise.equipment === undefined && exercise.usesWeight === false)) &&
     !isWeightedVariant;
   const tw =
-    exercise.targetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
+    effectiveTargetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
   const isSelfSelectMode =
     !isBodyweightExercise && tw === 0 && goal !== 'strength';
 
@@ -430,7 +442,7 @@ export default function ExerciseCard({
   }, [coachingLoading, coachingNote, coachingSkelOpacity, coachingContentOpacity]);
 
   const isFrozenWarmupMode =
-    (exercise.targetWeight ?? 0) > 0 ||
+    (effectiveTargetWeight ?? 0) > 0 ||
     (exercise.setTargets != null && exercise.setTargets.length > 0);
 
   /** Mode B (W2+): frozen at mount. Mode A uses reactiveWarmupBase from Set 1 only. */
@@ -442,7 +454,7 @@ export default function ExerciseCard({
     ) {
       return exercise.setTargets[0].targetWeight;
     }
-    return exercise.targetWeight ?? 0;
+    return effectiveTargetWeight ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: snapshot on mount only
   }, []);
 
@@ -450,7 +462,10 @@ export default function ExerciseCard({
     ? frozenWarmupBase
     : reactiveWarmupBase;
 
-  const wantsWarmupByRule = shouldShowWarmups(exercise);
+  const wantsWarmupByRule = shouldShowWarmups({
+    ...exercise,
+    targetWeight: effectiveTargetWeight,
+  });
 
   useEffect(() => {
     if (__DEV__) {
@@ -495,7 +510,7 @@ export default function ExerciseCard({
     const perSetTargetWeight = setTarget?.targetWeight ?? 0;
 
     const exerciseTopSetWeight =
-      exercise.targetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
+      effectiveTargetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
 
     const isWeek1SelfSelect = isPyramid && exerciseTopSetWeight === 0;
 
@@ -693,7 +708,7 @@ export default function ExerciseCard({
     ) {
       return Math.max(0, ...targets.map((t) => t.targetWeight ?? 0));
     }
-    return exercise.targetWeight ?? firstTarget?.targetWeight ?? 0;
+    return effectiveTargetWeight ?? firstTarget?.targetWeight ?? 0;
   })();
   const targetSummary =
     firstTarget != null
@@ -764,7 +779,7 @@ export default function ExerciseCard({
     );
   }, [
     previousSets,
-    exercise.targetWeight,
+    effectiveTargetWeight,
     exercise.name,
     exercise.targetRpe,
     exercise.reps,
@@ -816,6 +831,44 @@ export default function ExerciseCard({
     Object.values(trendTimeouts.current).forEach((timeoutId) => clearTimeout(timeoutId));
   }, []);
 
+  const swapCandidates = useMemo(() => {
+    const currentEx = EXERCISES.find(
+      (e) =>
+        e.name.toLowerCase().trim() === exercise.name.toLowerCase().trim(),
+    );
+
+    if (!currentEx) {
+      return (exercise.alternatives ?? []).slice(0, 5);
+    }
+
+    const currentNames = new Set(
+      (currentWorkoutExerciseNames ?? []).map((n) => n.toLowerCase().trim()),
+    );
+
+    const patternMatches = EXERCISES.filter(
+      (e) =>
+        e.movementPattern === currentEx.movementPattern &&
+        e.id !== currentEx.id &&
+        e.name.toLowerCase().trim() !== exercise.name.toLowerCase().trim() &&
+        !currentNames.has(e.name.toLowerCase().trim()),
+    ).sort((a, b) => a.rotationPriority - b.rotationPriority);
+
+    if (patternMatches.length >= 3) {
+      return patternMatches.slice(0, 5).map((e) => e.name);
+    }
+
+    const muscleMatches = EXERCISES.filter(
+      (e) =>
+        e.primaryMuscle === currentEx.primaryMuscle &&
+        e.compoundTier === currentEx.compoundTier &&
+        e.id !== currentEx.id &&
+        e.name.toLowerCase().trim() !== exercise.name.toLowerCase().trim() &&
+        !currentNames.has(e.name.toLowerCase().trim()),
+    ).sort((a, b) => a.rotationPriority - b.rotationPriority);
+
+    return muscleMatches.slice(0, 5).map((e) => e.name);
+  }, [exercise.name, exercise.alternatives, currentWorkoutExerciseNames]);
+
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <View style={styles.card}>
@@ -860,7 +913,7 @@ export default function ExerciseCard({
                   : 'Week 1 baseline. Log your honest effort after each set.'}
               </Text>
               {weekNumber === 1 &&
-                (!exercise.targetWeight || exercise.targetWeight === 0) && (
+                (!effectiveTargetWeight || effectiveTargetWeight === 0) && (
                   <Text style={styles.jordanNoteSubtext}>
                     {`Pick a weight that lands at RPE ${firstTargetRpe}. I'll program Week 2 from your actual numbers.`}
                   </Text>
@@ -1306,13 +1359,13 @@ export default function ExerciseCard({
           <Text style={styles.swapSheetSubtitle}>
             Choose an alternative for {displayName}
           </Text>
-          {exercise.alternatives.map((alt) => (
+          {swapCandidates.map((alt) => (
             <TouchableOpacity
               key={alt}
               style={styles.swapOption}
               activeOpacity={0.7}
               onPress={() => {
-                onSwapExercise(exercise.id, alt);
+                onSwapExercise(exercise.id, alt, true);
                 setShowSwapSheet(false);
               }}
             >

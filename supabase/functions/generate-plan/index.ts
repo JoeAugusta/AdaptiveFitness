@@ -1854,6 +1854,26 @@ Distribute exercises to ensure all target muscle groups reach minimum developmen
 - Week 1: focus on foundational movements. Save advanced variations for later weeks.
 - Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
 
+GRIP AND ATTACHMENT VARIATION:
+For cable exercises, always specify the attachment or grip variant in the exercise name using parentheses.
+Examples:
+- 'Tricep Pushdown (Rope)' not 'Tricep Pushdown'
+- 'Cable Row (Close Grip)' not 'Seated Cable Row'
+- 'Lat Pulldown (Wide Grip)' not 'Lat Pulldown'
+- 'Cable Fly (High to Low)' not 'Cable Chest Fly'
+
+For barbell rows, specify grip:
+- 'Barbell Row (Overhand Wide)' for upper back emphasis
+- 'Barbell Row (Underhand)' for lat and bicep emphasis
+
+Vary grip/attachment across workout days and weeks to distribute stimulus across all portions of the target muscle. Do not use the same grip variant twice in the same week for the same exercise category.
+
+Valid cable tricep attachments: Rope, Straight Bar, V-Bar, Reverse Grip, Single Arm.
+Valid cable row grips: Close Grip, Wide Grip, Reverse Grip, Single Arm.
+Valid lat pulldown grips: Wide Grip, Close Grip, Reverse Grip.
+Valid cable fly positions: High to Low, Low to High, Mid Cable.
+Valid barbell row grips: Overhand Wide, Overhand Narrow, Underhand.
+
 ${MOVEMENT_PATTERN_BLOCK}`;
     }
 

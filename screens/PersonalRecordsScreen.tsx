@@ -37,7 +37,7 @@ export default function PersonalRecordsScreen() {
         setLoading(false);
         return;
       }
-      const records = await fetchPersonalRecords(session.user.id, 50);
+      const records = await fetchPersonalRecords(session.user.id, undefined, 50);
       setPrs(records);
       setLoading(false);
     })();

@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { stripEmDash } from '../utils/jordanText';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -80,9 +81,9 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
   return (
     <View style={styles.summaryContent}>
       <View style={[styles.headlineCard, headlineBorder]}>
-        <Text style={styles.headline}>{summary.headline}</Text>
+        <Text style={styles.headline}>{stripEmDash(summary.headline)}</Text>
         <RatingBadge rating={summary.performanceRating} />
-        <Text style={styles.performanceSummary}>{summary.performanceSummary}</Text>
+        <Text style={styles.performanceSummary}>{stripEmDash(summary.performanceSummary)}</Text>
       </View>
 
       <Text style={styles.sectionHeadingWins}>{"THIS WEEK'S WINS"}</Text>
@@ -97,7 +98,7 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
               ]}
             >
               <Text style={styles.checkIcon}>✓</Text>
-              <Text style={styles.highlightText}>{item}</Text>
+              <Text style={styles.highlightText}>{stripEmDash(item)}</Text>
             </View>
           ))}
         </View>
@@ -105,19 +106,19 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
 
       <Text style={styles.sectionHeadingNext}>{"WHAT'S CHANGING NEXT WEEK"}</Text>
       <View style={styles.contentCard}>
-        <Text style={styles.sectionBody}>{summary.nextWeekChanges}</Text>
+        <Text style={styles.sectionBody}>{stripEmDash(summary.nextWeekChanges)}</Text>
       </View>
 
       <Text style={styles.sectionHeadingNutrition}>NUTRITION CHECK-IN</Text>
       <View style={styles.contentCard}>
-        <Text style={styles.sectionBody}>{summary.nutritionCheckin}</Text>
+        <Text style={styles.sectionBody}>{stripEmDash(summary.nutritionCheckin)}</Text>
       </View>
 
       <View style={styles.jordanNoteCard}>
         <View style={styles.jordanLabelRow}>
           <Text style={styles.jordanLabel}>JORDAN</Text>
         </View>
-        <Text style={styles.jordanNoteText}>{summary.motivationalNote}</Text>
+        <Text style={styles.jordanNoteText}>{stripEmDash(summary.motivationalNote)}</Text>
       </View>
     </View>
   );

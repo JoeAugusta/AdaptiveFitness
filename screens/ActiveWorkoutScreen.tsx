@@ -44,13 +44,17 @@ import {
 } from '../utils/restTimerAlerts';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { JordanAvatar } from '../components/JordanAvatar';
+import { stripEmDash } from '../utils/jordanText';
 
-function stripEmDash(text: string): string {
-  return text
-    .replace(/ — /g, '. ')
-    .replace(/—/g, '.')
-    .trim();
-}
+const WORKOUT_DRAFT_KEY = 'hone_workout_draft';
+
+type WorkoutDraft = {
+  planId: string;
+  dayNumber: number;
+  weekNumber: number;
+  sets: LoggedSet[];
+  savedAt: number;
+};
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
@@ -421,6 +425,59 @@ export default function ActiveWorkoutScreen() {
   const [resolvedPlanWeekNumber, setResolvedPlanWeekNumber] = useState<
     number | null
   >(null);
+
+  // Draft crash-recovery: called after loadWorkoutData resolves so planId/dayNumber are known
+  const checkDraft = async (planId: string, dayNumber: number) => {
+    try {
+      const raw = await AsyncStorage.getItem(WORKOUT_DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as WorkoutDraft;
+
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        !Array.isArray(parsed.sets) ||
+        parsed.sets.length === 0
+      ) {
+        void AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+        return;
+      }
+
+      // Discard if from a different plan or workout day
+      if (parsed.planId !== planId || parsed.dayNumber !== dayNumber) {
+        void AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+        return;
+      }
+
+      // Discard if older than 7 days
+      if (parsed.savedAt < Date.now() - 7 * 24 * 60 * 60 * 1000) {
+        void AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+        return;
+      }
+
+      Alert.alert(
+        'Unsaved workout found',
+        'You have sets from a previous session that were not saved. Resume it?',
+        [
+          {
+            text: 'Resume',
+            onPress: () => {
+              setSets(parsed.sets);
+            },
+          },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => {
+              void AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+            },
+          },
+        ],
+      );
+    } catch {
+      void AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+    }
+  };
 
   // Load workout data
   useEffect(() => {
@@ -811,6 +868,7 @@ export default function ActiveWorkoutScreen() {
         typeof weekData?.phase === 'string' ? weekData.phase : null,
       );
       setWorkout({ title: dayData.title, goal: planGoal, goalLift: planGoalLift, exercises });
+      void checkDraft(idForQueries, dayData.dayNumber);
     } catch (e) {
       console.error('Failed to load workout:', e);
       setSessionPlanIdForLogs(null);
@@ -1026,6 +1084,16 @@ export default function ActiveWorkoutScreen() {
     const newSets = [...sets, newSet];
     setSets(newSets);
 
+    // Persist draft so a crash can be recovered on next mount
+    const draft: WorkoutDraft = {
+      planId: sessionPlanIdForLogs ?? '',
+      dayNumber: sessionDayNumber ?? params.dayNumber,
+      weekNumber: sessionWeekForLogs,
+      sets: newSets,
+      savedAt: Date.now(),
+    };
+    void AsyncStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft));
+
     if (newSets.length < totalSetsCount) {
       const duration = exercise
         ? resolveRestDurationSeconds(exercise)
@@ -1103,30 +1171,25 @@ export default function ActiveWorkoutScreen() {
   const handleSaveAndFinish = async () => {
     if (fatigueRating === null) return;
 
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
+    const planIdForLog =
+      sessionPlanIdForLogs &&
+      typeof sessionPlanIdForLogs === 'string' &&
+      sessionPlanIdForLogs.length >= 10
+        ? sessionPlanIdForLogs
+        : resolvedPlanId &&
+            typeof resolvedPlanId === 'string' &&
+            resolvedPlanId.length >= 10
+          ? resolvedPlanId
+          : typeof params.planId === 'string'
+            ? params.planId.trim()
+            : params.planId;
 
-      const planIdForLog =
-        sessionPlanIdForLogs &&
-        typeof sessionPlanIdForLogs === 'string' &&
-        sessionPlanIdForLogs.length >= 10
-          ? sessionPlanIdForLogs
-          : resolvedPlanId &&
-              typeof resolvedPlanId === 'string' &&
-              resolvedPlanId.length >= 10
-            ? resolvedPlanId
-            : typeof params.planId === 'string'
-              ? params.planId.trim()
-              : params.planId;
+    const dayNumberForLog =
+      typeof sessionDayNumber === 'number'
+        ? sessionDayNumber
+        : params.dayNumber;
 
-      const dayNumberForLog =
-        typeof sessionDayNumber === 'number'
-          ? sessionDayNumber
-          : params.dayNumber;
-
+    if (__DEV__) {
       let planIdSource: string;
       if (
         sessionPlanIdForLogs &&
@@ -1143,24 +1206,28 @@ export default function ActiveWorkoutScreen() {
       } else {
         planIdSource = 'route.params.planId';
       }
+      console.log('[SAVE workout_log]', {
+        plan_id: planIdForLog,
+        week_number: sessionWeekForLogs,
+        day_number: dayNumberForLog,
+        setsCount: sets.length,
+        planIdSource,
+        dayNumberSource:
+          typeof sessionDayNumber === 'number'
+            ? 'plan_json.dayNumber'
+            : 'route.params',
+      });
+    }
 
-      if (__DEV__) {
-        console.log('[SAVE workout_log]', {
-          plan_id: planIdForLog,
-          week_number: sessionWeekForLogs,
-          day_number: dayNumberForLog,
-          setsCount: sets.length,
-          planIdSource,
-          dayNumberSource:
-            typeof sessionDayNumber === 'number'
-              ? 'plan_json.dayNumber'
-              : 'route.params',
-        });
-      }
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
 
       // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.
       // Do NOT double the value before storing — store exactly what the user entered.
-      await supabase.from('workout_logs').insert({
+      const { error: insertError } = await supabase.from('workout_logs').insert({
         user_id: userId,
         plan_id: planIdForLog,
         week_number: sessionWeekForLogs,
@@ -1170,8 +1237,28 @@ export default function ActiveWorkoutScreen() {
         notes: sessionNotes || null,
         sets_json: sets,
       });
-    } catch {
-      Alert.alert('Error', 'Failed to save workout. Please try again.');
+
+      if (insertError) throw insertError;
+
+      // Clear crash-recovery draft on successful save
+      await AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+    } catch (err) {
+      console.error('[SAVE workout_log] failed:', err);
+      Alert.alert(
+        'Save Failed',
+        'Your workout could not be saved. Try again?',
+        [
+          {
+            text: 'Retry',
+            onPress: () => { void handleSaveAndFinish(); },
+          },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => navigation.goBack(),
+          },
+        ],
+      );
       return;
     }
 

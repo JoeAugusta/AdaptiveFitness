@@ -49,33 +49,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let initialEventReceived = false;
+    // `settled` is set synchronously (before any await) so concurrent callers bail out.
+    let settled = false;
 
+    // Resolves authReady exactly once — whichever path fires first wins.
+    // hasPlans is awaited before setAuthReady so SplashScreen navigates
+    // with the correct value on the first render.
+    const settle = async (s: Session | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      setSession(s);
+      if (s?.user) {
+        const hp = await fetchHasPlans(s.user.id);
+        setHasPlans(hp);
+      } else {
+        setHasPlans(false);
+      }
+      setAuthReady(true);
+    };
+
+    // Fallback: force authReady after 3 s regardless — prevents infinite hang
+    // on cold start if Supabase AsyncStorage read stalls or network is absent.
+    const timeoutId = setTimeout(() => {
+      void settle(null);
+    }, 3000);
+
+    // Primary path: getSession() reads from AsyncStorage and resolves reliably
+    // on cold start. Do not wait for onAuthStateChange's INITIAL_SESSION event —
+    // that event is not guaranteed to fire before the timeout on all devices.
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => settle(s))
+      .catch(() => settle(null));
+
+    // Secondary path: onAuthStateChange handles post-settlement events
+    // (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED).
+    // If INITIAL_SESSION fires before getSession() resolves we use it too —
+    // the `settled` guard ensures only the first caller wins.
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      (event, newSession) => {
+        if (!settled) {
+          void settle(newSession ?? null);
+          return;
+        }
+        // Post-settlement: keep session state in sync for sign-in/out/refresh.
         const s = newSession ?? null;
         setSession(s);
-
         if (s?.user) {
-          const hp = await fetchHasPlans(s.user.id);
-          setHasPlans(hp);
+          void fetchHasPlans(s.user.id).then(setHasPlans);
         } else {
           setHasPlans(false);
-        }
-
-        // Only mark ready after INITIAL_SESSION fires.
-        // This is always the first event on cold launch —
-        // it confirms Supabase has finished reading AsyncStorage.
-        // TOKEN_REFRESHED, SIGNED_IN etc. may fire afterward
-        // but authReady stays true once set.
-        if (!initialEventReceived) {
-          initialEventReceived = true;
-          setAuthReady(true);
         }
       },
     );
 
     return () => {
+      clearTimeout(timeoutId);
       authListener.subscription.unsubscribe();
     };
   }, []);

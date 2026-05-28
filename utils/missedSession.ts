@@ -1,5 +1,4 @@
 import { supabase } from '../Lib/supabase';
-import { getTodayDayLabel } from './dateUtils';
 
 export interface MissedSessionResult {
   isMissed: boolean;
@@ -12,13 +11,6 @@ export interface MissedSessionResult {
   tomorrowDayLabel: string;
 }
 
-const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-function getTomorrowDayLabel(todayLabel: string): string {
-  const idx = DAY_ORDER.indexOf(todayLabel);
-  return DAY_ORDER[(idx + 1) % 7];
-}
-
 /** `plan_json.weeks` entries may use weekNumber, week_number, or number */
 function getPlanWeekNumber(w: unknown): number | undefined {
   if (!w || typeof w !== 'object') return undefined;
@@ -27,82 +19,25 @@ function getPlanWeekNumber(w: unknown): number | undefined {
   return typeof n === 'number' && !Number.isNaN(n) ? n : undefined;
 }
 
-/** Returns true if current local time is past 8pm — training window has closed. */
-function isTrainingWindowClosed(): boolean {
-  return new Date().getHours() >= 20;
-}
-
 export async function checkMissedSession(
-  planId: string,
-  weekNumber: number,
+  _planId: string,
+  _weekNumber: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  planJson: any,
+  _planJson: any,
 ): Promise<MissedSessionResult> {
-  const empty: MissedSessionResult = {
+  // TODO: Missed-session detection is temporarily disabled.
+  // The previous implementation mapped today's weekday label to a workout session
+  // via scheduledDays.indexOf(todayLabel), which produced false positives for
+  // users who started their plan mid-week (e.g. starting on Wednesday meant
+  // the detector expected session 2 instead of session 1).
+  // This needs to be rewritten to use completion-count anchoring (same as
+  // resolveTodayWorkout in HomeScreen) before it can be re-enabled.
+  // A false "missed workout" message is worse UX than no missed-workout detection.
+  return {
     isMissed: false,
     missedSession: null,
     canReschedule: false,
     tomorrowDayLabel: '',
-  };
-
-  // Only check after 8pm
-  if (!isTrainingWindowClosed()) return empty;
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
-  if (!userId) return empty;
-
-  const todayLabel = getTodayDayLabel();
-  const scheduledDays: string[] = planJson.scheduledDays ?? [];
-
-  // Only relevant if today was a scheduled training day
-  if (!scheduledDays.includes(todayLabel)) return empty;
-
-  // Find today's workout session in the current week
-  const currentWeekObj = planJson.weeks?.find(
-    (w: unknown) => getPlanWeekNumber(w) === weekNumber,
-  );
-  if (!currentWeekObj) return empty;
-
-  // Map scheduled training days to day objects by position
-  const workoutDays = (currentWeekObj as { days?: unknown[] }).days?.filter(
-    (d: unknown) => (d as { type?: string }).type === 'workout',
-  ) ?? [];
-  const todayIndex = scheduledDays.indexOf(todayLabel);
-  const todaySession = (workoutDays[todayIndex] ?? null) as {
-    dayNumber?: number;
-    title?: string;
-    muscleGroups?: string[];
-  } | null;
-  if (!todaySession || typeof todaySession.dayNumber !== 'number') return empty;
-
-  // Check if today's session was already logged
-  const { data: log } = await supabase
-    .from('workout_logs')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('plan_id', planId)
-    .eq('week_number', weekNumber)
-    .eq('day_number', todaySession.dayNumber)
-    .maybeSingle();
-
-  if (log) return empty; // Already logged — not missed
-
-  // Confirmed missed. Check if tomorrow is a rest day (window available)
-  const tomorrowLabel = getTomorrowDayLabel(todayLabel);
-  const canReschedule = !scheduledDays.includes(tomorrowLabel);
-
-  return {
-    isMissed: true,
-    missedSession: {
-      dayNumber: todaySession.dayNumber,
-      title: String(todaySession.title ?? ''),
-      muscleGroups: todaySession.muscleGroups ?? [],
-    },
-    canReschedule,
-    tomorrowDayLabel: tomorrowLabel,
   };
 }
 

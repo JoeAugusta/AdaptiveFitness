@@ -10,49 +10,11 @@ export type PersonalRecord = {
   isRecent: boolean;
 };
 
-type PlanJsonWeek = {
-  days?: Array<{
-    exercises?: Array<{ id?: string; name?: string }>;
-  }>;
-};
-
-type PlanJsonShape = {
-  weeks?: PlanJsonWeek[];
-};
-
-/**
- * Build a map of exerciseId → exerciseName from a plan_json object.
- * Scans all weeks → days → exercises.
- */
-function buildExerciseIdMap(planJson: unknown): Record<string, string> {
-  const map: Record<string, string> = {};
-  const pj = planJson as PlanJsonShape | null | undefined;
-  if (!pj?.weeks) return map;
-  for (const week of pj.weeks) {
-    for (const day of week.days ?? []) {
-      for (const ex of day.exercises ?? []) {
-        if (ex.id && ex.name) {
-          map[ex.id] = ex.name;
-        }
-      }
-    }
-  }
-  return map;
-}
-
 type LogRow = {
   sets_json?: unknown;
   logged_at?: string | null;
   week_number?: number | null;
-  plans?: { plan_json?: unknown } | { plan_json?: unknown }[] | null;
 };
-
-function planJsonFromLog(log: LogRow): unknown {
-  const p = log.plans;
-  if (p == null) return undefined;
-  const row = Array.isArray(p) ? p[0] : p;
-  return row?.plan_json;
-}
 
 type RawSet = {
   weightLbs?: number;
@@ -64,48 +26,35 @@ type RawSet = {
 };
 
 /**
- * Fetch all-time personal records for a user across all plans.
+ * Fetch personal records for a user, optionally scoped to a single plan.
  * Returns top N exercises by estimated 1RM, sorted descending.
  */
 export async function fetchPersonalRecords(
   userId: string,
+  planId?: string,
   limit = 8,
 ): Promise<PersonalRecord[]> {
-  const { data: logs, error } = await supabase
+  let query = supabase
     .from('workout_logs')
-    .select(
-      `
-      sets_json,
-      logged_at,
-      week_number,
-      plans ( plan_json )
-    `,
-    )
+    .select('sets_json, logged_at, week_number')
     .eq('user_id', userId)
     .eq('skipped', false)
     .order('logged_at', { ascending: true });
+
+  if (planId) {
+    query = query.eq('plan_id', planId);
+  }
+
+  const { data: logs, error } = await query;
 
   if (error || !logs) return [];
 
   const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
 
-  const planMapCache = new WeakMap<object, Record<string, string>>();
-
   const bests: Record<string, PersonalRecord> = {};
 
   for (const log of logs as LogRow[]) {
-    const planJson = planJsonFromLog(log);
-    let idMap: Record<string, string> = {};
-    if (planJson != null && typeof planJson === 'object') {
-      if (planMapCache.has(planJson)) {
-        idMap = planMapCache.get(planJson)!;
-      } else {
-        idMap = buildExerciseIdMap(planJson);
-        planMapCache.set(planJson, idMap);
-      }
-    }
-
-    const rawSets = (log as { sets_json?: unknown }).sets_json;
+    const rawSets = log.sets_json;
     const sets: unknown[] = Array.isArray(rawSets)
       ? rawSets
       : typeof rawSets === 'string'
@@ -134,15 +83,12 @@ export async function fetchPersonalRecords(
       const reps = Number(s.reps ?? 0);
       if (weight <= 0 || reps <= 0) continue;
 
-      const rawId = s.exerciseId ?? '';
       const resolvedName: string =
-        rawId && idMap[rawId]
-          ? idMap[rawId]
-          : (typeof s.exerciseName === 'string' && s.exerciseName.trim()
-              ? s.exerciseName.trim()
-              : typeof s.name === 'string' && s.name.trim()
-                ? s.name.trim()
-                : '');
+        (typeof s.exerciseName === 'string' && s.exerciseName.trim()
+          ? s.exerciseName.trim()
+          : typeof s.name === 'string' && s.name.trim()
+            ? s.name.trim()
+            : '');
 
       if (!resolvedName) continue;
 

@@ -27,13 +27,7 @@ import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
 import { EXERCISES } from '../constants/exerciseLibrary';
-
-function stripEmDash(text: string): string {
-  return text
-    .replace(/ — /g, '. ')
-    .replace(/—/g, '.')
-    .trim();
-}
+import { stripEmDash } from '../utils/jordanText';
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
 

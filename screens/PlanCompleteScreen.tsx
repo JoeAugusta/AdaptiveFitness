@@ -22,6 +22,7 @@ import {
   LineHeights,
 } from '../constants/design';
 import { JordanAvatar } from '../components/JordanAvatar';
+import { stripEmDash } from '../utils/jordanText';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanComplete'>;
@@ -188,7 +189,7 @@ export default function PlanCompleteScreen() {
     );
   }
 
-  const paragraphs = review.jordanReview.split(/\n\n+/).filter(Boolean);
+  const paragraphs = review.jordanReview.split(/\n\n+/).filter(Boolean).map((p) => stripEmDash(p));
   const highlightRows = review.highlights.slice(0, 3);
   const lifts = review.stats.topLiftGains.slice(0, 3);
 
@@ -202,7 +203,7 @@ export default function PlanCompleteScreen() {
         <Text style={styles.sectionHeading}>PLAN COMPLETE</Text>
 
         <View style={styles.heroBlock}>
-          <Text style={styles.heroHeadline}>{review.headline}</Text>
+          <Text style={styles.heroHeadline}>{stripEmDash(review.headline)}</Text>
           <View style={[styles.heroUnderline, { backgroundColor: underlineColor }]} />
           <View style={styles.avatarRow}>
             <View style={styles.avatarCircleWrap}>
@@ -255,7 +256,7 @@ export default function PlanCompleteScreen() {
               <View style={styles.checkCircle}>
                 <Text style={styles.checkMark}>✓</Text>
               </View>
-              <Text style={styles.highlightText}>{h}</Text>
+              <Text style={styles.highlightText}>{stripEmDash(h)}</Text>
             </View>
           </View>
         ))}
@@ -276,7 +277,7 @@ export default function PlanCompleteScreen() {
 
         <View style={styles.whatsNextCard}>
           <Text style={styles.sectionHeading}>WHAT&apos;S NEXT</Text>
-          <Text style={styles.nextRationale}>{review.nextPlanRationale}</Text>
+          <Text style={styles.nextRationale}>{stripEmDash(review.nextPlanRationale)}</Text>
           <View
             style={[
               styles.goalChip,

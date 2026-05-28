@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
+import { stripEmDash } from '../utils/jordanText';
 import { hapticPR, hapticSuccess } from '../utils/haptics';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
@@ -714,7 +715,7 @@ export default function WorkoutCompleteScreen() {
               <Text style={styles.macroCardEmoji}>📊</Text>
               <Text style={styles.macroCardTitle}>Macros Updated</Text>
             </View>
-            <Text style={styles.macroCardBody}>{macroAdjustment}</Text>
+            <Text style={styles.macroCardBody}>{stripEmDash(macroAdjustment ?? '')}</Text>
           </View>
         ) : null}
 
@@ -748,7 +749,7 @@ export default function WorkoutCompleteScreen() {
                 />
               </View>
             ) : (
-              <Text style={styles.coachNote}>{coachNoteDisplay}</Text>
+              <Text style={styles.coachNote}>{stripEmDash(coachNoteDisplay ?? '')}</Text>
             )}
           </View>
         )}

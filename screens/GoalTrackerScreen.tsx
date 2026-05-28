@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../constants/design';
+import { stripEmDash } from '../utils/jordanText';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import type { CaloriePace } from '../utils/projections';
 import {
@@ -846,7 +847,7 @@ export default function GoalTrackerScreen() {
                 animateEntry={false}
               />
               {isAhead === false && weeklyCoachSnippet ? (
-                <Text style={styles.coachBehindNote}>{weeklyCoachSnippet}</Text>
+                <Text style={styles.coachBehindNote}>{stripEmDash(weeklyCoachSnippet ?? '')}</Text>
               ) : null}
               <View style={styles.trackerCalloutStrip}>
                 {(

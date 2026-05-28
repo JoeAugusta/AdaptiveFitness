@@ -20,6 +20,7 @@ import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../co
 import { useAuth } from '../../contexts/AuthContext';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { JordanAvatar } from '../../components/JordanAvatar';
+import { stripEmDash } from '../../utils/jordanText';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -195,6 +196,16 @@ function isGeneratePlanOverloaded(data: unknown): boolean {
   );
 }
 
+/** Returns the date of the next Monday (never today, even if today is Monday). */
+function getNextMonday(): Date {
+  const d = new Date();
+  const dayOfWeek = d.getDay(); // 0 = Sun, 1 = Mon … 6 = Sat
+  const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+  d.setDate(d.getDate() + daysUntilMonday);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 const cleanJordanMessage = (msg: string | null): string | null => {
   if (!msg) return null;
   return msg
@@ -225,6 +236,10 @@ export default function BuildingPlanScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [jordanMessage, setJordanMessage] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
+  const [startDateDecided, setStartDateDecided] = useState(false);
+  const [savingStartDate, setSavingStartDate] = useState(false);
+  // Prompt is skipped on Monday — plan already starts on the "right" day
+  const todayIsMonday = new Date().getDay() === 1;
   const [weekNumber] = useState(1);
   const [firstDayNumber, setFirstDayNumber] = useState<number>(1);
   const [firstWorkoutTitle, setFirstWorkoutTitle] = useState<string>('Workout');
@@ -359,6 +374,38 @@ export default function BuildingPlanScreen() {
     const elapsed = Date.now() - startTime;
     const remaining = Math.max(0, minMs - elapsed);
     setTimeout(() => navigation.navigate('Dashboard'), remaining);
+  };
+
+  const handleStartNextMonday = async () => {
+    if (!planId) return;
+    setSavingStartDate(true);
+    try {
+      const nextMonday = getNextMonday();
+      const startDateISO = nextMonday.toISOString().split('T')[0];
+      // plans table has no start_date column — store in plan_json.startDate instead.
+      // TODO: if a top-level start_date column is added to the plans table, migrate this.
+      const { data: currentPlan } = await supabase
+        .from('plans')
+        .select('plan_json')
+        .eq('id', planId)
+        .maybeSingle();
+      if (currentPlan?.plan_json) {
+        await supabase
+          .from('plans')
+          .update({
+            plan_json: {
+              ...(currentPlan.plan_json as Record<string, unknown>),
+              startDate: startDateISO,
+            },
+          })
+          .eq('id', planId);
+      }
+    } catch {
+      // Non-fatal — proceed to dashboard regardless
+    }
+    setSavingStartDate(false);
+    scheduleReEngagementPush();
+    navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
   };
 
   const generateAndSavePlan = async (isRetry: boolean) => {
@@ -743,7 +790,7 @@ export default function BuildingPlanScreen() {
               <View style={styles.handoffJordanCard}>
                 <Text style={styles.handoffJordanLabel}>JORDAN</Text>
                 <Text style={styles.handoffJordanText}>
-                  {cleanJordanMessage(jordanMessage)}
+                  {stripEmDash(cleanJordanMessage(jordanMessage) ?? '')}
                 </Text>
               </View>
             ) : (
@@ -752,59 +799,88 @@ export default function BuildingPlanScreen() {
               </Text>
             )}
 
-            <TouchableOpacity
-              style={styles.handoffPrimaryBtn}
-              activeOpacity={0.8}
-              onPress={() => {
-                if (planId) {
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Dashboard' }],
-                  });
-                  setTimeout(() => {
-                    navigation.navigate('ActiveWorkout', {
-                      planId: planId!,
-                      weekNumber: weekNumber,
-                      dayNumber: firstDayNumber,
-                      workoutTitle: firstWorkoutTitle,
+            {!todayIsMonday && !startDateDecided ? (
+              <View style={styles.startDateCard}>
+                <Text style={styles.startDateTitle}>When do you want to start?</Text>
+                <TouchableOpacity
+                  style={styles.startDateOption}
+                  activeOpacity={0.8}
+                  onPress={() => setStartDateDecided(true)}
+                >
+                  <Text style={styles.startDateOptionText}>Start today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.startDateOption, styles.startDateOptionOutline]}
+                  activeOpacity={0.8}
+                  onPress={handleStartNextMonday}
+                  disabled={savingStartDate}
+                >
+                  {savingStartDate ? (
+                    <ActivityIndicator color={Colors.accent} />
+                  ) : (
+                    <Text style={styles.startDateOptionOutlineText}>
+                      Start next Monday
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.handoffPrimaryBtn}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (planId) {
+                      navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'Dashboard' }],
+                      });
+                      setTimeout(() => {
+                        navigation.navigate('ActiveWorkout', {
+                          planId: planId!,
+                          weekNumber: weekNumber,
+                          dayNumber: firstDayNumber,
+                          workoutTitle: firstWorkoutTitle,
+                        });
+                      }, 100);
+                    } else {
+                      navigation.navigate('Dashboard');
+                    }
+                  }}
+                >
+                  <Text style={styles.handoffPrimaryBtnText}>
+                    Start Workout Now →
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.handoffSecondaryBtn}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    scheduleReEngagementPush();
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Dashboard' }],
                     });
-                  }, 100);
-                } else {
-                  navigation.navigate('Dashboard');
-                }
-              }}
-            >
-              <Text style={styles.handoffPrimaryBtnText}>
-                Start Workout Now →
-              </Text>
-            </TouchableOpacity>
+                  }}
+                >
+                  <Text style={styles.handoffSecondaryBtnText}>
+                    Go to Dashboard
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.handoffSecondaryBtn}
-              activeOpacity={0.7}
-              onPress={() => {
-                scheduleReEngagementPush();
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'Dashboard' }],
-                });
-              }}
-            >
-              <Text style={styles.handoffSecondaryBtnText}>
-                Go to Dashboard
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setShowFeedback(true)}
-              style={styles.setupFeedbackLink}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.setupFeedbackText}>
-                How was your setup experience? →
-              </Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowFeedback(true)}
+                  style={styles.setupFeedbackLink}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.setupFeedbackText}>
+                    How was your setup experience? →
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       )}
@@ -949,6 +1025,44 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     lineHeight: LineHeights.caption,
+  },
+  startDateCard: {
+    width: '100%',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    padding: Spacing.lg,
+    gap: 12,
+  },
+  startDateTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  startDateOption: {
+    height: 52,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startDateOptionText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  startDateOptionOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+  },
+  startDateOptionOutlineText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.accent,
   },
   handoffOverlay: {
     ...StyleSheet.absoluteFillObject,

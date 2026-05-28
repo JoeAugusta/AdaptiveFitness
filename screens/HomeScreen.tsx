@@ -58,6 +58,7 @@ import SportSessionModal, {
 import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { useAuth } from '../contexts/AuthContext';
+import { stripEmDash } from '../utils/jordanText';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
 function sessionSignalFromLastLog(
@@ -90,12 +91,6 @@ function sessionSignalFromLastLog(
   return signal;
 }
 
-function stripEmDash(text: string): string {
-  return text
-    .replace(/ — /g, '. ')
-    .replace(/—/g, '.')
-    .trim();
-}
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -327,7 +322,10 @@ function resolveScheduledDaysInfo(
 }
 
 /**
- * Hero session: today's calendar slot only — not the next unlogged session in plan order.
+ * Hero session: the first unlogged workout in plan order when it is a training day.
+ * Calendar day gates whether we show anything, but the session index is determined
+ * by completion count — not by mapping today's weekday to a scheduledDays index.
+ * This handles mid-week plan starts correctly (e.g. starting on Wed shows Day 1, not Day 2).
  */
 function resolveTodayWorkout(args: {
   weekDays: WorkoutDay[];
@@ -387,22 +385,11 @@ function resolveTodayWorkout(args: {
     return null;
   }
 
-  const byScheduleIndex = scheduledDays.indexOf(todayLabel);
-  if (byScheduleIndex >= 0 && byScheduleIndex < workoutDaysOrdered.length) {
-    const d = workoutDaysOrdered[byScheduleIndex];
-    if (!completedDayNumbers.has(d.dayNumber)) {
-      return d;
-    }
-    return null;
-  }
-
-  const byDayLabel = workoutDaysOrdered.find(
-    (d) =>
-      d.dayLabel === todayLabel && !completedDayNumbers.has(d.dayNumber),
-  );
-  if (byDayLabel) {
-    return byDayLabel;
-  }
+  // Calendar day confirms it's a training day; the session to show is always the
+  // first unlogged in plan order (completion-count anchored, not weekday-index anchored).
+  // This ensures mid-week starters see Day 1 on their first session, not Day N.
+  const w = firstUnloggedInSequence();
+  if (w) return w;
 
   if (nextWeekReady && nextWeekFirstWorkout && allWorkoutsInWeekLogged) {
     return { ...nextWeekFirstWorkout, isNextWeek: true };
@@ -1801,7 +1788,7 @@ export default function HomeScreen() {
 
             {displaySessionFocus ? (
               <View style={styles.sessionFocusCard}>
-                <Text style={styles.sessionFocusText}>{displaySessionFocus}</Text>
+                <Text style={styles.sessionFocusText}>{stripEmDash(displaySessionFocus ?? '')}</Text>
               </View>
             ) : null}
 

@@ -8,10 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import { useMetric } from '../utils/units';
+import { stripEmDash } from '../utils/jordanText';
 import { supabase } from '../Lib/supabase';
 
 export interface SetLog {
@@ -343,7 +344,8 @@ export default function WorkoutResultsModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeButton}>
             <Text style={styles.closeText}>✕</Text>
@@ -362,7 +364,7 @@ export default function WorkoutResultsModal({
         {!jordanLoading && jordanDebrief ? (
           <View style={styles.jordanCard}>
             <Text style={styles.jordanLabel}>JORDAN</Text>
-            <Text style={styles.jordanNoteText}>{jordanDebrief}</Text>
+            <Text style={styles.jordanNoteText}>{stripEmDash(jordanDebrief ?? '')}</Text>
           </View>
         ) : null}
 
@@ -544,7 +546,8 @@ export default function WorkoutResultsModal({
             </View>
           )}
         </ScrollView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }

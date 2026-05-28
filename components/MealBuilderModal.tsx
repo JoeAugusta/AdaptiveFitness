@@ -10,7 +10,7 @@ import {
   TextInput,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   getFilteredIngredients,
   type Allergen,
@@ -187,7 +187,8 @@ export default function MealBuilderModal({
       presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.modalContainer}>
           <View style={styles.headerRow}>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -418,7 +419,8 @@ export default function MealBuilderModal({
             </View>
           ) : null}
         </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -429,7 +431,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bgElevated,
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 32,
   },
   headerRow: {
     paddingTop: Spacing.lg,

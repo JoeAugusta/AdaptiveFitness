@@ -28,6 +28,7 @@ import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { hapticSuccess, hapticWarning } from '../utils/haptics';
+import { stripEmDash } from '../utils/jordanText';
 
 interface MacroTargets {
   calories: number;
@@ -901,7 +902,7 @@ export default function MacroTrackerScreen() {
               {hasLoggedToday ? (
                 <>
                   {jordanMealNote ? (
-                    <Text style={styles.jordanBody}>{jordanMealNote}</Text>
+                    <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote ?? '')}</Text>
                   ) : null}
                   <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
                 </>

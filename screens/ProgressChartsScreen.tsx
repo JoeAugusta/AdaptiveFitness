@@ -22,6 +22,7 @@ import {
   type PersonalRecord,
 } from '../utils/personalRecords';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { EXERCISES } from '../constants/exerciseLibrary';
 
 interface StrengthDataPoint {
   week: number;
@@ -718,21 +719,6 @@ export default function ProgressChartsScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No session');
 
-      setPrsLoading(true);
-      void fetchPersonalRecords(userId)
-        .then(setPrs)
-        .catch(() => setPrs([]))
-        .finally(() => setPrsLoading(false));
-
-      const { data: wlogs, error: le } = await supabase
-        .from('workout_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .order('week_number', { ascending: true });
-
-      if (le) throw new Error(le.message);
-      setLogs(wlogs ?? []);
-
       const { data: wlWeightLogs } = await supabase
         .from('weight_logs')
         .select('log_date, weight_lbs')
@@ -742,6 +728,7 @@ export default function ProgressChartsScreen() {
 
       setWeightData((wlWeightLogs ?? []) as WeightLogPoint[]);
 
+      // Fetch active plan first — workout_logs are gated on plan.id
       const { data: plan, error: pe } = await supabase
         .from('plans')
         .select('id, plan_json, current_week, total_weeks, goal_id, created_at')
@@ -754,46 +741,39 @@ export default function ProgressChartsScreen() {
       if (pe || !plan) {
         setPlanGoalMeta(null);
         setPlanId(null);
+        setLogs([]);
         setPlanLogs([]);
+        setExerciseMap({});
         setPlanDaysPerWeek(4);
         setPlanCurrentWeek(1);
         setPlanWeeksJson([]);
         setPlanCreatedAt(null);
         setPlanTotalWeeks(12);
-        const eMapFallback: Record<string, { name: string; muscleGroup: string }> = {};
-        for (const log of wlogs ?? []) {
-          const sets: unknown[] = Array.isArray(log.sets_json) ? log.sets_json : [];
-          for (const raw of sets) {
-            const s = raw as {
-              exerciseId?: string;
-              exerciseName?: string;
-              name?: string;
-              muscleGroup?: string;
-            };
-            const id = s.exerciseId;
-            const name = s.exerciseName ?? s.name;
-            if (id && name && !eMapFallback[id]) {
-              eMapFallback[id] = { name, muscleGroup: s.muscleGroup ?? '' };
-            }
-          }
-        }
-        setExerciseMap(eMapFallback);
         setLoading(false);
         return;
       }
 
       setPlanId(plan.id);
 
-      const { data: planScopedLogs, error: pse } = await supabase
+      setPrsLoading(true);
+      void fetchPersonalRecords(userId, plan.id)
+        .then((records) => {
+          setPrs(records);
+        })
+        .catch(() => setPrs([]))
+        .finally(() => setPrsLoading(false));
+
+      // Gate on plan.id — only load logs for the active plan
+      const { data: wlogs, error: le } = await supabase
         .from('workout_logs')
         .select('*')
         .eq('user_id', userId)
         .eq('plan_id', plan.id)
         .order('week_number', { ascending: true });
-      if (pse) {
-        console.warn('[ProgressCharts] plan workout_logs:', pse.message);
-      }
-      setPlanLogs(planScopedLogs ?? []);
+
+      if (le) throw new Error(le.message);
+      setLogs(wlogs ?? []);
+      setPlanLogs(wlogs ?? []);
 
       setPlanCreatedAt(
         typeof plan.created_at === 'string' ? plan.created_at : null,
@@ -875,6 +855,24 @@ export default function ProgressChartsScreen() {
 
   // ── Process data ──
 
+  function normalizeExerciseName(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/\s*\(.*?\)/g, '')
+      .replace(/s$/, '')
+      .replace(/bent-over/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  const exerciseNameToMuscle = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const ex of EXERCISES) {
+      map[normalizeExerciseName(ex.name)] = ex.primaryMuscle;
+    }
+    return map;
+  }, []);
+
   const { strengthMap, topExercises, volumeWeekData, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
     const sMap: Record<string, Map<number, number>> = {};
     const volMap = new Map<number, Map<string, number>>();
@@ -899,9 +897,10 @@ export default function ProgressChartsScreen() {
         if (!name || weight === 0) continue;
 
         const est1RM = weight * (1 + reps / 30);
-        if (!sMap[name]) sMap[name] = new Map();
-        const prev = sMap[name].get(wk) ?? 0;
-        if (est1RM > prev) sMap[name].set(wk, Math.round(est1RM));
+        const normName = normalizeExerciseName(name);
+        if (!sMap[normName]) sMap[normName] = new Map();
+        const prev = sMap[normName].get(wk) ?? 0;
+        if (est1RM > prev) sMap[normName].set(wk, Math.round(est1RM));
       }
     }
 
@@ -928,8 +927,8 @@ export default function ProgressChartsScreen() {
         const name: string =
           s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
         const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
-        const rawMuscle: string =
-          s.muscleGroup ?? exerciseMap[s.exerciseId]?.muscleGroup ?? 'Other';
+        const nameLower = normalizeExerciseName(name);
+        const rawMuscle: string = exerciseNameToMuscle[nameLower] ?? 'Other';
         const trimmed = rawMuscle.trim();
         const muscleGroup =
           trimmed.length > 0

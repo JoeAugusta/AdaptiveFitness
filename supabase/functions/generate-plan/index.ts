@@ -500,10 +500,39 @@ function stampMuscleEmphasis(exercises: any[]): any[] {
       'rectus_abdominis', 'obliques', 'transverse_abs', 'spinal_erectors',
     ]);
     const claudeValue = ex.muscleEmphasis ?? '';
+    if (VALID_TAXONOMY.has(claudeValue)) {
+      return {
+        ...ex,
+        name: normaliseExerciseName(String(ex.name ?? '')),
+        muscleEmphasis: claudeValue,
+      };
+    }
+
+    const MUSCLE_GROUP_DEFAULTS: Record<string, string> = {
+      'Chest': 'mid_chest',
+      'Back': 'lats',
+      'Shoulders': 'lateral_delt',
+      'Biceps': 'long_head_bicep',
+      'Triceps': 'lateral_head_tricep',
+      'Quadriceps': 'quads',
+      'Quads': 'quads',
+      'Hamstrings': 'hamstrings',
+      'Glutes': 'glutes',
+      'Calves': 'gastrocnemius',
+      'Core': 'transverse_abs',
+      'Abs': 'transverse_abs',
+      'Traps': 'mid_back',
+      'Forearms': 'mid_back',
+      'Full Body': 'quads',
+    };
+
+    const muscleGroupKey = String(ex.muscleGroup ?? '').trim();
+    const groupDefault = MUSCLE_GROUP_DEFAULTS[muscleGroupKey] ?? 'mid_chest';
+
     return {
       ...ex,
       name: normaliseExerciseName(String(ex.name ?? '')),
-      muscleEmphasis: VALID_TAXONOMY.has(claudeValue) ? claudeValue : 'mid_chest',
+      muscleEmphasis: groupDefault,
     };
   });
 }
@@ -1852,6 +1881,20 @@ Distribute exercises to ensure all target muscle groups reach minimum developmen
 - For ${hasStructure ? `the sessionStructure-defined week (follow WEEKLY STRUCTURE day-by-day; never use split name to add or remove workout days)` : `the ${splitDescriptor} split`}, ensure logical muscle group distribution across days
 - Use exercises appropriate for ${equipment}
 - Week 1: focus on foundational movements. Save advanced variations for later weeks.
+- NEVER programme conventional deadlift or sumo deadlift as a hypertrophy
+  accessory on a pull day. Deadlifts are primary strength compounds — they carry
+  disproportionate systemic fatigue relative to their hypertrophy stimulus and
+  will compromise recovery between sessions. On pull days for hypertrophy goals,
+  use row variations, lat pulldowns, cable rows, or machine rows instead.
+  Deadlifts only appear when the plan goal is 'strength' and the targetLift is
+  'deadlift', or on dedicated strength/lower days in power_hypertrophy splits.
+- On 6-day splits (Arnold, batman, bro_split), conventional deadlift or sumo
+  deadlift must appear NO MORE THAN ONCE per week. If the split has two leg days
+  or two back days, programme heavy deadlift on one of them only. The second
+  session must use Romanian deadlift, stiff-leg deadlift, or good morning as the
+  primary hinge — never a second session of heavy conventional or sumo deadlift.
+  Two maximal deadlift sessions per week is excessive fatigue even for advanced
+  lifters.
 - Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
 
 GRIP AND ATTACHMENT VARIATION:
@@ -2131,7 +2174,18 @@ ${athleteSplitLine}
 - Session length: ${sessionLength} (minutes per session, from onboarding)
 - Total plan duration: ${totalWeeks} weeks
 - Days per week: ${actualDaysPerWeek}
-- Exercises to avoid: ${exclusions}${priorityMusclesProfileLine}${subMuscleBlock}${liftFrequencyLine}
+- Exercises to avoid: ${exclusions}
+- Injury movement pattern rules: when injuries or exclusions reference overhead
+  pressing (shoulder impingement, rotator cuff, AC joint), exclude ALL vertical
+  push movements regardless of equipment — barbell overhead press, dumbbell
+  shoulder press, Arnold press, push press, landmine press to overhead, and any
+  other movement that takes the load above shoulder height. Do not include any of
+  these as substitutes. For shoulder-restricted athletes, anterior delt volume
+  must come from cable front raises or low-angle incline movements only.
+  When injuries reference lower back (disc, sprain, hyperextension), exclude
+  Romanian deadlift, stiff-leg deadlift, good morning, and back extension in
+  addition to any explicitly named exercises. These movements share the same
+  spinal loading pattern as the named exercises.${priorityMusclesProfileLine}${subMuscleBlock}${liftFrequencyLine}
 ${goalContext ? `- Goal details: ${goalContext}` : ''}
 ${weeklyStructureBlock}
 ${splitHistoryOtherLine}${structuralNoveltyBlock}${strengthExperienceBlock}
@@ -2329,7 +2383,21 @@ ${
   isNonStrengthGoal
     ? 'For non-strength Week 1, targetWeight 0 everywhere — trust the user message.'
     : 'Weight selection is CRITICAL. Under-programming (weights too light) destroys trust. Follow the weight rules in the prompt exactly.'
-}`,
+}
+
+ACCESSORY REP RANGES AND REST PERIODS (non-negotiable):
+The primary lift follows goal-specific rep and rest prescriptions.
+Every other exercise in the session — all accessories, secondary compounds,
+and isolation movements — MUST use hypertrophy rep ranges and standard rest
+regardless of the plan goal:
+- Accessories and isolations: 8–15 reps, 60–90 seconds rest
+- Secondary compounds: 6–10 reps, 90–120 seconds rest
+A strength goal does NOT mean every exercise uses 3–5 reps and 4-minute rest.
+Only the target lift (exercise #1 on the relevant day) uses strength rep ranges
+and extended rest. Everything after it uses hypertrophy ranges.
+This applies universally — strength, power_hypertrophy, every goal type.
+Never programme face pulls, cable flyes, lateral raises, curls, calf raises,
+planks, or any isolation movement for sets of 3–5 reps. This is a critical error.`,
         messages: [{ role: 'user', content: prompt }],
       }),
     })

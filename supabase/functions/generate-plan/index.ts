@@ -701,6 +701,254 @@ function stampMuscleEmphasisOnPlan(
   };
 }
 
+// deno-lint-ignore no-explicit-any
+function replaceKneeUnsafeExercises(plan: any, injuries: string[] | undefined): any {
+  if (!injuries?.some((i) => i.toLowerCase().includes('knee'))) return plan;
+
+  const kneeUnsafe = [
+    'squat',
+    'lunge',
+    'split squat',
+    'step-up',
+    'box jump',
+    'jump',
+    'sled sprint',
+    'sled push',
+    'leg extension',
+  ];
+
+  const replacementPool = {
+    quads: [
+      {
+        name: 'Leg Press',
+        equipment: 'machine',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Machine-supported quad development — allows high volume without knee impact stress.',
+        muscleEmphasis: 'quads',
+        muscleGroup: 'Quads',
+      },
+      {
+        name: 'Hack Squat',
+        equipment: 'machine',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Machine squat pattern — builds quad strength with controlled range and reduced knee stress.',
+        muscleEmphasis: 'quads',
+        muscleGroup: 'Quads',
+      },
+      {
+        name: 'Goblet Squat',
+        equipment: 'dumbbell',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Front-loaded squat with controlled depth — builds quad and glute strength safely.',
+        muscleEmphasis: 'quads',
+        muscleGroup: 'Quads',
+      },
+    ],
+    glutes: [
+      {
+        name: 'Hip Thrust',
+        equipment: 'barbell',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Horizontal hip extension that maximally activates the glutes — builds posterior power without knee stress.',
+        muscleEmphasis: 'glutes',
+        muscleGroup: 'Glutes',
+      },
+      {
+        name: 'Glute Bridge',
+        equipment: 'bodyweight',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Hip extension isolation — direct glute activation without loading the knee joint.',
+        muscleEmphasis: 'glutes',
+        muscleGroup: 'Glutes',
+      },
+      {
+        name: 'Cable Pull-Through',
+        equipment: 'cable',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Hip hinge that develops glute and hamstring strength — keeps the knee in a safe neutral position.',
+        muscleEmphasis: 'glutes',
+        muscleGroup: 'Glutes',
+      },
+    ],
+    hamstrings: [
+      {
+        name: 'Lying Leg Curl',
+        equipment: 'machine',
+        compoundTier: 'isolation',
+        coachingNote:
+          'Hamstring isolation in a supported position — safe posterior chain work with no knee impact.',
+        muscleEmphasis: 'hamstrings',
+        muscleGroup: 'Hamstrings',
+      },
+      {
+        name: 'Seated Leg Curl',
+        equipment: 'machine',
+        compoundTier: 'isolation',
+        coachingNote:
+          'Seated hamstring isolation — builds the posterior chain without hip hinge spinal loading.',
+        muscleEmphasis: 'hamstrings',
+        muscleGroup: 'Hamstrings',
+      },
+      {
+        name: 'Glute Ham Raise',
+        equipment: 'machine',
+        compoundTier: 'secondary_compound',
+        coachingNote:
+          'Eccentric hamstring strength through the full range — builds posterior chain without knee impact.',
+        muscleEmphasis: 'hamstrings',
+        muscleGroup: 'Hamstrings',
+      },
+    ],
+  };
+
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+
+      const usedReplacements = new Set<string>();
+
+      // deno-lint-ignore no-explicit-any
+      day.exercises = (day.exercises ?? []).map((ex: any) => {
+        const name = ex.name?.toLowerCase() ?? '';
+        if (!kneeUnsafe.some((u) => name.includes(u))) return ex;
+
+        const mg = (ex.muscleGroup ?? '').toLowerCase();
+        let pool: typeof replacementPool.quads;
+        if (mg.includes('glute')) pool = replacementPool.glutes;
+        else if (mg.includes('hamstring')) pool = replacementPool.hamstrings;
+        else pool = replacementPool.quads;
+
+        const replacement =
+          pool.find((r) => !usedReplacements.has(r.name)) ?? pool[pool.length - 1];
+        usedReplacements.add(replacement.name);
+
+        return {
+          ...ex,
+          name: replacement.name,
+          muscleGroup: replacement.muscleGroup,
+          equipment: replacement.equipment,
+          compoundTier: replacement.compoundTier,
+          coachingNote: replacement.coachingNote,
+          muscleEmphasis: replacement.muscleEmphasis,
+          setTargets: undefined,
+          setStructure: 'straight',
+        };
+      });
+    }
+  }
+  return plan;
+}
+
+// deno-lint-ignore no-explicit-any
+function enforceTier1LowerLimit(plan: any): any {
+  const tier1Lower = [
+    'back squat',
+    'front squat',
+    'safety bar squat',
+    'conventional deadlift',
+    'sumo deadlift',
+    'trap bar deadlift',
+    'deadlift',
+  ];
+
+  const exemptSplits = ['strength_focused'];
+  if (exemptSplits.includes(plan.split)) return plan;
+
+  const tier2Replacements = [
+    {
+      name: 'Leg Press',
+      equipment: 'machine',
+      compoundTier: 'secondary_compound',
+      coachingNote:
+        'Quad volume without spinal loading — lets you push leg intensity after your primary compound.',
+      muscleEmphasis: 'quads',
+      muscleGroup: 'Quads',
+    },
+    {
+      name: 'Romanian Deadlift',
+      equipment: 'barbell',
+      compoundTier: 'secondary_compound',
+      coachingNote:
+        'Hip hinge that builds hamstring and glute strength through their full range of motion.',
+      muscleEmphasis: 'hamstrings',
+      muscleGroup: 'Hamstrings',
+    },
+    {
+      name: 'Bulgarian Split Squat',
+      equipment: 'dumbbell',
+      compoundTier: 'secondary_compound',
+      coachingNote:
+        'Unilateral leg strength — addresses imbalances that bilateral movements miss.',
+      muscleEmphasis: 'glutes',
+      muscleGroup: 'Glutes',
+    },
+  ];
+
+  function isTier1Lower(exerciseName: string | undefined): boolean {
+    const n = exerciseName?.toLowerCase() ?? '';
+    return tier1Lower.some((t) => n === t || n.includes(t));
+  }
+
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+
+      const exercises = day.exercises ?? [];
+      let tier1Count = 0;
+      let replacementIndex = 0;
+
+      // deno-lint-ignore no-explicit-any
+      day.exercises = exercises.map((ex: any) => {
+        if (!isTier1Lower(ex.name)) return ex;
+        tier1Count++;
+
+        if (tier1Count === 1) return ex;
+
+        const replacement =
+          tier2Replacements[replacementIndex % tier2Replacements.length];
+        replacementIndex++;
+
+        return {
+          ...ex,
+          name: replacement.name,
+          muscleGroup: replacement.muscleGroup,
+          equipment: replacement.equipment,
+          compoundTier: replacement.compoundTier,
+          coachingNote: replacement.coachingNote,
+          muscleEmphasis: replacement.muscleEmphasis,
+          setTargets: undefined,
+          setStructure: 'straight',
+        };
+      });
+    }
+  }
+  return plan;
+}
+
+// deno-lint-ignore no-explicit-any
+function deduplicateExercises(plan: any): any {
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+      const seen = new Set<string>();
+      const deduped: unknown[] = [];
+      for (const ex of day.exercises ?? []) {
+        if (seen.has(ex.name)) continue;
+        seen.add(ex.name);
+        deduped.push(ex);
+      }
+      day.exercises = deduped;
+    }
+  }
+  return plan;
+}
+
 interface SessionDay {
   day: number;
   dayLabel?: string;
@@ -1992,21 +2240,27 @@ Distribute exercises to ensure all target muscle groups reach minimum developmen
   primary hinge — never a second session of heavy conventional or sumo deadlift.
   Two maximal deadlift sessions per week is excessive fatigue even for advanced
   lifters.
-- DUAL PRIMARY LOWER COMPOUND RULE (hard rule, no exceptions):
-  Never place two primary barbell lower body compounds in the same
-  session. Primary lower compounds are: back squat, front squat,
-  conventional deadlift, sumo deadlift, trap bar deadlift.
-  This means:
-  - Back squat + front squat in the same session: NEVER
-  - Front squat + conventional deadlift in the same session: NEVER
-  - Back squat + conventional deadlift in the same session: NEVER
-  After the primary lower compound, the second exercise must be a
-  non-primary variation: leg press, hack squat, Bulgarian split
-  squat, hip thrust, leg curl, or walking lunge.
-  Exception: powerlifting-specific strength_focused splits where
-  a dedicated squat + deadlift day is the explicit purpose of the
-  session. Even then, limit to one squat movement and one deadlift
-  movement only.
+- TIER-1 LOWER COMPOUND RULE (hard rule, no exceptions):
+  Never place two Tier-1 lower-body compounds in the same session.
+
+  Tier-1 lower compounds are:
+    back squat, front squat, safety bar squat, conventional deadlift,
+    sumo deadlift, trap bar deadlift
+
+  This means ALL of the following combinations are forbidden:
+    - back squat + front squat
+    - back squat + conventional deadlift
+    - back squat + sumo deadlift
+    - front squat + conventional deadlift
+    - front squat + sumo deadlift
+    - any squat variant + any deadlift variant
+
+  Tier-2 movements (RDL, leg press, hack squat, Bulgarian split squat,
+  leg curl, hip thrust) are NOT Tier-1 and may follow a Tier-1 compound.
+
+  Exception: powerlifting-specific strength_focused splits where a
+  dedicated squat + deadlift session is the explicit purpose. Even
+  then, limit to ONE squat movement and ONE deadlift movement only.
 - On strength goal VOLUME days for squat specialization (back squat or front squat
   as the targetLift), the target lift appears first as the primary compound.
   The second exercise MUST be a non-squat-pattern movement — leg press, hack squat,
@@ -2455,6 +2709,34 @@ STYLE RULE: Never use em-dashes (—) in any response.
 Use periods or commas instead. This applies to all
 coaching copy, Jordan's voice, and any explanatory text.
 
+KNEE INJURY PROGRAMMING RULE:
+When the injuries array contains 'knee', you must not generate
+any exercise involving significant knee flexion or knee loading.
+
+Prohibited movement patterns for knee injury:
+  - Any squat variation (back squat, front squat, goblet squat,
+    hack squat, safety bar squat, pistol squat, box squat,
+    zercher squat, overhead squat)
+  - Any lunge variation (walking lunge, reverse lunge, lateral
+    lunge, curtsy lunge, Bulgarian split squat, split squat)
+  - Any jumping or plyometric movement (box jump, jump squat,
+    broad jump, depth jump)
+  - Step-ups
+  - Sled sprints, sled push
+
+Use these instead for lower body sessions:
+  - Leg Press (primary quad movement)
+  - Hip Thrust or Glute Bridge (primary glute movement)
+  - Romanian Deadlift or Stiff Leg Deadlift (primary hamstring
+    hinge movement)
+  - Lying Leg Curl or Seated Leg Curl (hamstring isolation)
+  - Calf Raise (calf isolation)
+  - Cable Pull-Through (glute/hamstring accessory)
+  - Abduction Machine (glute accessory)
+
+Do not include Leg Extension — it is contraindicated for many
+knee conditions and should not be a default substitution.
+
 For coachingNote fields:
 coachingNote: A 1–2 sentence explanation of WHY this exercise is in this plan for this specific user. This is selection reasoning — not form cues, not generic motivation. Answer the implicit question: "Why this exercise, in this position, for my goal?"
 
@@ -2489,6 +2771,28 @@ Good examples:
 
 When in doubt, explain the exercise. Do not search for a connection
 to the goal lift.
+
+GOAL LIFT TRANSFER — APPROVED EXERCISES ONLY:
+When the goal lift is deadlift, only mention deadlift carryover
+for exercises with direct, biomechanically obvious transfer:
+
+APPROVED deadlift transfer mentions:
+  - Romanian Deadlift, Stiff Leg Deadlift, Good Morning
+  - Barbell Row, T-Bar Row, Dumbbell Row
+  - Lat Pulldown, Pull-up
+  - Back Extension, Glute Ham Raise
+  - Farmer's Carry, Rack Pull, Hex Bar Deadlift
+  - Plank (core stability for bracing only)
+
+NOT approved — never mention deadlift carryover for:
+  - Bench Press, Incline Press, any chest exercise
+  - Lateral Raise, any shoulder isolation
+  - Bicep Curl, Hammer Curl, any arm isolation
+  - Calf Raise, Leg Extension, any calf or isolated quad work
+
+For non-approved exercises, explain the exercise itself:
+"Builds upper chest mass through the incline pressing pattern."
+Not: "Balances the lat volume in your deadlift program."
 
 ${
   isNonStrengthGoal
@@ -2681,6 +2985,10 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
     };
 
     applyStrengthVolumeDayFirstExerciseEightReps(planJsonWithStrengthLift, goal, strengthProgramLiftId);
+
+    replaceKneeUnsafeExercises(planJsonWithStrengthLift, injuries);
+    enforceTier1LowerLimit(planJsonWithStrengthLift);
+    deduplicateExercises(planJsonWithStrengthLift);
 
     if (biologicalSex === 'female') {
       // deno-lint-ignore no-explicit-any

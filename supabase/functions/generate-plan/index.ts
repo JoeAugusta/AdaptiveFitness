@@ -2458,51 +2458,37 @@ coaching copy, Jordan's voice, and any explanatory text.
 For coachingNote fields:
 coachingNote: A 1–2 sentence explanation of WHY this exercise is in this plan for this specific user. This is selection reasoning — not form cues, not generic motivation. Answer the implicit question: "Why this exercise, in this position, for my goal?"
 
-Rules for coachingNote:
-- Reference the user's specific goal, split, or priority muscles where relevant. Example: "Your short head bicep focus means width comes from the peak — barbell curls at this rep range maximize that stimulus."
-- For accessory exercises, explain the transfer to the primary goal. Example: "Face pulls keep your posterior chain balanced against all the pressing volume — non-negotiable for bench longevity."
-- For the primary compound of the day, explain why it anchors this session. Example: "Bench press is the cornerstone of this program — everything else this week is built to support this lift."
-- For antagonist/balance work, explain the structural reason. Example: "Barbell rows balance the horizontal pressing load — strong lats create a stable bench platform."
-- Week 1 calibration notes should acknowledge it is calibration without being generic. Example: "Week 1 is your baseline — I'm learning how you respond in this slot before we layer intensity."
-- Never restate reps/RPE load instructions in coachingNote — the UI already displays them.
-- Never write generic motivation ("give it your all", "push hard").
-- Never write form cues — those are handled elsewhere.
-- Maximum 2 sentences. Be specific. Be direct. Sound like a coach, not an app.
-- Never use the word "AI". Never say "I've calculated" or "the algorithm".
-- Always use first person as Jordan: "I've built", "your goal", "this session".
-- CRITICAL: Never use the word "AI" anywhere in coachingNote or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
-
 COACHING NOTE RULES:
-Write coaching notes like a direct, experienced coach — not like
-an AI justifying every choice. Follow these rules strictly:
+A coaching note explains the exercise itself — the muscle trained,
+the adaptation being developed, and why this exercise exists in
+this session. That is the only job.
 
-1. NEVER invent a transfer to the goal lift for unrelated muscles.
-   Calves do not improve bench press. Curls do not help squats.
-   Lateral raises do not transfer to deadlifts. If the connection
-   is not direct and physiologically obvious, do not make it.
+Structure each note around:
+1. The primary muscle or movement being trained
+2. The main adaptation (strength, hypertrophy, stability, technique)
+3. Why this exercise was selected for this session
 
-2. For isolation and accessory exercises, explain what the exercise
-   does for that specific muscle. "Rope pushdowns target the
-   lateral tricep head for arm thickness" is correct. "Triceps
-   support your squat lockout" is not.
+Reference the target lift ONLY when carryover is direct and
+universally accepted (e.g. close grip bench → bench lockout,
+barbell row → bench lat engagement, RDL → squat posterior chain).
+For everything else, explain the exercise.
 
-3. Reserve goal-lift references ONLY for exercises with genuine
-   direct transfer:
-   - Close grip bench → bench lockout: YES
-   - Barbell row → bench lat engagement and stability: YES
-   - RDL → deadlift posterior chain: YES
-   - Good morning → squat posterior chain: YES
-   - Calf raises → any strength lift: NO
-   - Lateral raises → squat bar position: NO
-   - Bicep curls → any primary lift: NO
+Good examples:
+- Back Squat: "Develops lower body strength through the quads,
+  glutes, and core — your primary bilateral leg strength movement."
+- Romanian Deadlift: "Hip hinge that builds hamstring and glute
+  strength through their full range of motion."
+- Calf Raise: "Direct plantar flexion work — builds lower leg mass
+  and ankle stability."
+- Lateral Raise: "Isolates the medial delt for shoulder width —
+  compound pressing alone won't develop this head."
+- Face Pulls: "Rear delt and external rotator work — balances
+  horizontal pressing volume and keeps shoulders healthy."
+- Close Grip Bench Press: "Tricep strength through the full press
+  range — direct carryover to bench lockout."
 
-4. For the primary target lift exercise only, reference the user's
-   goal (e.g. "your 275lb bench target"). For all other exercises,
-   describe what the movement does for the muscle being trained.
-
-5. One to two sentences maximum. Specific beats generic.
-   "This angle targets the clavicular head that flat pressing
-   misses" is better than "builds upper body strength."
+When in doubt, explain the exercise. Do not search for a connection
+to the goal lift.
 
 ${
   isNonStrengthGoal

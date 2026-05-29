@@ -9,8 +9,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -107,12 +107,11 @@ export default function SignInScreen() {
           </TouchableOpacity>
 
           <View style={styles.brandHeader}>
-            <Svg width={32} height={32} viewBox="0 0 72 72">
-              <Rect x="0" y="0" width="72" height="72" rx="16" fill="#F97316" />
-              <Rect x="19" y="16" width="10" height="40" rx="3" fill="#09090B" />
-              <Rect x="43" y="16" width="10" height="40" rx="3" fill="#09090B" />
-              <Rect x="19" y="31" width="34" height="10" rx="3" fill="#09090B" />
-            </Svg>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
             <Text style={styles.brandWord}>hone</Text>
           </View>
 
@@ -221,8 +220,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: Spacing.xxxl,
+    marginBottom: Spacing.xl,
     marginTop: Spacing.sm,
+  },
+  brandLogo: {
+    width: 36,
+    height: 36,
   },
   brandWord: {
     fontFamily: Fonts.bold,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -17,7 +18,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { stripEmDash } from '../utils/jordanText';
+import { cleanJordanMessage, stripEmDash } from '../utils/jordanText';
 
 type PerformanceRating = 'strong' | 'on-track' | 'tough-week';
 
@@ -97,7 +98,7 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
                 i === summary.highlights.length - 1 && styles.highlightRowLast,
               ]}
             >
-              <Text style={styles.checkIcon}>✓</Text>
+              <Ionicons name="checkmark" size={16} color={Colors.success} />
               <Text style={styles.highlightText}>{stripEmDash(item)}</Text>
             </View>
           ))}
@@ -118,7 +119,9 @@ function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
         <View style={styles.jordanLabelRow}>
           <Text style={styles.jordanLabel}>JORDAN</Text>
         </View>
-        <Text style={styles.jordanNoteText}>{stripEmDash(summary.motivationalNote)}</Text>
+        <Text style={styles.jordanNoteText}>
+          {stripEmDash(cleanJordanMessage(summary.motivationalNote) ?? '')}
+        </Text>
       </View>
     </View>
   );
@@ -287,7 +290,7 @@ export default function WeeklyCoachSummaryScreen() {
 
         {!loading && weekInProgress && (
           <View style={styles.inProgressCard}>
-            <Text style={styles.inProgressEmoji}>🏋️</Text>
+            <Ionicons name="barbell-outline" size={32} color={Colors.textSecondary} />
             <Text style={styles.inProgressTitle}>Week {weekNumber} is in progress</Text>
             <Text style={styles.inProgressBody}>
               {
@@ -679,7 +682,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     padding: Spacing.xl,
     borderWidth: 1,
-    borderColor: Colors.accentBorder,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
   },
   jordanLabelRow: {
     flexDirection: 'row',
@@ -696,7 +701,6 @@ const styles = StyleSheet.create({
   jordanNoteText: {
     fontSize: FontSizes.body,
     fontFamily: Fonts.regular,
-    fontStyle: 'italic',
     color: Colors.textPrimary,
     lineHeight: 24,
   },

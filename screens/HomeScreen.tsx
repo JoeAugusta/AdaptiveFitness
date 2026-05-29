@@ -58,7 +58,8 @@ import SportSessionModal, {
 import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { useAuth } from '../contexts/AuthContext';
-import { stripEmDash } from '../utils/jordanText';
+import { stripEmDash, cleanJordanMessage } from '../utils/jordanText';
+import { Ionicons } from '@expo/vector-icons';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
 function sessionSignalFromLastLog(
@@ -157,6 +158,8 @@ type PlanData = {
     latestJordanNoteUpdatedAt?: string | null;
     jordanWelcome?: string | null;
   };
+  /** Set when the plan start_date is in the future — shows "starts on" hero */
+  planStartsOn?: string | null;
 };
 
 type SetItem = {
@@ -234,9 +237,8 @@ function getPhaseDisplay(
   if (effectivePhase === 'baseline') {
     return {
       label: 'BASELINE',
-      color: Colors.accent,
-      bg: Colors.accentMuted,
-      borderColor: Colors.accentBorder,
+      color: Colors.bgPrimary,
+      bg: Colors.accent,
     };
   }
 
@@ -478,17 +480,17 @@ function RecoveryDayCard({
       </View>
       <View style={styles.recoveryPillarsRow}>
         <View style={styles.recoveryPillarCard}>
-          <Text style={styles.recoveryPillarEmoji}>🌙</Text>
+          <Ionicons name="moon-outline" size={20} color={Colors.textSecondary} />
           <Text style={styles.recoveryPillarLabel}>SLEEP</Text>
           <Text style={styles.recoveryPillarValueBold}>8–9 hrs</Text>
         </View>
         <View style={styles.recoveryPillarCard}>
-          <Text style={styles.recoveryPillarEmoji}>🥩</Text>
+          <Ionicons name="restaurant-outline" size={20} color={Colors.textSecondary} />
           <Text style={styles.recoveryPillarLabel}>PROTEIN</Text>
           <Text style={styles.recoveryPillarValueProtein}>Hit your target</Text>
         </View>
         <View style={styles.recoveryPillarCard}>
-          <Text style={styles.recoveryPillarEmoji}>💧</Text>
+          <Ionicons name="water-outline" size={20} color={Colors.textSecondary} />
           <Text style={styles.recoveryPillarLabel}>HYDRATION</Text>
           <Text style={styles.recoveryPillarValueBold}>2–3 L water</Text>
         </View>
@@ -692,7 +694,7 @@ export default function HomeScreen() {
 
       const { data: planRow, error: planError } = await supabase
         .from('plans')
-        .select('id, plan_json, current_week, total_weeks, status, title')
+        .select('id, plan_json, current_week, total_weeks, status, title, start_date, created_at')
         .eq('user_id', userId)
         .in('status', ['active', 'completed'])
         .order('created_at', { ascending: false })
@@ -765,6 +767,58 @@ export default function HomeScreen() {
         setTodaySportLog(null);
         setHasLoggedWorkoutToday(false);
         return;
+      }
+
+      // Check if the plan's start_date is in the future (e.g. user picked "Start next Monday").
+      const planStartRaw: string | null =
+        (plan as { start_date?: string | null }).start_date ??
+        (planJson as { startDate?: string | null }).startDate ??
+        null;
+      if (planStartRaw) {
+        const planStart = new Date(`${planStartRaw.split('T')[0]}T12:00:00`);
+        planStart.setHours(0, 0, 0, 0);
+        const todayMid = new Date();
+        todayMid.setHours(0, 0, 0, 0);
+        const daysSinceStart = Math.floor(
+          (todayMid.getTime() - planStart.getTime()) / 86400000,
+        );
+        if (daysSinceStart < 0) {
+          const formattedStart = planStart.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          });
+          const planJsonTyped = planJson as {
+            title?: string;
+            daysPerWeek?: number;
+            days_per_week?: number;
+          };
+          setPlanData({
+            planId: plan.id as string,
+            planTitle: planJsonTyped.title ?? (plan as { title?: string }).title ?? 'Your Plan',
+            currentWeek: typeof plan.current_week === 'number' ? plan.current_week : 1,
+            totalWeeks: typeof plan.total_weeks === 'number' ? plan.total_weeks : 12,
+            daysPerWeek: planJsonTyped.daysPerWeek ?? planJsonTyped.days_per_week ?? 3,
+            todayWorkout: null,
+            weekDays: [],
+            completedSessions: 0,
+            nextWeekReady: false,
+            nextWeekFirstWorkout: null,
+            showGenerateNextWeekCTA: false,
+            postWeekHeroAllowed: false,
+            scheduledDays: [],
+            hasDayLabels: false,
+            planStartsOn: formattedStart,
+          });
+          setPlanStatus(plan.status as string ?? null);
+          setIsTrainingDay(false);
+          setNextTrainingDay(null);
+          setIsWeek1NoSessionsYet(false);
+          setDevBypassDayGate(false);
+          setPlanSnapshotForMissed(null);
+          setStatsLoading(false);
+          return;
+        }
       }
 
       const devBypassRead =
@@ -986,6 +1040,7 @@ export default function HomeScreen() {
           ).latestJordanNoteUpdatedAt,
           jordanWelcome: (planJson as { jordanWelcome?: string }).jordanWelcome ?? null,
         },
+        planStartsOn: null,
       });
       setPlanSnapshotForMissed({
         planId: plan.id,
@@ -1262,7 +1317,9 @@ export default function HomeScreen() {
         : planData?.currentWeek ?? 1,
       dayNumber: todayWorkout.dayNumber,
       workoutTitle: todayWorkout.title,
-      preSessionMessage: preSessionCopyLocal ?? null,
+      preSessionMessage: preSessionCopyLocal
+        ? (cleanJordanMessage(stripEmDash(preSessionCopyLocal)) ?? null)
+        : null,
     });
   }, [navigation, planData, workoutLogs, isPro, entitlementLoading]);
 
@@ -1333,39 +1390,21 @@ export default function HomeScreen() {
     const emailLocal = session?.user?.email?.split('@')[0] ?? '';
     return emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1);
   })();
-  const profileInitial = (() => {
-    const d = typeof profile?.display_name === 'string' ? profile.display_name.trim() : '';
-    const f = typeof profile?.full_name === 'string' ? profile.full_name.trim() : '';
-    const mail = session?.user?.email?.trim() ?? '';
-    const ch = (d.charAt(0) || f.charAt(0) || mail.charAt(0)) as string;
-    return ch ? ch.toUpperCase() : 'U';
-  })();
   const completionRatio =
     daysPerWeek > 0 ? Math.min(1, completedSessions / daysPerWeek) : 0;
   const progressFillWidth: DimensionValue =
     `${Math.round(completionRatio * 100)}%`;
 
-  const streakDisplay = statsLoading ? '-' : String(currentStreak);
+  const streakDisplay = currentStreak === 0 ? '—' : String(currentStreak);
   const sessionsDisplay = statsLoading ? '-' : String(totalSessions);
   const weeklySessionCount = workoutLogs?.length ?? 0;
   const dashboardCurrentWeek = planData?.currentWeek ?? 1;
-  let volumeDisplay: string;
-  if (statsLoading) {
-    volumeDisplay = '-';
-  } else if (dashboardCurrentWeek > 1) {
-    const v = weeklyVolume ?? 0;
-    if (v >= 1000) {
-      volumeDisplay = `${Math.round((v / 1000) * 10) / 10}k`;
-    } else {
-      volumeDisplay = String(v);
-    }
-  } else if (weeklySessionCount === 0) {
-    volumeDisplay = '-';
-  } else if (weeklyVolume >= 1000) {
-    volumeDisplay = `${Math.round((weeklyVolume / 1000) * 10) / 10}k`;
-  } else {
-    volumeDisplay = String(weeklyVolume);
-  }
+  const volumeDisplay =
+    statsLoading || weeklyVolume === 0
+      ? '—'
+      : weeklyVolume >= 1000
+        ? `${(weeklyVolume / 1000).toFixed(1)}k`
+        : String(weeklyVolume);
 
   const sessionCount = totalSessions;
   const isDay1ColdStart =
@@ -1384,19 +1423,19 @@ export default function HomeScreen() {
             coachSummary?.coach_note &&
             String(coachSummary.coach_note).trim() !== ''
           ) {
-            return coachSummary.coach_note.trim();
+            return cleanJordanMessage(coachSummary.coach_note.trim()) ?? coachSummary.coach_note.trim();
           }
           if (
             coachSummary?.summaryText &&
             String(coachSummary.summaryText).trim() !== ''
           ) {
-            return coachSummary.summaryText.trim();
+            return cleanJordanMessage(coachSummary.summaryText.trim()) ?? coachSummary.summaryText.trim();
           }
 
           const pjJordan = planData?.plan_json;
           const sessionNote = pjJordan?.latestJordanNote;
           if (sessionNote != null && String(sessionNote).trim() !== '') {
-            return String(sessionNote).trim();
+            return cleanJordanMessage(String(sessionNote).trim()) ?? String(sessionNote).trim();
           }
 
           const currentWeek = planData?.currentWeek ?? 1;
@@ -1410,7 +1449,9 @@ export default function HomeScreen() {
               planData?.jordanPlanMeta?.jordanWelcome ??
               jordanWelcome ??
               null;
-            if (w != null && String(w).trim() !== '') return String(w).trim();
+            if (w != null && String(w).trim() !== '') {
+              return cleanJordanMessage(String(w).trim()) ?? String(w).trim();
+            }
           }
 
           return null;
@@ -1426,13 +1467,15 @@ export default function HomeScreen() {
           : 'in_week';
 
   const displayedJordanTextRaw =
-    planStatus === 'completed'
-      ? 'Great work finishing the program. Start a new plan when you\'re ready.'
-      : jordanCardBodyComputed != null && jordanCardBodyComputed.trim() !== ''
-        ? jordanCardBodyComputed
-        : jordanCardState === 'day1'
-          ? jordanDay1Copy
-          : jordanInWeekCopy;
+    planData?.planStartsOn
+      ? 'Your plan starts ' + planData.planStartsOn + '. Rest up and come back ready. The work begins then.'
+      : planStatus === 'completed'
+        ? 'Great work finishing the program. Start a new plan when you\'re ready.'
+        : jordanCardBodyComputed != null && jordanCardBodyComputed.trim() !== ''
+          ? jordanCardBodyComputed
+          : jordanCardState === 'day1'
+            ? jordanDay1Copy
+            : jordanInWeekCopy;
   const displayedJordanText = stripEmDash(displayedJordanTextRaw ?? '');
 
   const jordanCardTimestamp =
@@ -1493,20 +1536,11 @@ export default function HomeScreen() {
               <Text style={styles.greetingName}>{displayName}</Text>
             ) : null}
           </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.profileButton,
-              pressed ? { opacity: 0.7 } : null,
-            ]}
-            onPress={() => navigation.navigate('ProfileTab' as never)}
-          >
-            <Text style={styles.profileInitial}>{profileInitial}</Text>
-          </Pressable>
         </View>
 
         {planStatus === 'completed' ? (
           <View style={styles.planCompleteCard}>
-            <Text style={styles.planCompleteEmoji}>🏁</Text>
+            <Ionicons name="flag-outline" size={20} color={Colors.accent} />
             <Text style={styles.planCompleteTitle}>Plan Complete</Text>
             <Text style={styles.planCompleteSubtitle}>
               You finished the full program. Ready to start your next one?
@@ -1676,10 +1710,23 @@ export default function HomeScreen() {
         ) : (
           <>
             {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
-          allSessionsComplete && postWeekHeroAllowed ? (
+          planData?.planStartsOn ? (
+            <View style={styles.planFutureCard}>
+              <Text style={styles.planFutureLabel}>COMING UP</Text>
+              <Text style={styles.planFutureTitle}>Your plan starts</Text>
+              <Text style={styles.planFutureDate}>{planData.planStartsOn}</Text>
+              <Text style={styles.planFutureHint}>
+                {stripEmDash(
+                  cleanJordanMessage(
+                    'Your plan starts Monday. Rest up, stay active, and come back ready to train. The work begins then.',
+                  ) ?? '',
+                )}
+              </Text>
+            </View>
+          ) : allSessionsComplete && postWeekHeroAllowed ? (
             <View style={styles.generateCTACard}>
               <View style={styles.generateCTATitleRow}>
-                <Text style={styles.generateCTACheckmark}>✅</Text>
+                <Ionicons name="checkmark-circle-outline" size={20} color={Colors.success} />
                 <Text style={styles.generateCTATitle}>
                   Week {planData?.currentWeek} Complete!
                 </Text>
@@ -1709,7 +1756,7 @@ export default function HomeScreen() {
         ) : showGenerateNextWeekCTA ? (
           <View style={styles.generateCTACard}>
             <View style={styles.generateCTATitleRow}>
-              <Text style={styles.generateCTACheckmark}>✅</Text>
+              <Ionicons name="checkmark-circle-outline" size={20} color={Colors.success} />
               <Text style={styles.generateCTATitle}>
                 Week {planData?.currentWeek} Complete!
               </Text>
@@ -1825,7 +1872,7 @@ export default function HomeScreen() {
                 }
               >
                 <Text style={styles.weekUnlockTitle}>
-                  🔒 Unlock Week {sessionWeekForGate}: Go Pro
+                  <Ionicons name="lock-closed-outline" size={16} color={Colors.textSecondary} /> Unlock Week {sessionWeekForGate}: Go Pro
                 </Text>
                 <Text style={styles.weekUnlockPrice}>$14.99/mo or $99.99/yr</Text>
               </TouchableOpacity>
@@ -1886,7 +1933,7 @@ export default function HomeScreen() {
                       ]}
                     >
                       {isComplete ? (
-                        <Text style={styles.dotCheckmark}>✓</Text>
+                        <Ionicons name="checkmark" size={16} color={Colors.success} />
                       ) : null}
                       {isCurrent ? <View style={styles.dayDotCurrentInner} /> : null}
                     </View>
@@ -1908,7 +1955,7 @@ export default function HomeScreen() {
           postWeekHeroAllowed && (
           <View style={styles.nextWeekBanner}>
             <Text style={styles.nextWeekBannerTitle}>
-              Week {planData.currentWeek + 1} is Ready 🚀
+              Week {planData.currentWeek + 1} is Ready <Ionicons name="flash-outline" size={16} color={Colors.accent} />
             </Text>
             <Text style={styles.nextWeekBannerSubtitle}>
               Your adapted plan is waiting. Keep the momentum going.
@@ -1922,7 +1969,9 @@ export default function HomeScreen() {
                   weekNumber: planData.currentWeek + 1,
                   dayNumber: planData.nextWeekFirstWorkout?.dayNumber ?? 1,
                   workoutTitle: planData.nextWeekFirstWorkout?.title ?? 'Workout',
-                  preSessionMessage: preSessionCopy ?? null,
+                  preSessionMessage: preSessionCopy
+                    ? (cleanJordanMessage(stripEmDash(preSessionCopy)) ?? null)
+                    : null,
                 })
               }
             >
@@ -1939,7 +1988,7 @@ export default function HomeScreen() {
             <>
               <View style={styles.weightLogLeft}>
                 <View style={styles.weightLoggedRow}>
-                  <Text style={styles.weightLogCheck}>✓</Text>
+                  <Ionicons name="checkmark" size={16} color={Colors.success} />
                   <Text style={styles.weightLogTitleLogged}>Weighed In</Text>
                 </View>
                 <Text style={styles.weightLogSub}>
@@ -1963,7 +2012,7 @@ export default function HomeScreen() {
             <>
               <View style={styles.weightLogLeft}>
                 <View style={styles.weightLogTitleRow}>
-                  <Text style={styles.weightScaleEmoji}>⚖️</Text>
+                  <Ionicons name="scale-outline" size={20} color={Colors.textSecondary} />
                   <Text style={styles.weightLogTitlePrompt}>Daily Weigh-In</Text>
                 </View>
               </View>
@@ -1990,7 +2039,7 @@ export default function HomeScreen() {
             <View style={[styles.sportLogCard, styles.sportLogCardLogged]}>
               <View style={styles.sportLogLeftCol}>
                 <View style={styles.sportLogTopRow}>
-                  <Text style={styles.sportLogCheck}>✓</Text>
+                  <Ionicons name="checkmark" size={16} color={Colors.success} />
                   <Text style={styles.sportLogLoggedTitle}>Sport Logged</Text>
                 </View>
                 <Text style={styles.sportLogSubLogged}>
@@ -2012,7 +2061,7 @@ export default function HomeScreen() {
             >
               <View style={styles.sportLogLeftCol}>
                 <View style={styles.sportLogTopRow}>
-                  <Text style={styles.sportLogBolt}>⚡</Text>
+                  <Ionicons name="flash-outline" size={20} color={Colors.accent} />
                   <Text style={styles.sportLogTitle}>Log Sport Session</Text>
                 </View>
                 <Text style={styles.sportLogSportName}>
@@ -2037,11 +2086,11 @@ export default function HomeScreen() {
             ) : (
               <View style={styles.quickStatsRow}>
                 <View style={styles.quickStatCard}>
-                  <Text style={styles.quickStatEmoji}>🔥</Text>
+                  <Ionicons name="flame-outline" size={20} color={Colors.accent} />
                   <Text
                     style={[
                       styles.quickStatValue,
-                      currentStreak > 0 ? styles.quickStatValueAccent : null,
+                      currentStreak > 0 ? styles.quickStatValuePrimary : null,
                     ]}
                   >
                     {streakDisplay}
@@ -2049,11 +2098,11 @@ export default function HomeScreen() {
                   <Text style={styles.quickStatLabel}>Day streak</Text>
                 </View>
                 <View style={styles.quickStatCard}>
-                  <Text style={styles.quickStatEmoji}>⚡</Text>
+                  <Ionicons name="flash-outline" size={20} color={Colors.accent} />
                   <Text
                     style={[
                       styles.quickStatValue,
-                      totalSessions > 0 ? styles.quickStatValueAccent : null,
+                      totalSessions > 0 ? styles.quickStatValuePrimary : null,
                     ]}
                   >
                     {sessionsDisplay}
@@ -2061,7 +2110,7 @@ export default function HomeScreen() {
                   <Text style={styles.quickStatLabel}>Sessions</Text>
                 </View>
                 <View style={styles.quickStatCard}>
-                  <Text style={styles.quickStatEmoji}>📈</Text>
+                  <Ionicons name="trending-up-outline" size={20} color={Colors.success} />
                   <Text
                     style={[
                       styles.quickStatValue,
@@ -2208,7 +2257,7 @@ export default function HomeScreen() {
               <View style={styles.weightModalSheet}>
                 <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
                 <Text style={styles.weightModalSubtitle}>
-                  🌅 For best accuracy, weigh yourself first thing in the morning
+                  <Ionicons name="sunny-outline" size={16} color={Colors.textSecondary} />{' '}For best accuracy, weigh yourself first thing in the morning
                 </Text>
                 <TextInput
                   style={styles.weightModalInput}
@@ -2222,7 +2271,7 @@ export default function HomeScreen() {
                 <Text style={styles.weightModalUnit}>{unitLabel}</Text>
                 <View style={styles.sleepRow}>
                   <View style={styles.sleepRowLeft}>
-                    <Text style={styles.sleepMoon}>🌙</Text>
+                    <Ionicons name="moon-outline" size={16} color={Colors.textSecondary} />
                     <Text style={styles.sleepLabel}>Sleep</Text>
                   </View>
                   <View style={styles.sleepPillsRow}>
@@ -2314,9 +2363,6 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: Spacing.xl,
     paddingTop: 56,
     paddingBottom: Spacing.lg,
@@ -2332,20 +2378,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
-  profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileInitial: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
-    color: Colors.textPrimary,
-  },
-
   missedCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.sm,
@@ -2437,6 +2469,44 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
     borderWidth: 1,
     borderColor: Colors.divider,
+  },
+  planFutureCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    padding: Spacing.lg,
+    alignItems: 'center',
+  },
+  planFutureLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  planFutureTitle: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  planFutureDate: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  planFutureHint: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   recoveryDayCard: {
     marginHorizontal: Spacing.xl,
@@ -2616,6 +2686,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     marginTop: Spacing.sm,
     marginBottom: Spacing.sm,
+    overflow: 'hidden',
   },
   sessionFocusText: {
     fontFamily: Fonts.medium,
@@ -2901,6 +2972,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.display,
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
+  },
+  quickStatValuePrimary: {
+    color: Colors.textPrimary,
   },
   quickStatValueAccent: {
     color: Colors.accent,

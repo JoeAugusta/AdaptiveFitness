@@ -13,6 +13,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 import { getSessionIntent } from '../utils/getSessionIntent';
 import WorkoutResultsModal, {
   type WorkoutLog,
@@ -281,9 +282,14 @@ function WorkoutDayCard({
 
       {day.completed ? (
         <View style={styles.donePill}>
-          <Text style={styles.donePillText}>
-            {loadingResults ? 'Loading…' : 'Done ✓'}
-          </Text>
+          {loadingResults ? (
+            <Text style={styles.donePillText}>Loading…</Text>
+          ) : (
+            <View style={styles.donePillInner}>
+              <Text style={styles.donePillText}>Done</Text>
+              <Ionicons name="checkmark" size={14} color={Colors.success} />
+            </View>
+          )}
           {loadingResults ? (
             <ActivityIndicator
               size="small"
@@ -852,7 +858,7 @@ export default function PlanViewScreen() {
                     <View style={styles.cardioDayLeft}>
                       <Text style={styles.cardioDayNum}>Day {day.dayNumber}</Text>
                       <Text style={styles.cardioDayTitle}>
-                        {day.cardioType === 'light' ? '🚶' : '🏃'}{' '}
+                        <Ionicons name="walk-outline" size={24} color={Colors.textSecondary} />{' '}
                         {day.title ?? 'Cardio'}
                       </Text>
                       <Text style={styles.cardioDaySub}>
@@ -886,7 +892,7 @@ export default function PlanViewScreen() {
           )
         ) : (
           <View style={styles.lockedWeekState}>
-            <Text style={styles.lockedEmoji}>🔒</Text>
+            <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
             <Text style={styles.lockedTitle}>Week {selectedWeek} Locked</Text>
             <Text style={styles.lockedSubtitle}>
               Complete Week {planData.currentWeek} to unlock
@@ -909,7 +915,7 @@ export default function PlanViewScreen() {
         >
           <Text style={styles.extraWorkCardLabel}>EXTRA WORK</Text>
           <Text style={styles.extraWorkCardText}>
-            Train outside your plan — Jordan tracks it →
+            Train outside your plan. Jordan tracks it →
           </Text>
         </TouchableOpacity>
 
@@ -1220,6 +1226,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.success,
   },
+  donePillInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   donePillSpinner: {
     marginLeft: Spacing.xs,
   },
@@ -1387,7 +1398,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     borderLeftWidth: 3,
-    borderLeftColor: Colors.accentBorder,
+    borderLeftColor: Colors.accent,
     padding: Spacing.md,
     marginHorizontal: Spacing.md,
     marginTop: Spacing.sm,
@@ -1396,7 +1407,7 @@ const styles = StyleSheet.create({
   extraWorkCardLabel: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
-    color: Colors.textSecondary,
+    color: Colors.accent,
     letterSpacing: 1.5,
     marginBottom: 4,
   },

@@ -147,6 +147,7 @@ jordanNote rules (follow precisely):
   sentences. No dry number summary.
 - Never mention specific gram amounts that differ from the user's
   stated targets unless the coaching reason comes first.
+- Never use em-dashes (—). Use periods or commas instead.
 
 Return ONLY valid JSON — no markdown, no prose:
 {

@@ -29,6 +29,7 @@ import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLi
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { hapticSuccess, hapticWarning } from '../utils/haptics';
 import { stripEmDash } from '../utils/jordanText';
+import { Ionicons } from '@expo/vector-icons';
 
 interface MacroTargets {
   calories: number;
@@ -900,22 +901,16 @@ export default function MacroTrackerScreen() {
             <View style={styles.jordanCard}>
               <Text style={styles.jordanAuthor}>JORDAN</Text>
               {hasLoggedToday ? (
-                <>
-                  {jordanMealNote ? (
-                    <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote ?? '')}</Text>
-                  ) : null}
-                  <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
-                </>
+                jordanMealNote
+                  ? <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote)}</Text>
+                  : null
               ) : (
-                <>
-                  <Text style={styles.jordanBody}>
-                    Here&apos;s your plan for today — hit these targets and you&apos;ll be right
-                    on track.
-                  </Text>
-                  <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
-                </>
+                <Text style={styles.jordanBody}>
+                  Here&apos;s your plan for today. Hit these targets and you&apos;ll be right on track.
+                </Text>
               )}
             </View>
+            <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
             {mealSuggestions.map((meal) => (
               <View key={meal.name} style={styles.suggestedMealCard}>
                 <TouchableOpacity
@@ -981,7 +976,7 @@ export default function MacroTrackerScreen() {
 
         {todayLogs.length === 0 ? (
           <View style={[styles.sectionCard, styles.emptyMeals]}>
-            <Text style={styles.emptyEmoji}>🍽️</Text>
+            <Ionicons name="restaurant-outline" size={48} color={Colors.textTertiary} />
             <Text style={styles.emptyTitle}>No meals logged yet</Text>
             <Text style={styles.emptySubtitle}>Tap + Add Meal to start tracking</Text>
           </View>
@@ -1410,7 +1405,6 @@ const styles = StyleSheet.create({
   },
 
   emptyMeals: { alignItems: 'center', paddingVertical: 20 },
-  emptyEmoji: { fontFamily: Fonts.regular, fontSize: FontSizes.display },
   emptyTitle: {
     fontFamily: Fonts.regular,
     color: Colors.textPrimary,
@@ -1672,7 +1666,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
-    marginTop: 10,
+    marginTop: 0,
+    marginBottom: Spacing.sm,
   },
   suggestedMealCard: {
     backgroundColor: Colors.bgCard,

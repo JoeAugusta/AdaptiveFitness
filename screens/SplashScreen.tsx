@@ -61,13 +61,13 @@ export default function SplashScreen() {
         </Svg>
 
         <Text style={styles.wordmark}>hone</Text>
-
-        <ActivityIndicator
-          style={styles.spinner}
-          color={Colors.accent}
-          size="small"
-        />
       </View>
+
+      <ActivityIndicator
+        style={styles.spinner}
+        color={Colors.accent}
+        size="small"
+      />
     </SafeAreaView>
   );
 }
@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: '20%',
   },
   wordmark: {
     marginTop: 20,
@@ -90,6 +91,8 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   spinner: {
-    marginTop: 32,
+    position: 'absolute',
+    bottom: '15%',
+    alignSelf: 'center',
   },
 });

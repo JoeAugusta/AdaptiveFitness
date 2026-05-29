@@ -28,6 +28,7 @@ import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
 import { EXERCISES } from '../constants/exerciseLibrary';
 import { stripEmDash } from '../utils/jordanText';
+import { Ionicons } from '@expo/vector-icons';
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
 
@@ -801,13 +802,6 @@ export default function ExerciseCard({
     enteredWeight <= 0 &&
     !(wantsWarmupByRule && warmupSets.length > 0);
 
-  const showCoachingBlock =
-    loggedSets.length > 0 && (coachingNote != null || coachingLoading);
-  useEffect(() => {
-    if (!showCoachingBlock && showCoachingSheet) {
-      setShowCoachingSheet(false);
-    }
-  }, [showCoachingBlock, showCoachingSheet]);
   const lastWeekPillLabels = useMemo(
     () => getLastWeekPills(previousSets, !!exercise.isUnilateral, formatWorkoutWeight),
     [previousSets, exercise.isUnilateral, formatWorkoutWeight],
@@ -961,7 +955,7 @@ export default function ExerciseCard({
             {lastWeekBestStr ? (
               <View style={styles.lastWeekBestPill}>
                 <Text style={styles.lastWeekBestPillText}>
-                  🏆 {lastWeekBestStr}
+                  <Ionicons name="trophy-outline" size={16} color={Colors.accent} /> {lastWeekBestStr}
                 </Text>
               </View>
             ) : null}
@@ -1033,7 +1027,7 @@ export default function ExerciseCard({
 
       {showSelfSelectWarmupHint ? (
         <Text style={styles.warmupEntryHint}>
-          💡 Enter a weight to see your warm-up sets
+          <Ionicons name="bulb-outline" size={16} color={Colors.textSecondary} />{' '}Enter a weight to see your warm-up sets
         </Text>
       ) : null}
 
@@ -1118,7 +1112,7 @@ export default function ExerciseCard({
                     )}
                   </View>
                   <View style={styles.completionCircleDone}>
-                    <Text style={styles.completionCheckDone}>✓</Text>
+                    <Ionicons name="checkmark" size={16} color={Colors.success} />
                   </View>
                 </>
               ) : (
@@ -1203,7 +1197,7 @@ export default function ExerciseCard({
                     onPress={() => handleLogSet(set.setNumber)}
                     disabled={!canLogSet(set.setNumber)}
                   >
-                    <Text style={styles.completionCheckIdle}>✓</Text>
+                    <Ionicons name="checkmark" size={16} color={Colors.success} />
                   </TouchableOpacity>
                 </>
               )}
@@ -1251,38 +1245,6 @@ export default function ExerciseCard({
         );
       })}
 
-      {showCoachingBlock ? (
-        <TouchableOpacity
-          style={[
-            styles.coachingCardBase,
-            coachingLoading ? styles.coachingCardLoading : styles.coachingCardReady,
-          ]}
-          activeOpacity={0.85}
-          onPress={() => setShowCoachingSheet(true)}
-        >
-          <Text style={styles.coachingJordan}>JORDAN</Text>
-          <View style={styles.coachingBodySlot}>
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.coachingSkelAbs, { opacity: coachingSkelOpacity }]}
-            >
-              <Animated.View style={{ opacity: coachingPulseOpacity }}>
-                <View style={styles.coachingSkelLine1} />
-                <View style={styles.coachingSkelLine2} />
-              </Animated.View>
-            </Animated.View>
-            <Animated.View
-              style={[styles.coachingContentWrap, { opacity: coachingContentOpacity }]}
-            >
-              {coachingNote ? (
-                <Text style={styles.coachingNoteText}>
-                  {stripEmDash(coachingNote)}
-                </Text>
-              ) : null}
-            </Animated.View>
-          </View>
-        </TouchableOpacity>
-      ) : null}
 
       <TouchableOpacity
         style={styles.swapButton}
@@ -2127,33 +2089,11 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.semiBold,
   },
-  coachingCardBase: {
-    marginTop: Spacing.sm,
-    padding: Spacing.md,
-    borderRadius: Radius.md,
-    borderLeftWidth: 3,
-    overflow: 'hidden',
-  },
-  coachingCardLoading: {
-    backgroundColor: Colors.bgCard,
-    borderLeftColor: Colors.accentBorder,
-  },
-  coachingCardReady: {
-    backgroundColor: Colors.accentMuted,
-    borderLeftColor: Colors.accent,
-  },
-  coachingBodySlot: {
-    position: 'relative',
-    minHeight: 40,
-  },
   coachingSkelAbs: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
-  },
-  coachingContentWrap: {
-    minHeight: 40,
   },
   coachingSkelLine1: {
     width: '80%',
@@ -2169,19 +2109,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 8,
     alignSelf: 'flex-start',
-  },
-  coachingJordan: {
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: Spacing.xs,
-  },
-  coachingNoteText: {
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    lineHeight: 18,
   },
   swapButton: {
     marginTop: Spacing.md,

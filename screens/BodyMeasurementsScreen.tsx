@@ -19,6 +19,7 @@ import Svg, { Line as SvgLine, Circle, Text as SvgText, G } from 'react-native-s
 import type { ProgressStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 
 type Nav = NativeStackNavigationProp<ProgressStackParamList, 'BodyMeasurements'>;
 
@@ -574,7 +575,7 @@ export default function BodyMeasurementsScreen() {
           <View style={styles.chartCard}>
             {rows.length === 0 ? (
               <View style={styles.emptyChart}>
-                <Text style={styles.emptyEmoji}>📏</Text>
+                <Ionicons name="resize-outline" size={48} color={Colors.textSecondary} />
                 <Text style={styles.emptyTitle}>No measurements yet</Text>
                 <Text style={styles.emptySub}>Tap Log to record your first check-in</Text>
               </View>

@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 import { stripEmDash } from '../utils/jordanText';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import type { CaloriePace } from '../utils/projections';
@@ -76,6 +77,7 @@ interface ProgressResult {
 interface Milestone {
   pct: number;
   label: string;
+  icon: string;
   reached: boolean;
 }
 
@@ -88,11 +90,11 @@ const GOAL_BADGE: Record<string, { color: string; label: string }> = {
 };
 
 const MILESTONE_DEFS = [
-  { pct: 10,  label: 'Getting Started 🌱' },
-  { pct: 50,  label: 'Halfway There 💪' },
-  { pct: 75,  label: 'Almost There 🔥' },
-  { pct: 90,  label: 'Final Push ⚡' },
-  { pct: 100, label: 'Goal Complete 🏆' },
+  { pct: 10,  label: 'Getting Started', icon: 'leaf-outline' },
+  { pct: 50,  label: 'Halfway There',   icon: 'fitness-outline' },
+  { pct: 75,  label: 'Almost There',    icon: 'flame-outline' },
+  { pct: 90,  label: 'Final Push',      icon: 'flash-outline' },
+  { pct: 100, label: 'Goal Complete',   icon: 'trophy-outline' },
 ];
 
 function calculateProgress(goal: GoalRow, plan: PlanRow | null, current1rm: number | null): ProgressResult {
@@ -137,6 +139,7 @@ function buildMilestones(progressPct: number): Milestone[] {
   return MILESTONE_DEFS.map((m) => ({
     pct: m.pct,
     label: m.label,
+    icon: m.icon,
     reached: progressPct >= m.pct,
   }));
 }
@@ -181,10 +184,10 @@ function getGoalTitle(goal: GoalRow): string {
     const lift = goal.target_lift ? formatLiftName(goal.target_lift) : '';
     return lift ? `Hit ${goal.target_1rm ?? '?'}lbs ${lift}` : `Hit ${goal.target_1rm ?? '?'}lbs`;
   }
-  if (gt === 'hypertrophy') return `Build Muscle — ${goal.plan_duration_weeks ?? '?'} Week Plan`;
-  if (gt === 'fat_loss') return `Lose Weight — Target ${goal.target_weight_lbs ?? '?'}lbs`;
-  if (gt === 'recomp') return `Body Recomposition — ${goal.plan_duration_weeks ?? '?'} Weeks`;
-  return `General Fitness — ${goal.plan_duration_weeks ?? '?'} Week Plan`;
+  if (gt === 'hypertrophy') return `Build Muscle: ${goal.plan_duration_weeks ?? '?'} Week Plan`;
+  if (gt === 'fat_loss') return `Lose Weight: Target ${goal.target_weight_lbs ?? '?'}lbs`;
+  if (gt === 'recomp') return `Body Recomposition: ${goal.plan_duration_weeks ?? '?'} Weeks`;
+  return `General Fitness: ${goal.plan_duration_weeks ?? '?'} Week Plan`;
 }
 
 function formatMonth(dateStr: string): string {
@@ -899,7 +902,7 @@ export default function GoalTrackerScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.goalTitle}>{getGoalTitle(goal)}</Text>
+            <Text style={styles.goalTitle}>{stripEmDash(getGoalTitle(goal))}</Text>
 
             {progress && (
               <View style={styles.progressSection}>
@@ -973,9 +976,11 @@ export default function GoalTrackerScreen() {
               <Text style={styles.evrSubLabelReality}>WHAT&apos;S ACTUALLY HAPPENING</Text>
 
               <View style={styles.evrMetricRow}>
-                <Text style={styles.evrMetricIcon}>
-                  {!hasVolumeData ? '➡️' : volumeChangePct > 0 ? '📈' : volumeChangePct < 0 ? '📉' : '➡️'}
-                </Text>
+                {!hasVolumeData || volumeChangePct === 0
+                  ? <Ionicons name="arrow-forward" size={20} color={Colors.textSecondary} />
+                  : volumeChangePct > 0
+                    ? <Ionicons name="trending-up-outline" size={20} color={Colors.success} />
+                    : <Ionicons name="trending-down-outline" size={20} color={Colors.danger} />}
                 <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
                 {!hasVolumeData ? (
                   <Text style={styles.evrMetricValue}>
@@ -991,7 +996,7 @@ export default function GoalTrackerScreen() {
               </View>
 
               <View style={styles.evrMetricRow}>
-                <Text style={styles.evrMetricIcon}>🎯</Text>
+                <Ionicons name="radio-button-on-outline" size={20} color={Colors.textSecondary} />
                 <Text style={styles.evrMetricLabel}>Training Consistency</Text>
                 {currentWeek <= 1 ? (
                   <Text style={styles.evrMetricValue}>Just getting started</Text>
@@ -1003,7 +1008,7 @@ export default function GoalTrackerScreen() {
               </View>
 
               <View style={[styles.evrMetricRow, styles.evrMetricRowLast]}>
-                <Text style={styles.evrMetricIcon}>⚡</Text>
+                <Ionicons name="flash-outline" size={20} color={Colors.textSecondary} />
                 <Text style={styles.evrMetricLabel}>Sessions per Week</Text>
                 <View style={styles.evrPaceValue}>
                   <Text
@@ -1049,15 +1054,14 @@ export default function GoalTrackerScreen() {
                         {m.pct}%
                       </Text>
                     </View>
-                    <Text style={styles.milestoneName}>{m.label}</Text>
-                    <Text
-                      style={[
-                        styles.milestoneStatusIcon,
-                        m.reached ? styles.milestoneStatusReached : styles.milestoneStatusLocked,
-                      ]}
-                    >
-                      {m.reached ? (m.pct >= 100 ? '🏆' : '✅') : '🔒'}
+                    <Text style={styles.milestoneName}>
+                      <Ionicons name={m.icon as React.ComponentProps<typeof Ionicons>['name']} size={16} color={Colors.textSecondary} />{' '}{m.label}
                     </Text>
+                    {m.reached
+                      ? (m.pct >= 100
+                        ? <Ionicons name="trophy-outline" size={20} color={Colors.accent} />
+                        : <Ionicons name="checkmark-circle-outline" size={20} color={Colors.success} />)
+                      : <Ionicons name="lock-closed-outline" size={20} color={Colors.textTertiary} />}
                   </View>
                 );
               })}
@@ -1095,7 +1099,7 @@ export default function GoalTrackerScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.historyDesc}>{getGoalTitle(h)}</Text>
+                <Text style={styles.historyDesc}>{stripEmDash(getGoalTitle(h))}</Text>
                 <Text style={styles.historyDate}>{formatMonth(h.created_at)}</Text>
               </View>
             );

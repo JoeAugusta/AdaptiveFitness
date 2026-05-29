@@ -46,9 +46,9 @@ const BETA_BYPASS = true;
 const CHART_ORANGE = '#F97316';
 const CHART_GREEN = '#22C55E';
 const CHART_AMBER = '#F59E0B';
-const COLOR_PROTEIN = Colors.accent;
-const COLOR_CARBS = Colors.warning;
-const COLOR_FATS = Colors.success;
+const COLOR_PROTEIN = Colors.textPrimary;
+const COLOR_CARBS = Colors.textPrimary;
+const COLOR_FATS = Colors.textPrimary;
 
 const MONTHLY_LEAN_MAP: Record<
   CaloriePace,
@@ -898,10 +898,6 @@ export default function PlanPreviewScreen() {
           { paddingBottom: 36 + insets.bottom },
         ]}
       >
-        <Text style={styles.socialProof}>
-          Join athletes training with purpose.
-        </Text>
-
         <View style={styles.pricingRow}>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -1008,7 +1004,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 320,
+    paddingBottom: 280,
   },
 
   projectionHeader: {
@@ -1280,16 +1276,9 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: Colors.bgElevated,
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: Colors.border,
     paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  socialProof: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 16,
+    paddingTop: Spacing.xl,
   },
   pricingRow: {
     flexDirection: 'row',
@@ -1385,6 +1374,7 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.micro,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
 });

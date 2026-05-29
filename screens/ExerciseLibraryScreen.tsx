@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 import { EXERCISES, type Exercise } from '../constants/exerciseLibrary';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>;
@@ -24,9 +25,11 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>;
 const MUSCLE_GROUPS = ['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps', 'Forearms'];
 const EQUIPMENT_OPTIONS = ['All', 'Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell', 'Band'];
 
-const EQUIP_EMOJIS: Record<string, string> = {
-  barbell: '🏋️', dumbbell: '💪', machine: '⚙️', cable: '🔗',
-  bodyweight: '🤸', kettlebell: '🔔', band: '🟡',
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const EQUIP_ICONS: Record<string, IoniconName> = {
+  barbell: 'barbell-outline', dumbbell: 'fitness-outline', machine: 'settings-outline', cable: 'git-branch-outline',
+  bodyweight: 'body-outline', kettlebell: 'notifications-outline', band: 'ellipse-outline',
 };
 
 const FAVS_KEY = 'exercise_favourites';
@@ -152,9 +155,10 @@ export default function ExerciseLibraryScreen() {
             )}
             <View style={styles.metaRow}>
               <View style={styles.equipPill}>
-                <Text style={styles.equipPillText}>
-                  {EQUIP_EMOJIS[ex.equipment] ?? ''} {ex.equipment}
-                </Text>
+                {EQUIP_ICONS[ex.equipment] ? (
+                  <Ionicons name={EQUIP_ICONS[ex.equipment]} size={12} color={Colors.textTertiary} />
+                ) : null}
+                <Text style={styles.equipPillText}>{ex.equipment}</Text>
               </View>
               <View style={level.pill}>
                 <Text style={level.text}>{ex.difficulty}</Text>
@@ -163,10 +167,10 @@ export default function ExerciseLibraryScreen() {
           </View>
           <View style={styles.exRight}>
             <TouchableOpacity onPress={() => toggleFavourite(ex.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.iconBtn}>{isFav ? '❤️' : '🤍'}</Text>
+              <Ionicons name={isFav ? 'heart' : 'heart-outline'} size={20} color={isFav ? Colors.danger : Colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => toggleAvoided(ex.name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.iconBtn}>{isAvoided ? '🚫' : '⭕'}</Text>
+              <Ionicons name={isAvoided ? 'close-circle-outline' : 'ellipse-outline'} size={20} color={isAvoided ? Colors.danger : Colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -183,7 +187,7 @@ export default function ExerciseLibraryScreen() {
     if (activeTab === 'favourites' && filtered.length === 0) {
       return (
         <View style={styles.emptyStateTab}>
-          <Text style={styles.emptyTextTab}>Tap ❤️ on any exercise to save it here</Text>
+          <Text style={styles.emptyTextTab}>Tap <Ionicons name="heart-outline" size={16} color={Colors.textSecondary} /> on any exercise to save it here</Text>
         </View>
       );
     }
@@ -230,7 +234,7 @@ export default function ExerciseLibraryScreen() {
           </View>
 
           <View style={styles.searchRow}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Ionicons name="search-outline" size={16} color={Colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}

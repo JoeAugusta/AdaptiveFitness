@@ -19,6 +19,7 @@ import Purchases, {
 } from 'react-native-purchases';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 
 // ── Date helper ──
 
@@ -163,7 +164,7 @@ export default function SubscriptionManagementScreen() {
       const result = await Purchases.purchasePackage(pkg);
       if (result.customerInfo.entitlements.active['pro']) {
         setIsProActive(true);
-        Alert.alert('Welcome to Pro! 🎉', 'Your free trial has started. Enjoy full access.');
+        Alert.alert('Welcome to Pro!', 'Your free trial has started. Enjoy full access.');
       }
     } catch (e) {
       const purchaseError = e as PurchasesError;
@@ -280,7 +281,7 @@ export default function SubscriptionManagementScreen() {
               {isProActive ? (
                 <>
                   <View style={styles.statusTopRow}>
-                    <Text style={styles.statusEmoji}>⚡</Text>
+                    <Ionicons name="flash-outline" size={16} color={Colors.accent} />
                     <Text style={styles.statusPlanName}>Pro Plan</Text>
                     <View style={[styles.statusPill, styles.statusPillPro]}>
                       <Text style={styles.statusPillTextPro}>PRO</Text>
@@ -318,7 +319,7 @@ export default function SubscriptionManagementScreen() {
               ) : (
                 <>
                   <View style={styles.statusTopRow}>
-                    <Text style={styles.statusEmoji}>🔓</Text>
+                    <Ionicons name="lock-open-outline" size={16} color={Colors.accent} />
                     <Text style={styles.statusPlanName}>Free Plan</Text>
                     <View style={[styles.statusPill, styles.statusPillFree]}>
                       <Text style={styles.statusPillTextFree}>FREE</Text>
@@ -356,13 +357,13 @@ export default function SubscriptionManagementScreen() {
                     style={freeHas ? styles.compCellCheckFree : styles.compCellDash}
                     numberOfLines={1}
                   >
-                    {freeHas ? '✓' : '—'}
+                    {freeHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
                   </Text>
                   <Text
                     style={proHas ? styles.compCellCheckPro : styles.compCellDash}
                     numberOfLines={1}
                   >
-                    {proHas ? '✓' : '—'}
+                    {proHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
                   </Text>
                 </View>
               ))}

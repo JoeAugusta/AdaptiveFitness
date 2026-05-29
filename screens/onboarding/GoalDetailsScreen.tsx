@@ -981,6 +981,7 @@ function HypertrophyContent({
       </View>
       {HYPERTROPHY_EXPECTATIONS[planDuration] && (
         <View style={styles.infoCard}>
+          <Text style={styles.infoCardLabel}>JORDAN</Text>
           <Text style={styles.infoCardBody}>
             {HYPERTROPHY_EXPECTATIONS[planDuration]}
           </Text>
@@ -1096,6 +1097,7 @@ function FatLossContent({
       )}
       {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
         <View style={styles.infoCard}>
+          <Text style={styles.infoCardLabel}>JORDAN</Text>
           <Text style={styles.infoCardBody}>
             {FAT_LOSS_EXPECTATIONS[targetDate]}
           </Text>
@@ -1186,6 +1188,7 @@ function RecompContent({
 
       {RECOMP_EXPECTATIONS[planDuration] && (
         <View style={styles.infoCard}>
+          <Text style={styles.infoCardLabel}>JORDAN</Text>
           <Text style={styles.infoCardBody}>
             {RECOMP_EXPECTATIONS[planDuration]}
           </Text>
@@ -1318,6 +1321,7 @@ function GeneralContent({
       </View>
       {GENERAL_EXPECTATIONS[planDuration] && (
         <View style={styles.infoCard}>
+          <Text style={styles.infoCardLabel}>JORDAN</Text>
           <Text style={styles.infoCardBody}>
             {GENERAL_EXPECTATIONS[planDuration]}
           </Text>
@@ -1931,8 +1935,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
     padding: Spacing.lg,
     marginTop: Spacing.md,
+  },
+  infoCardLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: 6,
   },
   infoCardBody: {
     fontFamily: Fonts.regular,

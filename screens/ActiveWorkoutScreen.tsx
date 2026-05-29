@@ -43,6 +43,7 @@ import {
   scheduleRestCompleteNotification,
 } from '../utils/restTimerAlerts';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { Ionicons } from '@expo/vector-icons';
 import { JordanAvatar } from '../components/JordanAvatar';
 import { stripEmDash } from '../utils/jordanText';
 
@@ -60,11 +61,11 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
 type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
 
 const FATIGUE_OPTIONS = [
-  { rating: 1, emoji: '😴', label: 'Wiped' },
-  { rating: 2, emoji: '😓', label: 'Tired' },
-  { rating: 3, emoji: '😊', label: 'Good' },
-  { rating: 4, emoji: '💪', label: 'Strong' },
-  { rating: 5, emoji: '🔥', label: 'Beast Mode' },
+  { rating: 1, label: 'Wiped',  color: '#EF4444' },
+  { rating: 2, label: 'Tired',  color: '#F97316' },
+  { rating: 3, label: 'Good',   color: '#F59E0B' },
+  { rating: 4, label: 'Strong', color: '#84CC16' },
+  { rating: 5, label: 'Beast',  color: '#22C55E' },
 ];
 
 type ExerciseSet = {
@@ -370,6 +371,7 @@ export default function ActiveWorkoutScreen() {
   const [overlayNote, setOverlayNote] = useState<string | null>(null);
   const [overlayNoteVisible, setOverlayNoteVisible] = useState(false);
   const overlayNoteAnim = useRef(new Animated.Value(0)).current;
+  const overlayDismissTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Timers
   const sessionStartTimeRef = useRef<number>(Date.now());
@@ -975,6 +977,9 @@ export default function ActiveWorkoutScreen() {
   useEffect(() => {
     return () => {
       void cancelRestTimerNotification();
+      if (overlayDismissTimeout.current) {
+        clearTimeout(overlayDismissTimeout.current);
+      }
     };
   }, []);
 
@@ -1032,21 +1037,23 @@ export default function ActiveWorkoutScreen() {
         const text = data?.feedback ?? 'Good work. Keep it up.';
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
         setOverlayNote(text);
-        setOverlayNoteVisible(true);
         overlayNoteAnim.setValue(0);
+        setOverlayNoteVisible(true);
         Animated.timing(overlayNoteAnim, {
           toValue: 1,
           duration: 300,
           useNativeDriver: true,
         }).start();
-        // Auto-dismiss after 6 seconds
-        setTimeout(() => {
+        if (overlayDismissTimeout.current) {
+          clearTimeout(overlayDismissTimeout.current);
+        }
+        overlayDismissTimeout.current = setTimeout(() => {
           Animated.timing(overlayNoteAnim, {
             toValue: 0,
             duration: 300,
             useNativeDriver: true,
           }).start(() => setOverlayNoteVisible(false));
-        }, 6000);
+        }, 5000);
       }
     } catch {
       setCoachingNotes((prev) => {
@@ -1484,7 +1491,7 @@ export default function ActiveWorkoutScreen() {
             onPress={() => setOverlayNoteVisible(false)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.jordanNoteOverlayDismiss}>✕</Text>
+            <Ionicons name="close" size={20} color={Colors.textTertiary} />
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -1536,7 +1543,13 @@ export default function ActiveWorkoutScreen() {
                       { transform: [{ scale: fatigueEmojiScales[i] }] },
                     ]}
                   >
-                    <Text style={styles.emoji}>{opt.emoji}</Text>
+                    <View
+                      style={[
+                        styles.ratingDot,
+                        { backgroundColor: opt.color },
+                        isSelected && styles.ratingDotSelected,
+                      ]}
+                    />
                     <Text style={styles.emojiLabel}>{opt.label}</Text>
                   </Animated.View>
                 </TouchableOpacity>
@@ -1809,7 +1822,7 @@ const styles = StyleSheet.create({
 
   jordanNoteOverlay: {
     position: 'absolute',
-    top: 0,
+    top: 72,
     left: Spacing.xl,
     right: Spacing.xl,
     backgroundColor: Colors.bgCard,
@@ -1916,9 +1929,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accentBorder,
   },
-  emoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 28,
+  ratingDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginBottom: 8,
+    opacity: 0.5,
+  },
+  ratingDotSelected: {
+    opacity: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
   },
   emojiLabel: {
     fontSize: 9,

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 
 export interface RPEReferenceSheetProps {
@@ -44,7 +45,7 @@ export function RPEReferenceSheet({ visible, onClose }: RPEReferenceSheetProps) 
               accessibilityRole="button"
               accessibilityLabel="Close"
             >
-              <Text style={styles.closeBtn}>✕</Text>
+              <Ionicons name="close" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -110,8 +111,7 @@ export function RPEReferenceSheet({ visible, onClose }: RPEReferenceSheetProps) 
 
           <View style={styles.tipBox}>
             <Text style={styles.tipText}>
-              💡 Most working sets should land between RPE 7–8. Consistently below 6? Weight
-              goes up. Above 9? It comes down.
+              <Ionicons name="bulb-outline" size={16} color={Colors.textSecondary} />{' '}Most working sets should land between RPE 7–8. Consistently below 6? Weight goes up. Above 9? It comes down.
             </Text>
           </View>
         </View>

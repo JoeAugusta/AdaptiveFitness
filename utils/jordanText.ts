@@ -4,13 +4,16 @@
  */
 
 /**
- * Strips em-dashes from AI-generated coaching copy.
- * Replaces spaced em-dashes with a period+space and bare em-dashes with a period.
+ * Strips em-dashes and en-dashes from AI-generated coaching copy.
+ * Spaced em-dash → period+space. Bare em-dash → period.
+ * Spaced en-dash → single space. Bare en-dash → hyphen.
  */
 export function stripEmDash(text: string): string {
   return text
     .replace(/ — /g, '. ')
     .replace(/—/g, '.')
+    .replace(/ – /g, ' ')
+    .replace(/–/g, '-')
     .trim();
 }
 

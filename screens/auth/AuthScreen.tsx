@@ -1,50 +1,42 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Svg, { Polygon, Rect } from 'react-native-svg';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
-import { Colors, Fonts, FontSizes, Radius } from '../../constants/design';
+import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 
 export default function AuthScreen() {
   const navigation = useNavigation<NavProp>();
-  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.logoZone}>
-        <Svg width={56} height={56} viewBox="0 0 100 100">
-          <Polygon
-            points="50,7 89,28 89,72 50,93 11,72 11,28"
-            fill="#09090B"
-            stroke="#F97316"
-            strokeWidth="5"
-          />
-          <Rect x="24" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          <Rect x="58" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          <Rect x="24" y="42" width="52" height="14" rx="3" fill="#F97316"/>
-        </Svg>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={styles.brandLogo}
+          resizeMode="contain"
+        />
         <Text style={styles.wordmark}>hone</Text>
         <Text style={styles.tagline}>Your coach. Built around you.</Text>
-      </View>
 
-      <View style={[styles.bottomZone, { paddingBottom: 36 + insets.bottom }]}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          activeOpacity={0.88}
-          onPress={() => navigation.navigate('SignUp')}
-        >
-          <Text style={styles.primaryButtonText}>Get Started →</Text>
-        </TouchableOpacity>
+        <View style={styles.ctaZone}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            activeOpacity={0.88}
+            onPress={() => navigation.navigate('SignUp')}
+          >
+            <Text style={styles.primaryButtonText}>Get Started →</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.subText}>
-          Already have an account?{' '}
-          <Text style={styles.signInLink} onPress={() => navigation.navigate('SignIn')}>
-            Sign in
+          <Text style={styles.subText}>
+            Already have an account?{' '}
+            <Text style={styles.signInLink} onPress={() => navigation.navigate('SignIn')}>
+              Sign in
+            </Text>
           </Text>
-        </Text>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -58,8 +50,13 @@ const styles = StyleSheet.create({
   logoZone: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 20,
+    justifyContent: 'flex-start',
+    paddingTop: '28%',
+    paddingHorizontal: Spacing.xl,
+  },
+  brandLogo: {
+    width: 96,
+    height: 96,
   },
   wordmark: {
     marginTop: 24,
@@ -75,8 +72,9 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-  bottomZone: {
-    paddingHorizontal: 24,
+  ctaZone: {
+    marginTop: 96,
+    alignSelf: 'stretch',
   },
   primaryButton: {
     height: 56,
@@ -85,6 +83,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'stretch',
   },
   primaryButtonText: {
     fontFamily: Fonts.bold,

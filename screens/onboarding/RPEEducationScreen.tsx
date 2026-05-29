@@ -11,6 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 import { JordanAvatar } from '../../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'RPEEducation'>;
@@ -123,7 +124,7 @@ export default function RPEEducationScreen() {
 
         <View style={styles.footerNote}>
           <Text style={styles.footerNoteText}>
-            🎯 Most of your working sets should land between RPE 7 to 8. If you&apos;re consistently below 6, the weight goes up. Above 9, it comes down.
+            <Ionicons name="radio-button-on-outline" size={16} color={Colors.accent} />{' '}Most of your working sets should land between RPE 7 to 8. If you&apos;re consistently below 6, the weight goes up. Above 9, it comes down.
           </Text>
         </View>
 
@@ -244,9 +245,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  bubbleGreen: { backgroundColor: 'rgba(34,197,94,0.15)' },
-  bubbleOrange: { backgroundColor: 'rgba(249,115,22,0.15)' },
-  bubbleRed: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  bubbleGreen: {
+    backgroundColor: 'rgba(34,197,94,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.4)',
+  },
+  bubbleOrange: {
+    backgroundColor: 'rgba(249,115,22,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.4)',
+  },
+  bubbleRed: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.4)',
+  },
   anchorBubbleNum: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.title,

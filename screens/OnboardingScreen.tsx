@@ -15,19 +15,19 @@ import BetaFeedbackModal from '../components/BetaFeedbackModal';
 
 interface Goal {
   id: string;
-  emoji: string;
   title: string;
   subtitle: string;
+  accentColor: string;
 }
 
 // GAP-5: Added power_hypertrophy as a first-class goal
 const GOALS: Goal[] = [
-  { id: 'strength', emoji: '🏋️', title: 'Strength Focus', subtitle: 'Hit a new 1RM on a specific lift' },
-  { id: 'power_hypertrophy', emoji: '🏋️‍♂️', title: 'Strength & Size', subtitle: 'Build serious strength on the big lifts while adding muscle everywhere else' },
-  { id: 'hypertrophy', emoji: '💪', title: 'Hypertrophy', subtitle: 'Build muscle size and definition' },
-  { id: 'recomp', emoji: '🔄', title: 'Body Recomposition', subtitle: 'Lose fat while gaining muscle' },
-  { id: 'fat_loss', emoji: '🔥', title: 'Fat Loss', subtitle: 'Lose weight while preserving muscle' },
-  { id: 'general', emoji: '❤️', title: 'General Fitness', subtitle: 'Improve overall health and fitness' },
+  { id: 'strength',          title: 'Strength Focus',     subtitle: 'Hit a new 1RM on a specific lift',                                                      accentColor: Colors.accent },
+  { id: 'power_hypertrophy', title: 'Strength & Size',    subtitle: 'Build serious strength on the big lifts while adding muscle everywhere else',            accentColor: Colors.accent },
+  { id: 'hypertrophy',       title: 'Hypertrophy',        subtitle: 'Build muscle size and definition',                                                       accentColor: Colors.success },
+  { id: 'recomp',            title: 'Body Recomposition', subtitle: 'Lose fat while gaining muscle',                                                          accentColor: Colors.warning },
+  { id: 'fat_loss',          title: 'Fat Loss',           subtitle: 'Lose weight while preserving muscle',                                                    accentColor: Colors.warning },
+  { id: 'general',           title: 'General Fitness',    subtitle: 'Improve overall health and fitness',                                                     accentColor: Colors.textSecondary },
 ];
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
@@ -84,7 +84,6 @@ export default function OnboardingScreen() {
                 ]}
                 onPress={() => setSelectedGoal(goal.id)}
               >
-                <Text style={styles.emoji}>{goal.emoji}</Text>
                 <View style={styles.cardText}>
                   <Text style={styles.cardTitle}>{goal.title}</Text>
                   <Text style={styles.cardSubtitle}>{goal.subtitle}</Text>
@@ -188,21 +187,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.divider,
+    borderColor: Colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.border,
     paddingHorizontal: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: Spacing.sm,
+    overflow: 'hidden',
   },
   cardSelected: {
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accentBorder,
-    borderWidth: 1.5,
-  },
-  emoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 28,
-    marginRight: Spacing.lg,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
   },
   cardText: {
     flex: 1,

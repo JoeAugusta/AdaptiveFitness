@@ -48,10 +48,10 @@ const PACE_CONFIG = {
   hypertrophy: [
     {
       id: 'conservative',
-      label: 'Lean Bulk: Clean gains, minimal fat',
+      label: 'Lean Bulk',
       adjustment: 200,
       sub: '+200 cal/day',
-      note: 'Minimal fat gain, slower muscle',
+      note: 'Clean gains, minimal fat',
     },
     {
       id: 'balanced',

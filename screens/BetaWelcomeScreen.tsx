@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, FontSizes, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 
 type BetaWelcomeNavProp = NativeStackNavigationProp<RootStackParamList, 'BetaWelcome'>;
 
-const ASK_ROWS: { icon: string; text: string }[] = [
-  { icon: '🔥', text: 'Use it like a real person would — not carefully' },
-  { icon: '🔍', text: 'Note anything confusing, broken, or ugly' },
-  { icon: '💬', text: 'Profile → Support → Send Feedback to report it' },
+const ASK_ROWS: { icon: ReactNode; text: string }[] = [
+  { icon: <Ionicons name="flame-outline" size={20} color={Colors.accent} />, text: 'Use it like a real person would — not carefully' },
+  { icon: <Ionicons name="search-outline" size={20} color={Colors.accent} />, text: 'Note anything confusing, broken, or ugly' },
+  { icon: <Ionicons name="chatbubble-outline" size={20} color={Colors.accent} />, text: 'Profile → Support → Send Feedback to report it' },
 ];
 
 export default function BetaWelcomeScreen() {
@@ -73,7 +74,7 @@ export default function BetaWelcomeScreen() {
                 index === ASK_ROWS.length - 1 ? styles.askRowLast : null,
               ]}
             >
-              <Text style={styles.askIcon}>{row.icon}</Text>
+              {row.icon}
               <Text style={styles.askText}>{row.text}</Text>
             </View>
           ))}

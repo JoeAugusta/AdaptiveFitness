@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -25,31 +26,31 @@ type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
 
 const FATIGUE_MAP: Record<
   number,
-  { emoji: string; label: string; tip: string }
+  { color: string; label: string; tip: string }
 > = {
   1: {
-    emoji: '😴',
+    color: '#EF4444',
     label: 'Wiped',
     tip: 'Take it easy tomorrow — prioritise sleep and light movement.',
   },
   2: {
-    emoji: '😓',
+    color: '#F97316',
     label: 'Tired',
     tip: 'Take it easy tomorrow — prioritise sleep and light movement.',
   },
   3: {
-    emoji: '😊',
+    color: '#F59E0B',
     label: 'Good',
     tip: 'Good session. Standard recovery applies.',
   },
   4: {
-    emoji: '💪',
+    color: '#84CC16',
     label: 'Strong',
     tip: "Great energy today. You're ready to push again soon.",
   },
   5: {
-    emoji: '🔥',
-    label: 'Beast Mode',
+    color: '#22C55E',
+    label: 'Beast',
     tip: "Great energy today. You're ready to push again soon.",
   },
 };
@@ -59,11 +60,11 @@ const STAT_CARDS = (
   totalSets: number,
   durationMinutes: number,
   prsHit: number,
-) => [
-  { icon: '🏋️', label: 'Exercises', value: String(totalExercises) },
-  { icon: '✅', label: 'Sets Logged', value: String(totalSets) },
-  { icon: '⏱️', label: 'Duration', value: `${durationMinutes} min` },
-  { icon: '🏆', label: 'PRs Hit', value: String(prsHit), isPr: true },
+): Array<{ icon: ReactNode; label: string; value: string; isPr?: boolean }> => [
+  { icon: <Ionicons name="barbell-outline" size={24} color={Colors.accent} />, label: 'Exercises', value: String(totalExercises) },
+  { icon: <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />, label: 'Sets Logged', value: String(totalSets) },
+  { icon: <Ionicons name="time-outline" size={24} color={Colors.accent} />, label: 'Duration', value: `${durationMinutes} min` },
+  { icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: true },
 ];
 
 function rawWeekNumber(w: {
@@ -627,7 +628,7 @@ export default function WorkoutCompleteScreen() {
           <Animated.View
             style={[styles.checkCircle, { transform: [{ scale: checkScale }] }]}
           >
-            <Text style={styles.checkmark}>✓</Text>
+            <Ionicons name="checkmark" size={36} color={Colors.textPrimary} />
           </Animated.View>
           <Text style={styles.heroTitle}>Workout Complete!</Text>
           <Text style={styles.heroSubtitle}>
@@ -647,7 +648,7 @@ export default function WorkoutCompleteScreen() {
                   { opacity: cardOpacities[i] },
                 ]}
               >
-                <Text style={styles.statIcon}>{stat.icon}</Text>
+                {stat.icon}
                 <Text style={[styles.statValue, isPrCard && styles.statValuePr]}>
                   {stat.value}
                 </Text>
@@ -660,7 +661,7 @@ export default function WorkoutCompleteScreen() {
         {showSummaryBanner && (
           <View style={styles.summaryBanner}>
             <View style={styles.summaryBannerTitleRow}>
-              <Text style={styles.summaryBannerEmoji}>🎉</Text>
+              <Ionicons name="star-outline" size={24} color={Colors.accent} />
               <Text style={styles.summaryBannerTitle}>
                 Week {weekNumber} Complete!
               </Text>
@@ -670,7 +671,7 @@ export default function WorkoutCompleteScreen() {
             </Text>
             {nextWeekReady ? (
               <Text style={styles.summaryBannerSubtitleSuccess}>
-                Week {weekNumber + 1} is ready — head to your Dashboard.
+                Week {weekNumber + 1} is ready. Head to your Dashboard.
               </Text>
             ) : null}
             <TouchableOpacity
@@ -712,7 +713,7 @@ export default function WorkoutCompleteScreen() {
         {macroAdjustment ? (
           <View style={styles.macroCard}>
             <View style={styles.macroCardTitleRow}>
-              <Text style={styles.macroCardEmoji}>📊</Text>
+              <Ionicons name="bar-chart-outline" size={20} color={Colors.accent} />
               <Text style={styles.macroCardTitle}>Macros Updated</Text>
             </View>
             <Text style={styles.macroCardBody}>{stripEmDash(macroAdjustment ?? '')}</Text>
@@ -722,7 +723,7 @@ export default function WorkoutCompleteScreen() {
         <View style={styles.recoveryCard}>
           <Text style={styles.recoverySectionLabel}>RECOVERY STATUS</Text>
           <View style={styles.fatigueRow}>
-            <Text style={styles.fatigueEmoji}>{fatigue.emoji}</Text>
+            <View style={[styles.ratingDot, { backgroundColor: fatigue.color }]} />
             <Text style={styles.fatigueLabel}>{fatigue.label}</Text>
           </View>
           <Text style={styles.fatigueTip}>{fatigue.tip}</Text>
@@ -911,11 +912,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accentBorder,
   },
-  statIcon: {
-    fontFamily: Fonts.regular,
-    fontSize: 24,
-    marginBottom: Spacing.sm,
-  },
   statValue: {
     fontSize: FontSizes.display,
     fontFamily: Fonts.bold,
@@ -953,9 +949,11 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
   },
-  fatigueEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 32,
+  ratingDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 8,
   },
   fatigueLabel: {
     fontSize: FontSizes.heading2,

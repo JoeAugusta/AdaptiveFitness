@@ -13,6 +13,7 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import { useMetric } from '../utils/units';
 import { stripEmDash } from '../utils/jordanText';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../Lib/supabase';
 
 export interface SetLog {
@@ -81,19 +82,6 @@ function formatVolume(lbs: number): string {
     : `${lbs} lbs`;
 }
 
-function getFatigueEmoji(rating: number | null | undefined): string {
-  if (!rating) return '—';
-  const r = Math.min(5, Math.max(1, Math.round(Number(rating))));
-  const map: Record<number, string> = {
-    1: '😴', // Wiped
-    2: '😤', // Tired
-    3: '😊', // Good
-    4: '💪', // Strong
-    5: '🔥', // Beast Mode
-  };
-  return map[r] ?? '—';
-}
-
 function getFatigueLabel(rating: number | null | undefined): string {
   if (!rating) return '—';
   const r = Math.min(5, Math.max(1, Math.round(Number(rating))));
@@ -102,7 +90,7 @@ function getFatigueLabel(rating: number | null | undefined): string {
     2: 'Tired',
     3: 'Good',
     4: 'Strong',
-    5: 'Beast Mode',
+    5: 'Beast',
   };
   return map[r] ?? '—';
 }
@@ -185,8 +173,8 @@ function getRpeDisplayColor(rpe: number | null): { bg: string; text: string } {
 
 function getAvgRpeColor(avgRpe: number | null): string {
   if (avgRpe === null) return Colors.textPrimary;
-  if (avgRpe < 6) return Colors.success;
-  if (avgRpe <= 8) return Colors.warning;
+  if (avgRpe < 6) return Colors.textSecondary;
+  if (avgRpe <= 8) return Colors.textPrimary;
   return Colors.danger;
 }
 
@@ -306,7 +294,6 @@ export default function WorkoutResultsModal({
     };
   }, [visible, sets, planExercises, summaryPlanGoal, summaryWeek, summaryPlanPhase]);
   const totalVolume = useMemo(() => calculateTotalVolume(sets), [sets]);
-  const fatigueEmoji = getFatigueEmoji(workoutLog?.session_fatigue_rating ?? null);
   const fatigueDescriptor = getFatigueLabel(workoutLog?.session_fatigue_rating ?? null);
 
   const planExerciseMap = useMemo(() => {
@@ -348,7 +335,7 @@ export default function WorkoutResultsModal({
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeButton}>
-            <Text style={styles.closeText}>✕</Text>
+            <Ionicons name="close" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {dayTitle}
@@ -380,7 +367,6 @@ export default function WorkoutResultsModal({
             <Text style={styles.summaryLabel}>VOLUME</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{fatigueEmoji}</Text>
             <Text style={styles.fatigueDescriptor}>{fatigueDescriptor}</Text>
             <Text style={styles.summaryLabel}>ENERGY</Text>
           </View>
@@ -395,7 +381,7 @@ export default function WorkoutResultsModal({
         >
           {showNoDataYet ? (
             <View style={styles.emptyStateWrap}>
-              <Text style={styles.emptyIcon}>📋</Text>
+              <Ionicons name="clipboard-outline" size={48} color={Colors.textSecondary} />
               <Text style={styles.emptyTitle}>No data yet</Text>
               <Text style={styles.emptySubtitle}>
                 Complete this workout to see your results here.

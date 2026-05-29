@@ -26,6 +26,7 @@ import {
   type AdjustMenuOption,
 } from '../../utils/splitRecommendation';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
+import { stripEmDash } from '../../utils/jordanText';
 import { JordanAvatar } from '../../components/JordanAvatar';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
@@ -831,18 +832,21 @@ export default function ExperienceScreen() {
         </View>
 
         {(experience === 'intermediate' || experience === 'advanced') ? (
-          <View style={styles.recoveryToggleCard}>
-            <Text style={styles.recoveryToggleLabel}>
-              I recover quickly between sessions and can handle high training volume.
-            </Text>
-            <Switch
-              value={enhancedRecovery}
-              onValueChange={setEnhancedRecovery}
-              trackColor={{ false: Colors.border, true: Colors.accentBorder }}
-              thumbColor={enhancedRecovery ? Colors.accent : Colors.textTertiary}
-              ios_backgroundColor={Colors.border}
-            />
-          </View>
+          <>
+            <Text style={styles.sectionHeading}>Recovery</Text>
+            <View style={styles.recoveryToggleCard}>
+              <Text style={styles.recoveryToggleLabel}>
+                I recover quickly between sessions and can handle high training volume.
+              </Text>
+              <Switch
+                value={enhancedRecovery}
+                onValueChange={setEnhancedRecovery}
+                trackColor={{ false: Colors.border, true: Colors.accentBorder }}
+                thumbColor={enhancedRecovery ? Colors.accent : Colors.textTertiary}
+                ios_backgroundColor={Colors.border}
+              />
+            </View>
+          </>
         ) : null}
 
         <Text style={styles.sectionHeading}>Training days</Text>
@@ -978,7 +982,7 @@ export default function ExperienceScreen() {
                               `D${session.day}`}
                           </Text>
                           <Text style={styles.sessionTitleText}>
-                            {getSessionTitle(session.focus)}
+                            {stripEmDash(getSessionTitle(session.focus))}
                           </Text>
                         </View>
                         <View style={styles.muscleChipRow}>

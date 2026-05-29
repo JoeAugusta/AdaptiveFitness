@@ -20,6 +20,7 @@ import {
   type MealSlot,
 } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 
 export type BuiltMeal = {
   slot: MealSlot;
@@ -261,7 +262,7 @@ export default function MealBuilderModal({
           </View>
 
           <View style={styles.searchBar}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Ionicons name="search-outline" size={16} color={Colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}

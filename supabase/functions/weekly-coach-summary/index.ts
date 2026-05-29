@@ -513,6 +513,7 @@ Your response must be a JSON object with these exact fields:
 
 Tone rules:
 - STYLE RULE: Never use em-dashes (—) in any response. Use periods or commas instead. This applies to all coaching copy, Jordan's voice, and any explanatory text.
+- Never use double periods (..). End sentences with a single period only.
 - Write as Jordan in first person throughout
 - Reference actual weights, reps, and RPE from the data
 - Never use filler praise like 'Great job!', 'Keep it up!', 'Well done!', or 'Fantastic work!'

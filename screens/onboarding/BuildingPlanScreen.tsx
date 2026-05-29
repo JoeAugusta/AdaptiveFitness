@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -376,32 +377,70 @@ export default function BuildingPlanScreen() {
     setTimeout(() => navigation.navigate('Dashboard'), remaining);
   };
 
-  const handleStartNextMonday = async () => {
-    if (!planId) return;
+  const resolveActivePlanId = async (): Promise<string | null> => {
+    // Prefer the planId already stored in state; if missing, fetch from DB.
+    if (planId) return planId;
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return null;
+    const { data: plan } = await supabase
+      .from('plans')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return plan?.id ?? null;
+  };
+
+  const handleStartToday = async () => {
+    console.log('[StartDate] Start today tapped');
     setSavingStartDate(true);
     try {
-      const nextMonday = getNextMonday();
-      const startDateISO = nextMonday.toISOString().split('T')[0];
-      // plans table has no start_date column — store in plan_json.startDate instead.
-      // TODO: if a top-level start_date column is added to the plans table, migrate this.
-      const { data: currentPlan } = await supabase
-        .from('plans')
-        .select('plan_json')
-        .eq('id', planId)
-        .maybeSingle();
-      if (currentPlan?.plan_json) {
-        await supabase
+      const resolvedPlanId = await resolveActivePlanId();
+      if (!resolvedPlanId) {
+        console.error('[StartDate] No active plan ID found');
+      } else {
+        const todayISO = new Date().toISOString().split('T')[0];
+        const { error } = await supabase
           .from('plans')
-          .update({
-            plan_json: {
-              ...(currentPlan.plan_json as Record<string, unknown>),
-              startDate: startDateISO,
-            },
-          })
-          .eq('id', planId);
+          .update({ start_date: todayISO })
+          .eq('id', resolvedPlanId);
+        if (error) console.error('[StartDate] UPDATE failed:', error);
+        else console.log('[StartDate] UPDATE success, start_date:', todayISO);
       }
-    } catch {
-      // Non-fatal — proceed to dashboard regardless
+    } catch (e) {
+      console.error('[StartDate] handleStartToday threw:', e);
+    }
+    setSavingStartDate(false);
+    scheduleReEngagementPush();
+    navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
+  };
+
+  const handleStartNextMonday = async () => {
+    const today = new Date();
+    console.log('[StartDate] today.getDay():', today.getDay(), 'today:', today.toISOString());
+    const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    const startDateStr = nextMonday.toISOString().split('T')[0];
+    console.log('[StartDate] Start next Monday tapped, date:', startDateStr);
+    setSavingStartDate(true);
+    try {
+      const resolvedPlanId = await resolveActivePlanId();
+      if (!resolvedPlanId) {
+        console.error('[StartDate] No active plan ID found');
+      } else {
+        const { error } = await supabase
+          .from('plans')
+          .update({ start_date: startDateStr })
+          .eq('id', resolvedPlanId);
+        if (error) console.error('[StartDate] UPDATE failed:', error);
+        else console.log('[StartDate] UPDATE success, start_date:', startDateStr);
+      }
+    } catch (e) {
+      console.error('[StartDate] handleStartNextMonday threw:', e);
     }
     setSavingStartDate(false);
     scheduleReEngagementPush();
@@ -781,7 +820,7 @@ export default function BuildingPlanScreen() {
         <View style={styles.handoffOverlay}>
           <View style={styles.handoffCard}>
             <View style={styles.handoffCheckCircle}>
-              <Text style={styles.handoffCheck}>✓</Text>
+              <Ionicons name="checkmark" size={36} color={Colors.textPrimary} />
             </View>
 
             <Text style={styles.handoffTitle}>You're ready to go.</Text>
@@ -800,27 +839,28 @@ export default function BuildingPlanScreen() {
             )}
 
             {!todayIsMonday && !startDateDecided ? (
-              <View style={styles.startDateCard}>
-                <Text style={styles.startDateTitle}>When do you want to start?</Text>
+              <View style={styles.startDatePrompt}>
+                <Text style={styles.startDateLabel}>When do you want to begin?</Text>
                 <TouchableOpacity
-                  style={styles.startDateOption}
-                  activeOpacity={0.8}
-                  onPress={() => setStartDateDecided(true)}
+                  activeOpacity={0.7}
+                  onPress={handleStartToday}
+                  disabled={savingStartDate}
                 >
-                  <Text style={styles.startDateOptionText}>Start today</Text>
+                  {savingStartDate ? (
+                    <ActivityIndicator color={Colors.accent} size="small" />
+                  ) : (
+                    <Text style={styles.startDateToday}>Start today</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.startDateOption, styles.startDateOptionOutline]}
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                   onPress={handleStartNextMonday}
                   disabled={savingStartDate}
                 >
                   {savingStartDate ? (
-                    <ActivityIndicator color={Colors.accent} />
+                    <ActivityIndicator color={Colors.accent} size="small" />
                   ) : (
-                    <Text style={styles.startDateOptionOutlineText}>
-                      Start next Monday
-                    </Text>
+                    <Text style={styles.startDateMonday}>Start next Monday</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -935,7 +975,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    fontStyle: 'italic',
   },
   loadRetryButton: {
     marginTop: Spacing.lg,
@@ -1021,48 +1060,33 @@ const styles = StyleSheet.create({
   quoteText: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
-    fontStyle: 'italic',
-    color: Colors.textTertiary,
+    color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: LineHeights.caption,
   },
-  startDateCard: {
+  startDatePrompt: {
     width: '100%',
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1.5,
-    borderColor: Colors.accent,
-    padding: Spacing.lg,
-    gap: 12,
-  },
-  startDateTitle: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  startDateOption: {
-    height: 52,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.accent,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: Spacing.xl,
+    gap: Spacing.sm,
   },
-  startDateOptionText: {
+  startDateLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.xs,
+  },
+  startDateToday: {
     fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-  },
-  startDateOptionOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: Colors.accent,
-  },
-  startDateOptionOutlineText: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.title,
+    fontSize: FontSizes.body,
     color: Colors.accent,
+    textAlign: 'center',
+  },
+  startDateMonday: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   handoffOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1082,19 +1106,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-  },
-  handoffCheck: {
-    fontSize: 32,
-    fontFamily: Fonts.bold,
-    color: Colors.textPrimary,
+    marginBottom: 16,
   },
   handoffTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   handoffJordanCard: {
     width: '100%',
@@ -1105,7 +1124,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: Colors.accent,
     padding: Spacing.lg,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   handoffJordanLabel: {
     fontFamily: Fonts.bold,

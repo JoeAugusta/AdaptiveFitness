@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { stripEmDash } from '../utils/jordanText';
 import {
   View,
   Text,
@@ -33,6 +34,7 @@ import { useMetric } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
 import BetaFeedbackModal from '../components/BetaFeedbackModal';
+import { Ionicons } from '@expo/vector-icons';
 
 // ── Label maps ──
 
@@ -799,7 +801,7 @@ export default function ProfileSettingsScreen() {
                   )}
                 </Text>
                 {Platform.OS !== 'web' && !rcEntitlementLoading && !rcIsPro ? (
-                  <Text style={styles.goalLockMark}>🔒</Text>
+                  <Ionicons name="lock-closed-outline" size={16} color={Colors.textSecondary} />
                 ) : (
                   <Text style={styles.rowChevron}>›</Text>
                 )}
@@ -818,11 +820,11 @@ export default function ProfileSettingsScreen() {
               value={
                 data?.plan
                   ? truncate(
-                      String(
-                        data.plan.plan_json?.title ?? data.plan.title ?? '—',
-                      )
-                        .replace(/_/g, ' ')
-                        .replace(/-/g, ' – '),
+                      stripEmDash(
+                        String(
+                          data.plan.plan_json?.title ?? data.plan.title ?? '—',
+                        ).replace(/_/g, ' '),
+                      ),
                       20,
                     )
                   : '—'
@@ -856,9 +858,14 @@ export default function ProfileSettingsScreen() {
                         : `Logged ${new Date(latestWeightLog.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                     </Text>
                   ) : null}
-                  <Text style={isToday ? styles.weightTertiarySuccess : styles.weightTertiary}>
-                    {isToday ? 'Up to date ✓' : 'Log today from Dashboard'}
-                  </Text>
+                  {isToday ? (
+                    <View style={styles.weightUpToDateRow}>
+                      <Text style={styles.weightTertiarySuccess}>Up to date</Text>
+                      <Ionicons name="checkmark" size={12} color={Colors.success} />
+                    </View>
+                  ) : (
+                    <Text style={styles.weightTertiary}>Log today from Dashboard</Text>
+                  )}
                 </View>
               </View>
               <TouchableOpacity
@@ -1465,7 +1472,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: Radius.full,
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1489,8 +1498,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   subBadgeFree: {
-    backgroundColor: Colors.bgElevated,
-    borderColor: Colors.border,
+    backgroundColor: Colors.bgPrimary,
+    borderColor: Colors.textTertiary,
   },
   subBadgePro: {
     backgroundColor: Colors.accentMuted,
@@ -1500,7 +1509,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: FontSizes.micro,
   },
-  subBadgeTextFree: { color: Colors.textSecondary },
+  subBadgeTextFree: { color: Colors.textTertiary },
   subBadgeTextPro: { color: Colors.accent },
   profileChevron: {
     fontFamily: Fonts.regular,
@@ -1764,6 +1773,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
     color: Colors.success,
+  },
+  weightUpToDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     marginTop: 1,
   },
 
@@ -1780,9 +1794,9 @@ const styles = StyleSheet.create({
     marginTop: 32,
     height: 52,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.dangerMuted,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
+    borderColor: Colors.dangerMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },

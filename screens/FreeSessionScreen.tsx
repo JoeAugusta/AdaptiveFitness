@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -46,12 +47,12 @@ type Phase = 'setup' | 'logging' | 'complete';
 
 /** Matches WorkoutResultsModal / ActiveWorkout 1–5 energy scale */
 const FATIGUE_OPTIONS = [
-  { rating: 1, emoji: '😴', label: 'Wiped' },
-  { rating: 2, emoji: '😤', label: 'Tired' },
-  { rating: 3, emoji: '😊', label: 'Good' },
-  { rating: 4, emoji: '💪', label: 'Strong' },
-  { rating: 5, emoji: '🔥', label: 'Beast Mode' },
-] as const;
+  { rating: 1, label: 'Wiped',  color: '#EF4444' },
+  { rating: 2, label: 'Tired',  color: '#F97316' },
+  { rating: 3, label: 'Good',   color: '#F59E0B' },
+  { rating: 4, label: 'Strong', color: '#84CC16' },
+  { rating: 5, label: 'Beast',  color: '#22C55E' },
+];
 
 type Nav = NativeStackNavigationProp<WorkoutStackParamList>;
 
@@ -291,7 +292,7 @@ export default function FreeSessionScreen() {
                 onPress={() => handleRemoveExercise(i)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.exerciseRemoveText}>✕</Text>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
           ))}
@@ -322,7 +323,7 @@ export default function FreeSessionScreen() {
                 onPress={() => setShowExercisePicker(false)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Text style={styles.pickerClose}>✕</Text>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -386,7 +387,7 @@ export default function FreeSessionScreen() {
                         </View>
                       </View>
                       {exercises.some((e) => e.name === ex.name) ? (
-                        <Text style={styles.pickerAdded}>✓ Added</Text>
+                        <Text style={styles.pickerAdded}><Ionicons name="checkmark" size={16} color={Colors.success} /> Added</Text>
                       ) : null}
                     </TouchableOpacity>
                   ))}
@@ -580,7 +581,14 @@ export default function FreeSessionScreen() {
               ]}
               onPress={() => setFatigueRating(opt.rating)}
             >
-              <Text style={styles.fatigueEmoji}>{opt.emoji}</Text>
+              <View
+                style={[
+                  styles.fatigueDot,
+                  { backgroundColor: opt.color },
+                  fatigueRating === opt.rating && styles.fatigueDotSelected,
+                ]}
+              />
+              <Text style={styles.fatigueBtnLabel}>{opt.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1000,7 +1008,7 @@ const styles = StyleSheet.create({
   },
   fatigueBtn: {
     flex: 1,
-    aspectRatio: 1,
+    paddingVertical: 14,
     backgroundColor: Colors.bgElevated,
     borderRadius: Radius.md,
     alignItems: 'center',
@@ -1012,8 +1020,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentMuted,
     borderColor: Colors.accent,
   },
-  fatigueEmoji: {
-    fontSize: 24,
+  fatigueDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginBottom: 8,
+    opacity: 0.5,
+  },
+  fatigueDotSelected: {
+    opacity: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  fatigueBtnLabel: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
   },
   notesInput: {
     backgroundColor: Colors.bgElevated,

@@ -18,7 +18,6 @@ import {
 import { useMetric } from '../utils/units';
 import type { ProgressStackParamList } from '../navigation/types';
 
-const MEDAL: Record<number, string> = { 0: '🥇', 1: '🥈', 2: '🥉' };
 
 type Nav = NativeStackNavigationProp<ProgressStackParamList, 'PersonalRecords'>;
 
@@ -99,11 +98,17 @@ export default function PersonalRecordsScreen() {
                 >
                   <View style={styles.rowLeft}>
                     <Text
-                      style={styles.rowRank}
+                      style={[
+                        styles.rowRank,
+                        i === 0 ? styles.rankGold
+                        : i === 1 ? styles.rankSilver
+                        : i === 2 ? styles.rankBronze
+                        : null,
+                      ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                     >
-                      {MEDAL[i] ?? `#${i + 1}`}
+                      #{i + 1}
                     </Text>
                     <View style={styles.rowMeta}>
                       <View style={styles.rowNameRow}>
@@ -233,6 +238,9 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
   },
+  rankGold:   { color: '#F59E0B' },
+  rankSilver: { color: '#A1A1AA' },
+  rankBronze: { color: '#C2783A' },
   rowMeta: {
     flex: 1,
     marginLeft: Spacing.sm,

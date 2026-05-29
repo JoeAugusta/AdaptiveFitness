@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { stripEmDash } from '../utils/jordanText';
 import {
   View,
   Text,
@@ -16,6 +17,7 @@ import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 import { useMetric, lbsToDisplay, unitLabel } from '../utils/units';
 import {
   fetchPersonalRecords,
@@ -607,7 +609,7 @@ function JordanInsightCard({ text }: { text: string }) {
   return (
     <View style={insightStyles.card}>
       <Text style={insightStyles.label}>JORDAN</Text>
-      <Text style={insightStyles.text}>{text}</Text>
+      <Text style={insightStyles.text}>{stripEmDash(text)}</Text>
     </View>
   );
 }
@@ -622,7 +624,7 @@ function LockedProFeatureCard({
   return (
     <View style={lockedProStyles.wrap}>
       <View style={lockedProStyles.card}>
-        <Text style={lockedProStyles.emoji}>🔒</Text>
+        <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
         <Text style={lockedProStyles.chartName}>{title}</Text>
         <Text style={lockedProStyles.sub}>Available with Pro</Text>
         <TouchableOpacity
@@ -897,10 +899,9 @@ export default function ProgressChartsScreen() {
         if (!name || weight === 0) continue;
 
         const est1RM = weight * (1 + reps / 30);
-        const normName = normalizeExerciseName(name);
-        if (!sMap[normName]) sMap[normName] = new Map();
-        const prev = sMap[normName].get(wk) ?? 0;
-        if (est1RM > prev) sMap[normName].set(wk, Math.round(est1RM));
+        if (!sMap[name]) sMap[name] = new Map();
+        const prev = sMap[name].get(wk) ?? 0;
+        if (est1RM > prev) sMap[name].set(wk, Math.round(est1RM));
       }
     }
 
@@ -1287,8 +1288,14 @@ export default function ProgressChartsScreen() {
                     onPress={() => navigation.navigate('PersonalRecords')}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.prRowRank}>
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                    <Text style={[
+                      styles.prRowRank,
+                      i === 0 ? styles.prRankGold
+                      : i === 1 ? styles.prRankSilver
+                      : i === 2 ? styles.prRankBronze
+                      : null,
+                    ]}>
+                      #{i + 1}
                     </Text>
 
                     <Text style={styles.prRowName} numberOfLines={1}>
@@ -1314,11 +1321,11 @@ export default function ProgressChartsScreen() {
               <View style={styles.jordanCard}>
                 <Text style={styles.jordanLabel}>JORDAN</Text>
                 <Text style={styles.jordanText}>
-                  {`Your strongest lift is ${prs[0].exerciseName} at an estimated ${formatWorkoutWeight(prs[0].estimated1RM)} 1RM.${
+                  {stripEmDash(`Your strongest lift is ${prs[0].exerciseName} at an estimated ${formatWorkoutWeight(prs[0].estimated1RM)} 1RM.${
                     prs.filter((p) => p.isRecent).length > 0
                       ? ` You set ${prs.filter((p) => p.isRecent).length} new record${prs.filter((p) => p.isRecent).length > 1 ? 's' : ''} in the last two weeks.`
                       : ' Keep logging to push these numbers up.'
-                  }`}
+                  }`)}
                 </Text>
               </View>
             ) : null}
@@ -1334,7 +1341,7 @@ export default function ProgressChartsScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.bodyMeasurementsRowLeft}>
-              <Text style={styles.bodyMeasurementsEmoji}>📏</Text>
+              <Ionicons name="resize-outline" size={22} color={Colors.textSecondary} />
               <View>
                 <Text style={styles.bodyMeasurementsTitle}>Body Measurements</Text>
                 <Text style={styles.bodyMeasurementsSubtitle}>
@@ -1678,6 +1685,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textTertiary,
   },
+  prRankGold:   { color: '#F59E0B' },
+  prRankSilver: { color: '#A1A1AA' },
+  prRankBronze: { color: '#C2783A' },
   prRowName: {
     flex: 1,
     fontFamily: Fonts.bold,

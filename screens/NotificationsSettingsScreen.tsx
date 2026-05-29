@@ -20,6 +20,7 @@ import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { Ionicons } from '@expo/vector-icons';
 
 // ── Constants ──
 
@@ -221,7 +222,7 @@ export default function NotificationsSettingsScreen() {
         if (enabled) {
           const id = await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Time to train 💪',
+              title: 'Time to train',
               body: "Your workout is ready. Let's get it done.",
               sound: true,
             },
@@ -257,7 +258,7 @@ export default function NotificationsSettingsScreen() {
           if (value) {
             const id = await Notifications.scheduleNotificationAsync({
               content: {
-                title: 'Time to weigh in 🌅',
+                title: 'Time to weigh in',
                 body: 'Step on the scale and log today\'s weight in hone.',
                 sound: true,
               },
@@ -289,7 +290,7 @@ export default function NotificationsSettingsScreen() {
       }
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Time to weigh in 🌅',
+          title: 'Time to weigh in',
           body: 'Step on the scale and log today\'s weight in hone.',
           sound: true,
         },
@@ -434,21 +435,21 @@ export default function NotificationsSettingsScreen() {
           <Text style={styles.valuePropsLabel}>JORDAN WILL NOTIFY YOU</Text>
 
           <View style={styles.valuePropRow}>
-            <Text style={styles.valuePropIcon}>🔔</Text>
+            <Ionicons name="notifications-outline" size={20} color={Colors.accent} />
             <Text style={styles.valuePropText}>
               30 minutes before each scheduled session
             </Text>
           </View>
 
           <View style={styles.valuePropRow}>
-            <Text style={styles.valuePropIcon}>📋</Text>
+            <Ionicons name="clipboard-outline" size={20} color={Colors.accent} />
             <Text style={styles.valuePropText}>
               When your weekly coaching review is ready
             </Text>
           </View>
 
           <View style={styles.valuePropRow}>
-            <Text style={styles.valuePropIcon}>🏆</Text>
+            <Ionicons name="trophy-outline" size={20} color={Colors.accent} />
             <Text style={styles.valuePropText}>When you hit a milestone</Text>
           </View>
 

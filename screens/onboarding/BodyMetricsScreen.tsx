@@ -62,7 +62,7 @@ export default function BodyMetricsScreen() {
   const [heightFt, setHeightFt] = useState('');
   const [heightIn, setHeightIn] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
-  const [bodyFatPct, setBodyFatPct] = useState('');
+  const [bodyFatPct, setBodyFatPct] = useState<number | null>(null);
   const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [showFeedback, setShowFeedback] = useState(false);
 
@@ -87,7 +87,7 @@ export default function BodyMetricsScreen() {
       heightFt: heightFt.trim(),
       heightIn: heightIn.trim(),
       weightLbs: weightLbs.trim(),
-      bodyFatPct: bodyFatPct.trim() || null,
+      bodyFatPct: bodyFatPct !== null ? String(bodyFatPct) : null,
     });
   };
 
@@ -238,21 +238,26 @@ export default function BodyMetricsScreen() {
           <Text style={styles.bfSub}>Optional. Drag to your best estimate.</Text>
 
           <View style={styles.bfDisplay}>
-            <Text style={styles.bfNumber}>{bodyFatPct || '—'}</Text>
-            {bodyFatPct ? <Text style={styles.bfSymbol}>%</Text> : null}
+            <Text style={styles.bfNumber}>
+              {bodyFatPct !== null ? String(bodyFatPct) : '—'}
+            </Text>
+            {bodyFatPct !== null ? <Text style={styles.bfSymbol}>%</Text> : null}
           </View>
 
-          <Text style={styles.bfZoneLabel}>{getBfZoneLabel(parseInt(bodyFatPct || '0'))}</Text>
-
-          <Text style={styles.bfZoneDesc}>{getBfZoneDesc(parseInt(bodyFatPct || '0'))}</Text>
+          {bodyFatPct !== null ? (
+            <>
+              <Text style={styles.bfZoneLabel}>{getBfZoneLabel(bodyFatPct)}</Text>
+              <Text style={styles.bfZoneDesc}>{getBfZoneDesc(bodyFatPct)}</Text>
+            </>
+          ) : null}
 
           <Slider
             style={styles.bfSlider}
             minimumValue={5}
             maximumValue={45}
             step={1}
-            value={bodyFatPct ? parseInt(bodyFatPct) : 20}
-            onValueChange={(val) => setBodyFatPct(String(Math.round(val)))}
+            value={bodyFatPct ?? 25}
+            onValueChange={(val) => setBodyFatPct(Math.round(val))}
             minimumTrackTintColor={Colors.accent}
             maximumTrackTintColor={Colors.border}
             thumbTintColor={Colors.accent}
@@ -266,7 +271,7 @@ export default function BodyMetricsScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => setBodyFatPct('')}
+            onPress={() => setBodyFatPct(null)}
             style={styles.bfSkip}
             activeOpacity={0.7}
           >
@@ -348,7 +353,7 @@ const styles = StyleSheet.create({
   },
 
   titleBlock: {
-    marginTop: 56,
+    marginTop: Spacing.lg,
   },
   screenTitle: {
     fontFamily: Fonts.bold,
@@ -369,7 +374,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginTop: 28,
+    marginTop: Spacing.lg,
     marginBottom: 12,
   },
   sectionLead: {
@@ -480,18 +485,18 @@ const styles = StyleSheet.create({
   bfNumber: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.display,
-    color: Colors.accent,
+    color: Colors.textPrimary,
   },
   bfSymbol: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading2,
-    color: Colors.accent,
+    color: Colors.textPrimary,
     marginLeft: 4,
   },
   bfZoneLabel: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
-    color: Colors.textSecondary,
+    color: Colors.accent,
     textAlign: 'center',
     marginBottom: Spacing.md,
   },

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { stripEmDash } from '../utils/jordanText';
 import {
   View,
   Text,
@@ -245,18 +246,18 @@ function normalizeWorkoutLogEntry(log: WorkoutLogRow): HistorySessionRow {
   };
 }
 
-const FATIGUE_EMOJI: Record<number, string> = {
-  1: '😴',
-  2: '😐',
-  3: '💪',
-  4: '🔥',
-  5: '💀',
+const FATIGUE_LABEL: Record<number, string> = {
+  1: 'Wiped',
+  2: 'Tired',
+  3: 'Good',
+  4: 'Strong',
+  5: 'Beast',
 };
 
-function fatigueEmoji(rating: number | null | undefined): string {
+function fatigueLabel(rating: number | null | undefined): string {
   if (rating == null || Number.isNaN(rating)) return '—';
   const k = Math.round(Number(rating));
-  return FATIGUE_EMOJI[k] ?? '—';
+  return FATIGUE_LABEL[k] ?? '—';
 }
 
 function formatShortDate(iso: string): string {
@@ -511,7 +512,7 @@ export default function WorkoutHistoryScreen() {
                 </View>
                 {item.sessionFocus ? (
                   <Text style={styles.sessionFocus} numberOfLines={2}>
-                    {item.sessionFocus}
+                    {stripEmDash(item.sessionFocus ?? '')}
                   </Text>
                 ) : null}
                 <View style={styles.row2}>
@@ -554,7 +555,7 @@ export default function WorkoutHistoryScreen() {
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>RPE</Text>
                     <Text style={styles.statValue}>
-                      {fatigueEmoji(item.sessionFatigueRating)}
+                      {fatigueLabel(item.sessionFatigueRating)}
                     </Text>
                   </View>
                 </View>

@@ -298,6 +298,85 @@ const EQUIPMENT_MAP: Record<string, string> = {
   'kettlebell swing': 'kettlebell',
   'goblet squat (kb)': 'kettlebell',
   'kettlebell shrug': 'kettlebell',
+  // Bodyweight conditioning — explicitly map to prevent barbell fallback
+  'plank': 'bodyweight',
+  'mountain climber': 'bodyweight',
+  'mountain climbers': 'bodyweight',
+  'burpee': 'bodyweight',
+  'burpees': 'bodyweight',
+  'push-up': 'bodyweight',
+  'push-ups': 'bodyweight',
+  'push up': 'bodyweight',
+  'close grip push-up': 'bodyweight',
+  'close grip push-ups': 'bodyweight',
+  'dead bug': 'bodyweight',
+  'hollow hold': 'bodyweight',
+  'hollow body hold': 'bodyweight',
+  'v-up': 'bodyweight',
+  'sit-up': 'bodyweight',
+  'leg raise': 'bodyweight',
+  'hanging leg raise': 'bodyweight',
+  'ab wheel rollout': 'bodyweight',
+  'glute bridge': 'bodyweight',
+  'bodyweight squat': 'bodyweight',
+  'bodyweight lunge': 'bodyweight',
+  'bear crawl': 'bodyweight',
+  'inchworm': 'bodyweight',
+  'thruster': 'barbell',
+  'farmer carry': 'dumbbell',
+  'farmers walk': 'dumbbell',
+  "farmer's walk": 'dumbbell',
+  // Cable movements — must not fall through to barbell default
+  'cable front raise': 'cable',
+  'cable front raises': 'cable',
+  'cable lateral raise': 'cable',
+  'cable lateral raises': 'cable',
+  'cable fly': 'cable',
+  'cable flys': 'cable',
+  'cable flies': 'cable',
+  'cable fly (high to low)': 'cable',
+  'cable fly (low to high)': 'cable',
+  'cable fly (mid cable)': 'cable',
+  'cable chest fly': 'cable',
+  'cable row': 'cable',
+  'cable row (close grip)': 'cable',
+  'cable row (wide grip)': 'cable',
+  'cable curl': 'cable',
+  'cable hammer curl': 'cable',
+  'cable reverse fly': 'cable',
+  'cable reverse flys': 'cable',
+  'cable face pull': 'cable',
+  'cable face pulls': 'cable',
+  'cable crunch': 'cable',
+  'cable tricep extension': 'cable',
+  'overhead cable tricep extension': 'cable',
+  'cable rear delt fly': 'cable',
+  // Dumbbell movements that sometimes fall through
+  'dumbbell fly': 'dumbbell',
+  'dumbbell flys': 'dumbbell',
+  'dumbbell flies': 'dumbbell',
+  'incline dumbbell fly': 'dumbbell',
+  'incline dumbbell flys': 'dumbbell',
+  'dumbbell rear delt fly': 'dumbbell',
+  'dumbbell chest press': 'dumbbell',
+  'dumbbell press': 'dumbbell',
+  'dumbbell row': 'dumbbell',
+  'single arm dumbbell row': 'dumbbell',
+  'dumbbell bicep curl': 'dumbbell',
+  'dumbbell bicep curls': 'dumbbell',
+  'dumbbell curl': 'dumbbell',
+  'dumbbell curls': 'dumbbell',
+  'dumbbell lateral raise': 'dumbbell',
+  'dumbbell lateral raises': 'dumbbell',
+  'dumbbell shoulder press': 'dumbbell',
+  'dumbbell bench press': 'dumbbell',
+  'dumbbell incline press': 'dumbbell',
+  'incline dumbbell press': 'dumbbell',
+  'decline dumbbell press': 'dumbbell',
+  'hammer curl': 'dumbbell',
+  'hammer curls': 'dumbbell',
+  'incline dumbbell curl': 'dumbbell',
+  'preacher curl': 'barbell',
 };
 
 const EQUIPMENT_ALIASES: Record<string, string> = {};
@@ -509,20 +588,38 @@ function stampMuscleEmphasis(exercises: any[]): any[] {
     }
 
     const MUSCLE_GROUP_DEFAULTS: Record<string, string> = {
+      // Chest
       'Chest': 'mid_chest',
+
+      // Back — cable rows were getting 'mid_chest' due to wrong lookup
       'Back': 'lats',
+      'Lats': 'lats',
+      'Rhomboids': 'mid_back',
+      'Rear Delts': 'rear_delt',
+      'Traps': 'mid_back',
+      'Forearms': 'mid_back',
+
+      // Shoulders
       'Shoulders': 'lateral_delt',
+
+      // Arms
       'Biceps': 'long_head_bicep',
       'Triceps': 'lateral_head_tricep',
+      'Arms': 'long_head_bicep',
+
+      // Legs — hamstrings were getting 'lats' in some edge cases
       'Quadriceps': 'quads',
       'Quads': 'quads',
       'Hamstrings': 'hamstrings',
       'Glutes': 'glutes',
       'Calves': 'gastrocnemius',
+      'Legs': 'quads',
+
+      // Core
       'Core': 'transverse_abs',
       'Abs': 'transverse_abs',
-      'Traps': 'mid_back',
-      'Forearms': 'mid_back',
+
+      // Full body
       'Full Body': 'quads',
     };
 
@@ -1895,6 +1992,34 @@ Distribute exercises to ensure all target muscle groups reach minimum developmen
   primary hinge — never a second session of heavy conventional or sumo deadlift.
   Two maximal deadlift sessions per week is excessive fatigue even for advanced
   lifters.
+- DUAL PRIMARY LOWER COMPOUND RULE (hard rule, no exceptions):
+  Never place two primary barbell lower body compounds in the same
+  session. Primary lower compounds are: back squat, front squat,
+  conventional deadlift, sumo deadlift, trap bar deadlift.
+  This means:
+  - Back squat + front squat in the same session: NEVER
+  - Front squat + conventional deadlift in the same session: NEVER
+  - Back squat + conventional deadlift in the same session: NEVER
+  After the primary lower compound, the second exercise must be a
+  non-primary variation: leg press, hack squat, Bulgarian split
+  squat, hip thrust, leg curl, or walking lunge.
+  Exception: powerlifting-specific strength_focused splits where
+  a dedicated squat + deadlift day is the explicit purpose of the
+  session. Even then, limit to one squat movement and one deadlift
+  movement only.
+- On strength goal VOLUME days for squat specialization (back squat or front squat
+  as the targetLift), the target lift appears first as the primary compound.
+  The second exercise MUST be a non-squat-pattern movement — leg press, hack squat,
+  Bulgarian split squat, or hip thrust. NEVER programme a second squat variation
+  (front squat, goblet squat, box squat, pause squat) as exercise #2 on a volume
+  squat day. Two primary squat-pattern compounds back to back after near-maximal
+  volume produces fatigue without additional adaptation stimulus.
+- SESSION SEQUENCING: Never open a session with a hip hinge movement (Romanian
+  deadlift, stiff-leg deadlift, good morning, hip thrust) as the first exercise
+  for beginner experience level. Beginners need a primer compound (squat pattern
+  or horizontal push/pull) before hinging. For beginner full-body sessions, the
+  hinge movement must appear as exercise 2 or later, after at least one
+  squat-pattern or upper body compound.
 - Vary exercise selection — do not repeat the same exercises on back-to-back days for the same muscle group
 
 GRIP AND ATTACHMENT VARIATION:
@@ -2346,6 +2471,38 @@ Rules for coachingNote:
 - Never use the word "AI". Never say "I've calculated" or "the algorithm".
 - Always use first person as Jordan: "I've built", "your goal", "this session".
 - CRITICAL: Never use the word "AI" anywhere in coachingNote or any coaching copy. Jordan is a coach. Write in first person as Jordan — use "I" or "your coach" only. Never "AI coach", "AI system", "artificial intelligence", or any variation.
+
+COACHING NOTE RULES:
+Write coaching notes like a direct, experienced coach — not like
+an AI justifying every choice. Follow these rules strictly:
+
+1. NEVER invent a transfer to the goal lift for unrelated muscles.
+   Calves do not improve bench press. Curls do not help squats.
+   Lateral raises do not transfer to deadlifts. If the connection
+   is not direct and physiologically obvious, do not make it.
+
+2. For isolation and accessory exercises, explain what the exercise
+   does for that specific muscle. "Rope pushdowns target the
+   lateral tricep head for arm thickness" is correct. "Triceps
+   support your squat lockout" is not.
+
+3. Reserve goal-lift references ONLY for exercises with genuine
+   direct transfer:
+   - Close grip bench → bench lockout: YES
+   - Barbell row → bench lat engagement and stability: YES
+   - RDL → deadlift posterior chain: YES
+   - Good morning → squat posterior chain: YES
+   - Calf raises → any strength lift: NO
+   - Lateral raises → squat bar position: NO
+   - Bicep curls → any primary lift: NO
+
+4. For the primary target lift exercise only, reference the user's
+   goal (e.g. "your 275lb bench target"). For all other exercises,
+   describe what the movement does for the muscle being trained.
+
+5. One to two sentences maximum. Specific beats generic.
+   "This angle targets the clavicular head that flat pressing
+   misses" is better than "builds upper body strength."
 
 ${
   isNonStrengthGoal

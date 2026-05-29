@@ -32,11 +32,12 @@ import ProjectionChart, {
 } from '../components/ProjectionChart';
 
 const TRACKER_CHART_STROKE: Record<string, string> = {
-  fat_loss: '#F97316',
-  hypertrophy: '#22C55E',
-  strength: '#F59E0B',
-  recomp: '#F97316',
-  general: '#F97316',
+  fat_loss:          '#F97316',
+  hypertrophy:       '#22C55E',
+  strength:          '#F59E0B',
+  power_hypertrophy: '#F59E0B',
+  recomp:            '#F97316',
+  general:           '#F97316',
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -82,11 +83,12 @@ interface Milestone {
 }
 
 const GOAL_BADGE: Record<string, { color: string; label: string }> = {
-  strength:    { color: Colors.warning, label: 'Strength' },
-  hypertrophy: { color: '#8B5CF6', label: 'Hypertrophy' }, // TODO: map to design token
-  recomp:      { color: '#06B6D4', label: 'Recomposition' }, // TODO: map to design token
-  fat_loss:    { color: Colors.success, label: 'Fat Loss' },
-  general:     { color: Colors.accent, label: 'General Fitness' },
+  strength:         { color: Colors.warning,  label: 'Strength' },
+  hypertrophy:      { color: '#8B5CF6',        label: 'Hypertrophy' },
+  power_hypertrophy:{ color: Colors.warning,   label: 'Strength & Size' },
+  recomp:           { color: '#06B6D4',         label: 'Recomposition' },
+  fat_loss:         { color: Colors.success,   label: 'Fat Loss' },
+  general:          { color: Colors.accent,    label: 'General Fitness' },
 };
 
 const MILESTONE_DEFS = [
@@ -185,6 +187,7 @@ function getGoalTitle(goal: GoalRow): string {
     return lift ? `Hit ${goal.target_1rm ?? '?'}lbs ${lift}` : `Hit ${goal.target_1rm ?? '?'}lbs`;
   }
   if (gt === 'hypertrophy') return `Build Muscle: ${goal.plan_duration_weeks ?? '?'} Week Plan`;
+  if (gt === 'power_hypertrophy') return `Strength & Size: ${goal.plan_duration_weeks ?? '?'} Week Plan`;
   if (gt === 'fat_loss') return `Lose Weight: Target ${goal.target_weight_lbs ?? '?'}lbs`;
   if (gt === 'recomp') return `Body Recomposition: ${goal.plan_duration_weeks ?? '?'} Weeks`;
   return `General Fitness: ${goal.plan_duration_weeks ?? '?'} Week Plan`;

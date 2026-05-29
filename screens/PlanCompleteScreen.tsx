@@ -22,6 +22,7 @@ import {
   LineHeights,
 } from '../constants/design';
 import { JordanAvatar } from '../components/JordanAvatar';
+import { Ionicons } from '@expo/vector-icons';
 import { stripEmDash } from '../utils/jordanText';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanComplete'>;
@@ -254,7 +255,7 @@ export default function PlanCompleteScreen() {
             {i > 0 ? <View style={styles.rowDivider} /> : null}
             <View style={styles.highlightRow}>
               <View style={styles.checkCircle}>
-                <Text style={styles.checkMark}>✓</Text>
+                <Ionicons name="checkmark" size={14} color={Colors.success} />
               </View>
               <Text style={styles.highlightText}>{stripEmDash(h)}</Text>
             </View>
@@ -436,15 +437,10 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: Colors.accentMuted,
+    backgroundColor: 'rgba(34,197,94,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
-  },
-  checkMark: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
   },
   highlightText: {
     flex: 1,

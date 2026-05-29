@@ -91,6 +91,17 @@ serve(async (req) => {
           ? planJson.totalWeeks
           : 12;
     const splitName = typeof planJson.split === 'string' ? planJson.split : '';
+    const SPLIT_DISPLAY: Record<string, string> = {
+      arnold: 'Arnold Split',
+      ppl: 'Push/Pull/Legs',
+      upper_lower: 'Upper/Lower',
+      full_body: 'Full Body',
+      bro_split: 'Bro Split',
+      strength_focused: 'Strength Focused',
+      athletic: 'Athletic Performance',
+      batman: 'Batman Split',
+    };
+    const splitDisplayName = SPLIT_DISPLAY[splitName] ?? splitName;
 
     // ── 2. Fetch workout logs for this plan ────────────────────────────────
     const { data: logs } = await supabase
@@ -105,13 +116,19 @@ serve(async (req) => {
     );
     const totalCompletedSessions = completedLogs.length;
 
-    // Count scheduled workout days across all weeks
-    const totalScheduledSessions = (planJson.weeks ?? []).reduce((acc: number, w: unknown) => {
-      if (!isRecord(w)) return acc;
-      const days = w.days;
-      if (!Array.isArray(days)) return acc;
-      return acc + days.filter((d: unknown) => isRecord(d) && d.type === 'workout').length;
-    }, 0);
+    // Derive daysPerWeek from the first generated week only — planJson.weeks is
+    // built incrementally and may not contain all weeks at plan-complete time.
+    const firstWeek = Array.isArray(planJson.weeks) && planJson.weeks.length > 0
+      ? planJson.weeks[0]
+      : null;
+    const daysPerWeek =
+      isRecord(firstWeek) && Array.isArray(firstWeek.days)
+        ? (firstWeek.days as unknown[]).filter(
+            (d: unknown) => isRecord(d) && (d as Record<string, unknown>).type === 'workout',
+          ).length
+        : 0;
+    const totalScheduledSessions =
+      daysPerWeek > 0 ? totalWeeks * daysPerWeek : totalCompletedSessions;
 
     const completionRate =
       totalScheduledSessions > 0 ? totalCompletedSessions / totalScheduledSessions : 1;
@@ -230,11 +247,11 @@ serve(async (req) => {
 
     const prompt = `You are Jordan, the user's personal coach in the Hone app.
 
-The user has just completed their full ${totalWeeks}-week ${goalDisplayNames[goal] ?? goal} program.
+The user has just completed their full ${totalWeeks}-week ${goalDisplayNames[goal] ?? goal} plan (${splitDisplayName}).
 
 PLAN SUMMARY:
 - Goal: ${goalDisplayNames[goal] ?? goal}
-- Split: ${splitName}
+- Split: ${splitDisplayName}
 - Total weeks: ${totalWeeks}
 - Experience level: ${experience}
 - Sessions completed: ${totalCompletedSessions} / ${totalScheduledSessions} (${Math.round(completionRate * 100)}%)
@@ -251,6 +268,7 @@ RULES:
 - Max 3 paragraphs for jordanReview, each max 3 sentences
 - highlights must be 3 specific, concrete achievements
 - nextPlanRationale must be 1 sentence explaining why this goal is the logical next step
+- Always refer to the training split by its exact name: "${splitDisplayName}" — never infer or describe the structure from session data
 
 Respond ONLY with valid JSON, no markdown fences, no preamble:
 {

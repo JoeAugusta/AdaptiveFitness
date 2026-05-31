@@ -49,7 +49,7 @@ function strengthPeriodisation(weekInCycle: number): {
 function isVolumeDay(
   session: any,
   planJson?: any,
-  _weekNumber?: number,
+  completedWeekDays?: any[],
 ): boolean {
   // Signal 1: direct title on session (canonical plan_json.weeks[].days[])
   const title = (session.title ?? '').toLowerCase();
@@ -63,11 +63,23 @@ function isVolumeDay(
   const liftDay = (session.liftDay ?? '').toLowerCase();
   if (liftDay === 'volume') return true;
 
-  // Signal 3: look up in plan_json.weeks[0].days by dayNumber
+  const dayNum = session.day ?? session.dayNumber;
+
+  // Signal 3: same slot on the completed week (authoritative for progression)
+  if (Array.isArray(completedWeekDays) && completedWeekDays.length > 0) {
+    const matchedCompleted = completedWeekDays.find(
+      (d: any) => d.dayNumber === dayNum || d.day === dayNum,
+    );
+    if (matchedCompleted) {
+      const completedTitle = (matchedCompleted.title ?? '').toLowerCase();
+      if (completedTitle.includes('volume')) return true;
+    }
+  }
+
+  // Signal 4: week 1 template fallback by dayNumber
   if (planJson?.weeks?.length > 0) {
     const week1 = planJson.weeks[0];
     const days = week1?.days ?? week1?.sessions ?? [];
-    const dayNum = session.day ?? session.dayNumber;
     const matchedDay = days.find(
       (d: any) => d.dayNumber === dayNum || d.day === dayNum,
     );
@@ -339,6 +351,37 @@ function getWeek1BaselineFromLogs(
     }
   }
   return best;
+}
+
+/** Goals where Week 1 targetWeight is 0 (self-selected); W2+ anchors from logs when plan prescription is 0. */
+const SELF_SELECT_WEIGHT_GOALS = new Set([
+  'hypertrophy',
+  'recomp',
+  'fat_loss',
+  'general',
+]);
+
+/**
+ * Progression anchor: prior-week plan_json prescription, or logged working
+ * weight when prescription was 0 (non-strength self-select Week 1).
+ */
+function resolveProgressionBaseline(
+  planGoal: string,
+  priorPlanExercise: any,
+  workingSets: LogSetLike[],
+): { baseline: number; source: 'plan' | 'logged' | 'none' } {
+  const fromPlan = getPlanBaselineWeight(priorPlanExercise);
+  if (fromPlan > 0) {
+    return { baseline: fromPlan, source: 'plan' };
+  }
+  if (!SELF_SELECT_WEIGHT_GOALS.has(planGoal)) {
+    return { baseline: 0, source: 'none' };
+  }
+  const fromLogs = getWeek1Baseline(workingSets).baselineWeight;
+  if (fromLogs > 0) {
+    return { baseline: fromLogs, source: 'logged' };
+  }
+  return { baseline: 0, source: 'none' };
 }
 
 function getEquipmentForExerciseName(exerciseName: string): string {
@@ -1258,6 +1301,79 @@ function getPlanBaselineWeight(priorPlanExercise: any): number {
   }
 
   return Number(priorPlanExercise.targetWeight ?? 0);
+}
+
+function roundToEquipmentPrecision(weight: number, equipment: string): number {
+  const equip = String(equipment ?? 'barbell').toLowerCase();
+  const roundTo = ['barbell', 'dumbbell'].includes(equip) ? 2.5 : 5;
+  return Math.round(weight / roundTo) * roundTo;
+}
+
+function getMaxWeeklyIncrease(equipment: string, compoundTier: string): number {
+  const equip = String(equipment ?? 'barbell').toLowerCase();
+  const tier = String(compoundTier ?? '');
+  const isBarbellCompound =
+    equip === 'barbell' &&
+    (tier === 'primary_compound' || tier === 'secondary_compound');
+  if (isBarbellCompound) return 10;
+  if (equip === 'dumbbell' || equip === 'cable' || equip === 'machine') {
+    return 5;
+  }
+  return Infinity;
+}
+
+/** Apply cap AFTER increment: rawIncrease = nextWeight - planBaseline. */
+function applyMaxWeeklyIncrease(
+  planBaseline: number,
+  nextWeight: number,
+  equipment: string,
+  compoundTier: string,
+): number {
+  let rounded = roundToEquipmentPrecision(nextWeight, equipment);
+  if (planBaseline <= 0 || rounded <= planBaseline) {
+    return rounded;
+  }
+  const maxWeeklyIncrease = getMaxWeeklyIncrease(equipment, compoundTier);
+  const rawIncrease = rounded - planBaseline;
+  if (rawIncrease > maxWeeklyIncrease) {
+    rounded = roundToEquipmentPrecision(
+      planBaseline + maxWeeklyIncrease,
+      equipment,
+    );
+  }
+  return rounded;
+}
+
+/** Prior-week exercise for baseline: volume days prefer volume map, heavy days prefer heavy map. */
+function resolvePriorPlanExercise(
+  exName: string,
+  dayIsVolume: boolean,
+  isTargetLiftEx: boolean,
+  priorHeavyExerciseMap: Map<string, any>,
+  priorVolumeExerciseMap: Map<string, any>,
+): any {
+  if (isTargetLiftEx && !dayIsVolume) {
+    return priorHeavyExerciseMap.get(exName) ?? null;
+  }
+  if (isTargetLiftEx && dayIsVolume) {
+    return (
+      priorVolumeExerciseMap.get(exName) ??
+      priorHeavyExerciseMap.get(exName) ??
+      null
+    );
+  }
+  if (dayIsVolume) {
+    return (
+      priorVolumeExerciseMap.get(exName) ??
+      priorHeavyExerciseMap.get(exName) ??
+      null
+    );
+  }
+  return (
+    priorHeavyExerciseMap.get(exName) ??
+    priorVolumeExerciseMap.get(exName) ??
+    null
+  );
 }
 
 function runProgressionTests(): void {
@@ -2521,7 +2637,7 @@ Return ONLY this exact JSON structure:
     for (const day of nextWeekData.days ?? []) {
       if (day.type !== 'workout') continue;
 
-      const dayIsVolume = isVolumeDay(day, planJson);
+      const dayIsVolume = isVolumeDay(day, planJson, weekData?.days);
 
       const matchingPriorLog = dedupedLogs.find(
         (log: any) => log.day_number === day.dayNumber,
@@ -2538,32 +2654,34 @@ Return ONLY this exact JSON structure:
           strengthTargetLiftForSetStructure &&
           isTargetLift(exercise, strengthTargetLiftForSetStructure);
 
-        let priorPlanExercise: any;
-        if (isTargetLiftEx && !dayIsVolume) {
-          priorPlanExercise = priorHeavyExerciseMap.get(exName) ?? null;
-        } else if (isTargetLiftEx && dayIsVolume) {
-          priorPlanExercise =
-            priorVolumeExerciseMap.get(exName) ??
-            priorHeavyExerciseMap.get(exName) ??
-            null;
-        } else {
-          priorPlanExercise =
-            priorHeavyExerciseMap.get(exName) ??
-            priorVolumeExerciseMap.get(exName) ??
-            null;
-        }
-
-        const planBaseline = getPlanBaselineWeight(priorPlanExercise);
-
-        if (planBaseline === 0) {
-          console.log('[SKIP]', exName, '— planBaseline 0');
-          continue;
-        }
+        const priorPlanExercise = resolvePriorPlanExercise(
+          exName,
+          dayIsVolume,
+          Boolean(isTargetLiftEx),
+          priorHeavyExerciseMap,
+          priorVolumeExerciseMap,
+        );
 
         const exerciseSets = getExerciseSets(sessionSets, exercise);
         const workingSets = exerciseSets.filter(
           (s: any) => s.isWarmup !== true,
         );
+
+        const { baseline: planBaseline, source: baselineSource } =
+          resolveProgressionBaseline(
+            planGoalForSetStructure,
+            priorPlanExercise,
+            workingSets,
+          );
+
+        if (planBaseline === 0) {
+          console.log('[SKIP]', exName, '— no plan or logged baseline');
+          continue;
+        }
+
+        /** W1 self-select (prior prescription 0): W2 = logged weight only, no RPE bump. */
+        const isW1CalibrationToW2 = baselineSource === 'logged';
+
         const avgLoggedRpe = workingSets.length > 0
           ? workingSets.reduce(
               (sum: number, s: any) => sum + Number(s.rpe ?? 7),
@@ -2571,12 +2689,24 @@ Return ONLY this exact JSON structure:
             ) / workingSets.length
           : 7.0;
 
+        const baselineMapSource =
+          priorPlanExercise == null
+            ? 'none'
+            : dayIsVolume && priorVolumeExerciseMap.get(exName) === priorPlanExercise
+            ? 'volume'
+            : priorHeavyExerciseMap.get(exName) === priorPlanExercise
+            ? 'heavy'
+            : 'fallback';
+
         console.log('[PLAN BASELINE]', {
           name: exName,
           planBaseline,
           avgLoggedRpe,
           dayIsVolume,
-          source: priorPlanExercise ? 'prior week plan' : 'none',
+          baselineMapSource,
+          baselineSource,
+          isW1CalibrationToW2,
+          priorPrescribedWeight: priorPlanExercise?.targetWeight,
         });
 
         /** Last week's programmed target RPE (heavy primary matches progression gap math). */
@@ -2609,11 +2739,24 @@ Return ONLY this exact JSON structure:
           else if (gap >= 0) increment = 5;
           else if (gap >= -2) increment = 0;
           else increment = -5;
+          if (isW1CalibrationToW2) increment = 0;
 
-          const newWeight = Math.max(
-            Math.round((planBaseline + increment) / 2.5) * 2.5,
-            week1BaselineFloorStored,
+          const tier = String(
+            exercise.compoundTier ??
+              getCompoundTierFromName(String(exercise.name ?? '')),
           );
+          const equip = String(exercise.equipment ?? 'barbell');
+          let newWeight = roundToEquipmentPrecision(
+            planBaseline + increment,
+            equip,
+          );
+          newWeight = applyMaxWeeklyIncrease(
+            planBaseline,
+            newWeight,
+            equip,
+            tier,
+          );
+          newWeight = Math.max(newWeight, week1BaselineFloorStored);
 
           exercise.targetWeight = newWeight;
           exercise.sets = newPeriodisation.sets;
@@ -2635,21 +2778,42 @@ Return ONLY this exact JSON structure:
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
           const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
-          const increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
-          const roundTo = 2.5;
-          exercise.targetWeight =
-            Math.round((planBaseline + increment) / roundTo) * roundTo;
+          let increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
+          if (isW1CalibrationToW2) increment = 0;
+          const tier = String(
+            exercise.compoundTier ??
+              getCompoundTierFromName(String(exercise.name ?? '')),
+          );
+          const equip = String(exercise.equipment ?? 'barbell');
+          let volWeight = roundToEquipmentPrecision(
+            planBaseline + increment,
+            equip,
+          );
+          volWeight = applyMaxWeeklyIncrease(
+            planBaseline,
+            volWeight,
+            equip,
+            tier,
+          );
+          exercise.targetWeight = volWeight;
           exercise.reps = '8';
           exercise.repsMin = 8;
           exercise.repsMax = 8;
         } else {
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
-          const increment = accessoryWeightIncrement(
+          let increment = accessoryWeightIncrement(
             avgLoggedRpe,
             accessoryTargetRpe,
             exercise.equipment ?? '',
           );
+          if (isW1CalibrationToW2) increment = 0;
+
+          const tier = String(
+            exercise.compoundTier ??
+              getCompoundTierFromName(String(exercise.name ?? '')),
+          );
+          const equip = String(exercise.equipment ?? 'barbell');
 
           if (exercise.setStructure === 'pyramid') {
             const setCount = Array.isArray(exercise.setTargets)
@@ -2658,7 +2822,7 @@ Return ONLY this exact JSON structure:
             const topPct = pyramidTopSetPct(setCount);
             const desiredTopSet = planBaseline + increment;
             const newTargetWeight = topPct === 1
-              ? Math.round(desiredTopSet / 2.5) * 2.5
+              ? roundToEquipmentPrecision(desiredTopSet, equip)
               : Math.round((desiredTopSet / topPct) / 10) * 10;
             exercise.targetWeight = newTargetWeight;
             const nextTargets = buildProgressionPyramidSetTargets(
@@ -2668,15 +2832,28 @@ Return ONLY this exact JSON structure:
             );
             if (nextTargets.length > 0) {
               exercise.setTargets = nextTargets;
+              const topWeight = Math.max(
+                ...nextTargets.map((s) => Number(s.targetWeight ?? 0)),
+              );
+              exercise.targetWeight = applyMaxWeeklyIncrease(
+                planBaseline,
+                topWeight,
+                equip,
+                tier,
+              );
             }
           } else {
-            const roundTo = ['barbell', 'dumbbell'].includes(
-                String(exercise.equipment ?? '').toLowerCase(),
-              )
-              ? 2.5
-              : 5;
-            exercise.targetWeight =
-              Math.round((planBaseline + increment) / roundTo) * roundTo;
+            let straightWeight = roundToEquipmentPrecision(
+              planBaseline + increment,
+              equip,
+            );
+            straightWeight = applyMaxWeeklyIncrease(
+              planBaseline,
+              straightWeight,
+              equip,
+              tier,
+            );
+            exercise.targetWeight = straightWeight;
           }
         }
 

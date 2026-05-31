@@ -2709,7 +2709,8 @@ STYLE RULE: Never use em-dashes (—) in any response.
 Use periods or commas instead. This applies to all
 coaching copy, Jordan's voice, and any explanatory text.
 
-KNEE INJURY PROGRAMMING RULE:
+KNEE INJURY PROGRAMMING RULE (ONLY applies when injuries
+array contains 'knee' — ignore entirely if no knee injury):
 When the injuries array contains 'knee', you must not generate
 any exercise involving significant knee flexion or knee loading.
 
@@ -2736,6 +2737,9 @@ Use these instead for lower body sessions:
 
 Do not include Leg Extension — it is contraindicated for many
 knee conditions and should not be a default substitution.
+
+If injuries does NOT contain 'knee', program lower body
+sessions normally including squats and lunges as appropriate.
 
 For coachingNote fields:
 coachingNote: A 1–2 sentence explanation of WHY this exercise is in this plan for this specific user. This is selection reasoning — not form cues, not generic motivation. Answer the implicit question: "Why this exercise, in this position, for my goal?"

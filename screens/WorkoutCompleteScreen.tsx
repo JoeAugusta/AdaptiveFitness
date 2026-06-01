@@ -9,7 +9,10 @@ import {
   Pressable,
   ActivityIndicator,
   Animated,
+  Platform,
 } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -20,6 +23,13 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
 import { stripEmDash } from '../utils/jordanText';
 import { hapticPR, hapticSuccess } from '../utils/haptics';
+import { ShareCard, type ShareCardProps } from '../components/ShareCard';
+import {
+  computeSessionShareStats,
+  fallbackJordanNoteFromRpe,
+  resolveSessionTitleFromPlan,
+  truncateJordanNoteForShare,
+} from '../utils/workoutShare';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -213,11 +223,161 @@ export default function WorkoutCompleteScreen() {
   const autoGenStartedRef = useRef(false);
   const workoutCompleteSuccessHapticRef = useRef(false);
 
+  const [sharingAvailable, setSharingAvailable] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCardVisible, setShareCardVisible] = useState(false);
+  const [shareCardData, setShareCardData] = useState<ShareCardProps | null>(null);
+  const shareCardRef = useRef<View>(null);
+  const shareCapturePendingRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    void Sharing.isAvailableAsync()
+      .then(setSharingAvailable)
+      .catch(() => setSharingAvailable(false));
+  }, []);
+
   useEffect(() => {
     if (workoutCompleteSuccessHapticRef.current) return;
     workoutCompleteSuccessHapticRef.current = true;
     void hapticSuccess();
   }, []);
+
+  const handleShareWorkout = useCallback(async () => {
+    if (!sharingAvailable || shareLoading) return;
+    setShareLoading(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) return;
+
+      const [{ data: log }, { data: planRow }] = await Promise.all([
+        supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('user_id', userId)
+          .eq('plan_id', planId)
+          .eq('week_number', weekNumber)
+          .eq('day_number', dayNumber)
+          .order('logged_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from('plans').select('plan_json').eq('id', planId).maybeSingle(),
+      ]);
+
+      const sets = (log?.sets_json ?? []) as Array<{
+        weightLbs?: number;
+        weight?: number;
+        reps?: number;
+        rpe?: number;
+      }>;
+      const { totalSets: setsFromLog, avgRpe, volumeLbs } =
+        computeSessionShareStats(sets);
+      const totalSetsCount = setsFromLog > 0 ? setsFromLog : totalSets;
+
+      const planJson = planRow?.plan_json;
+      const latestJordanNote =
+        planJson &&
+        typeof planJson === 'object' &&
+        planJson !== null &&
+        'latestJordanNote' in planJson
+          ? String((planJson as { latestJordanNote?: string }).latestJordanNote ?? '').trim()
+          : '';
+
+      const jordanNoteRaw =
+        latestJordanNote ||
+        (coachNoteDisplay?.trim() ? coachNoteDisplay.trim() : '') ||
+        fallbackJordanNoteFromRpe(avgRpe);
+
+      const payload: ShareCardProps = {
+        sessionTitle: resolveSessionTitleFromPlan(planJson, weekNumber, dayNumber),
+        weekNumber,
+        dayNumber,
+        totalSets: totalSetsCount,
+        avgRpe,
+        volumeLbs,
+        jordanNote: truncateJordanNoteForShare(jordanNoteRaw),
+      };
+
+      shareCapturePendingRef.current = true;
+      setShareCardData(payload);
+      setShareCardVisible(true);
+    } catch (err) {
+      if (__DEV__) console.warn('[WorkoutComplete] share prepare failed:', err);
+      setShareLoading(false);
+      setShareCardVisible(false);
+      setShareCardData(null);
+      shareCapturePendingRef.current = false;
+    }
+  }, [
+    sharingAvailable,
+    shareLoading,
+    planId,
+    weekNumber,
+    dayNumber,
+    totalSets,
+    coachNoteDisplay,
+  ]);
+
+  useEffect(() => {
+    if (!shareCardVisible || !shareCardData || !shareCapturePendingRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runCapture = async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (cancelled) return;
+
+      const node = shareCardRef.current;
+      if (!node) {
+        if (!cancelled) {
+          setShareLoading(false);
+          setShareCardVisible(false);
+          setShareCardData(null);
+          shareCapturePendingRef.current = false;
+        }
+        return;
+      }
+
+      try {
+        const uri = await captureRef(node, {
+          format: 'png',
+          quality: 1,
+          result: 'tmpfile',
+        });
+
+        if (cancelled) return;
+
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'image/png',
+            dialogTitle: 'Share workout',
+          });
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[WorkoutComplete] share capture failed:', err);
+      } finally {
+        if (!cancelled) {
+          setShareLoading(false);
+          setShareCardVisible(false);
+          setShareCardData(null);
+          shareCapturePendingRef.current = false;
+        }
+      }
+    };
+
+    void runCapture();
+    return () => {
+      cancelled = true;
+    };
+  }, [shareCardVisible, shareCardData]);
 
   useEffect(() => {
     if (prsHit <= 0) return;
@@ -617,8 +777,16 @@ export default function WorkoutCompleteScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const showShareButton = sharingAvailable;
+
   return (
     <View style={styles.container}>
+      {shareCardVisible && shareCardData ? (
+        <View style={styles.offScreenCapture} pointerEvents="none">
+          <ShareCard ref={shareCardRef} {...shareCardData} />
+        </View>
+      ) : null}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -840,6 +1008,24 @@ export default function WorkoutCompleteScreen() {
         >
           <Text style={styles.secondaryButtonText}>View Full Plan</Text>
         </TouchableOpacity>
+
+        {showShareButton ? (
+          <TouchableOpacity
+            style={[
+              styles.shareButton,
+              shareLoading && styles.shareButtonDisabled,
+            ]}
+            activeOpacity={0.8}
+            disabled={shareLoading}
+            onPress={() => void handleShareWorkout()}
+          >
+            {shareLoading ? (
+              <ActivityIndicator color={Colors.accent} size="small" />
+            ) : (
+              <Text style={styles.shareButtonText}>Share Workout</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -1085,6 +1271,29 @@ const styles = StyleSheet.create({
   },
   secondaryButtonDisabled: {
     opacity: 0.4,
+  },
+  shareButton: {
+    height: 52,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareButtonDisabled: {
+    opacity: 0.6,
+  },
+  shareButtonText: {
+    fontSize: FontSizes.title,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+  },
+  offScreenCapture: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    opacity: 0,
   },
 
   summaryBanner: {

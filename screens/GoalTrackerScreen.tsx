@@ -30,6 +30,8 @@ import {
 import ProjectionChart, {
   type ProjectionChartGoal,
 } from '../components/ProjectionChart';
+import Svg, { Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
+import { isTargetLift } from '../utils/strengthGoalLift';
 
 const TRACKER_CHART_STROKE: Record<string, string> = {
   fat_loss:          '#F97316',
@@ -211,10 +213,215 @@ function buildExerciseNameMap(planJson: any): Record<string, string> {
     for (const day of week.days ?? []) {
       for (const ex of day.exercises ?? []) {
         if (ex.id && ex.name) exerciseMap[ex.id] = ex.name;
+        if (ex.id && ex.exerciseName) exerciseMap[ex.id] = ex.exerciseName;
       }
     }
   }
   return exerciseMap;
+}
+
+function countPlannedWorkoutSessions(planJson: any, throughWeek: number): number {
+  let n = 0;
+  for (const week of planJson?.weeks ?? []) {
+    const wn = Number(week.weekNumber ?? 0);
+    if (wn < 1 || wn > throughWeek) continue;
+    for (const day of week.days ?? []) {
+      if ((day?.type ?? 'workout') === 'workout') n++;
+    }
+  }
+  if (n > 0) return n;
+  const daysPerWeek = Number(planJson?.daysPerWeek ?? 0);
+  return daysPerWeek > 0 ? daysPerWeek * Math.max(1, throughWeek) : 0;
+}
+
+function estimate1RMFromMostRecentSession(
+  logs: { logged_at?: string; sets_json?: any[] }[],
+  targetLift: string,
+  exerciseMap: Record<string, string>,
+): number | null {
+  const sorted = [...logs].sort(
+    (a, b) =>
+      new Date(b.logged_at ?? 0).getTime() - new Date(a.logged_at ?? 0).getTime(),
+  );
+  for (const log of sorted) {
+    let best = 0;
+    let hasTarget = false;
+    for (const s of log.sets_json ?? []) {
+      const displayName =
+        s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId] ?? '';
+      if (
+        !isTargetLift(
+          { name: displayName, exerciseName: displayName, exerciseId: s.exerciseId },
+          targetLift,
+        )
+      ) {
+        continue;
+      }
+      hasTarget = true;
+      const w = Number(s.weightLbs ?? s.weight ?? 0);
+      const r = Number(s.reps ?? 0);
+      if (w > 0 && r > 0) {
+        const est = w * (1 + r / 30);
+        if (est > best) best = est;
+      }
+    }
+    if (hasTarget && best > 0) return Math.round(best);
+  }
+  return null;
+}
+
+function buildJordanStrengthNote(
+  pct: number,
+  liftLabel: string,
+  gained: number,
+  remaining: number,
+  target1RM: number,
+): string {
+  if (pct >= 90) {
+    return `You're in the final stretch — ${remaining} lbs from your ${target1RM} lb goal.`;
+  }
+  if (pct >= 50) {
+    return `You're ${pct}% of the way there. ${liftLabel} is moving well.`;
+  }
+  if (pct >= 25) {
+    return `Early progress on ${liftLabel}. ${gained} lbs gained since you started.`;
+  }
+  return `Week 1 baseline set. Jordan will track your ${liftLabel} progress from here.`;
+}
+
+type StrengthHeroModel = {
+  liftLabel: string;
+  liftTitle: string;
+  starting1RM: number;
+  target1RM: number;
+  currentEstimate: number;
+  progressPct: number;
+  jordanNote: string;
+};
+
+function GoalProgressRing({
+  pct,
+  estimateLbs,
+}: {
+  pct: number;
+  estimateLbs: number;
+}) {
+  const size = 148;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const circ = 2 * Math.PI * r;
+  const clamped = Math.min(100, Math.max(0, pct));
+  const offset = circ * (1 - clamped / 100);
+
+  return (
+    <View style={styles.heroRingWrap}>
+      <Svg width={size} height={size}>
+        <SvgCircle
+          cx={cx}
+          cy={cx}
+          r={r}
+          stroke={Colors.bgElevated}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <SvgCircle
+          cx={cx}
+          cy={cx}
+          r={r}
+          stroke={Colors.accent}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${circ} ${circ}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          rotation="-90"
+          origin={`${cx}, ${cx}`}
+        />
+        <SvgText
+          x={cx}
+          y={cx + 6}
+          textAnchor="middle"
+          fill={Colors.textPrimary}
+          fontSize={26}
+          fontWeight="700"
+        >
+          {clamped}%
+        </SvgText>
+      </Svg>
+      <Text style={styles.heroRingEstimate}>{estimateLbs} lbs</Text>
+      <Text style={styles.heroRingEstimateLabel}>current estimate</Text>
+    </View>
+  );
+}
+
+function StrengthGoalHeroCard({
+  model,
+  progressAnim,
+}: {
+  model: StrengthHeroModel;
+  progressAnim: Animated.Value;
+}) {
+  return (
+    <View style={styles.heroCard}>
+      <Text style={styles.heroSectionLabel}>MY GOAL</Text>
+      <Text style={styles.heroLiftTitle}>{model.liftTitle}</Text>
+      <GoalProgressRing pct={model.progressPct} estimateLbs={model.currentEstimate} />
+      <View style={styles.heroBarTrack}>
+        <Animated.View
+          style={[
+            styles.heroBarFill,
+            {
+              width: progressAnim.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
+      </View>
+      <Text style={styles.heroBarPct}>{model.progressPct}%</Text>
+      <View style={styles.heroBoundsRow}>
+        <Text style={styles.heroBoundsText}>
+          Started: {model.starting1RM} lbs
+        </Text>
+        <Text style={styles.heroBoundsText}>Goal: {model.target1RM} lbs</Text>
+      </View>
+      <View style={styles.heroJordanNote}>
+        <Text style={styles.heroJordanNoteText}>Jordan: &quot;{model.jordanNote}&quot;</Text>
+      </View>
+    </View>
+  );
+}
+
+function ConsistencyGoalHeroCard({
+  goalLabel,
+  weeksRemaining,
+  consistencyPct,
+}: {
+  goalLabel: string;
+  weeksRemaining: number;
+  consistencyPct: number;
+}) {
+  return (
+    <View style={styles.heroCard}>
+      <Text style={styles.heroSectionLabel}>MY GOAL</Text>
+      <Text style={styles.heroLiftTitle}>{goalLabel.toUpperCase()}</Text>
+      <View style={styles.heroConsistencyStats}>
+        <View style={styles.heroConsistencyCol}>
+          <Text style={styles.heroConsistencyValue}>{weeksRemaining}</Text>
+          <Text style={styles.heroConsistencyLabel}>weeks left</Text>
+        </View>
+        <View style={styles.heroConsistencyCol}>
+          <Text style={styles.heroConsistencyValue}>{consistencyPct}%</Text>
+          <Text style={styles.heroConsistencyLabel}>consistency</Text>
+        </View>
+      </View>
+      <Text style={styles.heroConsistencyHint}>
+        Sessions completed vs planned in your program so far.
+      </Text>
+    </View>
+  );
 }
 
 function buildWeightActualsByWeek(
@@ -505,7 +712,9 @@ export default function GoalTrackerScreen() {
   const [plan, setPlan] = useState<PlanRow | null>(null);
   const [current1rm, setCurrent1rm] = useState<number | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<
+    { logged_at?: string; week_number: number; sets_json: any[] }[]
+  >([]);
   const [weightLogsTracker, setWeightLogsTracker] = useState<
     { log_date: string; weight_lbs: number }[]
   >([]);
@@ -522,6 +731,7 @@ export default function GoalTrackerScreen() {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const heroProgressAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -566,7 +776,7 @@ export default function GoalTrackerScreen() {
       if (activePlan) {
         const { data: logsData, count } = await supabase
           .from('workout_logs')
-          .select('week_number, sets_json', { count: 'exact' })
+          .select('week_number, sets_json, logged_at', { count: 'exact' })
           .eq('user_id', userId)
           .eq('plan_id', activePlan.id)
           .order('logged_at', { ascending: true });
@@ -620,40 +830,8 @@ export default function GoalTrackerScreen() {
         setWeeklyCoachSnippet(null);
       }
 
-      // Strength goal: estimate current 1RM from recent logs for target lift
-      if (activeGoal?.goal_type === 'strength' && activeGoal.target_lift && activePlan) {
-        const exerciseMap: Record<string, string> = {};
-        for (const week of (activePlan.plan_json?.weeks ?? [])) {
-          for (const day of (week.days ?? [])) {
-            for (const ex of (day.exercises ?? [])) {
-              if (ex.id && ex.name) exerciseMap[ex.id] = ex.name;
-            }
-          }
-        }
-
-        const { data: recentLogs } = await supabase
-          .from('workout_logs')
-          .select('sets_json')
-          .eq('user_id', userId)
-          .eq('plan_id', activePlan.id)
-          .order('logged_at', { ascending: false })
-          .limit(10);
-
-        let best1rm = 0;
-        const targetLower = activeGoal.target_lift.toLowerCase();
-        for (const log of (recentLogs ?? [])) {
-          for (const s of (log.sets_json ?? [])) {
-            const name = (s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId] ?? '').toLowerCase();
-            if (!liftIdMatchesExerciseName(name, targetLower)) continue;
-            const w = Number(s.weightLbs ?? s.weight ?? 0);
-            const r = Number(s.reps ?? 0);
-            if (w > 0 && r > 0) {
-              const est = w * (1 + r / 30);
-              if (est > best1rm) best1rm = est;
-            }
-          }
-        }
-        setCurrent1rm(best1rm > 0 ? best1rm : null);
+      if (activeGoal?.goal_type !== 'strength') {
+        setCurrent1rm(null);
       }
     } catch {
       // Silently handle — empty states will show
@@ -676,6 +854,90 @@ export default function GoalTrackerScreen() {
       }).start();
     }
   }, [progress?.progressPct]);
+
+  const strengthHero = useMemo((): StrengthHeroModel | null => {
+    const pj = plan?.plan_json;
+    if (
+      pj?.goal !== 'strength' ||
+      !pj?.targetLift ||
+      pj?.target1RM == null ||
+      String(pj.target1RM).trim() === ''
+    ) {
+      return null;
+    }
+    const targetLift = String(pj.targetLift);
+    const starting1RM = Number(pj.current1RM ?? goal?.current_1rm ?? 0);
+    const target1RM = Number(pj.target1RM);
+    if (
+      !Number.isFinite(starting1RM) ||
+      !Number.isFinite(target1RM) ||
+      target1RM <= starting1RM
+    ) {
+      return null;
+    }
+    const exMap = buildExerciseNameMap(pj);
+    const fromLogs = estimate1RMFromMostRecentSession(logs, targetLift, exMap);
+    const currentEstimate = fromLogs ?? starting1RM;
+    const gap = target1RM - starting1RM;
+    const gained = currentEstimate - starting1RM;
+    const progressPct = Math.min(100, Math.round((gained / gap) * 100));
+    const liftLabel = formatLiftName(targetLift);
+    const remaining = Math.max(0, Math.round(target1RM - currentEstimate));
+    return {
+      liftLabel,
+      liftTitle: `${liftLabel.toUpperCase()} GOAL`,
+      starting1RM: Math.round(starting1RM),
+      target1RM: Math.round(target1RM),
+      currentEstimate: Math.round(currentEstimate),
+      progressPct,
+      jordanNote: buildJordanStrengthNote(
+        progressPct,
+        liftLabel,
+        Math.round(gained),
+        remaining,
+        Math.round(target1RM),
+      ),
+    };
+  }, [plan, goal, logs]);
+
+  useEffect(() => {
+    if (strengthHero) {
+      setCurrent1rm(strengthHero.currentEstimate);
+      heroProgressAnim.setValue(0);
+      Animated.timing(heroProgressAnim, {
+        toValue: strengthHero.progressPct,
+        duration: 800,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [strengthHero?.progressPct, strengthHero?.currentEstimate]);
+
+  const consistencyHero = useMemo(() => {
+    if (!goal || !plan) return null;
+    if (goal.goal_type === 'strength') return null;
+    const supported = [
+      'hypertrophy',
+      'recomp',
+      'fat_loss',
+      'general',
+      'power_hypertrophy',
+    ];
+    if (!supported.includes(goal.goal_type)) return null;
+    const weeksRemaining = Math.max(0, plan.total_weeks - plan.current_week);
+    const planned = countPlannedWorkoutSessions(
+      plan.plan_json,
+      plan.current_week,
+    );
+    const consistencyPct =
+      planned > 0
+        ? Math.min(100, Math.round((sessionCount / planned) * 100))
+        : 0;
+    return {
+      goalLabel: GOAL_BADGE[goal.goal_type]?.label ?? 'Goal',
+      weeksRemaining,
+      consistencyPct,
+    };
+  }, [goal, plan, sessionCount]);
 
   const milestones = progress ? buildMilestones(progress.progressPct) : [];
 
@@ -822,6 +1084,19 @@ export default function GoalTrackerScreen() {
           </View>
         ) : (
           <>
+          {strengthHero ? (
+            <StrengthGoalHeroCard
+              model={strengthHero}
+              progressAnim={heroProgressAnim}
+            />
+          ) : consistencyHero ? (
+            <ConsistencyGoalHeroCard
+              goalLabel={consistencyHero.goalLabel}
+              weeksRemaining={consistencyHero.weeksRemaining}
+              consistencyPct={consistencyHero.consistencyPct}
+            />
+          ) : null}
+
           {goal && plan && trackerModel ? (
             <View style={styles.trackerProjectionBlock}>
               <Text style={styles.projectionSectionLabel}>YOUR PROJECTION</Text>
@@ -1236,6 +1511,118 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
+  },
+
+  heroCard: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  heroSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  heroLiftTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.md,
+  },
+  heroRingWrap: {
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  heroRingEstimate: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+    marginTop: Spacing.sm,
+  },
+  heroRingEstimateLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  heroBarTrack: {
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgCard,
+    overflow: 'hidden',
+    marginTop: Spacing.sm,
+  },
+  heroBarFill: {
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accent,
+  },
+  heroBarPct: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
+    textAlign: 'right',
+  },
+  heroBoundsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  heroBoundsText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  heroJordanNote: {
+    marginTop: Spacing.md,
+    paddingLeft: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+  },
+  heroJordanNoteText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: LineHeights.body,
+  },
+  heroConsistencyStats: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  heroConsistencyCol: {
+    flex: 1,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  heroConsistencyValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  heroConsistencyLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  heroConsistencyHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    lineHeight: LineHeights.caption,
   },
 
   trackerProjectionBlock: {

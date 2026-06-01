@@ -1,0 +1,2824 @@
+[
+  {
+    "id": 1,
+    "label": "Strength — Bench (Intermediate M, 4d Upper/Lower)",
+    "status": "ok",
+    "plan": {
+      "title": "12-Week Bench Press Specialization Plan",
+      "jordanWelcome": "I'm Jordan, your coach for the next 12 weeks. You came in with a 275lb bench press target — I've built the entire program around getting you there. Week 1 is your calibration week — the weights are set conservatively so you can focus on form and give me honest effort ratings after each set. I'll use your RPE data from this week to tune what comes next specifically to you — the more honest you are, the better your plan gets.",
+      "totalWeeks": 12,
+      "daysPerWeek": 4,
+      "scheduledDays": [],
+      "sessionLength": "60-90",
+      "experience": "intermediate",
+      "equipment": "Barbell, Dumbbells, Cables, Machines",
+      "goal": "strength",
+      "targetLift": "bench_press",
+      "goalLift": "bench_press",
+      "split": "upper_lower",
+      "enhancedRecovery": false,
+      "concurrentSport": null,
+      "biologicalSex": "male",
+      "subMusclePreferences": {},
+      "currentWeek": 1,
+      "weeks": [
+        {
+          "weekNumber": 1,
+          "phase": "baseline",
+          "days": [
+            {
+              "dayNumber": 1,
+              "type": "workout",
+              "title": "Heavy Upper",
+              "sessionFocus": "Baseline heavy — 5×5 bench at 170lbs.",
+              "muscleGroups": [
+                "Chest",
+                "Shoulders",
+                "Triceps",
+                "Back"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 5,
+                  "reps": "5",
+                  "targetWeight": 170,
+                  "restSeconds": 240,
+                  "targetRpe": 7,
+                  "coachingNote": "Your target lift — everything else this week is built to support this bench press progression.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e2",
+                  "name": "Barbell Row",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 135,
+                  "restSeconds": 120,
+                  "targetRpe": 8,
+                  "coachingNote": "Strong lats create a stable bench platform — this balances all your pressing volume.",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 100,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 110,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 120,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 135,
+                      "targetRpe": 8,
+                      "targetReps": "6-8"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Incline Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 3,
+                  "reps": "8-10",
+                  "targetWeight": 65,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Direct bench variation targeting upper chest — helps with your lockout strength off the chest.",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 50,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 60,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 65,
+                      "targetRpe": 8,
+                      "targetReps": "8-10"
+                    }
+                  ]
+                },
+                {
+                  "id": "e4",
+                  "name": "Tricep Pushdown",
+                  "muscleGroup": "Triceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 80,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Bench lockout depends on tricep strength — this isolation work directly transfers to your press.",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e5",
+                  "name": "Face Pulls",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 50,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Keeps your posterior chain balanced against all the pressing volume — non-negotiable for bench longevity.",
+                  "muscleEmphasis": "upper_back",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Lateral Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 20,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Shoulder stability is critical for your bench press — medial delts support the pressing position.",
+                  "muscleEmphasis": "lateral_delt",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 2,
+              "type": "workout",
+              "title": "Lower Body",
+              "sessionFocus": "Calibration lower — log your effort honestly.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Hamstrings",
+                "Glutes",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Back Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 185,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Lower body strength supports your bench setup — strong legs create a stable platform to press from.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 185,
+                      "targetRpe": 8,
+                      "targetReps": "6-8"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Romanian Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "8-10",
+                  "targetWeight": 155,
+                  "restSeconds": 120,
+                  "targetRpe": 8,
+                  "coachingNote": "Posterior chain strength keeps you balanced — strong hamstrings and glutes support your bench arch.",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 120,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 130,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 155,
+                      "targetRpe": 8,
+                      "targetReps": "8-10"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Leg Press",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 270,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Additional quad volume without taxing your lower back — supports your squat pattern development.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Walking Lunges",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 25,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Unilateral strength prevents imbalances — single leg work transfers to better bilateral pressing stability.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 20,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 20,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 25,
+                      "targetRpe": 7,
+                      "targetReps": "10-12"
+                    }
+                  ]
+                },
+                {
+                  "id": "e5",
+                  "name": "Calf Raise",
+                  "muscleGroup": "Calves",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 135,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Strong calves contribute to your bench leg drive — every point of contact matters for maximum pressing power.",
+                  "muscleEmphasis": "gastrocnemius",
+                  "equipment": "machine",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Plank",
+                  "muscleGroup": "Core",
+                  "sets": 3,
+                  "reps": "30-45 sec",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Core stability transfers directly to bench pressing — tight abs help you maintain your arch under load.",
+                  "muscleEmphasis": "transverse_abs",
+                  "equipment": "bodyweight",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 3,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 4,
+              "type": "workout",
+              "title": "Volume Upper",
+              "sessionFocus": "Volume upper — 5×8 bench at 145lbs.",
+              "muscleGroups": [
+                "Chest",
+                "Shoulders",
+                "Triceps",
+                "Back",
+                "Biceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 5,
+                  "reps": "8",
+                  "targetWeight": 145,
+                  "restSeconds": 180,
+                  "targetRpe": 7,
+                  "coachingNote": "Volume day for your target lift — higher reps build the work capacity your strength needs.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "straight",
+                  "repsMin": 8,
+                  "repsMax": 8
+                },
+                {
+                  "id": "e2",
+                  "name": "Seated Cable Row",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-10",
+                  "targetWeight": 120,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Horizontal pulling balances your pressing volume — strong mid-traps support your bench retraction.",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "cable",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e3",
+                  "name": "Dumbbell Shoulder Press",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 45,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Shoulder pressing strength carries over to your bench press — front delts are prime movers in both lifts.",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 40,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 40,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 45,
+                      "targetRpe": 7,
+                      "targetReps": "10-12"
+                    }
+                  ]
+                },
+                {
+                  "id": "e4",
+                  "name": "Close Grip Bench Press",
+                  "muscleGroup": "Triceps",
+                  "sets": 3,
+                  "reps": "8-10",
+                  "targetWeight": 125,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Direct bench variation emphasizing triceps — your lockout strength depends on this muscle group.",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 100,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 110,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 125,
+                      "targetRpe": 8,
+                      "targetReps": "8-10"
+                    }
+                  ]
+                },
+                {
+                  "id": "e5",
+                  "name": "Barbell Curls",
+                  "muscleGroup": "Biceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 65,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Bicep strength supports your bench setup — strong arms help you control the bar path under heavy loads.",
+                  "muscleEmphasis": "short_head_bicep",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Chest Fly",
+                  "muscleGroup": "Chest",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 35,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Isolation work for chest development — builds the muscle mass that supports your pressing strength.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 5,
+              "type": "workout",
+              "title": "Lower Body",
+              "sessionFocus": "Second lower — build your foundation.",
+              "muscleGroups": [
+                "Hamstrings",
+                "Glutes",
+                "Quadriceps",
+                "Core"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Conventional Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 225,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Full-body strength builder — deadlift power transfers to every aspect of your bench pressing setup.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 190,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 210,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 225,
+                      "targetRpe": 8,
+                      "targetReps": "6-8"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Bulgarian Split Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "8-10",
+                  "targetWeight": 35,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Unilateral leg strength prevents imbalances — single leg stability supports your bench leg drive.",
+                  "muscleEmphasis": "glutes",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 30,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 30,
+                      "targetRpe": 7,
+                      "targetReps": "8-10"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 35,
+                      "targetRpe": 8,
+                      "targetReps": "8-10"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Leg Curl",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 90,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Hamstring isolation builds posterior chain strength — supports your deadlift and overall stability.",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "machine",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Hip Thrust",
+                  "muscleGroup": "Glutes",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 185,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Glute strength powers your bench leg drive — strong hips create the foundation for maximum pressing force.",
+                  "muscleEmphasis": "glutes",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 150,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 170,
+                      "targetRpe": 6,
+                      "targetReps": "10-12"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 185,
+                      "targetRpe": 7,
+                      "targetReps": "10-12"
+                    }
+                  ]
+                },
+                {
+                  "id": "e5",
+                  "name": "Leg Extension",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 110,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Quad isolation for complete leg development — knee stability supports your overall pressing platform.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Hanging Leg Raise",
+                  "muscleGroup": "Core",
+                  "sets": 3,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Core strength is essential for bench pressing — tight abs help you maintain your arch and transfer leg drive.",
+                  "muscleEmphasis": "rectus_abdominis",
+                  "equipment": "bodyweight",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 6,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 7,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            }
+          ]
+        }
+      ],
+      "deloadCycle": 4,
+      "week1BaselineWeight": 170
+    },
+    "elapsed": "60.2",
+    "warnings": []
+  },
+  {
+    "id": 4,
+    "label": "Hypertrophy — Intermediate M, 5d PPL",
+    "status": "ok",
+    "plan": {
+      "title": "12-Week Hypertrophy Program",
+      "jordanWelcome": "I'm Jordan, your coach for the next 12 weeks. Your goal is building size — I've programmed 5 days with the volume and frequency that actually drives hypertrophy. Week 1 you set your own starting weights — aim for something that feels like RPE 7-8 on each exercise. I'll use your RPE data from this week to tune what comes next specifically to you — the more honest you are, the better your plan gets.",
+      "totalWeeks": 12,
+      "daysPerWeek": 5,
+      "scheduledDays": [],
+      "sessionLength": "60-90",
+      "experience": "intermediate",
+      "equipment": "Barbell, Dumbbells, Cables, Machines",
+      "goal": "hypertrophy",
+      "targetLift": null,
+      "goalLift": null,
+      "split": "ppl",
+      "enhancedRecovery": false,
+      "concurrentSport": null,
+      "biologicalSex": "male",
+      "subMusclePreferences": {},
+      "currentWeek": 1,
+      "weeks": [
+        {
+          "weekNumber": 1,
+          "phase": "baseline",
+          "days": [
+            {
+              "dayNumber": 1,
+              "type": "workout",
+              "title": "Push A",
+              "sessionFocus": "Baseline push — feel the weights out at RPE 8.",
+              "muscleGroups": [
+                "Chest",
+                "Shoulders",
+                "Triceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Barbell Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "6-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "The cornerstone of your push sessions — bench press builds the foundation for everything else we'll layer in.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e2",
+                  "name": "Incline Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Incline angle targets your upper chest specifically — critical for balanced pec development in this hypertrophy program.",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e3",
+                  "name": "Dumbbell Lateral Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Your medial delt width comes from this isolation angle — no compound movement hits this muscle effectively.",
+                  "muscleEmphasis": "lateral_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Tricep Pushdown (Rope)",
+                  "muscleGroup": "Triceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Rope attachment hits all three tricep heads — essential volume after your pressing compounds.",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e5",
+                  "name": "Cable Fly (High to Low)",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "High-to-low angle targets your lower chest fibers — pure isolation after the compound pressing volume.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Front Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Anterior delt isolation completes your shoulder development — the pressing volume needs this targeted finish.",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 2,
+              "type": "workout",
+              "title": "Pull A",
+              "sessionFocus": "Calibration pull — log your effort honestly across 4 sets.",
+              "muscleGroups": [
+                "Back",
+                "Biceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Lat Pulldown (Wide Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "6-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Wide grip targets your lat width specifically — the primary vertical pull for building that V-taper.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e2",
+                  "name": "Barbell Row (Overhand Wide)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "6-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Overhand wide grip emphasizes your mid-traps and rhomboids — balancing all the horizontal pressing volume.",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e3",
+                  "name": "Cable Row (Close Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Close grip shifts focus to your lower lats and rear delts — different angle from the barbell rows.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Barbell Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 8,
+                  "coachingNote": "Barbell curls target both bicep heads with maximum load — your primary bicep mass builder.",
+                  "muscleEmphasis": "short_head_bicep",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e5",
+                  "name": "Cable Hammer Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Hammer grip targets your brachialis and long head — adds width that regular curls miss.",
+                  "muscleEmphasis": "long_head_bicep",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Face Pull (Rope)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Face pulls target your rear delts and external rotators — non-negotiable for shoulder health with this push volume.",
+                  "muscleEmphasis": "upper_back",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 3,
+              "type": "workout",
+              "title": "Legs A",
+              "sessionFocus": "Baseline legs — establish your squat and hinge numbers.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Glutes",
+                "Hamstrings",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Back Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "6-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Back squat anchors your leg development — the primary compound for quad and glute mass.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e2",
+                  "name": "Romanian Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "6-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "RDLs target your hamstrings and glutes through the hinge pattern — essential posterior chain development.",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e3",
+                  "name": "Leg Press",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Leg press adds quad volume without the systemic fatigue of another squat pattern — pure muscle building focus.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Walking Lunges",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Single-leg pattern challenges stability while hitting quads and glutes — movement quality your squats need.",
+                  "muscleEmphasis": "quads",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e5",
+                  "name": "Leg Curl",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Isolated hamstring curl targets the knee flexion function — your RDLs don't hit this angle.",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "machine",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Calf Raise",
+                  "muscleGroup": "Calves",
+                  "sets": 4,
+                  "reps": "15-20",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Calves respond to higher reps and consistent tension — this volume drives the adaptation you need.",
+                  "muscleEmphasis": "gastrocnemius",
+                  "equipment": "machine",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 4,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 5,
+              "type": "workout",
+              "title": "Push B",
+              "sessionFocus": "Second push session — 4 sets with different angles.",
+              "muscleGroups": [
+                "Chest",
+                "Shoulders",
+                "Triceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Dumbbell Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "6-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Dumbbell pressing allows deeper range of motion than barbell — hits different muscle fibers for complete chest development.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e2",
+                  "name": "Dumbbell Shoulder Press",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "6-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Primary shoulder mass builder — targets all three delt heads with maximum overload potential.",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e3",
+                  "name": "Decline Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Decline angle targets your lower chest fibers — completes the chest development from different pressing angles.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Dumbbell Lateral Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Second lateral raise session this week — medial delts need high frequency for width development.",
+                  "muscleEmphasis": "lateral_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e5",
+                  "name": "Tricep Dips",
+                  "muscleGroup": "Triceps",
+                  "sets": 4,
+                  "reps": "8-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 8,
+                  "coachingNote": "Compound tricep movement hits all three heads with bodyweight resistance — different stimulus than cable work.",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "bodyweight",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Fly (Low to High)",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Low-to-high angle targets upper chest fibers — isolation finish after compound pressing volume.",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 6,
+              "type": "workout",
+              "title": "Pull B",
+              "sessionFocus": "Second pull calibration — different grips and angles.",
+              "muscleGroups": [
+                "Back",
+                "Biceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Pull-ups",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "6-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Bodyweight vertical pull targets your lats with different loading than machines — builds functional pulling strength.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "bodyweight",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e2",
+                  "name": "Barbell Row (Underhand)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "6-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Underhand grip shifts emphasis to lower lats and biceps — different angle from your overhand rows.",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setStructure": "pyramid"
+                },
+                {
+                  "id": "e3",
+                  "name": "Lat Pulldown (Close Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 8,
+                  "coachingNote": "Close grip pulldown targets your lower lats and middle traps — complements the wide grip from earlier this week.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "secondary_compound",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e4",
+                  "name": "Dumbbell Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Dumbbell curls allow independent arm training — targets any strength imbalances your barbell curls miss.",
+                  "muscleEmphasis": "long_head_bicep",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e5",
+                  "name": "Cable Row (Wide Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Wide grip row targets your middle traps and rhomboids — balances the close grip work from earlier.",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                },
+                {
+                  "id": "e6",
+                  "name": "Preacher Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Preacher angle isolates your bicep short head — targets peak development that standing curls don't hit.",
+                  "muscleEmphasis": "short_head_bicep",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation",
+                  "setStructure": "straight"
+                }
+              ]
+            },
+            {
+              "dayNumber": 7,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            }
+          ]
+        }
+      ],
+      "deloadCycle": 4
+    },
+    "elapsed": "58.9",
+    "warnings": []
+  },
+  {
+    "id": 5,
+    "label": "Strength & Size — Advanced M, 6d Arnold Split",
+    "status": "ok",
+    "plan": {
+      "title": "Power-Hypertrophy Arnold Split",
+      "jordanWelcome": "I'm Jordan, your coach for the next 8 weeks. You want strength and size — every session starts heavy on the big compounds, then we shift into accessory work to build muscle on top. Week 1 is your calibration week — the weights are set conservatively so you can focus on form and give me honest effort ratings after each set. I'll use your RPE data from this week to tune what comes next specifically to you — the more honest you are, the better your plan gets.",
+      "totalWeeks": 8,
+      "daysPerWeek": 6,
+      "scheduledDays": [],
+      "sessionLength": "60-90",
+      "experience": "advanced",
+      "equipment": "Barbell, Dumbbells, Cables, Machines",
+      "goal": "power_hypertrophy",
+      "targetLift": null,
+      "goalLift": null,
+      "split": "arnold",
+      "enhancedRecovery": false,
+      "concurrentSport": null,
+      "biologicalSex": "male",
+      "subMusclePreferences": {},
+      "currentWeek": 1,
+      "weeks": [
+        {
+          "weekNumber": 1,
+          "phase": "baseline",
+          "days": [
+            {
+              "dayNumber": 1,
+              "type": "workout",
+              "title": "Chest & Back A",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline chest and back — bench at 225, calibrate your ratings.",
+              "muscleGroups": [
+                "Chest",
+                "Back"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Barbell Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 5,
+                  "reps": "3-6",
+                  "targetWeight": 225,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your main strength builder — this anchors every chest session for the next 8 weeks.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 180,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 190,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 200,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 225,
+                      "targetRpe": 8,
+                      "targetReps": "3-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Barbell Row (Overhand Wide)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "4-6",
+                  "targetWeight": 185,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Wide grip hits your upper back and rear delts — perfect balance for all the pressing volume.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 185,
+                      "targetRpe": 8,
+                      "targetReps": "4-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Incline Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Upper chest development after your heavy bench — the angle hits fibers the barbell misses.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Cable Row (Close Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Close grip targets your mid-traps and rhomboids — essential for posture and bench stability.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e5",
+                  "name": "Dumbbell Flys",
+                  "muscleGroup": "Chest",
+                  "sets": 3,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Chest isolation to maximize the stretch — pure hypertrophy stimulus without tricep involvement.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Lat Pulldown (Wide Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 3,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Wide grip builds lat width — your V-taper comes from this movement pattern.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "secondary_compound"
+                }
+              ]
+            },
+            {
+              "dayNumber": 2,
+              "type": "workout",
+              "title": "Shoulders & Arms A",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline shoulders and arms — OHP at 125, build the foundation.",
+              "muscleGroups": [
+                "Shoulders",
+                "Biceps",
+                "Triceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Overhead Press",
+                  "muscleGroup": "Shoulders",
+                  "sets": 5,
+                  "reps": "3-6",
+                  "targetWeight": 125,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your primary shoulder strength movement — everything else this session supports this lift.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 90,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 100,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 110,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 110,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 125,
+                      "targetRpe": 8,
+                      "targetReps": "3-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Close-Grip Bench Press",
+                  "muscleGroup": "Triceps",
+                  "sets": 4,
+                  "reps": "4-6",
+                  "targetWeight": 185,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Heavy tricep work that transfers directly to your bench press lockout strength.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 185,
+                      "targetRpe": 8,
+                      "targetReps": "4-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Dumbbell Lateral Raises",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Side delt isolation for shoulder width — the OHP alone won't build your side delts.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e4",
+                  "name": "Barbell Curls",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Classic bicep mass builder — heavy load through the full range of motion.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "short_head_bicep",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e5",
+                  "name": "Tricep Pushdown (Rope)",
+                  "muscleGroup": "Triceps",
+                  "sets": 3,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Rope allows full tricep extension — hits the long head better than straight bar.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Face Pulls",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Rear delt and rhomboid work — balances all the pressing and keeps your shoulders healthy.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "upper_back",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 3,
+              "type": "workout",
+              "title": "Legs A",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline legs — squat at 260, build the quad foundation.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Hamstrings",
+                "Glutes",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Back Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 5,
+                  "reps": "3-6",
+                  "targetWeight": 260,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your primary leg strength movement — the king of all lower body exercises.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 180,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 210,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 220,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 230,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 260,
+                      "targetRpe": 8,
+                      "targetReps": "3-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Romanian Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "5-8",
+                  "targetWeight": 225,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Primary hinge pattern for hamstring and glute development — perfect complement to squats.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "5-8"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 190,
+                      "targetRpe": 7,
+                      "targetReps": "5-8"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 210,
+                      "targetRpe": 7,
+                      "targetReps": "5-8"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 225,
+                      "targetRpe": 8,
+                      "targetReps": "5-8"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Leg Press",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Pure quad volume without the systemic fatigue of another squat variation.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Walking Lunges",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Single leg work to address imbalances and add stability challenge to your leg training.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e5",
+                  "name": "Leg Curls",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Isolated hamstring work — the RDL builds the hip hinge, this builds the knee flexion.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Calf Raises",
+                  "muscleGroup": "Calves",
+                  "sets": 4,
+                  "reps": "12-20",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Calves need high volume and frequency — they're built for endurance and recover quickly.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "gastrocnemius",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 4,
+              "type": "workout",
+              "title": "Chest & Back B",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline pull focus — deadlift at 300, build your posterior chain.",
+              "muscleGroups": [
+                "Back",
+                "Chest"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Conventional Deadlift",
+                  "muscleGroup": "Back",
+                  "sets": 5,
+                  "reps": "3-6",
+                  "targetWeight": 300,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your heaviest pull of the week — builds total body strength and posterior chain power.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "lats",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 210,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 240,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 260,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 270,
+                      "targetRpe": 7,
+                      "targetReps": "3-6"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 300,
+                      "targetRpe": 8,
+                      "targetReps": "3-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Incline Barbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "5-8",
+                  "targetWeight": 185,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Upper chest strength work at a steeper angle than dumbbells — builds pressing power.",
+                  "phase": "strength",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e3",
+                  "name": "Barbell Row (Underhand)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-10",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Underhand grip hits your lats and biceps harder than overhand — different stimulus than Day 1.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Greater range of motion than barbell — better stretch and squeeze for chest development.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e5",
+                  "name": "Cable Fly (High to Low)",
+                  "muscleGroup": "Chest",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "High to low angle targets lower chest fibers — different from flat flyes on Day 1.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Row (Wide Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Wide grip emphasizes rear delts and mid-traps — balances all the chest volume.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 5,
+              "type": "workout",
+              "title": "Shoulders & Arms B",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline arm focus — weighted dips for tricep strength foundation.",
+              "muscleGroups": [
+                "Shoulders",
+                "Biceps",
+                "Triceps"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Dumbbell Shoulder Press",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "4-6",
+                  "targetWeight": 0,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Heavy dumbbell work for unilateral strength — different stimulus than barbell OHP.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e2",
+                  "name": "Weighted Dips",
+                  "muscleGroup": "Triceps",
+                  "sets": 4,
+                  "reps": "5-8",
+                  "targetWeight": 25,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Compound tricep and chest builder — transfers directly to your pressing strength.",
+                  "phase": "strength",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "bodyweight",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e3",
+                  "name": "Cable Front Raises",
+                  "muscleGroup": "Shoulders",
+                  "sets": 4,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Front delt isolation — cables provide constant tension through the full range.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e4",
+                  "name": "Hammer Curls",
+                  "muscleGroup": "Biceps",
+                  "sets": 4,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Neutral grip hits the brachialis and builds bicep thickness — different from barbell curls.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "long_head_bicep",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e5",
+                  "name": "Tricep Pushdown (V-Bar)",
+                  "muscleGroup": "Triceps",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "V-bar allows heavier loads than rope — different grip stimulus for tricep development.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Reverse Flys",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Pure rear delt isolation — essential for shoulder health and posture balance.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "rear_delt",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 6,
+              "type": "workout",
+              "title": "Legs B",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline leg volume — front squats and quad-focused hypertrophy work.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Hamstrings",
+                "Glutes",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Front Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "4-6",
+                  "targetWeight": 185,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Front squats hit your quads harder than back squats — different loading pattern for variety.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "4-6"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 185,
+                      "targetRpe": 8,
+                      "targetReps": "4-6"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Stiff-Leg Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 185,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Greater hamstring stretch than RDL — builds flexibility and strength through full range.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 160,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "6-8"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 185,
+                      "targetRpe": 8,
+                      "targetReps": "6-8"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Bulgarian Split Squats",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "8-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Unilateral quad work with glute activation — addresses imbalances and adds stability challenge.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "glutes",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Hack Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Machine allows you to push quad volume without spinal loading — pure muscle building.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e5",
+                  "name": "Hip Thrusts",
+                  "muscleGroup": "Glutes",
+                  "sets": 3,
+                  "reps": "10-15",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Peak glute contraction that deadlifts and squats can't provide — builds posterior chain power.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "glutes",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e6",
+                  "name": "Seated Calf Raises",
+                  "muscleGroup": "Calves",
+                  "sets": 4,
+                  "reps": "15-20",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Seated position targets the soleus — different muscle fibers than standing calf raises.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "soleus",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 7,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            }
+          ]
+        }
+      ],
+      "deloadCycle": 4
+    },
+    "elapsed": "69.6",
+    "warnings": []
+  },
+  {
+    "id": 14,
+    "label": "Strength & Size — No OHP, Shoulder Impingement (Intermediate M)",
+    "status": "ok",
+    "plan": {
+      "title": "Power-Hypertrophy Upper/Lower Split",
+      "jordanWelcome": "I'm Jordan, your coach for the next 8 weeks. You want strength and size — every session starts heavy on the big compounds, then we shift into accessory work to build muscle on top. Week 1 is your calibration week — the weights are set conservatively so you can focus on form and give me honest effort ratings after each set. I'll use your RPE data from this week to tune what comes next specifically to you — the more honest you are, the better your plan gets.",
+      "totalWeeks": 8,
+      "daysPerWeek": 4,
+      "scheduledDays": [],
+      "sessionLength": "60-90",
+      "experience": "intermediate",
+      "equipment": "Barbell, Dumbbells, Cables, Machines",
+      "goal": "power_hypertrophy",
+      "targetLift": null,
+      "goalLift": null,
+      "split": "upper_lower",
+      "enhancedRecovery": false,
+      "concurrentSport": null,
+      "biologicalSex": "male",
+      "subMusclePreferences": {},
+      "currentWeek": 1,
+      "weeks": [
+        {
+          "weekNumber": 1,
+          "phase": "baseline",
+          "days": [
+            {
+              "dayNumber": 1,
+              "type": "workout",
+              "title": "Upper Power",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline upper power — bench at 140, calibrate intensity.",
+              "muscleGroups": [
+                "Chest",
+                "Back",
+                "Shoulders",
+                "Arms"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Barbell Bench Press",
+                  "muscleGroup": "Chest",
+                  "sets": 5,
+                  "reps": "3-5",
+                  "targetWeight": 140,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your anchor strength lift — everything else today supports building your bench press 1RM over the next 8 weeks.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "mid_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 100,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 110,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 120,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 130,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 140,
+                      "targetRpe": 8,
+                      "targetReps": "3-5"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Barbell Row (Overhand Wide)",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "4-6",
+                  "targetWeight": 0,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Heavy horizontal pull balances your bench volume — strong lats create a stable pressing platform.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "mid_back",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound"
+                },
+                {
+                  "id": "e3",
+                  "name": "Incline Dumbbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 3,
+                  "reps": "8-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Upper chest volume without overhead stress — this angle hits the clavicular head that your flat bench misses.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Cable Row (Close Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Close grip targets your rhomboids and mid-traps — posterior chain volume you need for shoulder health.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e5",
+                  "name": "Cable Front Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Anterior delt isolation without overhead stress — your shoulder safety demands we avoid vertical pressing patterns.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "front_delt",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Barbell Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Direct bicep volume after your pulling work — barbell allows heavier loading than dumbbells for strength-size crossover.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "short_head_bicep",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 2,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 3,
+              "type": "workout",
+              "title": "Lower Power",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline lower power — squat at 170, deadlift at 205.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Glutes",
+                "Hamstrings",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Back Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 5,
+                  "reps": "3-5",
+                  "targetWeight": 170,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Your primary squat strength builder — quad and glute power foundation for the entire lower body program.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 120,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 140,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 150,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 5,
+                      "targetWeight": 170,
+                      "targetRpe": 8,
+                      "targetReps": "3-5"
+                    }
+                  ]
+                },
+                {
+                  "id": "e2",
+                  "name": "Conventional Deadlift",
+                  "muscleGroup": "Glutes",
+                  "sets": 4,
+                  "reps": "3-5",
+                  "targetWeight": 205,
+                  "restSeconds": 240,
+                  "targetRpe": 8,
+                  "coachingNote": "Heavy hinge pattern complements your squat — posterior chain strength that transfers to every athletic movement.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "lats",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound",
+                  "setTargets": [
+                    {
+                      "setNumber": 1,
+                      "targetWeight": 150,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 2,
+                      "targetWeight": 170,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 3,
+                      "targetWeight": 190,
+                      "targetRpe": 7,
+                      "targetReps": "3-5"
+                    },
+                    {
+                      "setNumber": 4,
+                      "targetWeight": 205,
+                      "targetRpe": 8,
+                      "targetReps": "3-5"
+                    }
+                  ]
+                },
+                {
+                  "id": "e3",
+                  "name": "Leg Press",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Quad volume without spinal loading — machine safety lets you push intensity after your heavy squats.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Romanian Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 3,
+                  "reps": "8-10",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Hamstring isolation and hip hinge pattern refinement — stretch-focused movement for muscle building.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e5",
+                  "name": "Bulgarian Split Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Single leg work addresses imbalances and adds unilateral strength — stability component your bilateral lifts miss.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "glutes",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e6",
+                  "name": "Standing Calf Raise",
+                  "muscleGroup": "Calves",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Direct calf volume for lower leg development — high reps target the slow-twitch gastrocnemius fibers.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "gastrocnemius",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 4,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 5,
+              "type": "workout",
+              "title": "Upper Hypertrophy",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline upper hypertrophy — volume focus after power work.",
+              "muscleGroups": [
+                "Back",
+                "Chest",
+                "Shoulders",
+                "Arms"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Incline Barbell Press",
+                  "muscleGroup": "Chest",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 0,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Upper chest strength emphasis — heavier than dumbbell work but still hypertrophy-focused reps.",
+                  "phase": "strength",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "upper_chest",
+                  "equipment": "barbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e2",
+                  "name": "Dumbbell Row",
+                  "muscleGroup": "Back",
+                  "sets": 4,
+                  "reps": "8-10",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Unilateral row variation hits lat width and thickness — different angle than your barbell rows.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "lats",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e3",
+                  "name": "Lat Pulldown (Wide Grip)",
+                  "muscleGroup": "Back",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Vertical pull for lat width — wide grip emphasizes the teres major and upper lat fibers.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lats",
+                  "equipment": "cable",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Dumbbell Lateral Raise",
+                  "muscleGroup": "Shoulders",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Medial delt isolation for shoulder width — your pressing work doesn't hit this head effectively.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_delt",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e5",
+                  "name": "Tricep Pushdown (Rope)",
+                  "muscleGroup": "Triceps",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Tricep isolation after your pressing volume — rope attachment hits the lateral head for arm thickness.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "lateral_head_tricep",
+                  "equipment": "cable",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Cable Hammer Curl",
+                  "muscleGroup": "Biceps",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Neutral grip targets brachialis under the bicep — adds thickness your barbell curls don't provide.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "long_head_bicep",
+                  "equipment": "dumbbell",
+                  "compoundTier": "isolation"
+                }
+              ]
+            },
+            {
+              "dayNumber": 6,
+              "type": "rest",
+              "title": "Rest Day",
+              "sessionFocus": "",
+              "muscleGroups": [],
+              "exercises": []
+            },
+            {
+              "dayNumber": 7,
+              "type": "workout",
+              "title": "Lower Hypertrophy",
+              "sessionPhase": "power_hypertrophy",
+              "sessionFocus": "Baseline lower hypertrophy — volume focus, higher reps.",
+              "muscleGroups": [
+                "Quadriceps",
+                "Glutes",
+                "Hamstrings",
+                "Calves"
+              ],
+              "exercises": [
+                {
+                  "id": "e1",
+                  "name": "Front Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 4,
+                  "reps": "6-8",
+                  "targetWeight": 0,
+                  "restSeconds": 180,
+                  "targetRpe": 8,
+                  "coachingNote": "Quad-dominant squat variation — front loading shifts emphasis from glutes to quads for size focus.",
+                  "phase": "strength",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "barbell",
+                  "compoundTier": "primary_compound"
+                },
+                {
+                  "id": "e2",
+                  "name": "Stiff Leg Deadlift",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 4,
+                  "reps": "8-10",
+                  "targetWeight": 0,
+                  "restSeconds": 120,
+                  "targetRpe": 7,
+                  "coachingNote": "Hamstring hypertrophy focus — straight leg emphasizes the stretch component for muscle building.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "lats",
+                  "equipment": "barbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e3",
+                  "name": "Hack Squat",
+                  "muscleGroup": "Quadriceps",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Machine quad isolation — fixed path lets you focus purely on muscle tension without stability demands.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "quads",
+                  "equipment": "machine",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e4",
+                  "name": "Walking Lunge",
+                  "muscleGroup": "Glutes",
+                  "sets": 3,
+                  "reps": "10-12",
+                  "targetWeight": 0,
+                  "restSeconds": 90,
+                  "targetRpe": 7,
+                  "coachingNote": "Dynamic single leg movement for glute activation — walking pattern adds stability challenge to muscle building.",
+                  "phase": "hypertrophy",
+                  "setStructure": "pyramid",
+                  "muscleEmphasis": "quads",
+                  "equipment": "dumbbell",
+                  "compoundTier": "secondary_compound"
+                },
+                {
+                  "id": "e5",
+                  "name": "Leg Curl",
+                  "muscleGroup": "Hamstrings",
+                  "sets": 3,
+                  "reps": "12-15",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Isolated hamstring knee flexion — targets the function your deadlift variations don't train.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "hamstrings",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                },
+                {
+                  "id": "e6",
+                  "name": "Seated Calf Raise",
+                  "muscleGroup": "Calves",
+                  "sets": 3,
+                  "reps": "15-20",
+                  "targetWeight": 0,
+                  "restSeconds": 60,
+                  "targetRpe": 7,
+                  "coachingNote": "Seated position targets soleus under the gastrocnemius — different fiber recruitment than standing raises.",
+                  "phase": "hypertrophy",
+                  "setStructure": "straight",
+                  "muscleEmphasis": "soleus",
+                  "equipment": "machine",
+                  "compoundTier": "isolation"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "deloadCycle": 4
+    },
+    "elapsed": "51.1",
+    "warnings": []
+  }
+]

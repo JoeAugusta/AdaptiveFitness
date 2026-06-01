@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { stripEmDash } from '../utils/jordanText';
 import {
   View,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -25,6 +26,11 @@ import {
 } from '../utils/personalRecords';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { EXERCISES } from '../constants/exerciseLibrary';
+import {
+  STRENGTH_CATEGORY_CHIPS,
+  getMuscleCategoryForExercise,
+} from '../constants/strengthMuscleGroups';
+import { getStrengthProjection } from '../utils/projections';
 
 interface StrengthDataPoint {
   week: number;
@@ -180,14 +186,20 @@ function computeBodyweightContradictionNote(
 
 function LineChart({
   data,
+  projectionData,
+  projectionDashedOnly = false,
   width,
   height,
 }: {
   data: StrengthDataPoint[];
+  projectionData?: StrengthDataPoint[];
+  projectionDashedOnly?: boolean;
   width: number;
   height: number;
 }) {
-  if (data.length === 0) return null;
+  const plotActual = !projectionDashedOnly && data.length > 0;
+  const plotProjection = (projectionData?.length ?? 0) > 0;
+  if (!plotActual && !plotProjection) return null;
 
   const padL = 40;
   const padR = 16;
@@ -196,8 +208,12 @@ function LineChart({
   const cw = width - padL - padR;
   const ch = height - padT - padB;
 
-  const weeks = data.map((d) => d.week);
-  const vals = data.map((d) => d.estimated1RM);
+  const allPoints = [
+    ...(plotActual ? data : []),
+    ...(plotProjection ? projectionData! : []),
+  ];
+  const weeks = allPoints.map((d) => d.week);
+  const vals = allPoints.map((d) => d.estimated1RM);
   const minW = Math.min(...weeks);
   const maxW = Math.max(...weeks);
   const minV = Math.min(...vals) * 0.9;
@@ -208,11 +224,22 @@ function LineChart({
   const toX = (w: number) => padL + ((w - minW) / rangeW) * cw;
   const toY = (v: number) => padT + ch - ((v - minV) / rangeV) * ch;
 
-  const points = data.map((d) => ({ x: toX(d.week), y: toY(d.estimated1RM) }));
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const actualPoints = plotActual
+    ? data.map((d) => ({ x: toX(d.week), y: toY(d.estimated1RM) }))
+    : [];
+  const projectionPoints = plotProjection
+    ? projectionData!.map((d) => ({ x: toX(d.week), y: toY(d.estimated1RM) }))
+    : [];
 
   const yTicks = 4;
   const yStep = rangeV / yTicks;
+
+  const xLabelWeeks = Array.from(
+    new Set([
+      ...(plotActual ? data.map((d) => d.week) : []),
+      ...(plotProjection ? projectionData!.map((d) => d.week) : []),
+    ]),
+  ).sort((a, b) => a - b);
 
   return (
     <Svg width={width} height={height}>
@@ -237,46 +264,62 @@ function LineChart({
         );
       })}
       {/* X axis labels */}
-      {data.map((d) => (
+      {xLabelWeeks.map((wk) => (
         <SvgText
-          key={`x-${d.week}`}
-          x={toX(d.week)}
+          key={`x-${wk}`}
+          x={toX(wk)}
           y={height - 6}
           fill={Colors.textSecondary}
           fontSize={FontSizes.micro}
           fontFamily={Fonts.regular}
           textAnchor="middle"
         >
-          W{d.week}
+          W{wk}
         </SvgText>
       ))}
       {/* Line */}
       <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={Colors.divider} strokeWidth={1} />
-      {points.length > 1 ? (
-        <G>
-          {/* eslint-disable-next-line react-native/no-raw-text */}
-          <Rect width={0} height={0} />
-          {(() => {
+      {projectionPoints.length > 1
+        ? (() => {
             const pathEl: React.ReactNode[] = [];
-            for (let i = 1; i < points.length; i++) {
+            for (let i = 1; i < projectionPoints.length; i++) {
               pathEl.push(
                 <SvgLine
-                  key={`seg-${i}`}
-                  x1={points[i - 1].x}
-                  y1={points[i - 1].y}
-                  x2={points[i].x}
-                  y2={points[i].y}
-                  stroke={Colors.accent}
+                  key={`proj-${i}`}
+                  x1={projectionPoints[i - 1].x}
+                  y1={projectionPoints[i - 1].y}
+                  x2={projectionPoints[i].x}
+                  y2={projectionPoints[i].y}
+                  stroke={projectionDashedOnly ? Colors.textTertiary : Colors.accent}
                   strokeWidth={2.5}
-                />
+                  strokeDasharray={projectionDashedOnly ? '8,6' : undefined}
+                  opacity={projectionDashedOnly ? 0.85 : 0.45}
+                />,
               );
             }
             return pathEl;
-          })()}
-        </G>
-      ) : null}
-      {/* Dots */}
-      {points.map((p, i) => (
+          })()
+        : null}
+      {actualPoints.length > 1
+        ? (() => {
+            const pathEl: React.ReactNode[] = [];
+            for (let i = 1; i < actualPoints.length; i++) {
+              pathEl.push(
+                <SvgLine
+                  key={`act-${i}`}
+                  x1={actualPoints[i - 1].x}
+                  y1={actualPoints[i - 1].y}
+                  x2={actualPoints[i].x}
+                  y2={actualPoints[i].y}
+                  stroke={Colors.accent}
+                  strokeWidth={2.5}
+                />,
+              );
+            }
+            return pathEl;
+          })()
+        : null}
+      {actualPoints.map((p, i) => (
         <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
       ))}
     </Svg>
@@ -702,8 +745,12 @@ export default function ProgressChartsScreen() {
   const [planGoalMeta, setPlanGoalMeta] = useState<{
     goal?: string;
     goalLift?: string;
+    current1RM?: number;
+    experience?: string;
   } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedVolumeWeek, setSelectedVolumeWeek] = useState<number | null>(null);
+  const chartFadeAnim = useRef(new Animated.Value(1)).current;
   const [weightData, setWeightData] = useState<WeightLogPoint[]>([]);
   const [planDaysPerWeek, setPlanDaysPerWeek] = useState(4);
   const [planCurrentWeek, setPlanCurrentWeek] = useState(1);
@@ -787,11 +834,26 @@ export default function ProgressChartsScreen() {
         goal?: string;
         goalLift?: string;
         targetLift?: string;
+        current1RM?: number | string;
+        experience?: string;
       } | null;
       const goalLiftRaw = pj?.goalLift ?? pj?.targetLift;
+      const current1RMRaw = pj?.current1RM;
+      const current1RMNum =
+        current1RMRaw != null && String(current1RMRaw).trim() !== ''
+          ? Number(current1RMRaw)
+          : undefined;
       setPlanGoalMeta({
         goal: typeof pj?.goal === 'string' ? pj.goal : undefined,
         goalLift: typeof goalLiftRaw === 'string' ? goalLiftRaw : undefined,
+        current1RM:
+          current1RMNum != null && Number.isFinite(current1RMNum) && current1RMNum > 0
+            ? current1RMNum
+            : undefined,
+        experience:
+          typeof (pj as { experience?: string })?.experience === 'string'
+            ? (pj as { experience: string }).experience
+            : undefined,
       });
       const dpwRaw = pj?.daysPerWeek;
       setPlanDaysPerWeek(
@@ -875,7 +937,16 @@ export default function ProgressChartsScreen() {
     return map;
   }, []);
 
-  const { strengthMap, topExercises, volumeWeekData, totalWorkouts, currentStreak, bestWeek } = useMemo(() => {
+  const {
+    strengthMap,
+    loggedExercises,
+    planExerciseNames,
+    exerciseVolume,
+    volumeWeekData,
+    totalWorkouts,
+    currentStreak,
+    bestWeek,
+  } = useMemo(() => {
     const sMap: Record<string, Map<number, number>> = {};
     const volMap = new Map<number, Map<string, number>>();
     const exerciseVolume: Record<string, number> = {};
@@ -943,9 +1014,21 @@ export default function ProgressChartsScreen() {
       }
     }
 
-    // Top 4 exercises by volume
-    const sorted = Object.entries(exerciseVolume).sort((a, b) => b[1] - a[1]);
-    const top4 = sorted.slice(0, 4).map(([name]) => name);
+    const logged = Object.keys(sMap).filter((name) => (sMap[name]?.size ?? 0) > 0);
+    logged.sort(
+      (a, b) => (exerciseVolume[b] ?? 0) - (exerciseVolume[a] ?? 0),
+    );
+
+    const planNames = new Set<string>();
+    for (const week of planWeeksJson) {
+      for (const day of week.days ?? []) {
+        for (const ex of (day as { exercises?: Array<{ name?: string; exerciseName?: string }> })
+          .exercises ?? []) {
+          const n = String(ex.exerciseName ?? ex.name ?? '').trim();
+          if (n) planNames.add(n);
+        }
+      }
+    }
 
     // Streak
     const today = new Date();
@@ -980,24 +1063,104 @@ export default function ProgressChartsScreen() {
 
     return {
       strengthMap: sMap,
-      topExercises: top4,
+      loggedExercises: logged,
+      planExerciseNames: [...planNames],
+      exerciseVolume,
       volumeWeekData: volMap,
       totalWorkouts: logs.length,
       currentStreak: streak,
       bestWeek: bw ? { week: Number(bw[0]), sessions: bw[1] } : null,
     };
-  }, [logs, planLogs, exerciseMap]);
+  }, [logs, planLogs, exerciseMap, planWeeksJson]);
+
+  const isWeek1SparseState =
+    planCurrentWeek === 1 && planLogs.length < 2;
+
+  const targetLiftDisplayName = useMemo(() => {
+    if (!planGoalMeta?.goalLift) return null;
+    const defaultId = getDefaultStrengthLiftId(
+      planGoalMeta.goal,
+      planGoalMeta.goalLift,
+    );
+    const pool = [...new Set([...loggedExercises, ...planExerciseNames])];
+    return pickExerciseNameForDefaultLift(defaultId, pool);
+  }, [planGoalMeta, loggedExercises, planExerciseNames]);
+
+  const visibleCategoryChips = useMemo(() => {
+    const pool = isWeek1SparseState
+      ? [...new Set([...loggedExercises, ...planExerciseNames])]
+      : loggedExercises;
+    const chips: string[] = ['All'];
+    for (const cat of STRENGTH_CATEGORY_CHIPS) {
+      if (cat === 'All') continue;
+      if (pool.some((n) => getMuscleCategoryForExercise(n) === cat)) {
+        chips.push(cat);
+      }
+    }
+    if (pool.some((n) => getMuscleCategoryForExercise(n) === 'Other')) {
+      chips.push('Other');
+    }
+    return chips;
+  }, [loggedExercises, planExerciseNames, isWeek1SparseState]);
+
+  const exerciseChipList = useMemo(() => {
+    const basePool = isWeek1SparseState
+      ? [...new Set([...planExerciseNames, ...loggedExercises])]
+      : loggedExercises;
+    const filtered =
+      selectedCategory === 'All'
+        ? basePool
+        : basePool.filter(
+            (n) => getMuscleCategoryForExercise(n) === selectedCategory,
+          );
+    const sorted = [...filtered].sort(
+      (a, b) => (exerciseVolume[b] ?? 0) - (exerciseVolume[a] ?? 0),
+    );
+    if (targetLiftDisplayName && sorted.includes(targetLiftDisplayName)) {
+      return [
+        targetLiftDisplayName,
+        ...sorted.filter((n) => n !== targetLiftDisplayName),
+      ];
+    }
+    return sorted;
+  }, [
+    loggedExercises,
+    planExerciseNames,
+    selectedCategory,
+    isWeek1SparseState,
+    exerciseVolume,
+    targetLiftDisplayName,
+  ]);
 
   useEffect(() => {
-    if (selectedExercise != null) return;
-    if (topExercises.length === 0) return;
-    const defaultId = getDefaultStrengthLiftId(
-      planGoalMeta?.goal,
-      planGoalMeta?.goalLift ?? null,
-    );
-    const pick = pickExerciseNameForDefaultLift(defaultId, topExercises);
-    if (pick) setSelectedExercise(pick);
-  }, [topExercises, planGoalMeta?.goal, planGoalMeta?.goalLift, selectedExercise]);
+    if (exerciseChipList.length === 0) return;
+    if (
+      selectedExercise == null ||
+      !exerciseChipList.includes(selectedExercise)
+    ) {
+      setSelectedExercise(exerciseChipList[0]);
+    }
+  }, [exerciseChipList, selectedExercise]);
+
+  useEffect(() => {
+    if (selectedExercise == null && targetLiftDisplayName) {
+      setSelectedExercise(targetLiftDisplayName);
+    }
+  }, [targetLiftDisplayName, selectedExercise]);
+
+  const strengthProjectionData: StrengthDataPoint[] = useMemo(() => {
+    const start = planGoalMeta?.current1RM;
+    if (!start || start <= 0) return [];
+    const exp = planGoalMeta.experience ?? 'intermediate';
+    const series = getStrengthProjection(start, exp, planTotalWeeks);
+    return series.map((estimated1RM, week) => ({
+      week,
+      estimated1RM: Math.round(estimated1RM),
+    }));
+  }, [planGoalMeta, planTotalWeeks]);
+
+  const showDashedProjectionOnly =
+    isWeek1SparseState && strengthProjectionData.length > 0;
 
   const planMondayHeatmap = useMemo((): Date => {
     if (planCreatedAt) {
@@ -1074,13 +1237,31 @@ export default function ProgressChartsScreen() {
     return cells;
   }, [gridDates, trainedIndices, planMondayHeatmap]);
 
-  const activeExercise = selectedExercise ?? topExercises[0] ?? null;
+  const activeExercise = selectedExercise ?? exerciseChipList[0] ?? null;
   const strengthData: StrengthDataPoint[] = useMemo(() => {
     if (!activeExercise || !strengthMap[activeExercise]) return [];
     return Array.from(strengthMap[activeExercise].entries())
       .map(([week, estimated1RM]) => ({ week, estimated1RM }))
       .sort((a, b) => a.week - b.week);
   }, [activeExercise, strengthMap]);
+
+  useEffect(() => {
+    chartFadeAnim.setValue(0);
+    Animated.timing(chartFadeAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [activeExercise, chartFadeAnim]);
+
+  const categoryHasNoExercises =
+    selectedCategory !== 'All' &&
+    exerciseChipList.length === 0 &&
+    !isWeek1SparseState;
+
+  const showWeek1ChartHint =
+    isWeek1SparseState &&
+    (showDashedProjectionOnly || strengthData.length < 2);
 
   // ── Render ──
 
@@ -1193,51 +1374,115 @@ export default function ProgressChartsScreen() {
             <Text style={styles.sectionHeading}>Strength Progression</Text>
             <Text style={styles.sectionSubLabel}>Estimated 1RM over time</Text>
             <View style={styles.sectionCard}>
-              {topExercises.length > 0 ? (
-                <>
-                  <View style={styles.liftChipRow}>
-                    {topExercises.map((name) => {
-                      const active = name === activeExercise;
-                      return (
-                        <TouchableOpacity
-                          key={name}
-                          style={[styles.liftChip, active && styles.liftChipSelected]}
-                          onPress={() => setSelectedExercise(name)}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.liftChipText,
-                              active && styles.liftChipTextSelected,
-                            ]}
-                          >
-                            {name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryChipScroll}
+              >
+                {visibleCategoryChips.map((cat) => {
+                  const active = cat === selectedCategory;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.categoryChip,
+                        active && styles.categoryChipSelected,
+                      ]}
+                      onPress={() => setSelectedCategory(cat)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          active && styles.categoryChipTextSelected,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
-                  {strengthData.length > 0 ? (
-                    <>
-                      <LineChart data={strengthData} width={chartWidth} height={200} />
-                      {strengthData.length === 1 ? (
-                        <Text style={styles.chartHintText}>
-                          Keep training to see your progression curve
+              {categoryHasNoExercises ? (
+                <Text style={styles.categoryEmptyText}>
+                  No {selectedCategory} exercises logged yet
+                </Text>
+              ) : exerciseChipList.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[
+                    styles.liftChipRow,
+                    isWeek1SparseState && styles.liftChipRowDimmed,
+                  ]}
+                >
+                  {exerciseChipList.map((name) => {
+                    const active = name === activeExercise;
+                    const hasLoggedData = loggedExercises.includes(name);
+                    const isTargetLift = name === targetLiftDisplayName;
+                    const dimmed = isWeek1SparseState && !hasLoggedData;
+                    return (
+                      <TouchableOpacity
+                        key={name}
+                        style={[
+                          styles.liftChip,
+                          active && styles.liftChipSelected,
+                          isTargetLift && styles.liftChipPinned,
+                          dimmed && styles.liftChipDimmed,
+                        ]}
+                        onPress={() => setSelectedExercise(name)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.liftChipText,
+                            active && styles.liftChipTextSelected,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {name}
                         </Text>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Text style={styles.placeholderTextMuted}>
-                      No data for this exercise yet.
-                    </Text>
-                  )}
-                </>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : isWeek1SparseState ? (
+                <Text style={styles.categoryEmptyText}>
+                  No exercises in plan for this category yet
+                </Text>
               ) : (
                 <Text style={styles.placeholderTextMuted}>
-                  Log your first workout to see strength progression.
+                  Log more workouts to see progression
                 </Text>
               )}
+
+              {(strengthData.length > 0 || showDashedProjectionOnly) &&
+              activeExercise ? (
+                <Animated.View style={{ opacity: chartFadeAnim }}>
+                  <LineChart
+                    data={strengthData}
+                    projectionData={strengthProjectionData}
+                    projectionDashedOnly={showDashedProjectionOnly}
+                    width={chartWidth}
+                    height={200}
+                  />
+                </Animated.View>
+              ) : activeExercise && !categoryHasNoExercises ? (
+                <Text style={styles.placeholderTextMuted}>
+                  No data for this exercise yet.
+                </Text>
+              ) : null}
+
+              {showWeek1ChartHint ? (
+                <Text style={styles.chartWeek1Hint}>
+                  Complete more sessions to see your progression curve
+                </Text>
+              ) : strengthData.length === 1 && !isWeek1SparseState ? (
+                <Text style={styles.chartHintText}>
+                  Log more workouts to see progression
+                </Text>
+              ) : null}
             </View>
 
             {(() => {
@@ -1886,23 +2131,61 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  categoryChipScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  categoryChip: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  categoryChipSelected: {
+    backgroundColor: Colors.accent,
+  },
+  categoryChipText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  categoryChipTextSelected: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: '#FFFFFF',
+  },
+  categoryEmptyText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: 12,
+  },
   liftChipRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
+    paddingRight: 8,
+  },
+  liftChipRowDimmed: {
+    opacity: 1,
   },
   liftChip: {
     backgroundColor: Colors.bgElevated,
     borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 6,
+    maxWidth: 220,
   },
   liftChipSelected: {
     backgroundColor: Colors.accent,
-    borderWidth: 0,
+  },
+  liftChipPinned: {
+    borderWidth: 2,
+    borderColor: Colors.accent,
+  },
+  liftChipDimmed: {
+    opacity: 0.4,
   },
   liftChipText: {
     fontFamily: Fonts.medium,
@@ -1912,7 +2195,14 @@ const styles = StyleSheet.create({
   liftChipTextSelected: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.caption,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
+  },
+  chartWeek1Hint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 12,
   },
 
   weekPillRow: {

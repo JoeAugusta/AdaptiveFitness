@@ -359,7 +359,19 @@ const SELF_SELECT_WEIGHT_GOALS = new Set([
   'recomp',
   'fat_loss',
   'general',
+  'power_hypertrophy',
 ]);
+
+function normalizePlanGoal(goal: string): string {
+  return String(goal ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+}
+
+function isSelfSelectWeightGoal(goal: string): boolean {
+  return SELF_SELECT_WEIGHT_GOALS.has(normalizePlanGoal(goal));
+}
 
 /**
  * Progression anchor: prior-week plan_json prescription, or logged working
@@ -370,13 +382,20 @@ function resolveProgressionBaseline(
   priorPlanExercise: any,
   workingSets: LogSetLike[],
 ): { baseline: number; source: 'plan' | 'logged' | 'none' } {
-  const fromPlan = getPlanBaselineWeight(priorPlanExercise);
-  if (fromPlan > 0) {
-    return { baseline: fromPlan, source: 'plan' };
+  const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
+
+  /** Self-select Week 1: prescription is targetWeight 0 — ignore stray setTargets for baseline. */
+  if (priorTargetWeight > 0 || !isSelfSelectWeightGoal(planGoal)) {
+    const fromPlan = getPlanBaselineWeight(priorPlanExercise);
+    if (fromPlan > 0) {
+      return { baseline: fromPlan, source: 'plan' };
+    }
   }
-  if (!SELF_SELECT_WEIGHT_GOALS.has(planGoal)) {
+
+  if (!isSelfSelectWeightGoal(planGoal)) {
     return { baseline: 0, source: 'none' };
   }
+
   const fromLogs = getWeek1Baseline(workingSets).baselineWeight;
   if (fromLogs > 0) {
     return { baseline: fromLogs, source: 'logged' };
@@ -419,6 +438,198 @@ function accessoryWeightIncrement(
   return isBarOrDumb ? -10 : isCableOrMachine ? -10 : -5;
 }
 
+/** RPE-bucket increments: beginner ×1.3, intermediate ×1.0, advanced ×0.7 */
+function experienceProgressionMultiplier(trainingAge: string): number {
+  if (trainingAge === 'beginner') return 1.3;
+  if (trainingAge === 'advanced') return 0.7;
+  return 1.0;
+}
+
+/** On-target fixed increments (non-percentage branch) by experience + tier */
+function experienceFixedWeightIncrement(
+  trainingAge: string,
+  compoundTier: string,
+): number {
+  const isIsolation = compoundTier === 'isolation';
+  if (trainingAge === 'beginner') return isIsolation ? 2.5 : 5.0;
+  if (trainingAge === 'advanced') {
+    if (isIsolation) return 0;
+    return 1.25;
+  }
+  return isIsolation ? 1.0 : 2.5;
+}
+
+function resolveAccessoryLoadIncrement(
+  avgLoggedRpe: number,
+  targetRpe: number,
+  equipment: string,
+  compoundTier: string,
+  trainingAge: string,
+): number {
+  const gap = computeRpeGap(avgLoggedRpe, targetRpe);
+  const onTargetBand = gap >= -1 && gap < 1;
+
+  if (onTargetBand) {
+    return experienceFixedWeightIncrement(trainingAge, compoundTier);
+  }
+
+  let increment = accessoryWeightIncrement(avgLoggedRpe, targetRpe, equipment);
+  if (increment > 0) {
+    increment *= experienceProgressionMultiplier(trainingAge);
+    if (
+      trainingAge === 'advanced' &&
+      compoundTier !== 'isolation' &&
+      increment > 0
+    ) {
+      increment = Math.round(increment / 1.25) * 1.25;
+    }
+  }
+  return increment;
+}
+
+function capIsolationDumbbellCableIncrement(
+  increment: number,
+  compoundTier: string,
+  equipment: string,
+): number {
+  const equip = String(equipment ?? '').toLowerCase();
+  if (
+    compoundTier === 'isolation' &&
+    (equip === 'dumbbell' || equip === 'cable')
+  ) {
+    return Math.min(increment, 2.5);
+  }
+  return increment;
+}
+
+function scalePositiveIncrementByExperience(
+  increment: number,
+  trainingAge: string,
+): number {
+  if (increment <= 0) return increment;
+  let scaled = increment * experienceProgressionMultiplier(trainingAge);
+  if (trainingAge === 'advanced' && scaled > 0) {
+    scaled = Math.round(scaled / 1.25) * 1.25;
+  }
+  return scaled;
+}
+
+/**
+ * Final W1→W2 pass: overwrite prescriptions from logged working weight only.
+ * Runs after rebuildPyramid so pyramid back-calc cannot inflate loads.
+ */
+// deno-lint-ignore no-explicit-any
+function applyW1CalibrationPass(
+  days: any[] | undefined,
+  completedWeekNumber: number,
+  dedupedLogs: any[],
+  exerciseIdToName: Record<string, string>,
+  priorHeavyExerciseMap: Map<string, any>,
+  priorVolumeExerciseMap: Map<string, any>,
+  planJson: any,
+  completedWeekDays: any[],
+): any[] {
+  if (Number(completedWeekNumber) !== 1) return days ?? [];
+
+  const allWeekSets = dedupedLogs.flatMap((log: any) =>
+    parseSetsJson(log.sets_json),
+  );
+
+  return (days ?? []).map((day: any) => {
+    if (day.type !== 'workout') return day;
+    const dayNum = Number(day.dayNumber ?? day.day);
+    const dayIsVolume = isVolumeDay(day, planJson, completedWeekDays);
+    const dayLog = dedupedLogs.find(
+      (log: any) => Number(log.day_number) === dayNum,
+    );
+    const daySets = parseSetsJson(dayLog?.sets_json);
+    const setsForMatch = daySets.length > 0 ? daySets : allWeekSets;
+
+    return {
+      ...day,
+      exercises: (day.exercises ?? []).map((exercise: any) => {
+        const exName = String(exercise.exerciseName ?? exercise.name ?? '')
+          .toLowerCase()
+          .trim();
+
+        const priorPlanExercise = resolvePriorPlanExercise(
+          exName,
+          dayIsVolume,
+          false,
+          priorHeavyExerciseMap,
+          priorVolumeExerciseMap,
+        );
+        if (Number(priorPlanExercise?.targetWeight ?? 0) > 0) {
+          return exercise;
+        }
+
+        let matched = getExerciseSets(setsForMatch, exercise, exerciseIdToName);
+        if (matched.length === 0 && allWeekSets.length > 0) {
+          matched = getExerciseSets(allWeekSets, exercise, exerciseIdToName);
+        }
+        const workingSets = matched.filter((s: any) => s.isWarmup !== true);
+        const loggedBaselineWeight = getWeek1Baseline(workingSets).baselineWeight;
+        if (loggedBaselineWeight <= 0) return exercise;
+
+        const equip = String(
+          exercise.equipment ?? getEquipmentForExerciseName(exName),
+        );
+        const out = { ...exercise };
+
+        if (out.setStructure === 'pyramid') {
+          stampPyramidFromDesiredTopSet(out, loggedBaselineWeight, equip);
+        } else {
+          out.targetWeight = roundToEquipmentPrecision(
+            loggedBaselineWeight,
+            equip,
+          );
+        }
+
+        console.log('[CALIBRATION W1→W2 FINAL]', {
+          name: exName,
+          loggedBaselineWeight,
+          targetWeight: out.targetWeight,
+        });
+        return out;
+      }),
+    };
+  });
+}
+
+/** Deload week: −15% load and −1 set (min 2) after progression math */
+// deno-lint-ignore no-explicit-any
+function applyDeloadPassToDays(days: any[] | undefined): any[] {
+  const deloadFactor = 0.85;
+  return (days ?? []).map((day: any) => {
+    if (day.type !== 'workout') return day;
+    return {
+      ...day,
+      exercises: (day.exercises ?? []).map((ex: any) => {
+        const equip = String(ex.equipment ?? 'barbell');
+        if (Array.isArray(ex.setTargets) && ex.setTargets.length > 0) {
+          ex.setTargets = ex.setTargets.map((st: any) => ({
+            ...st,
+            targetWeight: roundToEquipmentPrecision(
+              Number(st.targetWeight ?? 0) * deloadFactor,
+              equip,
+            ),
+          }));
+          ex.targetWeight = Math.max(
+            ...ex.setTargets.map((st: any) => Number(st.targetWeight ?? 0)),
+          );
+        } else {
+          const tw = Number(ex.targetWeight ?? 0);
+          if (tw > 0) {
+            ex.targetWeight = roundToEquipmentPrecision(tw * deloadFactor, equip);
+          }
+        }
+        ex.sets = Math.max(2, (ex.sets ?? 3) - 1);
+        return ex;
+      }),
+    };
+  });
+}
+
 /** §5 round helper: barbell/dumbbell → 2.5, else stack (cable/machine/etc.) → 5 */
 function accessoryRoundNewWeight(weight: number, equipmentRaw: string): number {
   const equipment = String(equipmentRaw ?? 'barbell').toLowerCase();
@@ -443,6 +654,37 @@ function buildProgressionPyramidSetTargets(
   const reps = String(priorSetTargets?.[0]?.targetReps ?? '8');
   const rpeHint = Number(priorSetTargets?.[0]?.targetRpe ?? 8);
   return buildWeek1PyramidSetTargets(anchor, n, reps, rpeHint) ?? [];
+}
+
+/**
+ * Stamp pyramid setTargets from desired TOP working set weight.
+ * buildWeek1PyramidSetTargets treats anchor T as the top set (roundPlate(T)).
+ */
+// deno-lint-ignore no-explicit-any
+function stampPyramidFromDesiredTopSet(
+  exercise: any,
+  desiredTopSet: number,
+  equip: string,
+): number {
+  const setCount = Array.isArray(exercise.setTargets)
+    ? exercise.setTargets.length
+    : exercise.sets ?? 4;
+  const topRounded = roundToEquipmentPrecision(desiredTopSet, equip);
+  const nextTargets = buildProgressionPyramidSetTargets(
+    topRounded,
+    setCount,
+    exercise.setTargets,
+  );
+  if (nextTargets.length > 0) {
+    exercise.setTargets = nextTargets;
+    const topWeight = Math.max(
+      ...nextTargets.map((s) => Number(s.targetWeight ?? 0)),
+    );
+    exercise.targetWeight = topWeight;
+    return topWeight;
+  }
+  exercise.targetWeight = topRounded;
+  return topRounded;
 }
 
 function formatJordanSessionPrescription(
@@ -1138,7 +1380,7 @@ function mergeExerciseIdMapFromPriorPlanDays(
   const out: Record<string, string> = { ...base };
   for (const day of priorWeekPlanDays ?? []) {
     for (const pex of day.exercises ?? []) {
-      const nm = String(pex?.name ?? '').trim();
+      const nm = String(pex?.exerciseName ?? pex?.name ?? '').trim();
       if (!nm) continue;
       if (pex?.id != null && String(pex.id).trim() !== '') {
         out[String(pex.id).trim()] = nm;
@@ -1151,41 +1393,92 @@ function mergeExerciseIdMapFromPriorPlanDays(
   return out;
 }
 
-function getExerciseSets(allSets: any[], exercise: any): any[] {
+/** workout_logs.sets_json may arrive as array or JSON string from Postgres. */
+function parseSetsJson(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function getExerciseSets(
+  allSets: any[],
+  exercise: any,
+  exerciseIdToName: Record<string, string> = {},
+): any[] {
   const targetName = (
     exercise.exerciseName ?? exercise.name ?? ''
   ).toLowerCase().trim();
 
-  if (!targetName) return [];
+  const targetIds = new Set<string>();
+  if (exercise.id != null && String(exercise.id).trim() !== '') {
+    targetIds.add(String(exercise.id).trim());
+  }
+  if (exercise.exerciseId != null && String(exercise.exerciseId).trim() !== '') {
+    targetIds.add(String(exercise.exerciseId).trim());
+  }
 
-  // Normalize: remove trailing 's', common variations
+  if (!targetName && targetIds.size === 0) return [];
+
   function normalize(s: string): string {
     return s
       .toLowerCase()
       .trim()
-      .replace(/s$/, '') // remove trailing 's' (curl/curls)
-      .replace(/[-_]/g, ' ') // normalize dashes/underscores
-      .replace(/\s+/g, ' ') // normalize whitespace
+      .replace(/s$/, '')
+      .replace(/[-_]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
-  const normTarget = normalize(targetName);
+  function stripEquipmentPrefix(s: string): string {
+    return s
+      .toLowerCase()
+      .trim()
+      .replace(
+        /^(barbell|dumbbell|cable|machine|kettlebell|smith machine|incline|decline|flat|close grip|close-grip|wide grip|wide-grip|narrow grip|paused|tempo)\s+/g,
+        '',
+      )
+      .trim();
+  }
+
+  const normTarget = targetName ? normalize(targetName) : '';
+  const strippedTarget = targetName ? stripEquipmentPrefix(targetName) : '';
+
+  function resolveSetExerciseName(set: any): string {
+    const id = set.exerciseId != null ? String(set.exerciseId).trim() : '';
+    const fromId = id && exerciseIdToName[id] ? exerciseIdToName[id] : '';
+    return String(
+      set.exerciseName ?? set.name ?? fromId ?? '',
+    ).toLowerCase().trim();
+  }
 
   return allSets.filter((s: any) => {
-    const setName = (
-      s.exerciseName ?? s.name ?? ''
-    ).toLowerCase().trim();
+    const setId = s.exerciseId != null ? String(s.exerciseId).trim() : '';
+    if (setId && targetIds.has(setId)) return true;
 
-    // Try exact match first
+    const setName = resolveSetExerciseName(s);
+    if (!setName || !normTarget) return false;
+
     if (setName === targetName) return true;
 
-    // Try normalized match (handles plural/singular, dashes)
-    if (normalize(setName) === normTarget) {
-      console.log('[NAME MATCH]', {
-        planName: targetName,
-        loggedName: setName,
-        matchType: setName === targetName ? 'exact' : 'normalized',
-      });
+    if (normTarget && normalize(setName) === normTarget) {
+      return true;
+    }
+
+    const strippedSet = stripEquipmentPrefix(setName);
+    if (
+      strippedTarget &&
+      strippedSet &&
+      (strippedSet === strippedTarget ||
+        strippedSet.includes(strippedTarget) ||
+        strippedTarget.includes(strippedSet))
+    ) {
       return true;
     }
 
@@ -2077,14 +2370,23 @@ serve(async (req) => {
 
     runProgressionTests();
 
-    const { userId, planId, completedWeekNumber } = body;
+    const { userId, planId, completedWeekNumber: completedWeekNumberRaw } = body;
 
-    if (!userId || !planId || completedWeekNumber == null) {
+    if (!userId || !planId || completedWeekNumberRaw == null) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: userId, planId, completedWeekNumber' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
       );
     }
+
+    const completedWeekNumber = Number(completedWeekNumberRaw);
+    if (!Number.isFinite(completedWeekNumber) || completedWeekNumber < 1) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid completedWeekNumber' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+      );
+    }
+    const nextWeekNumber = completedWeekNumber + 1;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -2158,7 +2460,6 @@ serve(async (req) => {
       );
     }
 
-    const nextWeekNumber = completedWeekNumber + 1;
     console.log('[GNW START] weekNumber:', nextWeekNumber,
       'planWeeksCount:', planJson?.weeks?.length);
     console.log('[LOGS QUERY]', {
@@ -2168,14 +2469,38 @@ serve(async (req) => {
       priorWeekNumber: completedWeekNumber,
       logsFoundRaw: priorLogs.length,
       logsFoundDeduped: dedupedLogs.length,
-      sampleWeights: dedupedLogs.slice(0, 3).map((l: any) => ({
-        exercise: l.exercise_name ?? l.exerciseName,
-        week: l.week_number,
-        sets: (l.sets_json ?? []).map((s: any) => s.weightLbs ?? s.weight),
-      })),
+      sampleWeights: dedupedLogs.slice(0, 3).map((l: any) => {
+        const sets = Array.isArray(l.sets_json) ? l.sets_json : [];
+        return {
+          day: l.day_number,
+          setCount: sets.length,
+          exerciseNames: [
+            ...new Set(
+              sets.map(
+                (s: any) =>
+                  s.exerciseName ??
+                  s.name ??
+                  (s.exerciseId ? `id:${s.exerciseId}` : undefined),
+              ),
+            ),
+          ],
+          firstSet: sets[0]
+            ? {
+                exerciseName: sets[0].exerciseName,
+                exerciseId: sets[0].exerciseId,
+                weightLbs: sets[0].weightLbs,
+              }
+            : null,
+        };
+      }),
     });
     const profile = profileResult.data;
     const trainingAge: string = profile?.training_age ?? 'intermediate';
+    const experienceRaw =
+      (planJson as { experience?: string }).experience ?? trainingAge;
+    const experienceForProgression = String(experienceRaw ?? 'intermediate')
+      .toLowerCase()
+      .trim();
 
     // Fetch goal type + strength target lift (for setStructure stamping)
     let goalType = 'general';
@@ -2220,6 +2545,16 @@ serve(async (req) => {
 
     const { heavy: priorHeavyExerciseMap, volume: priorVolumeExerciseMap } =
       buildPriorPlanHeavyVolumeMaps(planJson, completedWeekNumber);
+
+    let exerciseIdToName: Record<string, string> = {};
+    for (const week of planJson.weeks ?? []) {
+      for (const day of week.days ?? []) {
+        exerciseIdToName = mergeExerciseIdMapFromPriorPlanDays(
+          exerciseIdToName,
+          [day],
+        );
+      }
+    }
 
     // Step 4 — Compute performance metrics
     const distinctDays = new Set(dedupedLogs.map((l: any) => l.day_number)).size;
@@ -2639,10 +2974,14 @@ Return ONLY this exact JSON structure:
 
       const dayIsVolume = isVolumeDay(day, planJson, weekData?.days);
 
+      const dayNum = Number(day.dayNumber ?? day.day);
       const matchingPriorLog = dedupedLogs.find(
-        (log: any) => log.day_number === day.dayNumber,
+        (log: any) => Number(log.day_number) === dayNum,
       );
-      const sessionSets: any[] = matchingPriorLog?.sets_json ?? [];
+      const sessionSets: any[] = parseSetsJson(matchingPriorLog?.sets_json);
+      const allPlanWeekSets: any[] = dedupedLogs.flatMap((log: any) =>
+        parseSetsJson(log.sets_json),
+      );
 
       for (const exercise of day.exercises ?? []) {
         const exName = (exercise.exerciseName ?? exercise.name ?? '')
@@ -2662,10 +3001,35 @@ Return ONLY this exact JSON structure:
           priorVolumeExerciseMap,
         );
 
-        const exerciseSets = getExerciseSets(sessionSets, exercise);
+        let exerciseSets = getExerciseSets(
+          sessionSets,
+          exercise,
+          exerciseIdToName,
+        );
+        if (exerciseSets.length === 0 && allPlanWeekSets.length > 0) {
+          exerciseSets = getExerciseSets(
+            allPlanWeekSets,
+            exercise,
+            exerciseIdToName,
+          );
+        }
         const workingSets = exerciseSets.filter(
           (s: any) => s.isWarmup !== true,
         );
+
+        const avgLoggedRpe = workingSets.length > 0
+          ? workingSets.reduce(
+              (sum: number, s: any) => sum + Number(s.rpe ?? 7),
+              0,
+            ) / workingSets.length
+          : 7.0;
+
+        console.log(
+          `[EXERCISE MATCH] ${exName}: found ${workingSets.length} sets, avgRpe=${avgLoggedRpe.toFixed(1)}`,
+        );
+
+        const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
+        const loggedBaselineWeight = getWeek1Baseline(workingSets).baselineWeight;
 
         const { baseline: planBaseline, source: baselineSource } =
           resolveProgressionBaseline(
@@ -2679,15 +3043,52 @@ Return ONLY this exact JSON structure:
           continue;
         }
 
-        /** W1 self-select (prior prescription 0): W2 = logged weight only, no RPE bump. */
-        const isW1CalibrationToW2 = baselineSource === 'logged';
+        /** W1 self-select (prior targetWeight 0): W2 = logged top set only, no RPE bump. */
+        const isW1CalibrationToW2 =
+          completedWeekNumber === 1 &&
+          (isSelfSelectWeightGoal(planGoalForSetStructure) ||
+            isSelfSelectWeightGoal(goalType)) &&
+          priorTargetWeight === 0 &&
+          loggedBaselineWeight > 0;
 
-        const avgLoggedRpe = workingSets.length > 0
-          ? workingSets.reduce(
-              (sum: number, s: any) => sum + Number(s.rpe ?? 7),
-              0,
-            ) / workingSets.length
-          : 7.0;
+        if (isW1CalibrationToW2) {
+          const equip = String(
+            exercise.equipment ?? getEquipmentForExerciseName(exName),
+          );
+
+          if (exercise.setStructure === 'pyramid') {
+            stampPyramidFromDesiredTopSet(
+              exercise,
+              loggedBaselineWeight,
+              equip,
+            );
+          } else {
+            exercise.targetWeight = roundToEquipmentPrecision(
+              loggedBaselineWeight,
+              equip,
+            );
+          }
+
+          stampExerciseAdaptationCopyAfterProgression({
+            exercise,
+            planBaseline: loggedBaselineWeight,
+            avgLoggedRpe,
+            accessoryTargetRpeForGap: Number(exercise.targetRpe) > 0
+              ? Number(exercise.targetRpe)
+              : 7.0,
+            isTargetLiftEx: Boolean(isTargetLiftEx),
+            dayIsVolume: Boolean(dayIsVolume),
+            nextWeekNumber: Number(nextWeekNumber),
+          });
+
+          console.log('[CALIBRATION W1→W2]', {
+            name: exName,
+            priorTargetWeight,
+            loggedBaselineWeight,
+            calWeight: exercise.targetWeight,
+          });
+          continue;
+        }
 
         const baselineMapSource =
           priorPlanExercise == null
@@ -2740,6 +3141,13 @@ Return ONLY this exact JSON structure:
           else if (gap >= -2) increment = 0;
           else increment = -5;
           if (isW1CalibrationToW2) increment = 0;
+          else increment = scalePositiveIncrementByExperience(
+            increment,
+            experienceForProgression,
+          );
+          console.log(
+            `[PROGRESSION] ${exName}: experience=${experienceForProgression}, multiplier=${experienceProgressionMultiplier(experienceForProgression)}, gap=${gap}, increment=${increment}`,
+          );
 
           const tier = String(
             exercise.compoundTier ??
@@ -2780,6 +3188,13 @@ Return ONLY this exact JSON structure:
           const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
           let increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
           if (isW1CalibrationToW2) increment = 0;
+          else increment = scalePositiveIncrementByExperience(
+            increment,
+            experienceForProgression,
+          );
+          console.log(
+            `[PROGRESSION] ${exName}: experience=${experienceForProgression}, multiplier=${experienceProgressionMultiplier(experienceForProgression)}, gap=${gap}, increment=${increment}`,
+          );
           const tier = String(
             exercise.compoundTier ??
               getCompoundTierFromName(String(exercise.name ?? '')),
@@ -2802,46 +3217,43 @@ Return ONLY this exact JSON structure:
         } else {
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
-          let increment = accessoryWeightIncrement(
-            avgLoggedRpe,
-            accessoryTargetRpe,
-            exercise.equipment ?? '',
-          );
-          if (isW1CalibrationToW2) increment = 0;
-
           const tier = String(
             exercise.compoundTier ??
               getCompoundTierFromName(String(exercise.name ?? '')),
           );
           const equip = String(exercise.equipment ?? 'barbell');
+          let increment = resolveAccessoryLoadIncrement(
+            avgLoggedRpe,
+            accessoryTargetRpe,
+            equip,
+            tier,
+            experienceForProgression,
+          );
+          if (isW1CalibrationToW2) increment = 0;
+          increment = capIsolationDumbbellCableIncrement(increment, tier, equip);
+
+          const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+          const multiplier = experienceProgressionMultiplier(
+            experienceForProgression,
+          );
+          console.log(
+            `[PROGRESSION] ${exName}: experience=${experienceForProgression}, multiplier=${multiplier}, gap=${gap}, increment=${increment}`,
+          );
 
           if (exercise.setStructure === 'pyramid') {
-            const setCount = Array.isArray(exercise.setTargets)
-              ? exercise.setTargets.length
-              : exercise.sets ?? 4;
-            const topPct = pyramidTopSetPct(setCount);
             const desiredTopSet = planBaseline + increment;
-            const newTargetWeight = topPct === 1
-              ? roundToEquipmentPrecision(desiredTopSet, equip)
-              : Math.round((desiredTopSet / topPct) / 10) * 10;
-            exercise.targetWeight = newTargetWeight;
-            const nextTargets = buildProgressionPyramidSetTargets(
-              newTargetWeight,
-              setCount,
-              exercise.setTargets,
+            let topWeight = stampPyramidFromDesiredTopSet(
+              exercise,
+              desiredTopSet,
+              equip,
             );
-            if (nextTargets.length > 0) {
-              exercise.setTargets = nextTargets;
-              const topWeight = Math.max(
-                ...nextTargets.map((s) => Number(s.targetWeight ?? 0)),
-              );
-              exercise.targetWeight = applyMaxWeeklyIncrease(
-                planBaseline,
-                topWeight,
-                equip,
-                tier,
-              );
-            }
+            topWeight = applyMaxWeeklyIncrease(
+              planBaseline,
+              topWeight,
+              equip,
+              tier,
+            );
+            exercise.targetWeight = topWeight;
           } else {
             let straightWeight = roundToEquipmentPrecision(
               planBaseline + increment,
@@ -2869,6 +3281,13 @@ Return ONLY this exact JSON structure:
       }
     }
     // ── END PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────
+
+    if (phase === 'deload') {
+      nextWeekData = {
+        ...nextWeekData,
+        days: applyDeloadPassToDays(nextWeekData.days),
+      };
+    }
 
     nextWeekData = {
       ...nextWeekData,
@@ -2905,6 +3324,20 @@ Return ONLY this exact JSON structure:
     nextWeekData = {
       ...nextWeekData,
       days: refreshAdaptationThisSessionSummaries(nextWeekData.days),
+    };
+
+    nextWeekData = {
+      ...nextWeekData,
+      days: applyW1CalibrationPass(
+        nextWeekData.days,
+        completedWeekNumber,
+        dedupedLogs,
+        exerciseIdToName,
+        priorHeavyExerciseMap,
+        priorVolumeExerciseMap,
+        planJson,
+        weekData?.days ?? [],
+      ),
     };
 
     // Step 8 — Save to Supabase atomically (fresh read to avoid race)

@@ -341,7 +341,7 @@ function getWeek1BaselineFromLogs(
         (set.exerciseId ? exerciseMap[set.exerciseId] : '') ||
         String(set.exerciseName ?? '') ||
         String(set.name ?? '');
-      if (resolvedName !== targetName) continue;
+      if (!findExerciseDataKey(targetName, resolvedName)) continue;
       forEx.push(set);
     }
     if (forEx.length === 0) continue;
@@ -1407,14 +1407,75 @@ function parseSetsJson(raw: unknown): any[] {
   return [];
 }
 
+type ExerciseNameMatchKind =
+  | 'exact'
+  | 'case_insensitive'
+  | 'normalized'
+  | 'partial'
+  | null;
+
+/**
+ * Conservative normalize for log ↔ plan matching: lowercase, strip parenthetical
+ * qualifiers only (e.g. grip/attachment in parens), collapse whitespace.
+ * Equipment and grip words outside parens are kept to avoid false positives.
+ */
+function normalizeExerciseNameForMatch(raw: string): string {
+  let s = String(raw ?? '').toLowerCase().trim();
+  s = s.replace(/\([^)]*\)/g, ' ');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/** Partial match: longer normalized name contains shorter (longest key first). */
+function normalizedNamesPartialMatch(normPlan: string, normLog: string): boolean {
+  if (!normPlan || !normLog) return false;
+  const longer = normPlan.length >= normLog.length ? normPlan : normLog;
+  const shorter = normPlan.length >= normLog.length ? normLog : normPlan;
+  if (shorter.length < 3) return false;
+  return longer.includes(shorter);
+}
+
+/**
+ * Match plan exercise name to a logged set name (sets_json exerciseName).
+ * Order: exact → case-insensitive → normalized → partial.
+ */
+function findExerciseDataKey(
+  planName: string,
+  logName: string,
+): ExerciseNameMatchKind {
+  const plan = String(planName ?? '').trim();
+  const log = String(logName ?? '').trim();
+  if (!plan || !log) return null;
+
+  if (plan === log) return 'exact';
+
+  const planLower = plan.toLowerCase();
+  const logLower = log.toLowerCase();
+  if (planLower === logLower) return 'case_insensitive';
+
+  const normPlan = normalizeExerciseNameForMatch(plan);
+  const normLog = normalizeExerciseNameForMatch(log);
+  if (normPlan && normLog && normPlan === normLog) return 'normalized';
+
+  if (normalizedNamesPartialMatch(normPlan, normLog)) return 'partial';
+
+  return null;
+}
+
+function resolveSetExerciseDisplayName(
+  set: any,
+  exerciseIdToName: Record<string, string>,
+): string {
+  const id = set.exerciseId != null ? String(set.exerciseId).trim() : '';
+  const fromId = id && exerciseIdToName[id] ? exerciseIdToName[id] : '';
+  return String(set.exerciseName ?? set.name ?? fromId ?? '').trim();
+}
+
 function getExerciseSets(
   allSets: any[],
   exercise: any,
   exerciseIdToName: Record<string, string> = {},
 ): any[] {
-  const targetName = (
-    exercise.exerciseName ?? exercise.name ?? ''
-  ).toLowerCase().trim();
+  const planName = String(exercise.exerciseName ?? exercise.name ?? '').trim();
 
   const targetIds = new Set<string>();
   if (exercise.id != null && String(exercise.id).trim() !== '') {
@@ -1424,66 +1485,46 @@ function getExerciseSets(
     targetIds.add(String(exercise.exerciseId).trim());
   }
 
-  if (!targetName && targetIds.size === 0) return [];
+  if (!planName && targetIds.size === 0) return [];
 
-  function normalize(s: string): string {
-    return s
-      .toLowerCase()
-      .trim()
-      .replace(/s$/, '')
-      .replace(/[-_]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
+  const matched: any[] = [];
+  let loggedNormalizationMatch = false;
 
-  function stripEquipmentPrefix(s: string): string {
-    return s
-      .toLowerCase()
-      .trim()
-      .replace(
-        /^(barbell|dumbbell|cable|machine|kettlebell|smith machine|incline|decline|flat|close grip|close-grip|wide grip|wide-grip|narrow grip|paused|tempo)\s+/g,
-        '',
-      )
-      .trim();
-  }
-
-  const normTarget = targetName ? normalize(targetName) : '';
-  const strippedTarget = targetName ? stripEquipmentPrefix(targetName) : '';
-
-  function resolveSetExerciseName(set: any): string {
-    const id = set.exerciseId != null ? String(set.exerciseId).trim() : '';
-    const fromId = id && exerciseIdToName[id] ? exerciseIdToName[id] : '';
-    return String(
-      set.exerciseName ?? set.name ?? fromId ?? '',
-    ).toLowerCase().trim();
-  }
-
-  return allSets.filter((s: any) => {
+  for (const s of allSets) {
     const setId = s.exerciseId != null ? String(s.exerciseId).trim() : '';
-    if (setId && targetIds.has(setId)) return true;
-
-    const setName = resolveSetExerciseName(s);
-    if (!setName || !normTarget) return false;
-
-    if (setName === targetName) return true;
-
-    if (normTarget && normalize(setName) === normTarget) {
-      return true;
+    if (setId && targetIds.has(setId)) {
+      matched.push(s);
+      continue;
     }
 
-    const strippedSet = stripEquipmentPrefix(setName);
-    if (
-      strippedTarget &&
-      strippedSet &&
-      (strippedSet === strippedTarget ||
-        strippedSet.includes(strippedTarget) ||
-        strippedTarget.includes(strippedSet))
-    ) {
-      return true;
+    if (!planName) continue;
+
+    const logName = resolveSetExerciseDisplayName(s, exerciseIdToName);
+    const matchKind = findExerciseDataKey(planName, logName);
+    if (!matchKind) continue;
+
+    if (!loggedNormalizationMatch) {
+      if (matchKind === 'normalized') {
+        console.log(
+          `[NAME MATCH] "${planName}" matched "${logName}" via normalization`,
+        );
+        loggedNormalizationMatch = true;
+      } else if (matchKind === 'partial') {
+        console.log(
+          `[NAME MATCH] "${planName}" matched "${logName}" via partial match`,
+        );
+        loggedNormalizationMatch = true;
+      }
     }
 
-    return false;
-  });
+    matched.push(s);
+  }
+
+  if (matched.length === 0 && planName) {
+    console.log(`[NAME MISS] "${planName}" — no sets found in log`);
+  }
+
+  return matched;
 }
 
 /** Map exercise display name → completed-week plan exercise (targetWeight baseline). Heavy vs volume split so same exercise on both days does not overwrite. */

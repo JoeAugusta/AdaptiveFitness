@@ -1,12 +1,15 @@
 import { forwardRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Fonts } from '../constants/design';
-import { stripEmDash } from '../utils/jordanText';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Fonts, FontSizes, LineHeights, Radius, Spacing } from '../constants/design';
 import { formatShareLiftLine, type ShareTopLift } from '../utils/workoutShare';
 
-export const SHARE_CARD_SIZE = 1080;
+export const SHARE_CARD_WIDTH = 375;
+export const SHARE_CARD_HEIGHT = Math.round(SHARE_CARD_WIDTH * (5 / 4));
 
-const CARD_BG = '#09090B';
+const CARD_BG = Colors.bgPrimary;
+const TOP_BG = '#111111';
+const FOOTER_BG = '#111111';
 
 export type ShareCardProps = {
   sessionTitle: string;
@@ -15,6 +18,7 @@ export type ShareCardProps = {
   totalSets: number;
   avgRpe: number;
   durationMinutes: number;
+  prsHit: number;
   topLifts: ShareTopLift[];
   jordanNote: string;
 };
@@ -22,19 +26,6 @@ export type ShareCardProps = {
 function formatAvgRpe(avgRpe: number): string {
   if (avgRpe <= 0) return '—';
   return avgRpe.toFixed(1);
-}
-
-function formatSummaryLine(
-  totalSets: number,
-  avgRpe: number,
-  durationMinutes: number,
-): string {
-  const parts = [
-    `${totalSets} ${totalSets === 1 ? 'set' : 'sets'}`,
-    `RPE ${formatAvgRpe(avgRpe)}`,
-    `${durationMinutes} min`,
-  ];
-  return parts.join('  ·  ');
 }
 
 export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
@@ -45,34 +36,46 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
     totalSets,
     avgRpe,
     durationMinutes,
+    prsHit,
     topLifts,
-    jordanNote,
   },
   ref,
 ) {
-  const note = stripEmDash(jordanNote);
   const liftsToShow = topLifts.slice(0, 3);
 
   return (
     <View ref={ref} style={styles.card} collapsable={false}>
-      <View style={styles.inner}>
+      <View style={styles.topAccent} />
+
+      <View style={styles.body}>
         <Text style={styles.wordmark}>Hone</Text>
-        <View style={styles.accentLine} />
+        <View style={styles.wordmarkDivider} />
 
         <Text style={styles.sessionTitle} numberOfLines={2}>
           {sessionTitle.toUpperCase()}
         </Text>
-        <Text style={styles.weekDay}>
-          Week {weekNumber} · Day {dayNumber}
-        </Text>
+        <View style={styles.weekDayPill}>
+          <Text style={styles.weekDayText}>
+            Week {weekNumber} · Day {dayNumber}
+          </Text>
+        </View>
+
+        {prsHit > 0 ? (
+          <View style={styles.prBanner}>
+            <Ionicons name="star" size={14} color={Colors.bgPrimary} />
+            <Text style={styles.prBannerText}>
+              {prsHit} Personal Best{prsHit > 1 ? 's' : ''} Today
+            </Text>
+          </View>
+        ) : null}
 
         {liftsToShow.length > 0 ? (
           <View style={styles.liftsBlock}>
-            <Text style={styles.sectionLabel}>TOP LIFTS THIS SESSION</Text>
+            <Text style={styles.sectionLabel}>TOP LIFTS</Text>
             {liftsToShow.map((lift) => (
               <View key={lift.exerciseName} style={styles.liftRow}>
                 <Text style={styles.liftName} numberOfLines={2}>
-                  {lift.exerciseName}
+                  {lift.exerciseName.toUpperCase()}
                 </Text>
                 <Text style={styles.liftStats}>{formatShareLiftLine(lift)}</Text>
               </View>
@@ -80,21 +83,32 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
           </View>
         ) : null}
 
-        <View style={styles.dividerRow}>
-          {Array.from({ length: 10 }).map((_, i) => (
-            <View key={i} style={styles.dividerDash} />
-          ))}
+        <View style={styles.statsRow}>
+          <View style={styles.statPill}>
+            <Ionicons name="layers-outline" size={14} color={Colors.accent} />
+            <Text style={styles.statPillText}>
+              {totalSets} {totalSets === 1 ? 'set' : 'sets'}
+            </Text>
+          </View>
+          <View style={styles.statPill}>
+            <Ionicons name="pulse-outline" size={14} color={Colors.accent} />
+            <Text style={styles.statPillText}>RPE {formatAvgRpe(avgRpe)}</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Ionicons name="time-outline" size={14} color={Colors.accent} />
+            <Text style={styles.statPillText}>{durationMinutes} min</Text>
+          </View>
         </View>
+      </View>
 
-        <Text style={styles.summaryLine}>
-          {formatSummaryLine(totalSets, avgRpe, durationMinutes)}
-        </Text>
-
-        {note ? (
-          <Text style={styles.jordanNote}>&quot;{note}&quot;</Text>
-        ) : null}
-
-        <Text style={styles.footerUrl}>hone.app</Text>
+      <View style={styles.downloadFooter}>
+        <View style={styles.downloadFooterLeft}>
+          <Text style={styles.downloadTagline}>Train smarter.</Text>
+          <Text style={styles.downloadUrl}>hone.app</Text>
+        </View>
+        <View style={styles.qrPlaceholder}>
+          <Text style={styles.qrPlaceholderText}>↓ hone.app</Text>
+        </View>
       </View>
     </View>
   );
@@ -102,106 +116,163 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
 
 const styles = StyleSheet.create({
   card: {
-    width: SHARE_CARD_SIZE,
-    height: SHARE_CARD_SIZE,
+    width: SHARE_CARD_WIDTH,
+    height: SHARE_CARD_HEIGHT,
     backgroundColor: CARD_BG,
     overflow: 'hidden',
   },
-  inner: {
+  topAccent: {
+    height: 3,
+    width: '100%',
+    backgroundColor: Colors.accent,
+  },
+  body: {
     flex: 1,
-    paddingTop: 72,
-    paddingBottom: 72,
-    paddingHorizontal: 72,
+    backgroundColor: TOP_BG,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
   wordmark: {
     fontFamily: Fonts.bold,
-    fontSize: 96,
+    fontSize: FontSizes.heading2,
     color: Colors.accent,
-    letterSpacing: -1,
+    letterSpacing: -0.5,
   },
-  accentLine: {
-    height: 3,
-    backgroundColor: Colors.accent,
-    marginTop: 24,
-    marginBottom: 40,
-    alignSelf: 'stretch',
+  wordmarkDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
   sessionTitle: {
     fontFamily: Fonts.bold,
-    fontSize: 54,
+    fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    lineHeight: 62,
+    lineHeight: LineHeights.heading1,
   },
-  weekDay: {
-    fontFamily: Fonts.regular,
-    fontSize: 36,
+  weekDayPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  weekDayText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginTop: 12,
-    marginBottom: 48,
+  },
+  prBanner: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: Spacing.md,
+  },
+  prBannerText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.bgPrimary,
+    letterSpacing: 1,
   },
   liftsBlock: {
-    marginBottom: 40,
-    gap: 28,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   sectionLabel: {
     fontFamily: Fonts.bold,
-    fontSize: 30,
+    fontSize: FontSizes.label,
     color: Colors.textSecondary,
-    letterSpacing: 6,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: Spacing.xs,
   },
   liftRow: {
-    gap: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.accent,
+    paddingLeft: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   liftName: {
-    fontFamily: Fonts.bold,
-    fontSize: 42,
-    color: Colors.textPrimary,
-    lineHeight: 48,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   liftStats: {
     fontFamily: Fonts.bold,
-    fontSize: 60,
+    fontSize: FontSizes.heading2,
     color: Colors.accent,
-    lineHeight: 68,
+    lineHeight: 24,
   },
-  dividerRow: {
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: 'auto',
+  },
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  statPillText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+  downloadFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 32,
-    paddingVertical: 8,
+    backgroundColor: FOOTER_BG,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
   },
-  dividerDash: {
-    width: 48,
-    height: 3,
-    backgroundColor: Colors.textTertiary,
-    opacity: 0.45,
-    borderRadius: 2,
+  downloadFooterLeft: {
+    flex: 1,
+    gap: 2,
   },
-  summaryLine: {
+  downloadTagline: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+  downloadUrl: {
     fontFamily: Fonts.regular,
-    fontSize: 30,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    marginBottom: 28,
   },
-  jordanNote: {
-    fontFamily: Fonts.regular,
-    fontSize: 27,
-    color: Colors.textSecondary,
-    fontStyle: 'italic',
-    lineHeight: 38,
-    flexShrink: 1,
-    marginBottom: 32,
+  qrPlaceholder: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  footerUrl: {
-    fontFamily: Fonts.regular,
-    fontSize: 27,
-    color: Colors.textTertiary,
-    alignSelf: 'flex-end',
-    marginTop: 'auto',
+  qrPlaceholderText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.bgPrimary,
+    textAlign: 'center',
   },
 });

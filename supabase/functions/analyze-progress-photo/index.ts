@@ -38,6 +38,13 @@ CRITICAL RULES:
 - If you cannot make a reliable estimate from the photo quality,
   say so honestly and do not guess
 
+When comparing photos:
+- Be specific about visible changes (fuller shoulders, more defined arms, leaner midsection)
+- Note which muscle groups show the most development
+- Keep observations objective and coaching-focused
+- Reference the time period between photos when known
+- If changes are subtle or not clearly visible, say so honestly
+
 Return ONLY valid JSON:
 {
   "estimatedBfRange": "14-17%",
@@ -207,6 +214,35 @@ serve(async (req) => {
     const macroPlan = macroRes.data;
     const hasBaseline = (baselineRes.data?.length ?? 0) > 0;
 
+    // Fetch most recent prior photo for comparison
+    const priorPhotoRes = hasBaseline
+      ? await supabase
+          .from('progress_photos')
+          .select('photo_url_front, analyzed_at, estimated_bf_range')
+          .eq('user_id', userId)
+          .order('analyzed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
+    const priorPhoto = priorPhotoRes.data;
+
+    let priorPhotoBase64: string | null = null;
+    if (priorPhoto?.photo_url_front) {
+      const { data: priorBytes } = await supabase.storage
+        .from('progress-photos')
+        .download(priorPhoto.photo_url_front);
+      if (priorBytes) {
+        const arrayBuffer = await priorBytes.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        let binary = '';
+        uint8.forEach((b) => {
+          binary += String.fromCharCode(b);
+        });
+        priorPhotoBase64 = btoa(binary);
+      }
+    }
+
     const lastAt = profile?.last_photo_analysis_at as string | null;
     if (lastAt) {
       const last = new Date(lastAt);
@@ -234,16 +270,33 @@ serve(async (req) => {
     const daysPerWeek = Math.max(1, Math.min(7, trainingDays));
     const onboardingBfPct = profile?.body_fat_pct;
 
-    const userContent: Array<Record<string, unknown>> = [
-      {
+    const userContent: Array<Record<string, unknown>> = [];
+
+    // Add prior photo first if available (baseline for comparison)
+    if (priorPhotoBase64 && priorPhoto) {
+      userContent.push({
         type: 'image',
         source: {
           type: 'base64',
           media_type: 'image/jpeg',
-          data: photoBase64Front.replace(/^data:image\/[a-z+]+;base64,/i, ''),
+          data: priorPhotoBase64,
         },
+      });
+      userContent.push({
+        type: 'text',
+        text: `BASELINE PHOTO (taken ${new Date(priorPhoto.analyzed_at).toLocaleDateString()}, estimated ${priorPhoto.estimated_bf_range ?? 'unknown'} body fat):`,
+      });
+    }
+
+    // Current photo
+    userContent.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/jpeg',
+        data: photoBase64Front.replace(/^data:image\/[a-z+]+;base64,/i, ''),
       },
-    ];
+    });
 
     if (photoBase64Side) {
       userContent.push({
@@ -270,8 +323,8 @@ Client stats:
 - Current estimated body fat (self-reported at onboarding): ${onboardingBfPct ?? 'not provided'}%
 
 ${
-  hasBaseline
-    ? 'This is a progress photo. Compare to their starting composition and note visible changes.'
+  priorPhotoBase64
+    ? `This is a progress check-in. The FIRST image is their baseline photo from ${new Date(priorPhoto!.analyzed_at).toLocaleDateString()}. The SECOND image (and third if present) is their current photo. Compare the two and note specific visible changes — muscle development, definition, composition shifts. Be specific about what has changed (e.g. shoulders look fuller, midsection appears leaner).`
     : 'This is their baseline photo. Assess current composition only.'
 }
 

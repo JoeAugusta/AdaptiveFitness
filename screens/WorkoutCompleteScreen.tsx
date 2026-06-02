@@ -24,7 +24,7 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
 import { stripEmDash } from '../utils/jordanText';
 import { hapticPR, hapticSuccess } from '../utils/haptics';
-import { ShareCard, type ShareCardProps } from '../components/ShareCard';
+import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import {
   computeSessionShareStats,
   computeTopLiftsFromSets,
@@ -303,6 +303,7 @@ export default function WorkoutCompleteScreen() {
         totalSets: totalSetsCount,
         avgRpe,
         durationMinutes,
+        prsHit,
         topLifts,
         jordanNote: truncateJordanNoteForShare(jordanNoteRaw),
       };
@@ -326,6 +327,7 @@ export default function WorkoutCompleteScreen() {
     totalSets,
     coachNoteDisplay,
     durationMinutes,
+    prsHit,
   ]);
 
   useEffect(() => {
@@ -354,8 +356,9 @@ export default function WorkoutCompleteScreen() {
 
       try {
         const uri = await captureRef(node, {
-          format: 'png',
-          quality: 1,
+          format: 'jpg',
+          quality: 0.95,
+          width: SHARE_CARD_WIDTH,
           result: 'tmpfile',
         });
 
@@ -364,7 +367,7 @@ export default function WorkoutCompleteScreen() {
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(uri, {
-            mimeType: 'image/png',
+            mimeType: 'image/jpeg',
             dialogTitle: 'Share workout',
           });
         }

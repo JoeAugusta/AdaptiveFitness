@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -58,6 +58,8 @@ import SportSessionModal, {
 } from '../components/SportSessionModal';
 import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { epleyEstimated1RMLbs, matchesTargetLift } from '../utils/strengthGoalLift';
+import { parseSetsJson } from '../utils/workoutHistoryData';
 import { useAuth } from '../contexts/AuthContext';
 import { stripEmDash, cleanJordanMessage } from '../utils/jordanText';
 import { Ionicons } from '@expo/vector-icons';
@@ -712,6 +714,29 @@ function calculateSessionDuration(exercises: Exercise[]): number {
   return Math.round(totalSeconds / 60);
 }
 
+const formatLiftName = (lift: string) =>
+  lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function getBestEpleyFromWeekLogs(
+  logs: Array<{ sets_json?: unknown }>,
+  targetLift: string | null,
+): number | null {
+  if (!targetLift) return null;
+  let best = 0;
+  for (const log of logs) {
+    for (const s of parseSetsJson(log.sets_json)) {
+      const name = s.exerciseName ?? s.name ?? '';
+      if (!matchesTargetLift(name, targetLift)) continue;
+      const w = Number(s.weightLbs ?? s.weight ?? 0);
+      const r = Number(s.reps ?? 0);
+      if (w <= 0 || r <= 0) continue;
+      const est = epleyEstimated1RMLbs(w, r);
+      if (est > best) best = est;
+    }
+  }
+  return best > 0 ? best : null;
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
   const { session } = useAuth();
@@ -797,6 +822,24 @@ export default function HomeScreen() {
   const [todaySportLog, setTodaySportLog] = useState<SportLogRow | null>(null);
   const [showSportSessionModal, setShowSportSessionModal] = useState(false);
   const [sportDashboardUserId, setSportDashboardUserId] = useState<string | null>(null);
+  const [goalProgress, setGoalProgress] = useState<{
+    targetLift: string | null;
+    current1RM: number;
+    target1RM: number;
+  } | null>(null);
+
+  const displayedGoalProgress = useMemo(() => {
+    if (!goalProgress || goalProgress.target1RM <= 0) return null;
+    const floor = goalProgress.current1RM;
+    const epley = getBestEpleyFromWeekLogs(workoutLogs, goalProgress.targetLift);
+    const current1RM =
+      epley != null && epley > floor ? epley : floor > 0 ? floor : epley ?? 0;
+    if (current1RM <= 0) return null;
+    return {
+      ...goalProgress,
+      current1RM: Math.round(current1RM),
+    };
+  }, [goalProgress, workoutLogs]);
 
   const refetchTodayWeightLog = useCallback(async (): Promise<boolean> => {
     const uid =
@@ -861,6 +904,7 @@ export default function HomeScreen() {
         setTodaySportLog(null);
         setSportDashboardUserId(null);
         setProfile(null);
+        setGoalProgress(null);
         return;
       }
       uidRef.current = userId;
@@ -918,10 +962,34 @@ export default function HomeScreen() {
         setTodaySportLog(null);
         setIsWeek1NoSessionsYet(false);
         setHasLoggedWorkoutToday(false);
+        setGoalProgress(null);
         return;
       }
 
       setPlanStatus(planRow.status ?? null);
+
+      if (planRow.status === 'active') {
+        const { data: goalRow } = await supabase
+          .from('goals')
+          .select('goal_type, target_lift, current_1rm, target_1rm')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (goalRow?.goal_type === 'strength' && goalRow.target_1rm) {
+          setGoalProgress({
+            targetLift: goalRow.target_lift ?? null,
+            current1RM: Number(goalRow.current_1rm ?? 0),
+            target1RM: Number(goalRow.target_1rm ?? 0),
+          });
+        } else {
+          setGoalProgress(null);
+        }
+      } else {
+        setGoalProgress(null);
+      }
 
       if (planRow.status === 'completed') {
         setPlanData(null);
@@ -2464,7 +2532,21 @@ export default function HomeScreen() {
           ) : null}
 
           <View style={styles.coachFooterRow}>
-            <View style={styles.coachFooterSpacer} />
+            {displayedGoalProgress &&
+            displayedGoalProgress.target1RM > 0 &&
+            planStatus === 'active' ? (
+              <View style={styles.goalProgressFooter}>
+                <Text style={styles.goalProgressLift}>
+                  {formatLiftName(displayedGoalProgress.targetLift ?? '')}
+                </Text>
+                <Text style={styles.goalProgressValues}>
+                  {Math.round(displayedGoalProgress.current1RM)} →{' '}
+                  {Math.round(displayedGoalProgress.target1RM)} lbs
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.coachFooterSpacer} />
+            )}
             <Text style={styles.coachUpdated}>{jordanCardUpdatedLabel}</Text>
           </View>
         </View>
@@ -3318,6 +3400,23 @@ const styles = StyleSheet.create({
   },
   coachFooterSpacer: {
     flex: 1,
+  },
+  goalProgressFooter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginRight: Spacing.sm,
+  },
+  goalProgressLift: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
+  goalProgressValues: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
   adaptationCard: {
     marginHorizontal: Spacing.xl,

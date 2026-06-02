@@ -502,19 +502,22 @@ export default function ActiveWorkoutScreen() {
 
   const getAlternatives = (muscleGroup: string): string[] => {
     const map: Record<string, string[]> = {
-      Chest: ['Incline DB Press', 'Cable Fly', 'Machine Chest Press'],
-      Back: ['Cable Row', 'DB Row', 'Chest-Supported Row'],
-      Legs: ['Leg Press', 'Hack Squat', 'DB Lunges'],
-      Shoulders: ['DB Shoulder Press', 'Arnold Press', 'Landmine Press'],
+      Chest: ['Incline Dumbbell Press', 'Cable Fly', 'Machine Chest Press', 'Push-Up'],
+      Back: ['Cable Row', 'Dumbbell Row', 'Chest-Supported Row', 'Lat Pulldown'],
+      Legs: ['Leg Press', 'Hack Squat', 'Dumbbell Lunges', 'Bulgarian Split Squat'],
+      Shoulders: ['Dumbbell Shoulder Press', 'Arnold Press', 'Cable Lateral Raise'],
       Arms: ['Preacher Curl', 'Hammer Curl', 'Cable Curl'],
-      Triceps: ['Overhead Tricep Extension', 'Cable Pushdown', 'Close-grip Bench'],
-      Biceps: ['Preacher Curl', 'Hammer Curl', 'Incline DB Curl'],
+      Triceps: ['Overhead Tricep Extension', 'Cable Pushdown', 'Close-Grip Bench Press'],
+      Biceps: ['Preacher Curl', 'Hammer Curl', 'Incline Dumbbell Curl'],
       Glutes: ['Hip Thrust', 'Cable Kickback', 'Bulgarian Split Squat'],
-      Hamstrings: ['Leg Curl', 'Nordic Curl', 'Stiff-leg Deadlift'],
-      Calves: ['Seated Calf Raise', 'Leg Press Calf Raise', 'Single-leg Calf Raise'],
-      Core: ['Plank', 'Cable Crunch', 'Ab Wheel'],
+      Hamstrings: ['Leg Curl', 'Romanian Deadlift', 'Nordic Curl'],
+      Calves: ['Seated Calf Raise', 'Leg Press Calf Raise', 'Single-Leg Calf Raise'],
+      Core: ['Plank', 'Cable Crunch', 'Ab Wheel Rollout'],
+      'Rear Delts': ['Reverse Dumbbell Fly', 'Face Pull', 'Band Pull-Apart'],
+      Traps: ['Dumbbell Shrug', 'Cable Shrug', 'Face Pull'],
+      Forearms: ['Wrist Curl', 'Hammer Curl', 'Farmers Carry'],
     };
-    return map[muscleGroup] ?? ['Alternative Exercise 1', 'Alternative Exercise 2', 'Alternative Exercise 3'];
+    return map[muscleGroup] ?? ['Dumbbell Row', 'Cable Row', 'Resistance Band Row'];
   };
 
   const buildWorkoutFromMock = (): WorkoutData => {
@@ -1134,6 +1137,7 @@ export default function ActiveWorkoutScreen() {
     newName: string,
     resetWeight?: boolean,
   ) => {
+    console.log('[swap]', newName, 'resetWeight:', resetWeight);
     void hapticMedium();
     setExerciseSwaps((prev) => ({ ...prev, [exerciseId]: newName }));
     if (resetWeight) {
@@ -1142,7 +1146,11 @@ export default function ActiveWorkoutScreen() {
         [exerciseId]: 0,
       }));
     }
-    showToast('Exercise swapped. Weight reset. Choose your load.');
+    showToast(
+      resetWeight
+        ? 'Exercise swapped. Choose your starting weight.'
+        : 'Exercise swapped.',
+    );
   };
 
   const skipRest = () => {

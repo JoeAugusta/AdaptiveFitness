@@ -26,9 +26,8 @@ import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
-import { buildExerciseSwapCandidates } from '../utils/exerciseSwap';
+import { buildExerciseSwapCandidates, buildSwapCandidateFromName } from '../utils/exerciseSwap';
 import { stripEmDash } from '../utils/jordanText';
-import { EXERCISES } from '../constants/exerciseLibrary';
 import { Ionicons } from '@expo/vector-icons';
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
@@ -112,6 +111,33 @@ export interface Exercise {
   cues?: string[];
   /** P3-C1 fatigue adjustment — drives adaptation copy */
   adjustedBySignal?: string;
+}
+
+function inferEquipmentFromName(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('dumbbell') || n.includes(' db ') || n.startsWith('db ')) {
+    return 'dumbbell';
+  }
+  if (n.includes('barbell')) return 'barbell';
+  if (n.includes('cable')) return 'cable';
+  if (
+    n.includes('machine') ||
+    n.includes('press machine') ||
+    n.includes('row machine')
+  ) {
+    return 'machine';
+  }
+  if (
+    n.includes('pull-up') ||
+    n.includes('pullup') ||
+    n.includes('chin-up') ||
+    n.includes('chinup') ||
+    n.includes('dip') ||
+    n.includes('push-up')
+  ) {
+    return 'bodyweight';
+  }
+  return 'other';
 }
 
 function shouldShowWarmups(exercise: any): boolean {
@@ -484,6 +510,16 @@ export default function ExerciseCard({
   const [inputValues, setInputValues] = useState<
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
+
+  useEffect(() => {
+    if (targetWeightOverride === 0) {
+      setInputValues({});
+      setEnteredWeight(0);
+      setSet1EnteredWeight(0);
+      setReactiveWarmupBase(0);
+    }
+  }, [targetWeightOverride]);
+
   const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);
   const [showRpeReference, setShowRpeReference] = useState(false);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
@@ -542,7 +578,9 @@ export default function ExerciseCard({
             ? ''
             : pyramidPrefill > 0
               ? String(lbsToDisplay(pyramidPrefill))
-              : String(lbsToDisplay(target?.targetWeight ?? 0)),
+              : targetWeightOverride !== undefined
+                ? String(lbsToDisplay(effectiveTargetWeight ?? 0))
+                : String(lbsToDisplay(target?.targetWeight ?? 0)),
       reps: (() => {
         if (setTarget?.targetReps) {
           return isTimedExercise(setTarget.targetReps)
@@ -820,43 +858,18 @@ export default function ExerciseCard({
     Object.values(trendTimeouts.current).forEach((timeoutId) => clearTimeout(timeoutId));
   }, []);
 
-  const swapCandidates = useMemo(() => {
-    const currentEx = EXERCISES.find(
-      (e) =>
-        e.name.toLowerCase().trim() === exercise.name.toLowerCase().trim(),
+  const displayCandidates = useMemo(() => {
+    const swapCandidates = buildExerciseSwapCandidates(
+      exercise.name,
+      exercise.muscleGroup,
     );
-
-    if (!currentEx) {
-      return (exercise.alternatives ?? []).slice(0, 5);
-    }
-
-    const currentNames = new Set(
-      (currentWorkoutExerciseNames ?? []).map((n) => n.toLowerCase().trim()),
-    );
-
-    const patternMatches = EXERCISES.filter(
-      (e) =>
-        e.movementPattern === currentEx.movementPattern &&
-        e.id !== currentEx.id &&
-        e.name.toLowerCase().trim() !== exercise.name.toLowerCase().trim() &&
-        !currentNames.has(e.name.toLowerCase().trim()),
-    ).sort((a, b) => a.rotationPriority - b.rotationPriority);
-
-    if (patternMatches.length >= 3) {
-      return patternMatches.slice(0, 5).map((e) => e.name);
-    }
-
-    const muscleMatches = EXERCISES.filter(
-      (e) =>
-        e.primaryMuscle === currentEx.primaryMuscle &&
-        e.compoundTier === currentEx.compoundTier &&
-        e.id !== currentEx.id &&
-        e.name.toLowerCase().trim() !== exercise.name.toLowerCase().trim() &&
-        !currentNames.has(e.name.toLowerCase().trim()),
-    ).sort((a, b) => a.rotationPriority - b.rotationPriority);
-
-    return muscleMatches.slice(0, 5).map((e) => e.name);
-  }, [exercise.name, exercise.alternatives, currentWorkoutExerciseNames]);
+    console.log('[swap]', exercise.name, exercise.muscleGroup,
+      JSON.stringify(swapCandidates));
+    if (swapCandidates.length > 0) return swapCandidates;
+    return (exercise.alternatives ?? [])
+      .slice(0, 5)
+      .map((name) => buildSwapCandidateFromName(name));
+  }, [exercise.name, exercise.muscleGroup, exercise.alternatives]);
 
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
@@ -1316,19 +1329,20 @@ export default function ExerciseCard({
           <Text style={styles.swapSheetSubtitle}>
             Choose an alternative for {displayName}
           </Text>
-          {swapCandidates.map((alt) => (
+          {displayCandidates.map((candidate, index) => (
             <TouchableOpacity
-              key={alt.name}
+              key={candidate.name ?? `swap-${index}`}
               style={styles.swapOption}
               activeOpacity={0.7}
               onPress={() => {
-                onSwapExercise(exercise.id, alt.name, true);
+                const shouldResetWeight = candidate.sameWeightOk !== true;
+                onSwapExercise(exercise.id, candidate.name, shouldResetWeight);
                 setShowSwapSheet(false);
               }}
             >
               <View style={styles.swapOptionRow}>
-                <Text style={styles.swapOptionText}>{alt.name}</Text>
-                {alt.isMachineEquivalent ? (
+                <Text style={styles.swapOptionText}>{candidate.name}</Text>
+                {candidate.isMachineEquivalent ? (
                   <View style={styles.swapMachineBadge}>
                     <Ionicons
                       name="cog-outline"

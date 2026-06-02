@@ -1,4 +1,4 @@
-import { isTargetLift } from './strengthGoalLift';
+import { epleyEstimated1RMLbs, matchesTargetLift } from './strengthGoalLift';
 import { getHypertrophyProjection, type CaloriePace } from './projections';
 
 export type GoalHeroModel = {
@@ -21,25 +21,39 @@ type PlanJsonLike = {
   targetLift?: string;
   goalLift?: string;
   target1RM?: number | string;
-  current1RM?: number | string;
+  current1RM?: number | string | null;
   totalWeeks?: number;
   daysPerWeek?: number;
-  week1BaselineWeight?: number;
+  week1BaselineWeight?: number | string;
   currentLifts?: Record<string, number | null>;
 };
 
 type LogRow = {
   logged_at?: string;
   week_number?: number;
-  sets_json?: Array<{
-    exerciseId?: string;
-    exerciseName?: string;
-    name?: string;
-    weightLbs?: number;
-    weight?: number;
-    reps?: number;
-  }>;
+  sets_json?: unknown;
 };
+
+function parseSetsJson(raw: unknown): Array<{
+  exerciseId?: string;
+  exerciseName?: string;
+  name?: string;
+  weightLbs?: number;
+  weight?: number;
+  weight_lbs?: number;
+  reps?: number;
+}> {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 const formatLiftName = (lift: string) =>
   lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -68,29 +82,71 @@ export function estimate1RMFromAllLogs(
   logs: LogRow[],
   targetLift: string,
   exerciseMap: Record<string, string>,
+  debugContext?: { planId?: string; startingWeight?: number; targetWeight?: number },
 ): number | null {
+  const testMatch = matchesTargetLift('Bench Press', 'bench_press');
+  console.log('[matchesTargetLift test]', testMatch);
+  console.log('[goalTrackerHero] planId:', debugContext?.planId ?? 'unknown');
+  console.log('[goalTrackerHero] targetLift:', targetLift);
+
+  const allSets: Array<{
+    exerciseName: string;
+    weightLbs: number;
+    reps: number;
+  }> = [];
+  const matchedSets: typeof allSets = [];
+  let bestWeight = 0;
+  let bestReps = 0;
   let best = 0;
+
   for (const log of logs) {
-    for (const s of log.sets_json ?? []) {
+    for (const s of parseSetsJson(log.sets_json)) {
       const displayName =
         s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId ?? ''] ?? '';
-      if (
-        !isTargetLift(
-          { name: displayName, exerciseName: displayName, exerciseId: s.exerciseId },
-          targetLift,
-        )
-      ) {
+      const w = Number(s.weightLbs ?? s.weight ?? s.weight_lbs ?? 0);
+      const r = Number(s.reps ?? 0);
+      allSets.push({ exerciseName: displayName, weightLbs: w, reps: r });
+
+      if (!matchesTargetLift(displayName, targetLift)) {
         continue;
       }
-      const w = Number(s.weightLbs ?? s.weight ?? 0);
-      const r = Number(s.reps ?? 0);
-      if (w > 0 && r > 0) {
-        const est = w * (1 + r / 30);
-        if (est > best) best = est;
+      if (w <= 0 || r <= 0) continue;
+
+      matchedSets.push({ exerciseName: displayName, weightLbs: w, reps: r });
+      if (w > bestWeight || (w === bestWeight && r > bestReps)) {
+        bestWeight = w;
+        bestReps = r;
       }
+      const est = epleyEstimated1RMLbs(w, r);
+      if (est > best) best = est;
     }
   }
-  return best > 0 ? Math.round(best) : null;
+
+  const estimatedOneRM = best > 0 ? best : 0;
+  const startingWeight = debugContext?.startingWeight ?? 0;
+  const targetWeight = debugContext?.targetWeight ?? 0;
+  const pct =
+    startingWeight &&
+    targetWeight &&
+    estimatedOneRM > startingWeight &&
+    targetWeight > startingWeight
+      ? Math.min(
+          100,
+          Math.round(
+            ((estimatedOneRM - startingWeight) / (targetWeight - startingWeight)) *
+              100,
+          ),
+        )
+      : 0;
+
+  console.log('[goalTrackerHero] total sets examined:', allSets.length);
+  console.log('[goalTrackerHero] matched sets:', matchedSets.length);
+  console.log('[goalTrackerHero] bestWeight:', bestWeight, 'bestReps:', bestReps);
+  console.log('[goalTrackerHero] estimatedOneRM:', estimatedOneRM);
+  console.log('[goalTrackerHero] startingWeight:', startingWeight);
+  console.log('[goalTrackerHero] pct:', pct);
+
+  return best > 0 ? best : null;
 }
 
 export function resolvePrimaryLiftId(planJson: PlanJsonLike): string | null {
@@ -139,49 +195,116 @@ function buildStrengthJordanNote(
   return `Week 1 baseline set. Jordan tracks your ${liftLabel} from here.`;
 }
 
+function resolveStartingWeight(
+  goalCurrent1rm: number | null | undefined,
+  planJson: PlanJsonLike,
+): number {
+  for (const raw of [
+    goalCurrent1rm,
+    planJson.current1RM,
+    planJson.week1BaselineWeight,
+  ]) {
+    if (raw == null || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function resolveTargetWeight(
+  planJson: PlanJsonLike,
+  goalRow?: { target_1rm?: number | null } | null,
+): number {
+  const fromPlan = Number(planJson.target1RM ?? 0);
+  if (Number.isFinite(fromPlan) && fromPlan > 0) return fromPlan;
+
+  const fromGoal = Number(goalRow?.target_1rm ?? 0);
+  if (Number.isFinite(fromGoal) && fromGoal > 0) return fromGoal;
+
+  return 0;
+}
+
 function buildStrengthLikeHero(
   planJson: PlanJsonLike,
   logs: LogRow[],
   formatMass: (lbs: number) => string,
-  goalFallback1RM?: number,
+  goalFallback1RM?: number | null,
   label = 'STRENGTH GOAL',
   jordanOverride?: string,
+  planId?: string,
+  goalRow?: { target_1rm?: number | null; current_1rm?: number | null } | null,
 ): GoalHeroModel | null {
   const targetLift = resolvePrimaryLiftId(planJson);
   if (!targetLift) return null;
 
-  const starting1RM = Number(
-    planJson.current1RM ?? goalFallback1RM ?? 0,
+  const startingWeight = resolveStartingWeight(
+    goalFallback1RM,
+    planJson,
   );
-  const target1RM = Number(planJson.target1RM ?? 0);
+  const targetWeight = resolveTargetWeight(planJson, goalRow);
   if (
-    !Number.isFinite(starting1RM) ||
-    !Number.isFinite(target1RM) ||
-    target1RM <= starting1RM
+    !Number.isFinite(startingWeight) ||
+    startingWeight <= 0 ||
+    !Number.isFinite(targetWeight) ||
+    targetWeight <= startingWeight
   ) {
+    console.log('[goalTrackerHero] buildStrengthLikeHero bail — invalid weights', {
+      planId,
+      startingWeight,
+      targetWeight,
+      week1BaselineWeight: planJson.week1BaselineWeight,
+      current1RM: planJson.current1RM,
+      goalFallback1RM,
+      goalTarget1rm: goalRow?.target_1rm,
+    });
     return null;
   }
 
   const exMap = buildExerciseNameMap(planJson);
-  const fromLogs = estimate1RMFromAllLogs(logs, targetLift, exMap);
-  const currentEstimate = fromLogs ?? starting1RM;
-  const gap = target1RM - starting1RM;
-  const gained = currentEstimate - starting1RM;
-  const rawPct = gap > 0 ? (gained / gap) * 100 : 0;
+  const fromLogs = estimate1RMFromAllLogs(logs, targetLift, exMap, {
+    planId,
+    startingWeight,
+    targetWeight,
+  });
+  // Option A: stated 1RM is the floor.
+  // Only update estimate when logs produce a value ABOVE
+  // the stated starting weight.
+  const estimatedOneRM =
+    fromLogs != null && fromLogs > startingWeight
+      ? fromLogs // new PR confirmed by training data
+      : startingWeight; // hold at stated 1RM until exceeded
+
+  // Progress % only advances when logged data exceeds
+  // the starting weight
+  const gap = targetWeight - startingWeight;
+  const rawPct =
+    fromLogs != null &&
+    fromLogs > startingWeight &&
+    gap > 0
+      ? Math.min(
+          100,
+          Math.round(((fromLogs - startingWeight) / gap) * 100),
+        )
+      : 0;
   const goalReached = rawPct >= 100;
   const progressPct = clampPct(rawPct);
   const liftLabel = formatLiftName(targetLift);
-  const remaining = Math.max(0, Math.round(target1RM - currentEstimate));
+  const remaining = Math.max(0, Math.round(targetWeight - estimatedOneRM));
+  const gained = estimatedOneRM - startingWeight;
 
   return {
     label,
     primaryTitle: liftLabel,
-    primaryValue: formatMass(Math.round(currentEstimate)),
+    primaryValue: formatMass(Math.round(estimatedOneRM)),
+    primarySub:
+      fromLogs != null && fromLogs > startingWeight
+        ? undefined
+        : 'Updates when you exceed your starting 1RM',
     progressPct,
     goalReached,
-    strengthEstimateLbs: Math.round(currentEstimate),
-    startLabel: `Started: ${formatMass(Math.round(starting1RM))}`,
-    targetLabel: `Goal: ${formatMass(Math.round(target1RM))}`,
+    strengthEstimateLbs: Math.round(estimatedOneRM),
+    startLabel: `Started: ${formatMass(Math.round(startingWeight))}`,
+    targetLabel: `Goal: ${formatMass(Math.round(targetWeight))}`,
     jordanNote:
       jordanOverride ??
       buildStrengthJordanNote(
@@ -189,7 +312,7 @@ function buildStrengthLikeHero(
         liftLabel,
         Math.round(gained),
         remaining,
-        Math.round(target1RM),
+        Math.round(targetWeight),
       ),
   };
 }
@@ -220,14 +343,16 @@ function normalizePace(p?: string | null): CaloriePace {
 
 export function buildGoalHeroModel(input: {
   planJson: PlanJsonLike | null | undefined;
+  planId?: string;
   currentWeek: number;
   totalWeeks: number;
   logs: LogRow[];
   sessionCount: number;
   weightLogs: { log_date: string; weight_lbs: number }[];
   goalRow?: {
-    current_1rm?: number;
-    starting_weight_lbs?: number;
+    current_1rm?: number | null;
+    target_1rm?: number | null;
+    starting_weight_lbs?: number | null;
     target_weight_lbs?: number;
   } | null;
   caloriePace?: string | null;
@@ -246,6 +371,10 @@ export function buildGoalHeroModel(input: {
       input.logs,
       input.formatMass,
       input.goalRow?.current_1rm,
+      'STRENGTH GOAL',
+      undefined,
+      input.planId,
+      input.goalRow,
     );
   }
 
@@ -259,6 +388,8 @@ export function buildGoalHeroModel(input: {
       input.goalRow?.current_1rm,
       'POWER & SIZE GOAL',
       `Building strength and size simultaneously. ${liftLabel} is your primary strength marker. Accessories drive the hypertrophy.`,
+      input.planId,
+      input.goalRow,
     );
     if (base) return base;
     const planPct = clampPct((cw / tw) * 100);

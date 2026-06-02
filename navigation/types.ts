@@ -99,7 +99,36 @@ export type RootStackParamList = {
     concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
+  /** After MacroSetup — generates lite preview plan then routes to PlanPreview */
+  BuildingPlan: {
+    planGenerationMode?: 'preview' | 'full';
+    replacePlanId?: string;
+    goalId?: string;
+  } & {
+    goal: string;
+    experience: string;
+    daysPerWeek: string;
+    trainingDays: string[];
+    sessionLength: string;
+    injuries: string[];
+    equipment: string;
+    excludedExercises: string[];
+    age: string;
+    sex: string;
+    heightFt: string;
+    heightIn: string;
+    weightLbs: string;
+    bodyFatPct: string | null;
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatsG: number;
+    caloriePace?: string;
+    concurrentSport: { type: string[]; daysPerWeek: number } | null;
+  } & GoalDetailParams &
+    PlanStructureParams;
   PlanPreview: {
+    previewPlanId?: string;
     goal: string;
     experience: string;
     daysPerWeek: string;
@@ -119,29 +148,6 @@ export type RootStackParamList = {
     carbsG: number;
     fatsG: number;
     /** fat_loss / hypertrophy calorie tier from MacroSetup; default balanced */
-    caloriePace?: string;
-    concurrentSport: { type: string[]; daysPerWeek: number } | null;
-  } & GoalDetailParams &
-    PlanStructureParams;
-  BuildingPlan: {
-    goal: string;
-    experience: string;
-    daysPerWeek: string;
-    trainingDays: string[];
-    sessionLength: string;
-    injuries: string[];
-    equipment: string;
-    excludedExercises: string[];
-    age: string;
-    sex: string;
-    heightFt: string;
-    heightIn: string;
-    weightLbs: string;
-    bodyFatPct: string | null;
-    calories: number;
-    proteinG: number;
-    carbsG: number;
-    fatsG: number;
     caloriePace?: string;
     concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
@@ -176,6 +182,9 @@ export type RootStackParamList = {
     planId: string;
     weekNumber: number;
   };
+  AdaptationFeed: {
+    weekNumber: number;
+  };
   WorkoutHome: undefined;
   /** Logged in Workout tab stack; listed here for cross-navigator `navigate` typing */
   WorkoutHistory: undefined;
@@ -185,6 +194,7 @@ export type RootStackParamList = {
   GoalTracker: undefined;
   PersonalRecords: undefined;
   BodyMeasurements: undefined;
+  ProgressPhoto: undefined;
   MacroTracker: undefined;
   ProfileSettings: undefined;
   SubscriptionManagement: undefined;
@@ -197,6 +207,7 @@ export type ProgressStackParamList = {
   GoalTracker: undefined;
   PersonalRecords: undefined;
   BodyMeasurements: undefined;
+  ProgressPhoto: undefined;
 };
 
 /** Workout tab stack — PlanComplete is also registered on the root stack for navigation from WorkoutComplete */
@@ -206,5 +217,6 @@ export type WorkoutStackParamList = {
   ExerciseLibrary: undefined;
   PlanComplete: { planId: string };
   WorkoutHistory: undefined;
+  ExerciseHistoryDetail: { exerciseName: string };
   FreeSession: undefined;
 };

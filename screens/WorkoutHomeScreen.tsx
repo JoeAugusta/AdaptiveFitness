@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
@@ -65,7 +66,13 @@ export default function WorkoutHomeScreen() {
           activeOpacity={0.7}
           onPress={() => navigation.navigate('WorkoutHistory')}
         >
-          <Text style={styles.historyLinkText}>View Workout History →</Text>
+          <Ionicons name="time-outline" size={16} color={Colors.accent} />
+          <Text style={styles.historyLinkText}>History</Text>
+          <Ionicons
+            name="chevron-forward-outline"
+            size={14}
+            color={Colors.accent}
+          />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.extraWorkCard}
@@ -97,13 +104,16 @@ const styles = StyleSheet.create({
   button: { backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 8 },
   buttonText: { color: '#FFFFFF', fontSize: FontSizes.caption, fontFamily: Fonts.semiBold, }, // TODO: map to design token
   historyLink: {
-    paddingVertical: Spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.md,
   },
   historyLinkText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
   extraWorkCard: {
     backgroundColor: Colors.bgCard,

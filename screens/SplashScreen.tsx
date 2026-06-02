@@ -60,7 +60,7 @@ export default function SplashScreen() {
           <Rect x="24" y="42" width="52" height="14" rx="3" fill="#F97316"/>
         </Svg>
 
-        <Text style={styles.wordmark}>hone</Text>
+        <Text style={styles.wordmark}>Hone</Text>
       </View>
 
       <ActivityIndicator

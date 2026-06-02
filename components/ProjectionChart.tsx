@@ -61,6 +61,8 @@ export type ProjectionChartProps = {
   currentWeekMarkerColor?: string;
   /** Horizontal reference (e.g. target 1RM) */
   targetValue?: number;
+  /** Goal Tracker strength: corrected current estimate (Option A floor) for the active week dot */
+  currentValue?: number;
   /** Plan Preview strength: start/target markers, goal line, gap end bubble */
   strengthGapAnnotate?: { current1RM: number; target1RM: number };
   /** Default true; set false on Goal Tracker to skip wipe-reveal */
@@ -191,6 +193,7 @@ export default function ProjectionChart({
   currentWeek,
   currentWeekMarkerColor = Colors.accent,
   targetValue,
+  currentValue,
   strengthGapAnnotate,
   animateEntry = true,
 }: ProjectionChartProps) {
@@ -308,7 +311,7 @@ export default function ProjectionChart({
   }, [anim, weeks, linesSig, animateEntry]);
 
   const actualPathPts = useMemo(() => {
-    if (!actualsData?.length) return [];
+    if (!actualsData?.length && currentValue == null) return [];
     const pw = Math.max(1, width - LEFT - RIGHT);
     const ph = Math.max(1, height - TOP - BOTTOM);
     const wkx = Math.max(weeks, 1);
@@ -317,12 +320,24 @@ export default function ProjectionChart({
       const t = (v - yMin) / (yMax - yMin || 1);
       return TOP + (1 - clamp(t, 0, 1)) * ph;
     };
-    return actualsData
+    const series = actualsData ? [...actualsData] : [];
+    if (
+      currentValue != null &&
+      Number.isFinite(currentValue) &&
+      currentWeek != null
+    ) {
+      const idx = clamp(currentWeek, 0, wkx);
+      while (series.length <= idx) {
+        series.push(null);
+      }
+      series[idx] = currentValue;
+    }
+    return series
       .map((val, i) =>
         val != null && Number.isFinite(val) ? { x: xa(i), y: ya(val) } : null,
       )
       .filter((p): p is { x: number; y: number } => p != null);
-  }, [actualsData, weeks, yMin, yMax, width, height]);
+  }, [actualsData, currentValue, currentWeek, weeks, yMin, yMax, width, height]);
 
   const actualPathD = useMemo(
     () => buildSmoothPath(actualPathPts),
@@ -739,14 +754,16 @@ export default function ProjectionChart({
           );
         })}
 
-        <SvgText
-          x={width - RIGHT - 36}
-          y={14}
-          fill={Colors.textTertiary}
-          fontSize={9}
-        >
-          {yLabel}
-        </SvgText>
+        {yLabel.trim() !== '' && yLabel.toLowerCase() !== 'index' ? (
+          <SvgText
+            x={width - RIGHT - 36}
+            y={14}
+            fill={Colors.textTertiary}
+            fontSize={9}
+          >
+            {yLabel}
+          </SvgText>
+        ) : null}
       </Svg>
     </View>
   );

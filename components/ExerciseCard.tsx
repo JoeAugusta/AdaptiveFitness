@@ -26,8 +26,9 @@ import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
-import { EXERCISES } from '../constants/exerciseLibrary';
+import { buildExerciseSwapCandidates } from '../utils/exerciseSwap';
 import { stripEmDash } from '../utils/jordanText';
+import { EXERCISES } from '../constants/exerciseLibrary';
 import { Ionicons } from '@expo/vector-icons';
 
 export type CompoundTier = 'primary_compound' | 'secondary_compound' | 'isolation';
@@ -1317,15 +1318,29 @@ export default function ExerciseCard({
           </Text>
           {swapCandidates.map((alt) => (
             <TouchableOpacity
-              key={alt}
+              key={alt.name}
               style={styles.swapOption}
               activeOpacity={0.7}
               onPress={() => {
-                onSwapExercise(exercise.id, alt, true);
+                onSwapExercise(exercise.id, alt.name, true);
                 setShowSwapSheet(false);
               }}
             >
-              <Text style={styles.swapOptionText}>{alt}</Text>
+              <View style={styles.swapOptionRow}>
+                <Text style={styles.swapOptionText}>{alt.name}</Text>
+                {alt.isMachineEquivalent ? (
+                  <View style={styles.swapMachineBadge}>
+                    <Ionicons
+                      name="cog-outline"
+                      size={14}
+                      color={Colors.accent}
+                    />
+                    <Text style={styles.swapMachineBadgeText}>
+                      Machine Equivalent
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -2207,9 +2222,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
   },
+  swapOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
   swapOptionText: {
+    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+  },
+  swapMachineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgElevated,
+  },
+  swapMachineBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
 });

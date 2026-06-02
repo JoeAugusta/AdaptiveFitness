@@ -436,7 +436,7 @@ export default function SubscriptionManagementScreen() {
                   subscription.
                 </Text>
                 <Text style={styles.finePrintBlock2}>
-                  Subscriptions are managed through the App Store or Google Play. hone
+                  Subscriptions are managed through the App Store or Google Play. Hone
                   does not have access to your payment details.
                 </Text>
               </View>
@@ -470,7 +470,7 @@ export default function SubscriptionManagementScreen() {
 
             {isProActive ? (
               <Text style={styles.footerManagedNote}>
-                Subscriptions are managed through the App Store or Google Play. hone
+                Subscriptions are managed through the App Store or Google Play. Hone
                 does not have access to your payment details.
               </Text>
             ) : null}

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { supabase } from '../Lib/supabase';
@@ -16,13 +17,16 @@ import {
   type PersonalRecord,
 } from '../utils/personalRecords';
 import { useMetric } from '../utils/units';
-import type { ProgressStackParamList } from '../navigation/types';
+import type { ProgressStackParamList, RootStackParamList } from '../navigation/types';
 
 
 type Nav = NativeStackNavigationProp<ProgressStackParamList, 'PersonalRecords'>;
 
 export default function PersonalRecordsScreen() {
   const navigation = useNavigation<Nav>();
+  const rootNavigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
   const { formatWorkoutWeight } = useMetric();
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +60,10 @@ export default function PersonalRecordsScreen() {
         <ActivityIndicator color={Colors.accent} style={{ marginTop: 60 }} />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: insets.bottom + 80 },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.strip}>
@@ -141,6 +148,19 @@ export default function PersonalRecordsScreen() {
             </View>
           )}
 
+          <TouchableOpacity
+            style={styles.historyLink}
+            activeOpacity={0.7}
+            onPress={() =>
+              rootNavigation.navigate('Dashboard', {
+                screen: 'WorkoutTab',
+                params: { screen: 'WorkoutHistory' },
+              })
+            }
+          >
+            <Text style={styles.historyLinkText}>See full history →</Text>
+          </TouchableOpacity>
+
           <Text style={styles.footer}>
             Estimated 1RM calculated using the Epley formula. Single-rep maxes
             recorded directly.
@@ -176,7 +196,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: Spacing.md,
-    paddingBottom: 48,
   },
   strip: {
     flexDirection: 'row',
@@ -308,5 +327,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+  },
+  historyLink: {
+    marginTop: Spacing.lg,
+    alignSelf: 'center',
+  },
+  historyLinkText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
 });

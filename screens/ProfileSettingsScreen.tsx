@@ -989,7 +989,7 @@ export default function ProfileSettingsScreen() {
               onPress={() => Linking.openURL('https://apps.apple.com')}
               activeOpacity={0.7}
             >
-              <Text style={styles.rowLabel}>Rate hone</Text>
+              <Text style={styles.rowLabel}>Rate Hone</Text>
               <Text style={styles.rowChevron}>›</Text>
             </TouchableOpacity>
           ) : null}
@@ -1238,7 +1238,7 @@ export default function ProfileSettingsScreen() {
         ) : null}
 
         {/* ── 8. Version footer ── */}
-        <Text style={styles.versionText}>hone • v1.0.0</Text>
+        <Text style={styles.versionText}>Hone • v1.0.0</Text>
       </ScrollView>
 
       <Modal

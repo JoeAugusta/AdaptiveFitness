@@ -32,6 +32,8 @@ import ProjectionChart, {
 } from '../components/ProjectionChart';
 import { useMetric } from '../utils/units';
 import { buildGoalHeroModel, type GoalHeroModel } from '../utils/goalTrackerHero';
+import { matchesTargetLift, epleyEstimated1RMLbs } from '../utils/strengthGoalLift';
+import { parseSetsJson } from '../utils/workoutHistoryData';
 
 const TRACKER_CHART_STROKE: Record<string, string> = {
   fat_loss:          '#F97316',
@@ -101,21 +103,12 @@ const MILESTONE_DEFS = [
   { pct: 100, label: 'Goal Complete',   icon: 'trophy-outline' },
 ];
 
-function calculateProgress(goal: GoalRow, plan: PlanRow | null, current1rm: number | null): ProgressResult {
+function calculateProgress(
+  goal: GoalRow,
+  plan: PlanRow | null,
+  completedSessions: number,
+): ProgressResult {
   const gt = goal.goal_type;
-
-  if (gt === 'strength') {
-    const start = goal.current_1rm ?? 0;
-    const target = goal.target_1rm ?? start;
-    const current = current1rm ?? start;
-    const range = target - start;
-    const pct = range > 0 ? Math.min(100, Math.max(0, ((current - start) / range) * 100)) : 0;
-    return {
-      progressPct: Math.round(pct),
-      progressLabel: 'Current estimated 1RM',
-      details: `${Math.round(current)}lbs → ${target}lbs`,
-    };
-  }
 
   if (gt === 'fat_loss') {
     const start = goal.starting_weight_lbs ?? 0;
@@ -128,14 +121,22 @@ function calculateProgress(goal: GoalRow, plan: PlanRow | null, current1rm: numb
     };
   }
 
-  // hypertrophy, recomp, general — plan completion
-  const current = plan?.current_week ?? 1;
-  const total = plan?.total_weeks ?? 12;
-  const pct = Math.min(100, Math.max(0, (current / total) * 100));
+  // hypertrophy, recomp, general — plan completion (sessions logged, not weeks elapsed)
+  const totalWeeks = plan?.total_weeks ?? goal.plan_duration_weeks ?? 12;
+  const daysPerWeek = Number(
+    plan?.plan_json?.daysPerWeek ?? plan?.plan_json?.days_per_week ?? 0,
+  );
+  const totalSessions =
+    daysPerWeek > 0 ? totalWeeks * daysPerWeek : totalWeeks;
+  const pct =
+    totalSessions > 0
+      ? Math.min(100, Math.round((completedSessions / totalSessions) * 100))
+      : 0;
+  const currentWeek = plan?.current_week ?? 1;
   return {
-    progressPct: Math.round(pct),
+    progressPct: pct,
     progressLabel: 'Plan completion',
-    details: `Week ${current} of ${total}`,
+    details: `Week ${currentWeek} of ${totalWeeks}`,
   };
 }
 
@@ -181,6 +182,10 @@ function liftIdMatchesExerciseName(
 
 const formatLiftName = (lift: string) =>
   lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function formatProjectionText(text: string): string {
+  return text.replace(/[a-z]+(?:_[a-z]+)+/gi, (match) => formatLiftName(match));
+}
 
 function getGoalTitle(goal: GoalRow): string {
   const gt = goal.goal_type;
@@ -326,39 +331,54 @@ function buildWeightActualsByWeek(
   return out;
 }
 
-function buildStrengthActualsSeries(
-  totalWeeks: number,
-  logs: { week_number: number; sets_json: any[] }[],
-  targetLiftLower: string,
+function getBestEpleyForWeek(
+  logsForWeek: { sets_json?: unknown }[],
+  targetLift: string,
   exerciseMap: Record<string, string>,
-): (number | null)[] {
-  const out: (number | null)[] = Array(totalWeeks + 1).fill(null);
-  for (const log of logs) {
-    const wk = log.week_number;
-    if (wk < 1 || wk > totalWeeks) continue;
-    let best = 0;
-    for (const s of log.sets_json ?? []) {
-      const name = (
+): number | null {
+  let best = 0;
+  for (const log of logsForWeek) {
+    for (const s of parseSetsJson(log.sets_json)) {
+      const name =
         s.exerciseName ??
         s.name ??
-        exerciseMap[s.exerciseId] ??
-        ''
-      ).toLowerCase();
-      if (!liftIdMatchesExerciseName(name, targetLiftLower)) continue;
+        exerciseMap[s.exerciseId ?? ''] ??
+        '';
+      if (!matchesTargetLift(name, targetLift)) continue;
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? 0);
-      if (w > 0 && r > 0) {
-        const est = w * (1 + r / 30);
-        if (est > best) best = est;
-      }
-    }
-    if (best > 0) {
-      const rounded = Math.round(best);
-      if (out[wk] == null || rounded > (out[wk] as number)) {
-        out[wk] = rounded;
-      }
+      if (w <= 0 || r <= 0) continue;
+      const est = epleyEstimated1RMLbs(w, r);
+      if (est > best) best = est;
     }
   }
+  return best > 0 ? best : null;
+}
+
+function buildStrengthActualsSeries(
+  totalWeeks: number,
+  logs: { week_number: number; sets_json?: unknown }[],
+  targetLift: string,
+  exerciseMap: Record<string, string>,
+  startingWeight: number,
+): (number | null)[] {
+  const out: (number | null)[] = Array(totalWeeks + 1).fill(null);
+  const floor = startingWeight > 0 ? startingWeight : 0;
+
+  for (let wk = 1; wk <= totalWeeks; wk++) {
+    const logsForWeek = logs.filter((l) => l.week_number === wk);
+    if (logsForWeek.length === 0) continue;
+
+    const epley = getBestEpleyForWeek(logsForWeek, targetLift, exerciseMap);
+    if (epley == null && floor <= 0) continue;
+
+    const value =
+      epley != null && epley > floor ? epley : floor > 0 ? floor : epley;
+    if (value != null && value > 0) {
+      out[wk] = Math.round(value);
+    }
+  }
+
   return out;
 }
 
@@ -492,14 +512,26 @@ function buildTrackerChartModel(
   if (gt === 'strength') {
     const current = Number(goal.current_1rm) || 185;
     const target = Number(goal.target_1rm) || current * 1.1;
+    const startingWeight = Number(
+      goal.current_1rm ??
+        plan.plan_json?.current1RM ??
+        plan.plan_json?.week1BaselineWeight ??
+        0,
+    );
     const projection = getStrengthProjection(current, 'intermediate', totalWeeks);
     const exMap = buildExerciseNameMap(plan.plan_json);
-    const tl = (goal.target_lift ?? '').toLowerCase();
+    const targetLift = String(
+      plan.plan_json?.targetLift ??
+        plan.plan_json?.goalLift ??
+        goal.target_lift ??
+        '',
+    );
     const actuals = buildStrengthActualsSeries(
       totalWeeks,
       workoutLogs,
-      tl,
+      targetLift,
       exMap,
+      startingWeight,
     );
     const nums = [...projection, ...actuals.filter((v): v is number => v != null)];
     const yMin = Math.min(...nums) * 0.97;
@@ -565,7 +597,7 @@ function buildTrackerChartModel(
     actuals: Array(totalWeeks + 1).fill(null),
     yMin: 0,
     yMax: Math.max(...projection) * 1.2 || 5,
-    yLabel: 'index',
+    yLabel: '',
     goalColor: badgeColor,
     weeks: totalWeeks,
     compareIndex: Math.min(plan.current_week, totalWeeks),
@@ -588,10 +620,9 @@ export default function GoalTrackerScreen() {
   const [heroLoadFailed, setHeroLoadFailed] = useState(false);
   const [goal, setGoal] = useState<GoalRow | null>(null);
   const [plan, setPlan] = useState<PlanRow | null>(null);
-  const [current1rm, setCurrent1rm] = useState<number | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
   const [logs, setLogs] = useState<
-    { logged_at?: string; week_number: number; sets_json: any[] }[]
+    { logged_at?: string; week_number: number; day_number: number; sets_json: any[] }[]
   >([]);
   const [weightLogsTracker, setWeightLogsTracker] = useState<
     { log_date: string; weight_lbs: number }[]
@@ -673,12 +704,14 @@ export default function GoalTrackerScreen() {
 
       // Session count + raw logs for trend analysis
       if (activePlan) {
+        console.log('[GoalTracker] loading workout_logs for planId:', activePlan.id);
         const { data: logsData, count } = await supabase
           .from('workout_logs')
-          .select('week_number, sets_json, logged_at', { count: 'exact' })
+          .select('week_number, day_number, sets_json, logged_at', { count: 'exact' })
           .eq('user_id', userId)
           .eq('plan_id', activePlan.id)
           .order('logged_at', { ascending: true });
+        console.log('[GoalTracker] workout_logs count:', count ?? logsData?.length ?? 0);
         setSessionCount(count ?? 0);
         setLogs(logsData ?? []);
       } else {
@@ -742,19 +775,6 @@ export default function GoalTrackerScreen() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Animate progress bar after data loads
-  const progress = goal && plan ? calculateProgress(goal, plan, current1rm) : null;
-  useEffect(() => {
-    if (progress) {
-      progressAnim.setValue(0);
-      Animated.timing(progressAnim, {
-        toValue: progress.progressPct,
-        duration: 800,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [progress?.progressPct]);
-
   const isStrengthGoalPlan = useMemo(() => {
     const g = plan?.plan_json?.goal ?? goal?.goal_type;
     return String(g ?? '').toLowerCase() === 'strength';
@@ -764,16 +784,56 @@ export default function GoalTrackerScreen() {
     if (!plan || heroLoadFailed || !isStrengthGoalPlan) return null;
     const pj = plan.plan_json;
     const targetLift = pj?.targetLift ?? pj?.goalLift;
-    if (
-      !targetLift ||
-      pj?.target1RM == null ||
-      String(pj.target1RM).trim() === ''
-    ) {
+    const hasTarget1RM =
+      (pj?.target1RM != null && String(pj.target1RM).trim() !== '') ||
+      (goal?.target_1rm != null && Number(goal.target_1rm) > 0);
+    if (!targetLift || !hasTarget1RM) {
       return null;
     }
     try {
+      const allLogs = logs;
+      const planJson = pj;
+
+      console.log('[1RM debug] allLogs:', allLogs?.length ?? 0);
+      console.log('[1RM debug] targetLift:', targetLift);
+
+      const firstLog = allLogs?.[0];
+      const firstSets = Array.isArray(firstLog?.sets_json)
+        ? firstLog.sets_json
+        : [];
+      console.log('[1RM debug] first log sets count:', firstSets.length);
+      console.log(
+        '[1RM debug] first set exerciseName:',
+        firstSets[0]?.exerciseName ?? 'MISSING',
+      );
+      console.log(
+        '[1RM debug] first set weightLbs:',
+        firstSets[0]?.weightLbs ?? 'MISSING',
+      );
+
+      const matchedSets =
+        allLogs?.flatMap((log) =>
+          (Array.isArray(log.sets_json) ? log.sets_json : []).filter((s) =>
+            matchesTargetLift(s.exerciseName ?? '', targetLift ?? ''),
+          ),
+        ) ?? [];
+      console.log('[1RM debug] matched sets count:', matchedSets.length);
+      console.log('[1RM debug] matched set names:', [
+        ...new Set(matchedSets.map((s) => s.exerciseName)),
+      ]);
+
+      console.log(
+        '[1RM debug] week1BaselineWeight raw:',
+        planJson?.week1BaselineWeight,
+      );
+      console.log(
+        '[1RM debug] startingWeight (Number coerced):',
+        Number(planJson?.week1BaselineWeight ?? 0),
+      );
+
       return buildGoalHeroModel({
         planJson: pj,
+        planId: plan.id,
         currentWeek: plan.current_week,
         totalWeeks: plan.total_weeks,
         logs,
@@ -799,11 +859,21 @@ export default function GoalTrackerScreen() {
     isStrengthGoalPlan,
   ]);
 
+  const progress =
+    goal && plan && goal.goal_type !== 'strength'
+      ? calculateProgress(goal, plan, sessionCount)
+      : null;
+
   useEffect(() => {
-    if (strengthGoalHero?.strengthEstimateLbs != null) {
-      setCurrent1rm(strengthGoalHero.strengthEstimateLbs);
+    if (progress) {
+      progressAnim.setValue(0);
+      Animated.timing(progressAnim, {
+        toValue: progress.progressPct,
+        duration: 800,
+        useNativeDriver: false,
+      }).start();
     }
-  }, [strengthGoalHero?.strengthEstimateLbs]);
+  }, [progress?.progressPct]);
 
   useEffect(() => {
     if (!strengthGoalHero) return;
@@ -815,7 +885,14 @@ export default function GoalTrackerScreen() {
     }).start();
   }, [strengthGoalHero?.progressPct, strengthGoalHero?.label]);
 
-  const milestones = progress ? buildMilestones(progress.progressPct) : [];
+  const milestoneProgressPct =
+    goal?.goal_type === 'strength'
+      ? strengthGoalHero?.progressPct
+      : progress?.progressPct;
+  const milestones =
+    milestoneProgressPct != null
+      ? buildMilestones(milestoneProgressPct)
+      : [];
 
   const chartWidth = screenWidth - Spacing.xl * 2 - 40;
 
@@ -831,7 +908,8 @@ export default function GoalTrackerScreen() {
   }, [goal, plan, weightLogsTracker, logs, caloriePaceTracker]);
 
   const isAhead = useMemo(() => {
-    if (!trackerModel || !goal) return null;
+    if (!trackerModel || !goal || !plan) return null;
+    if ((plan.current_week ?? 1) < 2) return null;
     const gt = goal.goal_type;
     if (gt !== 'fat_loss' && gt !== 'hypertrophy' && gt !== 'strength') {
       return null;
@@ -842,7 +920,7 @@ export default function GoalTrackerScreen() {
     if (a == null || p == null) return null;
     if (gt === 'fat_loss') return a < p;
     return a > p;
-  }, [trackerModel, goal]);
+  }, [trackerModel, goal, plan]);
 
   const hasTrackerActuals = useMemo(
     () => trackerModel?.actuals.some((v) => v != null) ?? false,
@@ -873,9 +951,15 @@ export default function GoalTrackerScreen() {
   const currentWeek = plan?.current_week ?? 1;
   const daysPerWeek: number = plan?.plan_json?.daysPerWeek ?? 4;
 
+  const isBehindPace = isAhead === false;
+  const showBehindPaceBadge = isBehindPace && currentWeek >= 4;
+
   const weeklyVolumes: Record<number, number> = {};
+  const sessionsPerWeek = new Map<number, Set<number>>();
   for (const log of logs) {
     const wk: number = log.week_number;
+    if (!sessionsPerWeek.has(wk)) sessionsPerWeek.set(wk, new Set());
+    sessionsPerWeek.get(wk)!.add(log.day_number);
     for (const s of (log.sets_json ?? [])) {
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? s.loggedReps ?? 0);
@@ -885,17 +969,54 @@ export default function GoalTrackerScreen() {
       weeklyVolumes[wk] = (weeklyVolumes[wk] ?? 0) + w * r * repMultiplier;
     }
   }
+
+  const isWeekComplete = (weekNum: number): boolean =>
+    (sessionsPerWeek.get(weekNum)?.size ?? 0) >= daysPerWeek;
+
   const volumeWeeks = Object.keys(weeklyVolumes).map(Number).sort((a, b) => a - b);
-  const week1Vol = weeklyVolumes[volumeWeeks[0]] ?? 0;
-  const latestWeekVol = weeklyVolumes[volumeWeeks[volumeWeeks.length - 1]] ?? 0;
   const hasWorkoutVolumeLogged = volumeWeeks.some((wk) => (weeklyVolumes[wk] ?? 0) > 0);
   const hasVolumeData = volumeWeeks.length >= 1 && hasWorkoutVolumeLogged;
-  const volumeChangePct = hasVolumeData && week1Vol > 0
-    ? ((latestWeekVol - week1Vol) / week1Vol) * 100
-    : 0;
 
-  const weeksWithLogs = new Set(logs.map((l) => l.week_number)).size;
-  const consistencyRate = currentWeek > 1 ? weeksWithLogs / (currentWeek - 1) : 0;
+  let volumeChangePct: number | null = null;
+  let volumeTrendLabel: string | null = null;
+  let volumeTrendInProgress = false;
+
+  if (hasVolumeData) {
+    if (isWeekComplete(currentWeek)) {
+      const currVol = weeklyVolumes[currentWeek] ?? 0;
+      const prevVol = weeklyVolumes[currentWeek - 1] ?? 0;
+      if (currentWeek > 1 && prevVol > 0 && currVol > 0) {
+        volumeChangePct = ((currVol - prevVol) / prevVol) * 100;
+        volumeTrendLabel = `${volumeChangePct > 0 ? '+' : ''}${Math.round(volumeChangePct)}% vs last week`;
+      } else if (currentWeek === 1) {
+        volumeTrendLabel = 'Baseline week — trend starts Week 2';
+      }
+    } else if (currentWeek > 2 && isWeekComplete(currentWeek - 1)) {
+      const prevVol = weeklyVolumes[currentWeek - 1] ?? 0;
+      const prev2Vol = weeklyVolumes[currentWeek - 2] ?? 0;
+      if (prev2Vol > 0 && prevVol > 0) {
+        volumeChangePct = ((prevVol - prev2Vol) / prev2Vol) * 100;
+        volumeTrendLabel = `${volumeChangePct > 0 ? '+' : ''}${Math.round(volumeChangePct)}% vs prior week`;
+      }
+    } else if (currentWeek > 1) {
+      volumeTrendInProgress = true;
+      volumeTrendLabel = 'Week in progress — check back when complete';
+    }
+  }
+
+  const weeksElapsed = currentWeek - 1;
+  const weeksWithAtLeastOneSession = new Set(
+    logs
+      .filter((l) => l.week_number >= 1 && l.week_number <= weeksElapsed)
+      .map((l) => l.week_number),
+  ).size;
+  const consistencyPct =
+    weeksElapsed > 0
+      ? Math.min(
+          100,
+          Math.round((weeksWithAtLeastOneSession / weeksElapsed) * 100),
+        )
+      : 100;
 
   const avgSessionsPerWeek = currentWeek > 1
     ? Math.min(logs.length / (currentWeek - 1), daysPerWeek)
@@ -913,6 +1034,12 @@ export default function GoalTrackerScreen() {
       goal.goal_type === 'general')
       ? (goal.goal_type as ProjectionChartGoal)
       : null;
+
+  const chartCurrentValue =
+    goal?.goal_type === 'strength'
+      ? (strengthGoalHero?.strengthEstimateLbs ??
+          (Number(plan?.plan_json?.week1BaselineWeight ?? 0) || 0))
+      : undefined;
 
   if (__DEV__ && goal && plan && trackerModel) {
     console.log(
@@ -975,7 +1102,7 @@ export default function GoalTrackerScreen() {
                 <View style={[styles.paceBadge, styles.paceBadgeSuccess]}>
                   <Text style={styles.paceBadgeTextSuccess}>Ahead of pace</Text>
                 </View>
-              ) : isAhead === false ? (
+              ) : isAhead === false && showBehindPaceBadge ? (
                 <View style={[styles.paceBadge, styles.paceBadgeWarning]}>
                   <Text style={styles.paceBadgeTextWarning}>Behind pace</Text>
                 </View>
@@ -995,11 +1122,17 @@ export default function GoalTrackerScreen() {
                 trackerWeekMarkerStyle
                 actualsData={trackerModel.actuals}
                 currentWeek={Math.min(plan.current_week, trackerModel.weeks)}
+                currentValue={chartCurrentValue}
                 targetValue={trackerModel.targetValue}
                 animateEntry={false}
               />
-              {isAhead === false && weeklyCoachSnippet ? (
+              {showBehindPaceBadge && weeklyCoachSnippet ? (
                 <Text style={styles.coachBehindNote}>{stripEmDash(weeklyCoachSnippet ?? '')}</Text>
+              ) : null}
+              {(plan.current_week ?? 1) < 2 ? (
+                <Text style={styles.trackerPreDataNote}>
+                  Complete Week 1 to see your pace
+                </Text>
               ) : null}
               <View style={styles.trackerCalloutStrip}>
                 {(
@@ -1110,7 +1243,9 @@ export default function GoalTrackerScreen() {
               <Text style={styles.evrSubLabelProjected}>YOUR PLAN PROJECTED</Text>
               {goal.projection_text ? (
                 <View style={styles.evrQuote}>
-                  <Text style={styles.evrQuoteText}>{goal.projection_text}</Text>
+                  <Text style={styles.evrQuoteText}>
+                    {formatProjectionText(goal.projection_text)}
+                  </Text>
                 </View>
               ) : (
                 <Text style={styles.evrNoData}>
@@ -1121,40 +1256,52 @@ export default function GoalTrackerScreen() {
               <Text style={styles.evrSubLabelReality}>WHAT&apos;S ACTUALLY HAPPENING</Text>
 
               <View style={styles.evrMetricRow}>
-                {!hasVolumeData || volumeChangePct === 0
-                  ? <Ionicons name="arrow-forward" size={20} color={Colors.textSecondary} />
-                  : volumeChangePct > 0
-                    ? <Ionicons name="trending-up-outline" size={20} color={Colors.success} />
-                    : <Ionicons name="trending-down-outline" size={20} color={Colors.danger} />}
-                <Text style={styles.evrMetricLabel}>Weekly Volume Trend</Text>
+                <View style={styles.evrMetricLabelGroup}>
+                  {!hasVolumeData || volumeTrendInProgress || volumeTrendLabel == null
+                    ? <Ionicons name="arrow-forward" size={20} color={Colors.textSecondary} />
+                    : volumeChangePct != null && volumeChangePct > 0
+                      ? <Ionicons name="trending-up-outline" size={20} color={Colors.success} />
+                      : volumeChangePct != null && volumeChangePct < 0
+                        ? <Ionicons name="trending-down-outline" size={20} color={Colors.danger} />
+                        : <Ionicons name="arrow-forward" size={20} color={Colors.textSecondary} />}
+                  <Text style={styles.evrMetricLabel} numberOfLines={1}>
+                    Weekly Volume Trend
+                  </Text>
+                </View>
                 {!hasVolumeData ? (
                   <Text style={styles.evrMetricValue}>
                     {logs.length === 0 ? 'Not enough data yet' : '—'}
                   </Text>
-                ) : volumeChangePct === 0 ? (
-                  <Text style={styles.evrMetricValue}>No change vs Week 1</Text>
+                ) : volumeTrendLabel != null ? (
+                  <Text style={styles.evrMetricValue}>{volumeTrendLabel}</Text>
                 ) : (
-                  <Text style={styles.evrMetricValue}>
-                    {volumeChangePct > 0 ? '+' : ''}{Math.round(volumeChangePct)}% vs Week 1
-                  </Text>
+                  <Text style={styles.evrMetricValue}>—</Text>
                 )}
               </View>
 
               <View style={styles.evrMetricRow}>
-                <Ionicons name="radio-button-on-outline" size={20} color={Colors.textSecondary} />
-                <Text style={styles.evrMetricLabel}>Training Consistency</Text>
+                <View style={styles.evrMetricLabelGroup}>
+                  <Ionicons name="radio-button-on-outline" size={20} color={Colors.textSecondary} />
+                  <Text style={styles.evrMetricLabel} numberOfLines={1}>
+                    Training Consistency
+                  </Text>
+                </View>
                 {currentWeek <= 1 ? (
                   <Text style={styles.evrMetricValue}>Just getting started</Text>
                 ) : (
                   <Text style={styles.evrMetricValue}>
-                    {Math.round(consistencyRate * 100)}% of weeks trained
+                    {consistencyPct}% of weeks trained
                   </Text>
                 )}
               </View>
 
               <View style={[styles.evrMetricRow, styles.evrMetricRowLast]}>
-                <Ionicons name="flash-outline" size={20} color={Colors.textSecondary} />
-                <Text style={styles.evrMetricLabel}>Sessions per Week</Text>
+                <View style={styles.evrMetricLabelGroup}>
+                  <Ionicons name="flash-outline" size={20} color={Colors.textSecondary} />
+                  <Text style={styles.evrMetricLabel} numberOfLines={1}>
+                    Sessions per Week
+                  </Text>
+                </View>
                 <View style={styles.evrPaceValue}>
                   <Text
                     style={[
@@ -1176,7 +1323,7 @@ export default function GoalTrackerScreen() {
             </View>
 
         {/* ── Milestones ── */}
-        {progress && (
+        {milestoneProgressPct != null && (
           <>
             <Text style={styles.milestonesSectionLabel}>MILESTONES</Text>
             <View style={styles.milestonesCard}>
@@ -1573,7 +1720,7 @@ const styles = StyleSheet.create({
   },
   trackerCalloutColValue: {
     fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
+    fontSize: FontSizes.body,
     color: Colors.textPrimary,
     textAlign: 'center',
   },
@@ -1798,23 +1945,33 @@ const styles = StyleSheet.create({
   evrMetricRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'nowrap',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.divider,
   },
   evrMetricRowLast: { borderBottomWidth: 0 },
+  evrMetricLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    minWidth: 140,
+    gap: 10,
+    marginRight: Spacing.sm,
+  },
   evrMetricIcon: {
     fontFamily: Fonts.regular,
     fontSize: 18,
     marginRight: 10,
   },
   evrMetricLabel: {
-    flex: 1,
+    flexShrink: 0,
     fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
   evrMetricValue: {
+    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,

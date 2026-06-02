@@ -18,7 +18,7 @@ export default function AuthScreen() {
           style={styles.brandLogo}
           resizeMode="contain"
         />
-        <Text style={styles.wordmark}>hone</Text>
+        <Text style={styles.wordmark}>Hone</Text>
         <Text style={styles.tagline}>Your coach. Built around you.</Text>
 
         <View style={styles.ctaZone}>

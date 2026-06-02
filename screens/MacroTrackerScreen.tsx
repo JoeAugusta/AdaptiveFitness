@@ -9,12 +9,13 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   useWindowDimensions,
   Alert,
   Animated,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Circle as SvgCircle,
   Line as SvgLine,
@@ -27,9 +28,23 @@ import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
-import { hapticSuccess, hapticWarning } from '../utils/haptics';
+import { hapticLight, hapticSuccess, hapticWarning } from '../utils/haptics';
 import { stripEmDash } from '../utils/jordanText';
 import { Ionicons } from '@expo/vector-icons';
+import { JordanAvatar } from '../components/JordanAvatar';
+import {
+  applyTrainingDayMacroAdjust,
+  clampMacroAdjustDraft,
+  computeRecommendedMacroTargets,
+  MACRO_ADJUST,
+  macrosExceedCalories,
+  type MacroTargetValues,
+} from '../utils/macroTargets';
+import {
+  getTodayDayLabel,
+  isTodayTrainingDay,
+  normalizeScheduledDays,
+} from '../utils/dateUtils';
 
 interface MacroTargets {
   calories: number;
@@ -37,6 +52,23 @@ interface MacroTargets {
   carbs_g: number;
   fats_g: number;
 }
+
+type MacroProfileInput = {
+  weightLbs: number;
+  heightFt: number;
+  heightIn: number;
+  age: number;
+  sex: string;
+  daysPerWeek: number;
+  concurrentSport?: { type: string[]; daysPerWeek: number } | null;
+};
+
+type PlanNutritionContext = {
+  scheduledDays: string[];
+  hasDayLabels: boolean;
+  isActive: boolean;
+  concurrentSport?: { type: string[]; daysPerWeek: number } | null;
+};
 
 interface MacroLogEntry {
   id: string;
@@ -142,37 +174,82 @@ const QUICK_OPTIONS = [
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function jordanAdherenceMessage(goalType: string | null, avgRatio: number): string {
+function jordanAdherenceMessage(
+  goalType: string | null,
+  avgRatio: number,
+  daysWithLogs: number,
+  avgCalories: number,
+  caloriesTarget: number,
+): string {
   const g = (goalType ?? '').toLowerCase();
   const deficit = g === 'fat_loss' || g === 'recomp';
   const muscle =
-    g === 'hypertrophy' || g === 'strength' || g === 'power_hypertrophy';
+    g === 'hypertrophy' ||
+    g === 'strength' ||
+    g === 'power_hypertrophy';
+  const calDiff = Math.round(Math.abs(avgCalories - caloriesTarget));
+  const overUnder = avgCalories > caloriesTarget ? 'over' : 'under';
 
   if (avgRatio >= 0.9) {
     if (deficit) {
-      return "Nutrition on point this week — deficit is holding and you're protecting muscle with solid protein numbers.";
+      return (
+        `Deficit is holding across ${daysWithLogs} days. ` +
+        `${calDiff > 30 ? `${calDiff} cal ${overUnder} target` : 'right on target'} ` +
+        `— protein is what protects muscle here, keep hitting it.`
+      );
     }
     if (muscle) {
-      return "Hitting your targets consistently — the surplus is there and your muscles have what they need to grow.";
+      return (
+        `${daysWithLogs} days logged and the surplus is consistent. ` +
+        `${calDiff > 30 ? `You're averaging ${calDiff} cal ${overUnder} target` : `Hitting ${caloriesTarget} cal consistently`} ` +
+        `— that's the fuel the training needs.`
+      );
     }
-    return 'Consistent week on nutrition — your energy levels and performance will reflect this.';
+    return (
+      `Consistent week on nutrition — ` +
+      `${daysWithLogs} days logged at ${Math.round(avgRatio * 100)}% of your ` +
+      `${caloriesTarget} cal target.`
+    );
   }
+
   if (avgRatio >= 0.7) {
     if (deficit) {
-      return 'Close but not quite on target — the days you fell short were likely carbs or total calories. Protein is what matters most; protect that first.';
+      return (
+        `Close but not quite — averaging ${Math.round(avgRatio * 100)}% ` +
+        `of your ${caloriesTarget} cal target across ${daysWithLogs} days. ` +
+        `Protein is the priority; hit that first before worrying about total calories.`
+      );
     }
     if (muscle) {
-      return 'A few days under target this week. The surplus took a hit — not a disaster, but worth tightening up. Prioritise your post-workout meal.';
+      return (
+        `A few days under target this week. ` +
+        `At ${Math.round(avgRatio * 100)}% of ${caloriesTarget} cal on average, ` +
+        `the surplus took a hit. Add a shake between meals if appetite is the issue.`
+      );
     }
-    return "Decent week — a few days off target won't derail you, but consistency compounds over weeks.";
+    return (
+      `${Math.round(avgRatio * 100)}% adherence across ${daysWithLogs} days ` +
+      `— decent but the gap from ${caloriesTarget} cal adds up over weeks.`
+    );
   }
+
   if (deficit) {
-    return 'Nutrition was inconsistent this week — results will lag if this continues. Pick one meal to anchor each day and build from there.';
+    return (
+      `Inconsistent logging makes it hard to manage the deficit. ` +
+      `Pick one meal to anchor each day — usually breakfast — and build from there.`
+    );
   }
   if (muscle) {
-    return "Under target most days this week — the muscle-building signal needs fuel. If you're not hungry enough, try adding a shake between meals.";
+    return (
+      `Under target most days. At your goal you need ${caloriesTarget} cal ` +
+      `consistently — missed days slow the process. A high-calorie meal prep day ` +
+      `helps.`
+    );
   }
-  return "Tough week on nutrition. Don't chase perfection — just get tomorrow's protein sorted and go from there.";
+  return (
+    `Tough week on nutrition. Don't try to catch up — ` +
+    `just get tomorrow's ${caloriesTarget} cal sorted and go from there.`
+  );
 }
 
 function todayStr(): string {
@@ -212,7 +289,7 @@ function CalorieRing({ pct }: { pct: number }) {
         strokeDasharray={`${circ}`}
         strokeDashoffset={offset}
         strokeLinecap="round"
-        rotation="-90" origin={`${size / 2}, ${size / 2}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
       <SvgText
         x={size / 2} y={size / 2 + 5}
@@ -222,6 +299,142 @@ function CalorieRing({ pct }: { pct: number }) {
         {Math.round(clamped)}%
       </SvgText>
     </Svg>
+  );
+}
+
+type MacroEditField = 'calories' | 'protein_g' | 'fats_g';
+
+function formatMacroEditValue(field: MacroEditField, value: number): string {
+  return field === 'calories' ? value.toLocaleString() : String(Math.round(value));
+}
+
+function parseMacroEditInput(field: MacroEditField, raw: string): number | null {
+  const cleaned = raw.replace(/,/g, '').trim();
+  if (!cleaned) return null;
+  const n = field === 'calories' ? parseInt(cleaned, 10) : parseInt(cleaned, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function MacroAdjustEditableRow({
+  label,
+  field,
+  value,
+  unit,
+  step,
+  min,
+  max,
+  decLabel,
+  incLabel,
+  isEditing,
+  editText,
+  onStartEdit,
+  onEditTextChange,
+  onEndEdit,
+  onStep,
+}: {
+  label: string;
+  field: MacroEditField;
+  value: number;
+  unit: string;
+  step: number;
+  min: number;
+  max: number;
+  decLabel: string;
+  incLabel: string;
+  isEditing: boolean;
+  editText: string;
+  onStartEdit: () => void;
+  onEditTextChange: (text: string) => void;
+  onEndEdit: () => void;
+  onStep: (delta: number) => void;
+}) {
+  const atMin = value <= min;
+  const atMax = value >= max;
+  const displayValue = formatMacroEditValue(field, value);
+
+  return (
+    <View style={styles.macroAdjustSection}>
+      <View style={styles.macroAdjustHeaderRow}>
+        <Text style={styles.macroAdjustSectionLabel}>{label}</Text>
+        <Text style={styles.macroAdjustHeaderValue}>
+          {displayValue}
+          {unit === 'kcal' ? ' kcal' : ` ${unit}`}
+        </Text>
+      </View>
+      <View style={styles.macroAdjustDivider} />
+      <View style={styles.macroAdjustControlRow}>
+        <TouchableOpacity
+          style={[styles.macroAdjustStepBtn, atMin && styles.macroAdjustStepBtnDisabled]}
+          onPress={() => onStep(-step)}
+          disabled={atMin}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.macroAdjustStepBtnText}>{decLabel}</Text>
+        </TouchableOpacity>
+
+        <View style={styles.macroAdjustValueWrap}>
+          {isEditing ? (
+            <TextInput
+              style={styles.macroAdjustValueInput}
+              value={editText}
+              onChangeText={onEditTextChange}
+              onBlur={onEndEdit}
+              onSubmitEditing={onEndEdit}
+              keyboardType="numeric"
+              selectTextOnFocus
+              autoFocus
+              returnKeyType="done"
+            />
+          ) : (
+            <TouchableOpacity onPress={onStartEdit} activeOpacity={0.7}>
+              <Text style={styles.macroAdjustValueDisplay}>{displayValue}</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.macroAdjustUnitLabel}>{unit}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.macroAdjustStepBtn, atMax && styles.macroAdjustStepBtnDisabled]}
+          onPress={() => onStep(step)}
+          disabled={atMax}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.macroAdjustStepBtnText}>{incLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function MacroAdjustCarbsRow({
+  carbsG,
+  invalid,
+}: {
+  carbsG: number;
+  invalid: boolean;
+}) {
+  return (
+    <View style={[styles.macroAdjustSection, styles.macroAdjustSectionLast]}>
+      <View style={styles.macroAdjustHeaderRow}>
+        <Text style={styles.macroAdjustSectionLabel}>CARBS</Text>
+        <Text style={styles.macroAdjustHeaderValue}>{carbsG} g</Text>
+      </View>
+      <View style={styles.macroAdjustDivider} />
+      <View style={styles.macroAdjustCarbsDisplayRow}>
+        <Text style={styles.macroAdjustValueDisplay}>{carbsG}</Text>
+        <Text style={styles.macroAdjustUnitLabel}>g</Text>
+      </View>
+      <Text
+        style={[
+          styles.macroAdjustCarbsCaption,
+          invalid && styles.macroAdjustCarbsCaptionDanger,
+        ]}
+      >
+        {invalid
+          ? 'Protein + fats exceed calorie target'
+          : 'Auto-calculated from calorie balance'}
+      </Text>
+    </View>
   );
 }
 
@@ -322,6 +535,7 @@ function WeeklyBarChart({
 // ── Main Screen ──
 
 export default function MacroTrackerScreen() {
+  const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const chartWidth = screenWidth - Spacing.xl * 2 - 40;
 
@@ -350,6 +564,22 @@ export default function MacroTrackerScreen() {
   const [builderTargetProtein, setBuilderTargetProtein] = useState(0);
 
   const [nutritionGoalType, setNutritionGoalType] = useState<string | null>(null);
+  const [showMacroAdjustSheet, setShowMacroAdjustSheet] = useState(false);
+  const [adjustDraft, setAdjustDraft] = useState<MacroTargetValues | null>(null);
+  const [savingMacroAdjust, setSavingMacroAdjust] = useState(false);
+  const [macroProfileInput, setMacroProfileInput] = useState<MacroProfileInput | null>(null);
+  const [macroPlanMeta, setMacroPlanMeta] = useState<{
+    goal_id?: string | null;
+    calorie_pace?: string | null;
+  } | null>(null);
+  const [planNutritionContext, setPlanNutritionContext] =
+    useState<PlanNutritionContext | null>(null);
+  const [profileWeightLbs, setProfileWeightLbs] = useState<number | null>(null);
+  const [editingMacroField, setEditingMacroField] = useState<MacroEditField | null>(
+    null,
+  );
+  const [macroEditText, setMacroEditText] = useState('');
+  const macroEditDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mealLoggedToastOpacity = useRef(new Animated.Value(0)).current;
   const mealLoggedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -399,7 +629,9 @@ export default function MacroTrackerScreen() {
 
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('meal_prefs_set, dietary_style, food_allergies')
+        .select(
+          'meal_prefs_set, dietary_style, food_allergies, weight_lbs, height_ft, height_in, age, sex',
+        )
         .eq('user_id', userId)
         .order('id', { ascending: false })
         .limit(1)
@@ -413,11 +645,15 @@ export default function MacroTrackerScreen() {
       if (Array.isArray(profile?.food_allergies)) {
         setSelectedAllergies(profile.food_allergies as string[]);
       }
+      const weightLbs = Number(profile?.weight_lbs ?? 0);
+      setProfileWeightLbs(Number.isFinite(weightLbs) && weightLbs > 0 ? weightLbs : null);
 
-      const [targetsRes, todayRes, weekRes, mealSuggestRes] = await Promise.all([
+      const [targetsRes, todayRes, weekRes, mealSuggestRes, planRes] = await Promise.all([
         supabase
           .from('macro_plans')
-          .select('calories_target, protein_g, carbs_g, fats_g, goals(goal_type)')
+          .select(
+            'calories_target, protein_g, carbs_g, fats_g, goal_id, calorie_pace, goals(goal_type)',
+          )
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -440,6 +676,14 @@ export default function MacroTrackerScreen() {
               .eq('user_id', userId)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
+        supabase
+          .from('plans')
+          .select('plan_json, status')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (prefsDone && mealSuggestRes.data) {
@@ -457,13 +701,19 @@ export default function MacroTrackerScreen() {
           protein_g: number;
           carbs_g: number;
           fats_g: number;
+          goal_id?: string | null;
+          calorie_pace?: string | null;
           goals?: { goal_type?: string } | { goal_type?: string }[] | null;
         };
         const rel = tr.goals;
         const gRow = Array.isArray(rel) ? rel[0] : rel;
-        setNutritionGoalType(
-          gRow && typeof gRow.goal_type === 'string' ? gRow.goal_type : null,
-        );
+        const goalType =
+          gRow && typeof gRow.goal_type === 'string' ? gRow.goal_type : null;
+        setNutritionGoalType(goalType);
+        setMacroPlanMeta({
+          goal_id: tr.goal_id ?? null,
+          calorie_pace: tr.calorie_pace ?? null,
+        });
         setTargets({
           calories: tr.calories_target,
           protein_g: tr.protein_g,
@@ -472,7 +722,57 @@ export default function MacroTrackerScreen() {
         });
       } else {
         setNutritionGoalType(null);
+        setMacroPlanMeta(null);
         setTargets(DEFAULT_TARGETS);
+      }
+
+      const planRow = planRes.data as {
+        plan_json?: Record<string, unknown>;
+        status?: string;
+      } | null;
+      const pj = planRow?.plan_json ?? {};
+      const scheduledRaw = Array.isArray(pj.scheduledDays)
+        ? (pj.scheduledDays as string[])
+        : [];
+      const scheduledDays = normalizeScheduledDays(scheduledRaw);
+      const daysPerWeek = Number(pj.daysPerWeek ?? pj.days_per_week ?? 0);
+      const resolvedDays =
+        daysPerWeek > 0
+          ? daysPerWeek
+          : scheduledDays.length > 0
+            ? scheduledDays.length
+            : 3;
+      const concurrentSport =
+        pj.concurrentSport &&
+        typeof pj.concurrentSport === 'object' &&
+        Array.isArray((pj.concurrentSport as { type?: unknown }).type)
+          ? (pj.concurrentSport as { type: string[]; daysPerWeek: number })
+          : null;
+
+      setPlanNutritionContext({
+        scheduledDays,
+        hasDayLabels: scheduledDays.length > 0,
+        isActive: planRow?.status === 'active',
+        concurrentSport,
+      });
+
+      if (
+        profile &&
+        Number(profile.weight_lbs) > 0 &&
+        Number(profile.height_ft) >= 0 &&
+        Number(profile.age) > 0
+      ) {
+        setMacroProfileInput({
+          weightLbs: Number(profile.weight_lbs),
+          heightFt: Number(profile.height_ft ?? 0),
+          heightIn: Number(profile.height_in ?? 0),
+          age: Number(profile.age),
+          sex: String(profile.sex ?? 'male'),
+          daysPerWeek: resolvedDays,
+          concurrentSport,
+        });
+      } else {
+        setMacroProfileInput(null);
       }
 
       type TodayLogRow = {
@@ -520,7 +820,45 @@ export default function MacroTrackerScreen() {
     }, [loadData]),
   );
 
-  const t = targets ?? DEFAULT_TARGETS;
+  const baseTargets = targets ?? DEFAULT_TARGETS;
+  const todayLabel = getTodayDayLabel();
+  const isTrainingDay = isTodayTrainingDay(
+    planNutritionContext?.scheduledDays ?? [],
+    todayLabel,
+  );
+  const showDayTypeIndicator =
+    !!planNutritionContext?.isActive &&
+    !!planNutritionContext?.hasDayLabels &&
+    mealPrefsSet;
+
+  const adjustedTargets = useMemo(() => {
+    if (!targets) return null;
+    if (!showDayTypeIndicator) return targets;
+    return applyTrainingDayMacroAdjust(targets, isTrainingDay);
+  }, [targets, showDayTypeIndicator, isTrainingDay]);
+
+  const t = adjustedTargets ?? baseTargets;
+
+  const adjustDraftInvalid =
+    adjustDraft != null &&
+    macrosExceedCalories(
+      adjustDraft.calories,
+      adjustDraft.protein_g,
+      adjustDraft.fats_g,
+    );
+
+  const regenerateMeals = useCallback(
+    async (userId: string, trainingDay: boolean) => {
+      return supabase.functions.invoke('generate-meals', {
+        body: {
+          userId,
+          goalType: nutritionGoalType ?? undefined,
+          isTrainingDay: trainingDay,
+        },
+      });
+    },
+    [nutritionGoalType],
+  );
 
   const hasLoggedToday = (todayLogs ?? []).length > 0;
 
@@ -598,8 +936,9 @@ export default function MacroTrackerScreen() {
   }, [weeklyData, t.calories]);
 
   const weeklyAdherenceForNote = useMemo(() => {
-    if (t.calories <= 0) return { daysWithLogs: 0, avgRatio: 0 };
+    if (t.calories <= 0) return { daysWithLogs: 0, avgRatio: 0, avgCalories: 0 };
     let sum = 0;
+    let calSum = 0;
     let n = 0;
     for (let i = 6; i >= 0; i--) {
       const ds = daysAgoStr(i);
@@ -607,16 +946,27 @@ export default function MacroTrackerScreen() {
       const cals = day?.calories ?? 0;
       if (cals > 0) {
         sum += cals / t.calories;
+        calSum += cals;
         n++;
       }
     }
-    return { daysWithLogs: n, avgRatio: n > 0 ? sum / n : 0 };
+    return {
+      daysWithLogs: n,
+      avgRatio: n > 0 ? sum / n : 0,
+      avgCalories: n > 0 ? Math.round(calSum / n) : 0,
+    };
   }, [weeklyData, t.calories]);
 
   const jordanAdherenceBody = useMemo(() => {
     if (weeklyAdherenceForNote.daysWithLogs < 3) return null;
-    return jordanAdherenceMessage(nutritionGoalType, weeklyAdherenceForNote.avgRatio);
-  }, [weeklyAdherenceForNote, nutritionGoalType]);
+    return jordanAdherenceMessage(
+      nutritionGoalType,
+      weeklyAdherenceForNote.avgRatio,
+      weeklyAdherenceForNote.daysWithLogs,
+      weeklyAdherenceForNote.avgCalories,
+      t.calories,
+    );
+  }, [weeklyAdherenceForNote, nutritionGoalType, t.calories]);
 
   const calorieOvershootAmount = useMemo(
     () =>
@@ -640,6 +990,206 @@ export default function MacroTrackerScreen() {
     await supabase.from('macro_logs').delete().eq('id', id);
     loadData();
   };
+
+  const handleResetRecommendedMacros = () => {
+    if (!macroProfileInput) {
+      Alert.alert('Profile incomplete', 'Update your profile to reset recommended targets.');
+      return;
+    }
+    const recommended = computeRecommendedMacroTargets({
+      ...macroProfileInput,
+      goal: nutritionGoalType ?? 'general',
+      caloriePace: macroPlanMeta?.calorie_pace,
+      concurrentSport: macroProfileInput.concurrentSport,
+    });
+    setAdjustDraft(recommended);
+  };
+
+  const handleSaveMacroAdjust = async () => {
+    if (!adjustDraft || adjustDraftInvalid) return;
+    Keyboard.dismiss();
+    setEditingMacroField(null);
+    setSavingMacroAdjust(true);
+
+    const { calories, protein_g: proteinG, carbs_g: carbsG, fats_g: fatsG } =
+      adjustDraft;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id;
+      if (!uid) throw new Error('No user');
+
+      const { data: existingPlan, error: existingErr } = await supabase
+        .from('macro_plans')
+        .select('id')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error(
+          '[macro save error]',
+          existingErr.message,
+          existingErr.details,
+          existingErr.hint,
+        );
+        throw existingErr;
+      }
+
+      if (existingPlan?.id) {
+        const { error } = await supabase
+          .from('macro_plans')
+          .update({
+            calories_target: calories,
+            protein_g: proteinG,
+            carbs_g: carbsG,
+            fats_g: fatsG,
+          })
+          .eq('id', existingPlan.id);
+
+        if (error) {
+          console.error('[macro save]', error.message, error.details);
+          Alert.alert('Save failed', error.message);
+          return;
+        }
+      } else {
+        const { data: activePlan, error: planErr } = await supabase
+          .from('plans')
+          .select('id, current_week')
+          .eq('user_id', uid)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (planErr) {
+          console.error(
+            '[macro save error]',
+            planErr.message,
+            planErr.details,
+            planErr.hint,
+          );
+          throw planErr;
+        }
+
+        const { error: insertErr } = await supabase.from('macro_plans').insert({
+          user_id: uid,
+          plan_id: activePlan?.id ?? null,
+          week_number: activePlan?.current_week ?? 1,
+          calories_target: calories,
+          protein_g: proteinG,
+          carbs_g: carbsG,
+          fats_g: fatsG,
+        });
+
+        if (insertErr) {
+          console.error(
+            '[macro save error]',
+            insertErr.message,
+            insertErr.details,
+            insertErr.hint,
+          );
+          throw insertErr;
+        }
+      }
+
+      if (mealPrefsSet) {
+        const { error: fnErr } = await regenerateMeals(uid, isTrainingDay);
+        if (fnErr) {
+          console.error(
+            '[macro save error]',
+            fnErr.message,
+            fnErr.details,
+            fnErr.hint,
+          );
+          throw fnErr;
+        }
+      }
+
+      setShowMacroAdjustSheet(false);
+      setEditingMacroField(null);
+      setMacroEditText('');
+      await loadData();
+      void hapticSuccess();
+    } catch (err) {
+      const error = err as { message?: string; details?: string; hint?: string };
+      console.error(
+        '[macro save error]',
+        error.message,
+        error.details,
+        error.hint,
+      );
+      Alert.alert('Error', 'Could not save macro targets. Please try again.');
+    } finally {
+      setSavingMacroAdjust(false);
+    }
+  };
+
+  const stepMacroAdjust = (
+    field: 'calories' | 'protein_g' | 'fats_g',
+    delta: number,
+  ) => {
+    void hapticLight();
+    setEditingMacroField(null);
+    setMacroEditText('');
+    setAdjustDraft((prev) => {
+      if (!prev) return prev;
+      const nextVal = prev[field] + delta;
+      return clampMacroAdjustDraft({ ...prev, [field]: nextVal }, field);
+    });
+  };
+
+  const startMacroEdit = (field: MacroEditField) => {
+    if (!adjustDraft) return;
+    setEditingMacroField(field);
+    setMacroEditText(formatMacroEditValue(field, adjustDraft[field]));
+  };
+
+  const commitMacroEdit = (field: MacroEditField, rawText?: string) => {
+    const parsed = parseMacroEditInput(field, rawText ?? macroEditText);
+    if (parsed != null) {
+      setAdjustDraft((prev) => {
+        if (!prev) return prev;
+        return clampMacroAdjustDraft({ ...prev, [field]: parsed }, field);
+      });
+    }
+    setEditingMacroField(null);
+    setMacroEditText('');
+  };
+
+  const handleMacroEditTextChange = (field: MacroEditField, text: string) => {
+    setMacroEditText(text);
+    if (field !== 'protein_g') return;
+
+    if (macroEditDebounceRef.current) {
+      clearTimeout(macroEditDebounceRef.current);
+    }
+    macroEditDebounceRef.current = setTimeout(() => {
+      const parsed = parseMacroEditInput(field, text);
+      if (parsed == null) return;
+      setAdjustDraft((prev) => {
+        if (!prev) return prev;
+        return clampMacroAdjustDraft({ ...prev, protein_g: parsed }, 'protein_g');
+      });
+    }, 300);
+  };
+
+  const openMacroAdjustSheet = () => {
+    setAdjustDraft({ ...(targets ?? DEFAULT_TARGETS) });
+    setEditingMacroField(null);
+    setMacroEditText('');
+    setShowMacroAdjustSheet(true);
+  };
+
+  useEffect(
+    () => () => {
+      if (macroEditDebounceRef.current) {
+        clearTimeout(macroEditDebounceRef.current);
+      }
+    },
+    [],
+  );
 
   const handleLogMeal = async () => {
     const cal = parseInt(calories) || 0;
@@ -721,7 +1271,11 @@ export default function MacroTrackerScreen() {
       if (upErr) throw upErr;
 
       const { error: fnErr } = await supabase.functions.invoke('generate-meals', {
-        body: { userId: uid },
+        body: {
+          userId: uid,
+          goalType: nutritionGoalType ?? undefined,
+          isTrainingDay,
+        },
       });
 
       if (fnErr) throw fnErr;
@@ -845,9 +1399,27 @@ export default function MacroTrackerScreen() {
 
         <View style={styles.calorieCard}>
           <View style={styles.calorieLeft}>
-            <Text style={styles.calorieSectionLabel}>CALORIES</Text>
+            <View style={styles.calorieHeaderRow}>
+              <Text style={styles.calorieSectionLabel}>CALORIES</Text>
+              <TouchableOpacity onPress={openMacroAdjustSheet} activeOpacity={0.7}>
+                <Text style={styles.adjustTargetsLink}>Adjust targets →</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
             <Text style={styles.calorieTargetLine}>/ {t.calories} kcal</Text>
+            {showDayTypeIndicator ? (
+              isTrainingDay ? (
+                <View style={styles.dayTypePill}>
+                  <Ionicons name="flash-outline" size={12} color={Colors.accent} />
+                  <Text style={styles.dayTypePillText}>Training day — carbs up</Text>
+                </View>
+              ) : (
+                <View style={styles.dayTypePill}>
+                  <Ionicons name="moon-outline" size={12} color={Colors.textSecondary} />
+                  <Text style={styles.dayTypePillText}>Rest day — carbs lower</Text>
+                </View>
+              )
+            ) : null}
             <Text
               style={[
                 styles.calorieRemaining,
@@ -1155,7 +1727,10 @@ export default function MacroTrackerScreen() {
 
           <ScrollView
             style={styles.prefsScroll}
-            contentContainerStyle={styles.prefsScrollContent}
+            contentContainerStyle={[
+              styles.prefsScrollContent,
+              { paddingBottom: insets.bottom + 80 },
+            ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -1197,7 +1772,7 @@ export default function MacroTrackerScreen() {
             </View>
           </ScrollView>
 
-          <View style={styles.prefsFooter}>
+          <View style={[styles.prefsFooter, { marginBottom: insets.bottom + 16 }]}>
             <TouchableOpacity
               style={styles.prefsSaveBtn}
               onPress={handleSavePrefs}
@@ -1225,6 +1800,138 @@ export default function MacroTrackerScreen() {
         dietaryStyle={userDietaryStyle}
         allergies={userAllergies}
       />
+
+      <Modal
+        visible={showMacroAdjustSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowMacroAdjustSheet(false)}
+      >
+        <View style={styles.macroAdjustOverlay}>
+          <TouchableOpacity
+            style={styles.macroAdjustBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowMacroAdjustSheet(false)}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.macroAdjustSheetWrap}
+          >
+            <View
+              style={[
+                styles.macroAdjustSheet,
+                { paddingBottom: insets.bottom + Spacing.xl },
+              ]}
+            >
+              <View style={styles.macroAdjustHandle} />
+              <Text style={styles.macroAdjustTitle}>Adjust Your Targets</Text>
+
+              {adjustDraft ? (
+                <>
+                  <MacroAdjustEditableRow
+                    label="CALORIES"
+                    field="calories"
+                    value={adjustDraft.calories}
+                    unit="kcal"
+                    step={MACRO_ADJUST.calStep}
+                    min={MACRO_ADJUST.calMin}
+                    max={MACRO_ADJUST.calMax}
+                    decLabel="−50"
+                    incLabel="+50"
+                    isEditing={editingMacroField === 'calories'}
+                    editText={macroEditText}
+                    onStartEdit={() => startMacroEdit('calories')}
+                    onEditTextChange={(text) =>
+                      handleMacroEditTextChange('calories', text)
+                    }
+                    onEndEdit={() => commitMacroEdit('calories')}
+                    onStep={(delta) => stepMacroAdjust('calories', delta)}
+                  />
+                  <MacroAdjustEditableRow
+                    label="PROTEIN"
+                    field="protein_g"
+                    value={adjustDraft.protein_g}
+                    unit="g"
+                    step={MACRO_ADJUST.proteinStep}
+                    min={MACRO_ADJUST.proteinMin}
+                    max={MACRO_ADJUST.proteinMax}
+                    decLabel="−5"
+                    incLabel="+5"
+                    isEditing={editingMacroField === 'protein_g'}
+                    editText={macroEditText}
+                    onStartEdit={() => startMacroEdit('protein_g')}
+                    onEditTextChange={(text) =>
+                      handleMacroEditTextChange('protein_g', text)
+                    }
+                    onEndEdit={() => commitMacroEdit('protein_g')}
+                    onStep={(delta) => stepMacroAdjust('protein_g', delta)}
+                  />
+                  <MacroAdjustEditableRow
+                    label="FATS"
+                    field="fats_g"
+                    value={adjustDraft.fats_g}
+                    unit="g"
+                    step={MACRO_ADJUST.fatsStep}
+                    min={MACRO_ADJUST.fatsMin}
+                    max={MACRO_ADJUST.fatsMax}
+                    decLabel="−5"
+                    incLabel="+5"
+                    isEditing={editingMacroField === 'fats_g'}
+                    editText={macroEditText}
+                    onStartEdit={() => startMacroEdit('fats_g')}
+                    onEditTextChange={(text) =>
+                      handleMacroEditTextChange('fats_g', text)
+                    }
+                    onEndEdit={() => commitMacroEdit('fats_g')}
+                    onStep={(delta) => stepMacroAdjust('fats_g', delta)}
+                  />
+                  <MacroAdjustCarbsRow
+                    carbsG={adjustDraft.carbs_g}
+                    invalid={adjustDraftInvalid}
+                  />
+
+                  <View style={styles.macroAdjustJordanRow}>
+                    <JordanAvatar size={20} />
+                    <Text style={styles.macroAdjustJordanNote}>
+                      {profileWeightLbs != null
+                        ? `Protein floor ${Math.round(profileWeightLbs)}g. Carbs balance automatically.`
+                        : 'Carbs balance automatically.'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.macroAdjustFooter}>
+                    <TouchableOpacity
+                      style={styles.macroAdjustResetBtn}
+                      onPress={handleResetRecommendedMacros}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.macroAdjustResetText}>
+                        Reset to recommended
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.macroAdjustSaveBtn,
+                        (adjustDraftInvalid || savingMacroAdjust) &&
+                          styles.macroAdjustSaveBtnDisabled,
+                      ]}
+                      onPress={handleSaveMacroAdjust}
+                      disabled={adjustDraftInvalid || savingMacroAdjust}
+                      activeOpacity={0.85}
+                    >
+                      {savingMacroAdjust ? (
+                        <ActivityIndicator color={Colors.textPrimary} />
+                      ) : (
+                        <Text style={styles.macroAdjustSaveText}>Save targets</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : null}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1269,6 +1976,17 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
   },
   calorieLeft: { flex: 1 },
+  calorieHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  adjustTargetsLink: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
   calorieSectionLabel: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,
@@ -1295,6 +2013,201 @@ const styles = StyleSheet.create({
   },
   calorieRemainingUnder: { color: Colors.success },
   calorieRemainingOver: { color: Colors.danger },
+  dayTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  dayTypePillText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+
+  macroAdjustOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  macroAdjustBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  macroAdjustSheetWrap: {
+    maxHeight: '92%',
+  },
+  macroAdjustSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+  },
+  macroAdjustHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
+  },
+  macroAdjustTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  macroAdjustSection: {
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  macroAdjustSectionLast: {
+    borderBottomWidth: 0,
+  },
+  macroAdjustHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  macroAdjustSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  macroAdjustHeaderValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  macroAdjustDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginTop: Spacing.sm,
+  },
+  macroAdjustControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  macroAdjustStepBtn: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  macroAdjustStepBtnDisabled: {
+    opacity: 0.35,
+  },
+  macroAdjustStepBtnText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  macroAdjustValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+    minWidth: 120,
+  },
+  macroAdjustValueDisplay: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    minWidth: 100,
+  },
+  macroAdjustValueInput: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    minWidth: 100,
+    paddingVertical: 0,
+  },
+  macroAdjustUnitLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  macroAdjustCarbsDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: Spacing.md,
+  },
+  macroAdjustCarbsCaption: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+  macroAdjustCarbsCaptionDanger: {
+    color: Colors.danger,
+  },
+  macroAdjustJordanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  macroAdjustJordanNote: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    lineHeight: 18,
+  },
+  macroAdjustFooter: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  macroAdjustResetBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.bgCard,
+  },
+  macroAdjustResetText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  macroAdjustSaveBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  macroAdjustSaveBtnDisabled: {
+    opacity: 0.4,
+  },
+  macroAdjustSaveText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
 
   calOvershootBanner: {
     backgroundColor: Colors.dangerMuted,
@@ -1782,7 +2695,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold, 
   },
   prefsScroll: { flex: 1 },
-  prefsScrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  prefsScrollContent: { paddingHorizontal: 20 },
   prefsSectionLabel: {
     color: Colors.textSecondary,
     fontSize: FontSizes.label,
@@ -1820,7 +2733,6 @@ const styles = StyleSheet.create({
   allergyChipTextSelected: { color: '#FFFFFF' }, // TODO: map to design token
   prefsFooter: {
     paddingHorizontal: 20,
-    marginBottom: 32,
     paddingTop: 8,
   },
   prefsSaveBtn: {

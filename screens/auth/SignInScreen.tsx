@@ -112,7 +112,7 @@ export default function SignInScreen() {
               style={styles.brandLogo}
               resizeMode="contain"
             />
-            <Text style={styles.brandWord}>hone</Text>
+            <Text style={styles.brandWord}>Hone</Text>
           </View>
 
           <Text style={styles.screenTitle}>Welcome back</Text>

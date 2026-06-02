@@ -36,6 +36,7 @@ import {
   getNextTrainingDay,
   getTodayDayLabel,
   isLastScheduledTrainingDayToday,
+  isPlanStartDateReached,
   isTodayTrainingDay,
 } from '../utils/dateUtils';
 import {
@@ -158,9 +159,188 @@ type PlanData = {
     latestJordanNoteUpdatedAt?: string | null;
     jordanWelcome?: string | null;
   };
+  /** Current week from plan_json.weeks (adaptation feed preview) */
+  adaptationChanges?: AdaptationChange[];
+  currentWeekPhase?: string;
   /** Set when the plan start_date is in the future — shows "starts on" hero */
   planStartsOn?: string | null;
 };
+
+type AdaptationChangeType =
+  | 'increase'
+  | 'decrease'
+  | 'hold'
+  | 'deload'
+  | 'calibration';
+
+type AdaptationChange = {
+  exerciseName: string;
+  muscleGroup: string;
+  changeType: AdaptationChangeType;
+  previousWeight: number;
+  newWeight: number;
+  weightDelta: number;
+  avgLoggedRpe: number | null;
+  targetRpe: number | null;
+  rpeGap: number | null;
+  reason: string;
+};
+
+const ADAPTATION_CHANGE_SORT: Record<AdaptationChangeType, number> = {
+  increase: 0,
+  hold: 1,
+  decrease: 2,
+  deload: 3,
+  calibration: 4,
+};
+
+function formatAdaptationWeightLb(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded);
+}
+
+function sortAdaptationChanges(changes: AdaptationChange[]): AdaptationChange[] {
+  return [...changes].sort(
+    (a, b) =>
+      (ADAPTATION_CHANGE_SORT[a.changeType] ?? 9) -
+      (ADAPTATION_CHANGE_SORT[b.changeType] ?? 9),
+  );
+}
+
+function AdaptationChangeIndicator({ changeType }: { changeType: AdaptationChangeType }) {
+  const visualType = changeType === 'calibration' ? 'increase' : changeType;
+  switch (visualType) {
+    case 'increase':
+      return (
+        <Ionicons name="trending-up-outline" size={14} color={Colors.success} />
+      );
+    case 'decrease':
+      return (
+        <Ionicons name="trending-down-outline" size={14} color={Colors.danger} />
+      );
+    case 'deload':
+      return <Ionicons name="refresh-outline" size={14} color={Colors.accent} />;
+    default:
+      return <Ionicons name="remove-outline" size={14} color={Colors.textTertiary} />;
+  }
+}
+
+function adaptationWeightSummaryText(item: AdaptationChange): string {
+  switch (item.changeType) {
+    case 'increase':
+      if (item.previousWeight === 0) {
+        return `Self-select → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+      }
+      return `${formatAdaptationWeightLb(item.previousWeight)} → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+    case 'decrease':
+      return `${formatAdaptationWeightLb(item.previousWeight)} → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+    case 'hold':
+      return `Held at ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+    case 'deload':
+      return 'Deload week';
+    case 'calibration':
+      return `Self-select → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+    default:
+      return `Held at ${formatAdaptationWeightLb(item.newWeight)} lbs`;
+  }
+}
+
+function adaptationWeightSummaryStyle(item: AdaptationChange) {
+  switch (item.changeType) {
+    case 'increase':
+      return styles.adaptationWeightIncrease;
+    case 'decrease':
+      return styles.adaptationWeightDecrease;
+    case 'deload':
+      return styles.adaptationWeightDeload;
+    default:
+      return styles.adaptationWeightHold;
+  }
+}
+
+function AdaptationChangesCard({
+  weekNumber,
+  phase,
+  changes,
+  onPress,
+}: {
+  weekNumber: number;
+  phase: string;
+  changes: AdaptationChange[];
+  onPress: () => void;
+}) {
+  const sorted = sortAdaptationChanges(changes);
+  const isDeload = phase === 'deload';
+  const preview = sorted.slice(0, 3);
+  const remaining = sorted.length - preview.length;
+
+  return (
+    <TouchableOpacity
+      style={styles.adaptationCard}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={styles.adaptationHeaderRow}>
+        <JordanAvatar size={24} />
+        <Text style={styles.adaptationJordanLabel}>JORDAN</Text>
+        <Text style={styles.adaptationHeaderSep}> • </Text>
+        <Text style={styles.adaptationWeekLabel}>
+          WEEK {weekNumber} ADJUSTMENTS
+        </Text>
+      </View>
+
+      <View style={styles.adaptationDivider} />
+
+      {isDeload ? (
+        <View style={styles.adaptationDeloadRow}>
+          <Ionicons name="refresh-outline" size={14} color={Colors.accent} />
+          <Text style={styles.adaptationDeloadText}>
+            Scheduled recovery week — weights at 85%
+          </Text>
+        </View>
+      ) : (
+        <>
+          {preview.map((item, index) => (
+            <View
+              key={`${item.exerciseName}-${item.changeType}-${index}`}
+              style={[
+                styles.adaptationChangeRow,
+                index > 0 && styles.adaptationChangeRowSpaced,
+              ]}
+            >
+              <AdaptationChangeIndicator changeType={item.changeType} />
+              <Text
+                style={styles.adaptationExerciseName}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {item.exerciseName}
+              </Text>
+              <Text
+                style={[
+                  styles.adaptationWeightBase,
+                  adaptationWeightSummaryStyle(item),
+                ]}
+                numberOfLines={1}
+              >
+                {adaptationWeightSummaryText(item)}
+              </Text>
+            </View>
+          ))}
+
+          {remaining > 0 ? (
+            <>
+              <View style={styles.adaptationDivider} />
+              <Text style={styles.adaptationFooter}>
+                +{remaining} more changes • See all adjustments →
+              </Text>
+            </>
+          ) : null}
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
 
 type SetItem = {
   setNumber: number;
@@ -584,6 +764,7 @@ export default function HomeScreen() {
   const [weightInput, setWeightInput] = useState('');
   const [selectedSleepHours, setSelectedSleepHours] = useState<number | null>(null);
   const [weightSaving, setWeightSaving] = useState(false);
+  const [weightSaveSuccess, setWeightSaveSuccess] = useState(false);
   const uidRef = useRef<string | null>(null);
   const { displayToLbs, lbsToDisplay, formatBodyWeight, unitLabel, isMetric } = useMetric();
 
@@ -616,6 +797,27 @@ export default function HomeScreen() {
   const [todaySportLog, setTodaySportLog] = useState<SportLogRow | null>(null);
   const [showSportSessionModal, setShowSportSessionModal] = useState(false);
   const [sportDashboardUserId, setSportDashboardUserId] = useState<string | null>(null);
+
+  const refetchTodayWeightLog = useCallback(async (): Promise<boolean> => {
+    const uid =
+      uidRef.current ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!uid) return false;
+    const todayDate = new Date().toISOString().split('T')[0];
+    const { data: todayLog } = await supabase
+      .from('weight_logs')
+      .select('weight_lbs, sleep_hours')
+      .eq('user_id', uid)
+      .eq('log_date', todayDate)
+      .maybeSingle();
+
+    if (todayLog) {
+      setTodayWeight(todayLog.weight_lbs as number);
+      setTodaySleepHours(mapDbSleepHoursToPill(todayLog.sleep_hours));
+      setWeightLoggedToday(true);
+      return true;
+    }
+    return false;
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -769,56 +971,49 @@ export default function HomeScreen() {
         return;
       }
 
-      // Check if the plan's start_date is in the future (e.g. user picked "Start next Monday").
+      // Plan not started until start_date (local YYYY-MM-DD) is today or earlier.
       const planStartRaw: string | null =
         (plan as { start_date?: string | null }).start_date ??
         (planJson as { startDate?: string | null }).startDate ??
         null;
-      if (planStartRaw) {
+      const planStarted = isPlanStartDateReached(planStartRaw);
+      if (planStartRaw && !planStarted) {
         const planStart = new Date(`${planStartRaw.split('T')[0]}T12:00:00`);
-        planStart.setHours(0, 0, 0, 0);
-        const todayMid = new Date();
-        todayMid.setHours(0, 0, 0, 0);
-        const daysSinceStart = Math.floor(
-          (todayMid.getTime() - planStart.getTime()) / 86400000,
-        );
-        if (daysSinceStart < 0) {
-          const formattedStart = planStart.toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-          });
-          const planJsonTyped = planJson as {
-            title?: string;
-            daysPerWeek?: number;
-            days_per_week?: number;
-          };
-          setPlanData({
-            planId: plan.id as string,
-            planTitle: planJsonTyped.title ?? (plan as { title?: string }).title ?? 'Your Plan',
-            currentWeek: typeof plan.current_week === 'number' ? plan.current_week : 1,
-            totalWeeks: typeof plan.total_weeks === 'number' ? plan.total_weeks : 12,
-            daysPerWeek: planJsonTyped.daysPerWeek ?? planJsonTyped.days_per_week ?? 3,
-            todayWorkout: null,
-            weekDays: [],
-            completedSessions: 0,
-            nextWeekReady: false,
-            nextWeekFirstWorkout: null,
-            showGenerateNextWeekCTA: false,
-            postWeekHeroAllowed: false,
-            scheduledDays: [],
-            hasDayLabels: false,
-            planStartsOn: formattedStart,
-          });
-          setPlanStatus(plan.status as string ?? null);
-          setIsTrainingDay(false);
-          setNextTrainingDay(null);
-          setIsWeek1NoSessionsYet(false);
-          setDevBypassDayGate(false);
-          setPlanSnapshotForMissed(null);
-          setStatsLoading(false);
-          return;
-        }
+        const formattedStart = planStart.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        });
+        const planJsonTyped = planJson as {
+          title?: string;
+          daysPerWeek?: number;
+          days_per_week?: number;
+        };
+        setPlanData({
+          planId: plan.id as string,
+          planTitle: planJsonTyped.title ?? (plan as { title?: string }).title ?? 'Your Plan',
+          currentWeek: typeof plan.current_week === 'number' ? plan.current_week : 1,
+          totalWeeks: typeof plan.total_weeks === 'number' ? plan.total_weeks : 12,
+          daysPerWeek: planJsonTyped.daysPerWeek ?? planJsonTyped.days_per_week ?? 3,
+          todayWorkout: null,
+          weekDays: [],
+          completedSessions: 0,
+          nextWeekReady: false,
+          nextWeekFirstWorkout: null,
+          showGenerateNextWeekCTA: false,
+          postWeekHeroAllowed: false,
+          scheduledDays: [],
+          hasDayLabels: false,
+          planStartsOn: formattedStart,
+        });
+        setPlanStatus(plan.status as string ?? null);
+        setIsTrainingDay(false);
+        setNextTrainingDay(null);
+        setIsWeek1NoSessionsYet(false);
+        setDevBypassDayGate(false);
+        setPlanSnapshotForMissed(null);
+        setStatsLoading(false);
+        return;
       }
 
       const devBypassRead =
@@ -1040,6 +1235,13 @@ export default function HomeScreen() {
           ).latestJordanNoteUpdatedAt,
           jordanWelcome: (planJson as { jordanWelcome?: string }).jordanWelcome ?? null,
         },
+        adaptationChanges: Array.isArray(
+          (currentWeekData as { adaptationChanges?: unknown }).adaptationChanges,
+        )
+          ? ((currentWeekData as { adaptationChanges: AdaptationChange[] })
+              .adaptationChanges)
+          : [],
+        currentWeekPhase: currentWeekPhase ?? '',
         planStartsOn: null,
       });
       setPlanSnapshotForMissed({
@@ -1252,10 +1454,12 @@ export default function HomeScreen() {
       return;
     }
     setWeightSaving(true);
+    setWeightSaveSuccess(false);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const uid = user?.id;
       if (!uid) throw new Error('No authenticated user');
+      uidRef.current = uid;
       const todayDate = new Date().toISOString().split('T')[0];
       const { error } = await supabase
         .from('weight_logs')
@@ -1270,25 +1474,41 @@ export default function HomeScreen() {
         );
       if (error) {
         Alert.alert('Error', 'Could not save weight. Please try again.');
-      } else {
-        setTodayWeight(valLbs);
-        setTodaySleepHours(selectedSleepHours);
-        setWeightLoggedToday(true);
-        setShowWeightModal(false);
+        return;
       }
+
+      setTodayWeight(valLbs);
+      setTodaySleepHours(selectedSleepHours);
+      setWeightLoggedToday(true);
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const synced = await refetchTodayWeightLog();
+        if (synced) break;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+
+      setWeightSaveSuccess(true);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setShowWeightModal(false);
+      setWeightInput('');
     } catch {
       Alert.alert('Error', 'Could not save weight. Please try again.');
     } finally {
       setWeightSaving(false);
+      setWeightSaveSuccess(false);
     }
   };
 
-  const handleStartWorkout = useCallback(() => {
+  const handleStartWorkout = useCallback(async () => {
     const todayWorkout = planData?.todayWorkout ?? null;
     if (!todayWorkout) return;
+
     const sessionWeek = todayWorkout.isNextWeek
       ? (planData?.currentWeek ?? 1) + 1
       : planData?.currentWeek ?? 1;
+
     if (Platform.OS !== 'web' && sessionWeek >= 2) {
       if (entitlementLoading) return;
       if (!isPro) {
@@ -1297,11 +1517,27 @@ export default function HomeScreen() {
         return;
       }
     }
+
     const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
-    const weeklyLogsLocal = workoutLogs ?? [];
+
+    let weeklyLogsLocal = workoutLogs ?? [];
+    if (
+      weeklyLogsLocal.length === 0 &&
+      planData?.planId &&
+      (planData?.currentWeek ?? 1) >= 2
+    ) {
+      const { data: freshLogs } = await supabase
+        .from('workout_logs')
+        .select('id, sets_json, session_fatigue_rating, logged_at')
+        .eq('plan_id', planData.planId)
+        .eq('week_number', planData.currentWeek)
+        .order('logged_at', { ascending: false })
+        .limit(5);
+      weeklyLogsLocal = freshLogs ?? [];
+    }
+
     const sessionsThisWeekLocal = weeklyLogsLocal.length;
-    const isWeekCompleteLocal =
-      sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
+    const isWeekCompleteLocal = sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
     const lastSessionLocal = weeklyLogsLocal[0] ?? null;
     const lastSignalLocal = sessionSignalFromLastLog(lastSessionLocal);
     const preSessionCopyLocal =
@@ -1310,6 +1546,7 @@ export default function HomeScreen() {
       !isWeekCompleteLocal
         ? PRE_SESSION_COPY[lastSignalLocal]
         : null;
+
     navigation.navigate('ActiveWorkout', {
       planId: planData?.planId ?? 'mock',
       weekNumber: todayWorkout.isNextWeek
@@ -1399,12 +1636,13 @@ export default function HomeScreen() {
   const sessionsDisplay = statsLoading ? '-' : String(totalSessions);
   const weeklySessionCount = workoutLogs?.length ?? 0;
   const dashboardCurrentWeek = planData?.currentWeek ?? 1;
-  const volumeDisplay =
-    statsLoading || weeklyVolume === 0
-      ? '—'
-      : weeklyVolume >= 1000
-        ? `${(weeklyVolume / 1000).toFixed(1)}k`
-        : String(weeklyVolume);
+  const volumeDisplay = statsLoading
+    ? '—'
+    : weeklyVolume >= 1000
+      ? `${(weeklyVolume / 1000).toFixed(1)}k lbs`
+      : weeklyVolume > 0
+        ? `${weeklyVolume.toLocaleString()} lbs`
+        : '—';
 
   const sessionCount = totalSessions;
   const isDay1ColdStart =
@@ -1827,12 +2065,6 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {isWeek1NoSessionsYet ? (
-              <Text style={styles.startAnytimeHint}>
-                Start whenever you're ready. Your schedule begins Week 2.
-              </Text>
-            ) : null}
-
             {displaySessionFocus ? (
               <View style={styles.sessionFocusCard}>
                 <Text style={styles.sessionFocusText}>{stripEmDash(displaySessionFocus ?? '')}</Text>
@@ -1880,7 +2112,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.ctaButton}
                 activeOpacity={0.8}
-                onPress={handleStartWorkout}
+                onPress={() => void handleStartWorkout()}
               >
                 <Text style={styles.ctaText}>Start Workout →</Text>
               </TouchableOpacity>
@@ -2114,16 +2346,18 @@ export default function HomeScreen() {
                   <Text
                     style={[
                       styles.quickStatValue,
+                      styles.quickStatValueVolume,
                       weeklySessionCount > 0 &&
                         weeklyVolume > 0 &&
                         !statsLoading
                         ? styles.quickStatValueAccent
                         : null,
                     ]}
+                    numberOfLines={1}
                   >
                     {volumeDisplay}
                   </Text>
-                  <Text style={styles.quickStatLabel}>lbs</Text>
+                  <Text style={styles.quickStatLabel}>Week volume</Text>
                 </View>
               </View>
             )}
@@ -2234,6 +2468,21 @@ export default function HomeScreen() {
             <Text style={styles.coachUpdated}>{jordanCardUpdatedLabel}</Text>
           </View>
         </View>
+
+        {planStatus === 'active' &&
+        (planData?.currentWeek ?? 1) >= 2 &&
+        (planData?.adaptationChanges?.length ?? 0) > 0 ? (
+          <AdaptationChangesCard
+            weekNumber={planData?.currentWeek ?? 2}
+            phase={planData?.currentWeekPhase ?? ''}
+            changes={planData?.adaptationChanges ?? []}
+            onPress={() =>
+              navigation.navigate('AdaptationFeed', {
+                weekNumber: planData?.currentWeek ?? 2,
+              })
+            }
+          />
+        ) : null}
           </>
         )}
       </ScrollView>
@@ -2303,18 +2552,26 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={styles.weightModalCancelBtn}
                     onPress={() => setShowWeightModal(false)}
+                    disabled={weightSaving}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.weightModalCancelText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.weightModalSaveBtn}
+                    style={[
+                      styles.weightModalSaveBtn,
+                      weightSaveSuccess && styles.weightModalSaveBtnSuccess,
+                    ]}
                     onPress={handleSaveWeight}
                     disabled={weightSaving}
                     activeOpacity={0.8}
                   >
                     {weightSaving ? (
-                      <ActivityIndicator color={Colors.textPrimary} />
+                      weightSaveSuccess ? (
+                        <Text style={styles.weightModalSaveText}>Saved</Text>
+                      ) : (
+                        <ActivityIndicator color={Colors.textPrimary} />
+                      )
                     ) : (
                       <Text style={styles.weightModalSaveText}>Save</Text>
                     )}
@@ -2652,14 +2909,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginBottom: Spacing.sm,
   },
-  startAnytimeHint: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 4,
-    marginBottom: 4,
-  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2973,6 +3222,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
   },
+  quickStatValueVolume: {
+    fontSize: FontSizes.title,
+  },
   quickStatValuePrimary: {
     color: Colors.textPrimary,
   },
@@ -3066,6 +3318,99 @@ const styles = StyleSheet.create({
   },
   coachFooterSpacer: {
     flex: 1,
+  },
+  adaptationCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
+  },
+  adaptationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    flexWrap: 'wrap',
+  },
+  adaptationJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  adaptationHeaderSep: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+  },
+  adaptationWeekLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  adaptationDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginVertical: Spacing.md,
+  },
+  adaptationChangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  adaptationChangeRowSpaced: {
+    marginTop: Spacing.sm,
+  },
+  adaptationExerciseName: {
+    flex: 1,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+  adaptationWeightBase: {
+    fontSize: FontSizes.caption,
+    textAlign: 'right',
+    flexShrink: 0,
+    maxWidth: '46%',
+  },
+  adaptationWeightIncrease: {
+    fontFamily: Fonts.semiBold,
+    color: Colors.success,
+  },
+  adaptationWeightDecrease: {
+    fontFamily: Fonts.semiBold,
+    color: Colors.danger,
+  },
+  adaptationWeightHold: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  adaptationWeightDeload: {
+    fontFamily: Fonts.regular,
+    color: Colors.accent,
+  },
+  adaptationDeloadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  adaptationDeloadText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  adaptationFooter: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    marginTop: Spacing.sm,
   },
   coachLink: {
     fontFamily: Fonts.medium,
@@ -3396,6 +3741,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  weightModalSaveBtnSuccess: {
+    backgroundColor: Colors.success,
   },
   weightModalSaveText: {
     color: Colors.textPrimary,

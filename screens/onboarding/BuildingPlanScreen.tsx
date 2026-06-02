@@ -22,6 +22,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { JordanAvatar } from '../../components/JordanAvatar';
 import { stripEmDash } from '../../utils/jordanText';
+import { computeFirstSessionDate } from '../../utils/dateUtils';
+import { getDeviceId, getDeviceFingerprint } from '../../utils/device';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
 type RouteType = RouteProp<RootStackParamList, 'BuildingPlan'>;
@@ -197,14 +199,31 @@ function isGeneratePlanOverloaded(data: unknown): boolean {
   );
 }
 
-/** Returns the date of the next Monday (never today, even if today is Monday). */
-function getNextMonday(): Date {
-  const d = new Date();
-  const dayOfWeek = d.getDay(); // 0 = Sun, 1 = Mon … 6 = Sat
-  const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
-  d.setDate(d.getDate() + daysUntilMonday);
-  d.setHours(0, 0, 0, 0);
-  return d;
+type GeneratedPlanJson = {
+  title?: string;
+  totalWeeks?: number;
+  jordanWelcome?: string | null;
+  scheduledDays?: string[];
+  weeks?: { days?: { type?: string; dayNumber?: number; title?: string }[] }[];
+};
+
+type GeneratePlanFnData = {
+  plan?: GeneratedPlanJson;
+  status?: string;
+  reason?: string;
+  message?: string;
+  error?: string;
+};
+
+function getGeneratePlanBlockMessage(data: GeneratePlanFnData | null): string | null {
+  if (!data?.status) return null;
+  if (data.status === 'rate_limited') {
+    return "You've already generated a plan recently. Subscribe to Hone Pro to create unlimited plans.";
+  }
+  if (data.status === 'generation_limit_reached') {
+    return 'Subscribe to Hone Pro to start a new plan.';
+  }
+  return data.message ?? null;
 }
 
 const cleanJordanMessage = (msg: string | null): string | null => {
@@ -237,14 +256,21 @@ export default function BuildingPlanScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [jordanMessage, setJordanMessage] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
-  const [startDateDecided, setStartDateDecided] = useState(false);
+  const [firstSessionDisplayLine, setFirstSessionDisplayLine] = useState<string>('');
+  const [firstSessionDateISO, setFirstSessionDateISO] = useState<string>('');
   const [savingStartDate, setSavingStartDate] = useState(false);
-  // Prompt is skipped on Monday — plan already starts on the "right" day
-  const todayIsMonday = new Date().getDay() === 1;
   const [weekNumber] = useState(1);
   const [firstDayNumber, setFirstDayNumber] = useState<number>(1);
   const [firstWorkoutTitle, setFirstWorkoutTitle] = useState<string>('Workout');
-  const [errorState, setErrorState] = useState<{ message: string; canRetry: boolean } | null>(null);
+  const [errorState, setErrorState] = useState<{
+    message: string;
+    canRetry: boolean;
+    showSubscribe?: boolean;
+  } | null>(null);
+
+  const planGenerationMode = params.planGenerationMode ?? 'preview';
+  const isPreviewGeneration = planGenerationMode === 'preview';
+  const replacePlanId = params.replacePlanId;
   const [displaySubtitle, setDisplaySubtitle] = useState(LOADING_STEPS[0].message);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
 
@@ -365,6 +391,14 @@ export default function BuildingPlanScreen() {
     }
   }, [apiDone, animDone, errorState]);
 
+  useEffect(() => {
+    if (!planReady || !isPreviewGeneration || errorState) return;
+    navigation.navigate('PlanPreview', {
+      ...params,
+      previewPlanId: planId ?? undefined,
+    });
+  }, [planReady, isPreviewGeneration, errorState, navigation, params, planId]);
+
   // --- Generate plan, save to Supabase, then navigate ---
   useEffect(() => {
     generateAndSavePlan(false);
@@ -394,38 +428,8 @@ export default function BuildingPlanScreen() {
     return plan?.id ?? null;
   };
 
-  const handleStartToday = async () => {
-    console.log('[StartDate] Start today tapped');
-    setSavingStartDate(true);
-    try {
-      const resolvedPlanId = await resolveActivePlanId();
-      if (!resolvedPlanId) {
-        console.error('[StartDate] No active plan ID found');
-      } else {
-        const todayISO = new Date().toISOString().split('T')[0];
-        const { error } = await supabase
-          .from('plans')
-          .update({ start_date: todayISO })
-          .eq('id', resolvedPlanId);
-        if (error) console.error('[StartDate] UPDATE failed:', error);
-        else console.log('[StartDate] UPDATE success, start_date:', todayISO);
-      }
-    } catch (e) {
-      console.error('[StartDate] handleStartToday threw:', e);
-    }
-    setSavingStartDate(false);
-    scheduleReEngagementPush();
-    navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
-  };
-
-  const handleStartNextMonday = async () => {
-    const today = new Date();
-    console.log('[StartDate] today.getDay():', today.getDay(), 'today:', today.toISOString());
-    const daysUntilMonday = (1 - today.getDay() + 7) % 7 || 7;
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + daysUntilMonday);
-    const startDateStr = nextMonday.toISOString().split('T')[0];
-    console.log('[StartDate] Start next Monday tapped, date:', startDateStr);
+  const handleBeginTraining = async () => {
+    if (!firstSessionDateISO) return;
     setSavingStartDate(true);
     try {
       const resolvedPlanId = await resolveActivePlanId();
@@ -434,13 +438,13 @@ export default function BuildingPlanScreen() {
       } else {
         const { error } = await supabase
           .from('plans')
-          .update({ start_date: startDateStr })
+          .update({ start_date: firstSessionDateISO })
           .eq('id', resolvedPlanId);
         if (error) console.error('[StartDate] UPDATE failed:', error);
-        else console.log('[StartDate] UPDATE success, start_date:', startDateStr);
+        else console.log('[StartDate] start_date set:', firstSessionDateISO);
       }
     } catch (e) {
-      console.error('[StartDate] handleStartNextMonday threw:', e);
+      console.error('[StartDate] handleBeginTraining threw:', e);
     }
     setSavingStartDate(false);
     scheduleReEngagementPush();
@@ -467,7 +471,12 @@ export default function BuildingPlanScreen() {
       let generatePlanBody: Record<string, unknown>;
       let planWeeksResolved: number;
 
-      if (!isRetry) {
+      const [deviceId, deviceFingerprint] = await Promise.all([
+        getDeviceId(),
+        getDeviceFingerprint(),
+      ]);
+
+      if (!isRetry && !replacePlanId) {
         let { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
@@ -499,6 +508,8 @@ export default function BuildingPlanScreen() {
 
         await supabase.from('user_profiles').upsert({
           user_id: userId,
+          ...(deviceId ? { device_id: deviceId } : {}),
+          ...(deviceFingerprint ? { device_fingerprint: deviceFingerprint } : {}),
           training_age: params.experience,
           days_per_week: daysPerWeekForProfile,
           training_days: params.trainingDays ?? [],
@@ -603,12 +614,56 @@ export default function BuildingPlanScreen() {
           recommendedWeeks: planWeeksResolved,
           scheduledDays: params.trainingDays ?? [],
           subMusclePreferences: params.subMusclePreferences ?? {},
+          userId,
+          deviceId,
+          isPreview: isPreviewGeneration,
         };
 
         console.log(
           '[BuildingPlan] generate-plan request body:',
           JSON.stringify(generatePlanBody, null, 2),
         );
+
+        retryContextRef.current = {
+          userId,
+          goalData,
+          generatePlanBody,
+          planWeeksResolved,
+        };
+      } else if (replacePlanId && params.goalId) {
+        let { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+          if (anonError) throw new Error('Could not create session: ' + anonError.message);
+          session = anonData.session;
+        }
+        const uid = session?.user?.id;
+        if (!uid) throw new Error('No user session');
+        userId = uid;
+
+        planWeeksResolved = resolvePlanWeeksFromParams(params);
+        goalData = { id: params.goalId };
+
+        const sessionStructure = params.sessionStructure ?? [];
+        const structureWorkoutCount = sessionStructure.filter(
+          (d: { type: string }) => d.type === 'workout',
+        ).length;
+        const daysPerWeekResolved =
+          structureWorkoutCount > 0
+            ? String(structureWorkoutCount)
+            : params.daysPerWeek;
+
+        generatePlanBody = {
+          ...params,
+          daysPerWeek: daysPerWeekResolved,
+          totalWeeks: planWeeksResolved,
+          recommendedWeeks: planWeeksResolved,
+          scheduledDays: params.trainingDays ?? [],
+          subMusclePreferences: params.subMusclePreferences ?? {},
+          userId,
+          deviceId,
+          isPreview: false,
+        };
 
         retryContextRef.current = {
           userId,
@@ -647,28 +702,63 @@ export default function BuildingPlanScreen() {
         return;
       }
 
+      const fnPayload = fnData as GeneratePlanFnData | null;
+      const blockMessage = getGeneratePlanBlockMessage(fnPayload);
+      if (blockMessage) {
+        stopLoadingSequence();
+        subtitleOpacity.setValue(1);
+        setErrorState({
+          message: blockMessage,
+          canRetry: false,
+          showSubscribe: true,
+        });
+        return;
+      }
+
       if (fnError) throw fnError;
 
-      const planJson = (fnData as { plan?: any } | null)?.plan;
+      const planJson = fnPayload?.plan;
       if (!planJson) throw new Error('No plan returned from Edge Function');
 
-      const { data: savedPlan, error: planError } = await supabase
-        .from('plans')
-        .insert({
-          user_id: userId,
-          goal_id: goalData.id,
-          title: planJson.title,
-          current_week: 1,
-          total_weeks: planJson.totalWeeks,
-          status: 'active',
-          plan_json: planJson,
-        })
-        .select()
-        .maybeSingle();
+      let savedPlan: { id: string } | null = null;
 
-      if (planError) throw planError;
-      if (!savedPlan) {
-        throw new Error('Plan insert did not return a row');
+      if (replacePlanId) {
+        const { data: updated, error: planError } = await supabase
+          .from('plans')
+          .update({
+            title: planJson.title,
+            total_weeks: planJson.totalWeeks,
+            plan_json: planJson,
+            is_preview: false,
+          })
+          .eq('id', replacePlanId)
+          .select('id')
+          .maybeSingle();
+
+        if (planError) throw planError;
+        savedPlan = updated;
+      } else {
+        const { data: inserted, error: planError } = await supabase
+          .from('plans')
+          .insert({
+            user_id: userId,
+            goal_id: goalData.id,
+            title: planJson.title,
+            current_week: 1,
+            total_weeks: planJson.totalWeeks,
+            status: 'active',
+            plan_json: planJson,
+            is_preview: isPreviewGeneration,
+          })
+          .select('id')
+          .maybeSingle();
+
+        if (planError) throw planError;
+        savedPlan = inserted;
+      }
+
+      if (!savedPlan?.id) {
+        throw new Error('Plan save did not return a row');
       }
 
       const week1Days = planJson.weeks?.[0]?.days ?? [];
@@ -678,6 +768,21 @@ export default function BuildingPlanScreen() {
       setJordanMessage(planJson.jordanWelcome ?? null);
       setFirstDayNumber(firstWorkout?.dayNumber ?? 1);
       setFirstWorkoutTitle(firstWorkout?.title ?? 'Workout');
+
+      const scheduledFromPlan = Array.isArray(planJson.scheduledDays)
+        ? (planJson.scheduledDays as string[])
+        : (params.trainingDays ?? []);
+      const firstSession = computeFirstSessionDate(scheduledFromPlan);
+      if (firstSession) {
+        setFirstSessionDateISO(firstSession.dateStr);
+        setFirstSessionDisplayLine(firstSession.displayLine);
+      } else {
+        const fallback = computeFirstSessionDate(params.trainingDays ?? []);
+        if (fallback) {
+          setFirstSessionDateISO(fallback.dateStr);
+          setFirstSessionDisplayLine(fallback.displayLine);
+        }
+      }
 
       saveGoalProjection(
         goalData.id,
@@ -757,6 +862,19 @@ export default function BuildingPlanScreen() {
               <Text style={styles.loadRetryButtonText}>Try Again</Text>
             </Pressable>
           ) : null}
+          {errorState?.showSubscribe ? (
+            <Pressable
+              style={styles.loadRetryButton}
+              onPress={() =>
+                navigation.navigate('Dashboard', {
+                  screen: 'ProfileTab',
+                  params: { screen: 'SubscriptionManagement' },
+                } as never)
+              }
+            >
+              <Text style={styles.loadRetryButtonText}>Subscribe →</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.midSection}>
@@ -816,7 +934,7 @@ export default function BuildingPlanScreen() {
         </View>
       </View>
 
-      {planReady && (
+      {planReady && !isPreviewGeneration && (
         <View style={styles.handoffOverlay}>
           <View style={styles.handoffCard}>
             <View style={styles.handoffCheckCircle}>
@@ -838,89 +956,33 @@ export default function BuildingPlanScreen() {
               </Text>
             )}
 
-            {!todayIsMonday && !startDateDecided ? (
-              <View style={styles.startDatePrompt}>
-                <Text style={styles.startDateLabel}>When do you want to begin?</Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={handleStartToday}
-                  disabled={savingStartDate}
-                >
-                  {savingStartDate ? (
-                    <ActivityIndicator color={Colors.accent} size="small" />
-                  ) : (
-                    <Text style={styles.startDateToday}>Start today</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={handleStartNextMonday}
-                  disabled={savingStartDate}
-                >
-                  {savingStartDate ? (
-                    <ActivityIndicator color={Colors.accent} size="small" />
-                  ) : (
-                    <Text style={styles.startDateMonday}>Start next Monday</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={styles.handoffPrimaryBtn}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    if (planId) {
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: 'Dashboard' }],
-                      });
-                      setTimeout(() => {
-                        navigation.navigate('ActiveWorkout', {
-                          planId: planId!,
-                          weekNumber: weekNumber,
-                          dayNumber: firstDayNumber,
-                          workoutTitle: firstWorkoutTitle,
-                        });
-                      }, 100);
-                    } else {
-                      navigation.navigate('Dashboard');
-                    }
-                  }}
-                >
-                  <Text style={styles.handoffPrimaryBtnText}>
-                    Start Workout Now →
-                  </Text>
-                </TouchableOpacity>
+            {firstSessionDisplayLine ? (
+              <Text style={styles.firstSessionLine}>{firstSessionDisplayLine}</Text>
+            ) : null}
 
-                <TouchableOpacity
-                  style={styles.handoffSecondaryBtn}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    scheduleReEngagementPush();
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: 'Dashboard' }],
-                    });
-                  }}
-                >
-                  <Text style={styles.handoffSecondaryBtnText}>
-                    Go to Dashboard
-                  </Text>
-                </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.handoffPrimaryBtn}
+              activeOpacity={0.8}
+              onPress={() => void handleBeginTraining()}
+              disabled={savingStartDate || !firstSessionDateISO}
+            >
+              {savingStartDate ? (
+                <ActivityIndicator color={Colors.textPrimary} size="small" />
+              ) : (
+                <Text style={styles.handoffPrimaryBtnText}>Begin Training →</Text>
+              )}
+            </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => setShowFeedback(true)}
-                  style={styles.setupFeedbackLink}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.setupFeedbackText}>
-                    How was your setup experience? →
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity
+              onPress={() => setShowFeedback(true)}
+              style={styles.setupFeedbackLink}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.setupFeedbackText}>
+                How was your setup experience? →
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -1064,29 +1126,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: LineHeights.caption,
   },
-  startDatePrompt: {
-    width: '100%',
-    alignItems: 'center',
-    marginTop: Spacing.xl,
-    gap: Spacing.sm,
-  },
-  startDateLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-    marginBottom: Spacing.xs,
-  },
-  startDateToday: {
-    fontFamily: Fonts.semiBold,
+  firstSessionLine: {
+    fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
-    color: Colors.accent,
+    color: Colors.textPrimary,
     textAlign: 'center',
-  },
-  startDateMonday: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    lineHeight: LineHeights.body,
   },
   handoffOverlay: {
     ...StyleSheet.absoluteFillObject,

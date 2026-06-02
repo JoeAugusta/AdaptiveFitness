@@ -71,7 +71,15 @@ function RatingBadge({ rating }: { rating: PerformanceRating }) {
   );
 }
 
-function SummaryCards({ summary }: { summary: WeeklySummaryData }) {
+function SummaryCards({
+  summary,
+  adaptationWeekNumber,
+  onSeeDetailedChanges,
+}: {
+  summary: WeeklySummaryData;
+  adaptationWeekNumber: number;
+  onSeeDetailedChanges: () => void;
+}) {
   const headlineBorder =
     summary.performanceRating === 'strong'
       ? styles.headlineCardBorderStrong
@@ -357,7 +365,18 @@ export default function WeeklyCoachSummaryScreen() {
         )}
 
         {!loading && !error && currentSummary && (
-          <SummaryCards summary={currentSummary} />
+          <SummaryCards
+            summary={currentSummary}
+            adaptationWeekNumber={
+              currentWeekNum > weekNumber + 1 ? currentWeekNum : weekNumber + 1
+            }
+            onSeeDetailedChanges={() =>
+              navigation.navigate('AdaptationFeed', {
+                weekNumber:
+                  currentWeekNum > weekNumber + 1 ? currentWeekNum : weekNumber + 1,
+              })
+            }
+          />
         )}
 
         {!loading && (() => {
@@ -703,6 +722,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     color: Colors.textPrimary,
     lineHeight: 24,
+  },
+  detailedChangesLink: {
+    marginTop: Spacing.xl,
+    alignSelf: 'flex-start',
+  },
+  detailedChangesText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
 
   previousSectionHeading: {

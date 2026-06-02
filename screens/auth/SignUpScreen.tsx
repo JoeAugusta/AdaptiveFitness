@@ -17,6 +17,7 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
+import { getDeviceId, getDeviceFingerprint } from '../../utils/device';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
@@ -101,12 +102,18 @@ export default function SignUpScreen() {
       }
 
       if (data.user) {
+        const [deviceId, deviceFingerprint] = await Promise.all([
+          getDeviceId(),
+          getDeviceFingerprint(),
+        ]);
         const { error: profileError } = await supabase
           .from('user_profiles')
           .upsert(
             {
               user_id: data.user.id,
               full_name: fullName.trim(),
+              ...(deviceId ? { device_id: deviceId } : {}),
+              ...(deviceFingerprint ? { device_fingerprint: deviceFingerprint } : {}),
             },
             {
               onConflict: 'user_id',
@@ -198,7 +205,7 @@ export default function SignUpScreen() {
               style={styles.brandLogo}
               resizeMode="contain"
             />
-            <Text style={styles.brandWord}>hone</Text>
+            <Text style={styles.brandWord}>Hone</Text>
           </View>
 
           <Text style={styles.screenTitle}>Create account</Text>

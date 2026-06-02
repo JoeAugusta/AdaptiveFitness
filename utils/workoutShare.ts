@@ -1,10 +1,19 @@
 import { stripEmDash } from './jordanText';
 
 type LogSet = {
+  exerciseName?: string;
   weightLbs?: number;
   weight?: number;
   reps?: number;
   rpe?: number;
+};
+
+export type ShareTopLift = {
+  exerciseName: string;
+  weightLbs: number;
+  reps: number;
+  /** When no weighted sets — show sets completed instead */
+  setsCompleted?: number;
 };
 
 export function computeSessionShareStats(sets: LogSet[]): {
@@ -31,6 +40,66 @@ export function computeSessionShareStats(sets: LogSet[]): {
   return { totalSets, avgRpe, volumeLbs: Math.round(volumeLbs) };
 }
 
+/** Top 2–3 exercises by max weight; bodyweight fallback by set count. */
+export function computeTopLiftsFromSets(sets: LogSet[]): ShareTopLift[] {
+  const byExercise = new Map<
+    string,
+    { maxWeight: number; repsAtMax: number; setCount: number }
+  >();
+
+  for (const s of sets) {
+    const name = String(s.exerciseName ?? '').trim();
+    if (!name || name === 'session_summary') continue;
+
+    const w = Number(s.weightLbs ?? s.weight ?? 0);
+    const r = Number(s.reps ?? 0);
+    const prev = byExercise.get(name) ?? {
+      maxWeight: 0,
+      repsAtMax: 0,
+      setCount: 0,
+    };
+    prev.setCount += 1;
+    if (w > prev.maxWeight) {
+      prev.maxWeight = w;
+      prev.repsAtMax = r;
+    } else if (w === prev.maxWeight && r > prev.repsAtMax) {
+      prev.repsAtMax = r;
+    }
+    byExercise.set(name, prev);
+  }
+
+  const weighted = [...byExercise.entries()]
+    .filter(([, v]) => v.maxWeight > 0)
+    .map(([exerciseName, v]) => ({
+      exerciseName,
+      weightLbs: Math.round(v.maxWeight),
+      reps: v.repsAtMax,
+    }))
+    .sort((a, b) => b.weightLbs - a.weightLbs)
+    .slice(0, 3);
+
+  if (weighted.length > 0) return weighted;
+
+  return [...byExercise.entries()]
+    .map(([exerciseName, v]) => ({
+      exerciseName,
+      weightLbs: 0,
+      reps: 0,
+      setsCompleted: v.setCount,
+    }))
+    .sort((a, b) => (b.setsCompleted ?? 0) - (a.setsCompleted ?? 0))
+    .slice(0, 3);
+}
+
+export function formatShareLiftLine(lift: ShareTopLift): string {
+  if (lift.weightLbs > 0) {
+    const repsLabel = lift.reps > 0 ? `${lift.reps} reps` : 'reps';
+    return `${lift.weightLbs.toLocaleString('en-US')} lbs × ${repsLabel}`;
+  }
+  const n = lift.setsCompleted ?? 0;
+  return `${n} ${n === 1 ? 'set' : 'sets'} completed`;
+}
+
 export function fallbackJordanNoteFromRpe(avgRpe: number): string {
   if (avgRpe <= 0 || avgRpe < 7) {
     return 'Solid session. Loads will increase next week.';
@@ -41,16 +110,13 @@ export function fallbackJordanNoteFromRpe(avgRpe: number): string {
   return 'Tough session. Recovery is part of the process.';
 }
 
-/** At most two sentences for share card copy. */
+/** One sentence for share card copy. */
 export function truncateJordanNoteForShare(text: string): string {
   const cleaned = stripEmDash(text).trim();
   if (!cleaned) return '';
-  const sentences = cleaned
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  if (sentences.length <= 2) return cleaned;
-  return sentences.slice(0, 2).join(' ');
+  const first = cleaned.split('. ')[0]?.trim() ?? cleaned;
+  if (/[.!?]$/.test(first)) return first;
+  return `${first}.`;
 }
 
 export function resolveSessionTitleFromPlan(

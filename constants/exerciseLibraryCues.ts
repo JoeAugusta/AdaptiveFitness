@@ -45,6 +45,31 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Lower with control to lower chest; avoid bouncing off chest',
     'Press up without flaring elbows or losing shoulder position',
   ],
+  c10: [
+    'Place bar on chest, feet flat, back naturally arched',
+    'Press straight up — Smith guides the path; focus on chest squeeze',
+    "Control the descent; don't rely on the bar stops as a crutch",
+  ],
+  c11: [
+    'Adjust seat so handles align with upper chest at incline angle',
+    'Press up and slightly back — maintain shoulder blade retraction',
+    'Lower with control; feel upper chest stretch at the bottom',
+  ],
+  c12: [
+    'Set incline 30-45°, bar over upper chest, latch safety stops',
+    'Press with control — Smith path is fixed so focus on chest engagement',
+    'Lower until stretch is felt across upper chest, not past comfort',
+  ],
+  c13: [
+    'Adjust seat so arms align with mid-chest when elbows are bent 90°',
+    "Bring pads together using chest — don't let shoulders roll forward",
+    'Pause at peak contraction; control the return without slamming',
+  ],
+  c14: [
+    'Seat height so handles are at mid-chest, slight forward lean',
+    'Squeeze chest to bring handles together in an arc motion',
+    'Open with control — feel the chest stretch at the back position',
+  ],
 
   b01: [
     'Hinge to roughly 45°, back flat — not rounded, not upright',
@@ -91,6 +116,16 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Pull handles to torso without shrugging neck forward',
     'Release with control; reset posture each rep',
   ],
+  b10: [
+    'Chest on pad, arms hanging straight — full shoulder stretch at start',
+    'Row handles to lower chest, squeeze shoulder blades together',
+    'Chest stays on pad throughout — no torso momentum',
+  ],
+  b11: [
+    'Set counterweight so you can complete full reps with control',
+    'Pull chin over bar, elbows drive down toward hips',
+    'Lower slowly — use it to build to unassisted pull-ups',
+  ],
 
   s01: [
     'Grip just outside shoulders, bar resting on upper chest',
@@ -132,6 +167,11 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Press overhead in a straight line, head neutral',
     'Don’t lock knees or drive hips — shoulders do the work',
   ],
+  s09: [
+    'Adjust seat so arm pads contact just above elbows',
+    'Raise arms to shoulder height using lateral delts only — no shrug',
+    'Lower with 2-second control; resist the weight on the way down',
+  ],
 
   bi01: [
     'Stand tall, elbows pinned to your sides throughout',
@@ -163,6 +203,16 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Curl with minimal shoulder movement — long head bias',
     'Pause at top stretch position, no bouncing',
   ],
+  bi07: [
+    'Adjust seat so elbows align with machine pivot, upper arms supported',
+    'Curl through full range without letting elbows lift off pad',
+    'Lower with control — 2-3 second negative for maximum stimulus',
+  ],
+  bi08: [
+    'Set armrest height so upper arm lies flat on pad, no gap',
+    'Curl using only forearms — upper arm stays on pad throughout',
+    'Full extension at bottom without resting weight on the stack',
+  ],
 
   tr01: [
     'Elbows pinned to sides, upper arms vertical',
@@ -193,6 +243,31 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Support on bars or rings, shoulders depressed',
     'Lower until shoulders stay stable — depth you own',
     'Press up, lean torso angle consistent through set',
+  ],
+  tr07: [
+    'Adjust seat height so handles are at lower chest level',
+    'Press down using triceps and chest, keep elbows tracking forward',
+    'Control the return — full extension at bottom without locking hard',
+  ],
+  tr08: [
+    'Adjust counterweight so movement is challenging but controlled',
+    'Lower with control until arms straighten, chest near handles',
+    'Press up through full range — use as bodyweight dip progression',
+  ],
+  tr09: [
+    'Adjust pad height so elbows align with machine pivot point',
+    'Press down to full extension using only triceps',
+    "Control the return — don't let the stack bounce at the top",
+  ],
+  tr10: [
+    'Sit facing machine, handles at forehead height, elbows up',
+    'Extend forearms to full lockout — upper arms stay vertical',
+    'Lower with control; feel the long head stretch at top position',
+  ],
+  tr11: [
+    'Grip narrower than shoulder width, latch safety stops',
+    'Lower to chest with elbows tracking close to ribs',
+    'Press to lockout — triceps finish the movement, chest initiates',
   ],
 
   q01: [
@@ -235,6 +310,16 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Back knee travels toward floor — torso tall',
     'Push through front foot to stand; reset balance each step',
   ],
+  q09: [
+    'Feet shoulder-width, toes slightly out, bar across upper traps',
+    'Squat until thighs parallel — knees track over toes throughout',
+    'Drive up through whole foot; Smith guides path so focus on depth',
+  ],
+  q10: [
+    'One foot centered on platform, other foot off — maintain balance',
+    'Lower until knee approaches 90° without hip lifting off seat',
+    'Press through full foot; unilateral work reveals side-to-side imbalances',
+  ],
 
   h01: [
     'Soft knee bend throughout — this is a hinge, not a squat',
@@ -266,6 +351,16 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Hinge and snap hips — arms are ropes, not pulling',
     'Stop at chest height; bell floats — don’t squat the swing',
   ],
+  h07: [
+    'Lie face down, align knees with machine hinge, pad on lower calf',
+    'Curl heels toward glutes without hips lifting off pad',
+    'Lower with 2-3 second control — the eccentric is where growth happens',
+  ],
+  h08: [
+    'Sit with knees at machine hinge, back against pad, ankle pad secure',
+    'Curl heels under seat through full range of motion',
+    'Pause at peak contraction; lower with control to full extension',
+  ],
 
   g01: [
     'Upper back on bench, bar over hip crease with pad, feet flat',
@@ -296,6 +391,16 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Band over hips, upper back on bench, feet planted',
     'Drive hips up against band tension',
     'Hold top squeeze, control down — band pulls evenly',
+  ],
+  g07: [
+    'Back against pad, bar or pad across hip crease, feet flat',
+    'Drive hips up to full extension — squeeze glutes hard at the top',
+    'Lower with control; reset position each rep for consistent stimulus',
+  ],
+  g08: [
+    'Sit in machine with hip pad across upper glutes/lower back',
+    'Drive hips forward through full extension using glutes',
+    'Control return — machine isolates glutes better than barbell hip thrust',
   ],
 
   cv01: [

@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 import {
   enforceSetStructureExercise,
@@ -13,6 +14,158 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+/** Match app `constants/betaBypass.ts` — flip both to false before launch. */
+const BETA_BYPASS = true;
+const RATE_LIMIT_ENABLED = !BETA_BYPASS;
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+const PREVIEW_SYSTEM_PROMPT = `Generate a 2-session preview workout plan for this athlete.
+Show enough to demonstrate the coaching quality — real exercises,
+real weights, Jordan's voice. This is a preview only.
+Return Week 1, Day 1 and Day 2 only.
+Follow all existing exercise selection and coaching note rules.
+
+STYLE RULE: Never use em-dashes (—) in any response. Use periods or commas instead.
+Never use the word "AI" — Jordan is a coach, not an AI system.
+
+coachingNote: 1–2 sentences on WHY this exercise is in the plan for this user.
+sessionFocus: one sentence, max 12 words, for workout days; "" on rest days.
+Week 1 phase MUST be "baseline".`;
+
+function rateLimitJsonResponse(payload: Record<string, string>): Response {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function logRateLimitEvent(
+  supabase: ReturnType<typeof createClient>,
+  userId: string | null,
+  deviceId: string | null,
+  reason: string,
+): Promise<void> {
+  try {
+    await supabase.from('rate_limit_events').insert({
+      user_id: userId,
+      device_id: deviceId,
+      event_type: 'plan_generation_blocked',
+      reason,
+    });
+  } catch (e) {
+    console.error('[generate-plan] rate_limit_events insert failed:', e);
+  }
+}
+
+async function isUserPro(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('subscription_status')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return (data as { subscription_status?: string } | null)?.subscription_status === 'pro';
+}
+
+async function checkRateLimits(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  deviceId: string | null,
+  isPreview: boolean,
+): Promise<Response | null> {
+  const isPro = await isUserPro(supabase, userId);
+  if (isPro) return null;
+
+  if (!isPreview) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_plan_generations_used')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const used = Number(
+      (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
+    );
+    if (used >= 1) {
+      await logRateLimitEvent(supabase, userId, deviceId, 'generation_limit_reached');
+      return rateLimitJsonResponse({
+        status: 'generation_limit_reached',
+        message: 'Subscribe to generate additional plans',
+      });
+    }
+
+    const since = new Date(Date.now() - THIRTY_DAYS_MS).toISOString();
+    const { data: recentPlans } = await supabase
+      .from('plans')
+      .select('id, created_at, is_preview')
+      .eq('user_id', userId)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false });
+
+    const hasRecentFull = (recentPlans ?? []).some(
+      (p) => !(p as { is_preview?: boolean }).is_preview,
+    );
+    if (hasRecentFull) {
+      await logRateLimitEvent(supabase, userId, deviceId, 'plan_cooldown');
+      return rateLimitJsonResponse({
+        status: 'rate_limited',
+        reason: 'plan_cooldown',
+        message: 'Subscribe to generate a new plan',
+      });
+    }
+
+    if (deviceId) {
+      const { data: deviceProfiles } = await supabase
+        .from('user_profiles')
+        .select('user_id')
+        .eq('device_id', deviceId)
+        .neq('user_id', userId);
+
+      const otherIds = (deviceProfiles ?? [])
+        .map((r) => (r as { user_id: string }).user_id)
+        .filter(Boolean);
+
+      if (otherIds.length > 0) {
+        const { data: otherFull } = await supabase
+          .from('plans')
+          .select('id')
+          .in('user_id', otherIds)
+          .eq('is_preview', false)
+          .gte('created_at', since)
+          .limit(1);
+
+        if ((otherFull ?? []).length > 0) {
+          await logRateLimitEvent(supabase, userId, deviceId, 'plan_cooldown_device');
+          return rateLimitJsonResponse({
+            status: 'rate_limited',
+            reason: 'plan_cooldown',
+            message: 'Subscribe to generate a new plan',
+          });
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function trimPreviewWeekDays(planJson: Record<string, unknown>): void {
+  const weeks = planJson.weeks as { days?: { type?: string }[] }[] | undefined;
+  if (!Array.isArray(weeks) || !weeks[0]?.days) return;
+  let workoutCount = 0;
+  const trimmed: { type?: string }[] = [];
+  for (const day of weeks[0].days) {
+    if (day?.type === 'workout') {
+      if (workoutCount >= 2) continue;
+      workoutCount++;
+    }
+    trimmed.push(day);
+  }
+  weeks[0].days = trimmed;
+}
 
 /** GAP-7: name → muscleEmphasis lookup. Keys are lowercase-trimmed exercise names. */
 const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
@@ -1072,6 +1225,11 @@ interface GeneratePlanBody {
   concurrentSport?: { type: string[]; daysPerWeek: number } | null;
   /** GAP-8: Biological sex for sex-aware rep range and volume adjustments */
   biologicalSex?: 'male' | 'female' | 'prefer_not_to_say' | null;
+  sex?: string;
+  /** Layer A: lite 2-session preview (onboarding) */
+  isPreview?: boolean;
+  userId?: string;
+  deviceId?: string;
 }
 
 interface ProgrammingParams {
@@ -1656,6 +1814,22 @@ serve(async (req) => {
 
   try {
     const body = (await req.json()) as GeneratePlanBody;
+    const isPreview = body.isPreview === true;
+    const userId =
+      typeof body.userId === 'string' && body.userId.trim() !== '' ? body.userId.trim() : null;
+    const deviceId =
+      typeof body.deviceId === 'string' && body.deviceId.trim() !== ''
+        ? body.deviceId.trim()
+        : null;
+
+    if (RATE_LIMIT_ENABLED && userId) {
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      );
+      const blocked = await checkRateLimits(supabaseAdmin, userId, deviceId, isPreview);
+      if (blocked) return blocked;
+    }
 
     const {
       goal: goalIn = 'general',
@@ -2503,6 +2677,10 @@ ${jordanWelcomeRpeRuleLine}
 - Bad opening (never — never output text like this): "I'm Jordan, your AI coach for the next ${totalWeeks} weeks..."
 - Apply the same CRITICAL rule (no "AI"; first person as Jordan; "I" or "your coach" only) to every sessionFocus line, every exercise coachingNote, and any motivationalNote field in this response.`;
 
+    const previewWorkoutSessions = structureArr
+      .filter((d) => d.type === 'workout')
+      .slice(0, 2);
+
     const cardioInstruction =
       goal === 'fat_loss' || goal === 'recomp'
         ? `
@@ -2541,7 +2719,58 @@ SCHEDULING RULES:
 `
         : '';
 
-    const prompt = `${absoluteRuleBlock}
+    const previewPrompt = `Generate a 2-session preview for Week 1 of a ${totalWeeks}-week ${goal} plan.
+
+ATHLETE PROFILE:
+- Experience: ${experience}
+- Equipment: ${equipment}
+- Session length: ${sessionLength}
+- Exercises to avoid: ${exclusions}
+${goalContext ? `- Goal details: ${goalContext}` : ''}
+${weightAnchor}
+
+PREVIEW SESSIONS (Day 1 and Day 2 only — match these focuses):
+${previewWorkoutSessions.map((s, i) => `Day ${i + 1}: ${s.title ?? s.focus ?? 'Workout'} — muscles: ${(s.primaryMuscles ?? []).join(', ')}`).join('\n')}
+
+PROGRAMMING (${experience}):
+- Sets: ${params.sets}, reps: ${params.reps}, rest: ${params.restSeconds}s, RPE: ${params.targetRpe}
+- Max ${maxExercises} exercises per session
+
+${exerciseSelectionSection}
+
+Respond with ONLY this JSON:
+{
+  "title": "descriptive plan name",
+  "jordanWelcome": "2 sentences max — preview tone, Jordan's voice.",
+  "totalWeeks": ${totalWeeks},
+  "daysPerWeek": ${actualDaysPerWeek},
+  "scheduledDays": ${JSON.stringify(trainingDays)},
+  "week": {
+    "weekNumber": 1,
+    "phase": "baseline",
+    "days": [
+      {
+        "dayNumber": 1,
+        "type": "workout",
+        "title": "session name",
+        "sessionFocus": "max 12 words",
+        "muscleGroups": [],
+        "exercises": [{ "id": "e1", "name": "Exercise", "muscleGroup": "Chest", "sets": ${params.sets}, "reps": "${params.reps}", "targetWeight": 0, "restSeconds": ${params.restSeconds}, "targetRpe": ${params.targetRpe}, "coachingNote": "why this exercise" }]
+      },
+      {
+        "dayNumber": 2,
+        "type": "workout",
+        "title": "session name",
+        "sessionFocus": "max 12 words",
+        "muscleGroups": [],
+        "exercises": []
+      }
+    ]
+  }
+}
+Return exactly 2 workout days in week.days — no rest days, no cardio days, no extra sessions.`;
+
+    const fullPrompt = `${absoluteRuleBlock}
 ${sessionStructureFollowBlock}
 
 Create Week 1 of a ${totalWeeks}-week ${goal} training plan.
@@ -2685,19 +2914,9 @@ Respond with ONLY this JSON, no other text:
 }
 Include all 7 days. Workout days have exercises. Rest days have empty exercises array and type "rest".${goal === 'fat_loss' || goal === 'recomp' ? ' For fat_loss and recomp, also include cardio days per CARDIO DAYS above: type "cardio", empty exercises array, cardioType and suggestedDurationMinutes — never on a workout day.' : ''}${goal === 'power_hypertrophy' ? ' Each exercise MUST include "phase": "strength" or "hypertrophy" AND "setStructure": "pyramid" or "straight". Each workout day MUST include "sessionPhase": "power_hypertrophy". Missing any of these fields is a critical error.' : ''}`;
 
-    const response = await fetchAnthropicMessagesWithRetry(() =>
-      fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        // Minimum 8000 per product spec; raised further to reduce “Response may be truncated” corrupt JSON.
-        max_tokens: 24000,
-        system: `You are Jordan, an expert personal coach building Week 1 of a training plan. 
+    const prompt = isPreview ? previewPrompt : fullPrompt;
+
+    const fullSystemPrompt = `You are Jordan, an expert personal coach building Week 1 of a training plan. 
 
 Your job: create a properly structured, goal-appropriate training week.${
   isNonStrengthGoal
@@ -2848,10 +3067,26 @@ Only the target lift (exercise #1 on the relevant day) uses strength rep ranges
 and extended rest. Everything after it uses hypertrophy ranges.
 This applies universally — strength, power_hypertrophy, every goal type.
 Never programme face pulls, cable flyes, lateral raises, curls, calf raises,
-planks, or any isolation movement for sets of 3–5 reps. This is a critical error.`,
-        messages: [{ role: 'user', content: prompt }],
+planks, or any isolation movement for sets of 3–5 reps. This is a critical error.`;
+
+    const systemPrompt = isPreview ? PREVIEW_SYSTEM_PROMPT : fullSystemPrompt;
+    const maxTokens = isPreview ? 1500 : 24000;
+
+    const response = await fetchAnthropicMessagesWithRetry(() =>
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: prompt }],
+        }),
       }),
-    })
     );
 
     if (response.status === 503) {
@@ -3014,11 +3249,41 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
         ? calculateStartingWeight(parseFloat(String(current1RM)), week1Factor(experience))
         : undefined;
 
+    const planOut = {
+      ...planJsonWithStrengthLift,
+      ...(typeof week1BaselineWeight === 'number' ? { week1BaselineWeight } : {}),
+      ...(isPreview ? { isPreview: true } : {}),
+    };
+
+    if (isPreview) {
+      trimPreviewWeekDays(planOut as Record<string, unknown>);
+    }
+
+    if (!isPreview && userId && RATE_LIMIT_ENABLED) {
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      );
+      const isPro = await isUserPro(supabaseAdmin, userId);
+      if (!isPro) {
+        const { data: profile } = await supabaseAdmin
+          .from('user_profiles')
+          .select('full_plan_generations_used')
+          .eq('user_id', userId)
+          .maybeSingle();
+        const used = Number(
+          (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
+        );
+        await supabaseAdmin
+          .from('user_profiles')
+          .update({ full_plan_generations_used: used + 1 })
+          .eq('user_id', userId);
+      }
+    }
+
     return new Response(JSON.stringify({
-      plan: {
-        ...planJsonWithStrengthLift,
-        ...(typeof week1BaselineWeight === 'number' ? { week1BaselineWeight } : {}),
-      },
+      plan: planOut,
+      ...(isPreview ? { isPreview: true } : {}),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

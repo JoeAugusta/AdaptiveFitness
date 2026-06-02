@@ -1,8 +1,7 @@
 import Purchases from 'react-native-purchases';
 import { Platform } from 'react-native';
 import { useState, useEffect } from 'react';
-
-const BETA_BYPASS = true;
+import { BETA_BYPASS } from '../constants/betaBypass';
 
 export function useEntitlement() {
   const [isPro, setIsPro] = useState<boolean>(

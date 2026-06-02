@@ -25,10 +25,17 @@ import {
   type PersonalRecord,
 } from '../utils/personalRecords';
 import { useEntitlement } from '../hooks/useEntitlement';
+import {
+  daysUntilCheckIn,
+  formatCheckInDate,
+  getNextCheckInDate,
+  isPhotoCheckInAvailable,
+} from '../utils/progressPhotoCheckIn';
 import { EXERCISES } from '../constants/exerciseLibrary';
 import {
   STRENGTH_CATEGORY_CHIPS,
   getMuscleCategoryForExercise,
+  resolveWeeklyVolumeMuscleGroup,
 } from '../constants/strengthMuscleGroups';
 import { getStrengthProjection } from '../utils/projections';
 
@@ -102,6 +109,7 @@ const MUSCLE_COLORS: Record<string, string> = {
   Core: Colors.textTertiary,
   Calves: Colors.textTertiary,
   Forearms: Colors.textTertiary,
+  'Full Body': Colors.textSecondary,
 };
 
 function getMuscleColor(muscle: string): string {
@@ -718,6 +726,72 @@ const lockedProStyles = StyleSheet.create({
   },
 });
 
+const monthlyCheckInStyles = StyleSheet.create({
+  wrap: { marginTop: Spacing.lg, marginBottom: Spacing.md },
+  card: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+  },
+  cardActive: { borderColor: Colors.accentBorder },
+  label: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.2,
+    marginBottom: Spacing.sm,
+  },
+  labelActive: { color: Colors.accent },
+  body: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: Spacing.md,
+  },
+  sub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
+  },
+  gateDate: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textSecondary,
+  },
+  gateSub: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
+  },
+  upgrade: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    marginTop: Spacing.sm,
+  },
+  cta: {
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  ctaText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  viewHistory: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+});
+
 // ── Main Screen ──
 
 export default function ProgressChartsScreen() {
@@ -759,6 +833,9 @@ export default function ProgressChartsScreen() {
   const [planTotalWeeks, setPlanTotalWeeks] = useState(12);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [prsLoading, setPrsLoading] = useState(true);
+  const [lastPhotoAnalysisAt, setLastPhotoAnalysisAt] = useState<string | null>(
+    null,
+  );
 
   const loadProgressData = useCallback(async () => {
     setLoading(true);
@@ -768,14 +845,25 @@ export default function ProgressChartsScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No session');
 
-      const { data: wlWeightLogs } = await supabase
-        .from('weight_logs')
-        .select('log_date, weight_lbs')
-        .eq('user_id', userId)
-        .order('log_date', { ascending: true })
-        .limit(30);
+      const [{ data: wlWeightLogs }, { data: profileRow }] = await Promise.all([
+        supabase
+          .from('weight_logs')
+          .select('log_date, weight_lbs')
+          .eq('user_id', userId)
+          .order('log_date', { ascending: true })
+          .limit(30),
+        supabase
+          .from('user_profiles')
+          .select('last_photo_analysis_at')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
 
       setWeightData((wlWeightLogs ?? []) as WeightLogPoint[]);
+      setLastPhotoAnalysisAt(
+        (profileRow as { last_photo_analysis_at?: string } | null)
+          ?.last_photo_analysis_at ?? null,
+      );
 
       // Fetch active plan first — workout_logs are gated on plan.id
       const { data: plan, error: pe } = await supabase
@@ -998,15 +1086,9 @@ export default function ProgressChartsScreen() {
       for (const s of sets) {
         const name: string =
           s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
-        const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
         const nameLower = normalizeExerciseName(name);
-        const rawMuscle: string = exerciseNameToMuscle[nameLower] ?? 'Other';
-        const trimmed = rawMuscle.trim();
-        const muscleGroup =
-          trimmed.length > 0
-            ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase()
-            : 'Other';
-        if (!name || weight === 0) continue;
+        const fromLibrary = exerciseNameToMuscle[nameLower];
+        const muscleGroup = resolveWeeklyVolumeMuscleGroup(name, fromLibrary);
 
         if (!volMap.has(wk)) volMap.set(wk, new Map());
         const wkMap = volMap.get(wk)!;
@@ -1097,9 +1179,6 @@ export default function ProgressChartsScreen() {
         chips.push(cat);
       }
     }
-    if (pool.some((n) => getMuscleCategoryForExercise(n) === 'Other')) {
-      chips.push('Other');
-    }
     return chips;
   }, [loggedExercises, planExerciseNames, isWeek1SparseState]);
 
@@ -1110,9 +1189,10 @@ export default function ProgressChartsScreen() {
     const filtered =
       selectedCategory === 'All'
         ? basePool
-        : basePool.filter(
-            (n) => getMuscleCategoryForExercise(n) === selectedCategory,
-          );
+        : basePool.filter((n) => {
+            const cat = getMuscleCategoryForExercise(n);
+            return cat != null && cat === selectedCategory;
+          });
     const sorted = [...filtered].sort(
       (a, b) => (exerciseVolume[b] ?? 0) - (exerciseVolume[a] ?? 0),
     );
@@ -1367,6 +1447,68 @@ export default function ProgressChartsScreen() {
           </View>
         )}
 
+        {Platform.OS !== 'web' ? (
+          premiumLocked ? (
+            <View style={monthlyCheckInStyles.wrap}>
+              <View style={monthlyCheckInStyles.card}>
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
+                <Text style={monthlyCheckInStyles.label}>MONTHLY CHECK-IN</Text>
+                <Text style={monthlyCheckInStyles.sub}>Pro feature</Text>
+                <TouchableOpacity onPress={goPaywall} activeOpacity={0.7}>
+                  <Text style={monthlyCheckInStyles.upgrade}>Upgrade →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (() => {
+            const available = isPhotoCheckInAvailable(lastPhotoAnalysisAt);
+            const nextAt = getNextCheckInDate(lastPhotoAnalysisAt);
+            const daysLeft = daysUntilCheckIn(lastPhotoAnalysisAt);
+            return (
+              <View style={monthlyCheckInStyles.wrap}>
+                {available ? (
+                  <View style={[monthlyCheckInStyles.card, monthlyCheckInStyles.cardActive]}>
+                    <Text style={[monthlyCheckInStyles.label, monthlyCheckInStyles.labelActive]}>
+                      MONTHLY CHECK-IN
+                    </Text>
+                    <Text style={monthlyCheckInStyles.body}>
+                      Jordan analyzes your progress photos to track body composition
+                      changes and adjust your nutrition targets.
+                    </Text>
+                    <TouchableOpacity
+                      style={monthlyCheckInStyles.cta}
+                      onPress={() => navigation.navigate('ProgressPhoto')}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={monthlyCheckInStyles.ctaText}>Start Check-In →</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={monthlyCheckInStyles.card}>
+                    <Text style={monthlyCheckInStyles.label}>NEXT CHECK-IN</Text>
+                    {nextAt ? (
+                      <>
+                        <Text style={monthlyCheckInStyles.gateDate}>
+                          Available {formatCheckInDate(nextAt)}
+                        </Text>
+                        <Text style={monthlyCheckInStyles.gateSub}>
+                          in {daysLeft} {daysLeft === 1 ? 'day' : 'days'}
+                        </Text>
+                      </>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('ProgressPhoto')}
+                      activeOpacity={0.7}
+                      style={{ marginTop: Spacing.sm }}
+                    >
+                      <Text style={monthlyCheckInStyles.viewHistory}>View history →</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })()
+        ) : null}
+
         {premiumLocked ? (
           <LockedProFeatureCard title="Strength Progression" onUpgrade={goPaywall} />
         ) : hasData ? (
@@ -1610,11 +1752,20 @@ export default function ProgressChartsScreen() {
               const volumeWeeks = Array.from(volumeWeekData.keys()).sort((a, b) => a - b);
               const activeVolWeek = selectedVolumeWeek ?? volumeWeeks[volumeWeeks.length - 1] ?? null;
               const weekMuscleData = activeVolWeek != null ? volumeWeekData.get(activeVolWeek) : null;
-              const muscleRows = weekMuscleData
-                ? Array.from(weekMuscleData.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6)
+              const allMuscleEntries = weekMuscleData
+                ? Array.from(weekMuscleData.entries()).filter(
+                    ([mg]) => mg !== 'Other',
+                  )
                 : [];
+              const totalSets = allMuscleEntries.reduce(
+                (sum, [, s]) => sum + s,
+                0,
+              );
+              const muscleRows = [...allMuscleEntries]
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6);
               const maxSets = muscleRows[0]?.[1] ?? 1;
-              const totalSets = muscleRows.reduce((sum, [, s]) => sum + s, 0);
+              const muscleGroupCount = allMuscleEntries.length;
 
               return (
                 <>
@@ -1682,7 +1833,7 @@ export default function ProgressChartsScreen() {
                             })}
                             <Text style={styles.volSummary}>
                               Week {activeVolWeek} · {totalSets} total sets across{' '}
-                              {muscleRows.length} muscle groups
+                              {muscleGroupCount} muscle groups
                             </Text>
                           </>
                         ) : (

@@ -14,6 +14,7 @@ import {
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
@@ -26,6 +27,7 @@ import { hapticPR, hapticSuccess } from '../utils/haptics';
 import { ShareCard, type ShareCardProps } from '../components/ShareCard';
 import {
   computeSessionShareStats,
+  computeTopLiftsFromSets,
   fallbackJordanNoteFromRpe,
   resolveSessionTitleFromPlan,
   truncateJordanNoteForShare,
@@ -151,6 +153,7 @@ function checkIsFinalSession(
 export default function WorkoutCompleteScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const insets = useSafeAreaInsets();
   const {
     planId,
     weekNumber,
@@ -215,6 +218,7 @@ export default function WorkoutCompleteScreen() {
 
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
   const [nextWeekReady, setNextWeekReady] = useState(false);
+  const [adaptationChangeCount, setAdaptationChangeCount] = useState(0);
   const [macroAdjustment, setMacroAdjustment] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState(false);
@@ -268,14 +272,15 @@ export default function WorkoutCompleteScreen() {
       ]);
 
       const sets = (log?.sets_json ?? []) as Array<{
+        exerciseName?: string;
         weightLbs?: number;
         weight?: number;
         reps?: number;
         rpe?: number;
       }>;
-      const { totalSets: setsFromLog, avgRpe, volumeLbs } =
-        computeSessionShareStats(sets);
+      const { totalSets: setsFromLog, avgRpe } = computeSessionShareStats(sets);
       const totalSetsCount = setsFromLog > 0 ? setsFromLog : totalSets;
+      const topLifts = computeTopLiftsFromSets(sets);
 
       const planJson = planRow?.plan_json;
       const latestJordanNote =
@@ -297,7 +302,8 @@ export default function WorkoutCompleteScreen() {
         dayNumber,
         totalSets: totalSetsCount,
         avgRpe,
-        volumeLbs,
+        durationMinutes,
+        topLifts,
         jordanNote: truncateJordanNoteForShare(jordanNoteRaw),
       };
 
@@ -319,6 +325,7 @@ export default function WorkoutCompleteScreen() {
     dayNumber,
     totalSets,
     coachNoteDisplay,
+    durationMinutes,
   ]);
 
   useEffect(() => {
@@ -576,6 +583,31 @@ export default function WorkoutCompleteScreen() {
         setGenerationError(true);
       } else {
         setNextWeekReady(true);
+        const genData = nextWeekSettled.status === 'fulfilled'
+          ? (nextWeekSettled.value.data as { adaptationChangeCount?: number } | null)
+          : null;
+        if (typeof genData?.adaptationChangeCount === 'number') {
+          setAdaptationChangeCount(genData.adaptationChangeCount);
+        } else {
+          const { data: refreshed } = await supabase
+            .from('plans')
+            .select('plan_json')
+            .eq('id', planId)
+            .maybeSingle();
+          const weeks =
+            (refreshed?.plan_json as { weeks?: unknown[] } | undefined)?.weeks ?? [];
+          const nextWeek = weeks.find(
+            (w) =>
+              rawWeekNumber(
+                w as { weekNumber?: unknown; week_number?: unknown },
+              ) === weekNumber + 1,
+          ) as { adaptationChanges?: unknown[] } | undefined;
+          setAdaptationChangeCount(
+            Array.isArray(nextWeek?.adaptationChanges)
+              ? nextWeek.adaptationChanges.length
+              : 0,
+          );
+        }
       }
     } catch (err) {
       console.error('handleGenerateNextWeek:', err);
@@ -777,10 +809,25 @@ export default function WorkoutCompleteScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const showShareButton = sharingAvailable;
+  const showShareIcon = sharingAvailable && Platform.OS !== 'web';
 
   return (
     <View style={styles.container}>
+      {showShareIcon ? (
+        <TouchableOpacity
+          onPress={() => void handleShareWorkout()}
+          style={[styles.shareIconBtn, { top: insets.top + 8 }]}
+          activeOpacity={0.7}
+          disabled={shareLoading}
+        >
+          {shareLoading ? (
+            <ActivityIndicator color={Colors.accent} size="small" />
+          ) : (
+            <Ionicons name="share-outline" size={24} color={Colors.accent} />
+          )}
+        </TouchableOpacity>
+      ) : null}
+
       {shareCardVisible && shareCardData ? (
         <View style={styles.offScreenCapture} pointerEvents="none">
           <ShareCard ref={shareCardRef} {...shareCardData} />
@@ -952,6 +999,28 @@ export default function WorkoutCompleteScreen() {
           </View>
         ) : isWeekComplete && nextWeekReady ? (
           <Animated.View style={{ opacity: fadeAnim }}>
+            {adaptationChangeCount > 0 ? (
+              <TouchableOpacity
+                style={styles.adaptationReadyRow}
+                activeOpacity={0.7}
+                onPress={() =>
+                  (navigation as { navigate: (a: string, b?: object) => void }).navigate(
+                    'Dashboard',
+                    {
+                      screen: 'HomeTab',
+                      params: {
+                        screen: 'AdaptationFeed',
+                        params: { weekNumber: weekNumber + 1 },
+                      },
+                    },
+                  )
+                }
+              >
+                <Text style={styles.adaptationReadyText}>
+                  Week {weekNumber + 1} is ready — see what changed →
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={styles.primaryButton}
               activeOpacity={0.8}
@@ -1008,24 +1077,6 @@ export default function WorkoutCompleteScreen() {
         >
           <Text style={styles.secondaryButtonText}>View Full Plan</Text>
         </TouchableOpacity>
-
-        {showShareButton ? (
-          <TouchableOpacity
-            style={[
-              styles.shareButton,
-              shareLoading && styles.shareButtonDisabled,
-            ]}
-            activeOpacity={0.8}
-            disabled={shareLoading}
-            onPress={() => void handleShareWorkout()}
-          >
-            {shareLoading ? (
-              <ActivityIndicator color={Colors.accent} size="small" />
-            ) : (
-              <Text style={styles.shareButtonText}>Share Workout</Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
       </View>
     </View>
   );
@@ -1211,6 +1262,16 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.divider,
     gap: 10,
   },
+  adaptationReadyRow: {
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  adaptationReadyText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    textAlign: 'center',
+  },
   primaryButton: {
     height: 56,
     borderRadius: Radius.lg,
@@ -1272,22 +1333,15 @@ const styles = StyleSheet.create({
   secondaryButtonDisabled: {
     opacity: 0.4,
   },
-  shareButton: {
-    height: 52,
-    borderRadius: Radius.lg,
-    borderWidth: 1.5,
-    borderColor: Colors.accent,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareButtonDisabled: {
-    opacity: 0.6,
-  },
-  shareButtonText: {
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
+  shareIconBtn: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
   },
   offScreenCapture: {
     position: 'absolute',

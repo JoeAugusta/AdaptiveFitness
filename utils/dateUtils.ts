@@ -1,14 +1,119 @@
 // BUG-8: Day-of-week helpers for dashboard training vs rest (local calendar, matches onboarding day labels).
 
+const CALENDAR_DAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+const DAY_LABEL_ALIASES: Record<string, (typeof CALENDAR_DAY_ORDER)[number]> = {
+  sun: 'Sun',
+  sunday: 'Sun',
+  mon: 'Mon',
+  monday: 'Mon',
+  tue: 'Tue',
+  tues: 'Tue',
+  tuesday: 'Tue',
+  wed: 'Wed',
+  wednesday: 'Wed',
+  thu: 'Thu',
+  thur: 'Thu',
+  thurs: 'Thu',
+  thursday: 'Thu',
+  fri: 'Fri',
+  friday: 'Fri',
+  sat: 'Sat',
+  saturday: 'Sat',
+};
+
+/** Local calendar date as YYYY-MM-DD (no UTC conversion). */
+export function localDateISO(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function normalizeScheduledDayLabel(raw: string): string | null {
+  const key = String(raw ?? '').trim().toLowerCase();
+  if (!key) return null;
+  return DAY_LABEL_ALIASES[key] ?? null;
+}
+
+/** Map plan scheduledDays (Mon or Monday) to short labels used across the app. */
+export function normalizeScheduledDays(scheduledDays: string[]): string[] {
+  const out: string[] = [];
+  for (const d of scheduledDays) {
+    const norm = normalizeScheduledDayLabel(d);
+    if (norm && !out.includes(norm)) out.push(norm);
+  }
+  return out;
+}
+
 /**
  * Get today's day of week as a string matching plan scheduled days.
  * Uses local date (timezone-safe) — same pattern as BUG-2 streak fix.
  * Returns: 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
  */
 export function getTodayDayLabel(): string {
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return CALENDAR_DAY_ORDER[new Date().getDay()];
+}
+
+export type FirstSessionDateResult = {
+  firstSessionDate: Date;
+  dateStr: string;
+  isToday: boolean;
+  displayLine: string;
+};
+
+/**
+ * First lifting session: today if today is a training day, otherwise the next
+ * calendar day that matches scheduledDays.
+ */
+export function computeFirstSessionDate(
+  scheduledDays: string[],
+): FirstSessionDateResult | null {
+  const normalized = normalizeScheduledDays(scheduledDays);
+  if (normalized.length === 0) return null;
+
   const today = new Date();
-  return days[today.getDay()];
+  today.setHours(12, 0, 0, 0);
+  const todayLabel = getTodayDayLabel();
+
+  let firstSessionDate: Date;
+  let isToday: boolean;
+
+  if (normalized.includes(todayLabel)) {
+    firstSessionDate = new Date(today);
+    isToday = true;
+  } else {
+    const next = getNextTrainingDay(normalized, todayLabel);
+    firstSessionDate = new Date(today);
+    firstSessionDate.setDate(today.getDate() + next.daysAway);
+    isToday = false;
+  }
+
+  const weekday = firstSessionDate.toLocaleDateString('en-US', {
+    weekday: 'long',
+  });
+  const monthDay = firstSessionDate.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+  });
+  const displayLine = isToday
+    ? `Your first session is today, ${weekday} ${monthDay}`
+    : `Your first session is ${weekday}, ${monthDay}`;
+
+  return {
+    firstSessionDate,
+    dateStr: localDateISO(firstSessionDate),
+    isToday,
+    displayLine,
+  };
+}
+
+/** True when plan.start_date (YYYY-MM-DD) is today or in the past. */
+export function isPlanStartDateReached(startDate: string | null | undefined): boolean {
+  if (!startDate || String(startDate).trim() === '') return true;
+  const dateOnly = String(startDate).split('T')[0];
+  const todayStr = localDateISO(new Date());
+  return dateOnly <= todayStr;
 }
 
 /**
@@ -37,7 +142,7 @@ export function getNextTrainingDay(
   scheduledDays: string[],
   todayLabel: string,
 ): { dayLabel: string; daysAway: number; displayName: string } {
-  const dayOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayOrder = [...CALENDAR_DAY_ORDER];
   const fullNames: Record<string, string> = {
     Sun: 'Sunday',
     Mon: 'Monday',
@@ -65,8 +170,6 @@ export function getNextTrainingDay(
   // Fallback — should never hit if scheduledDays is non-empty
   return { dayLabel: scheduledDays[0], daysAway: 1, displayName: 'Tomorrow' };
 }
-
-const CALENDAR_DAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /**
  * True if today is on or after the last training day of the weekly split (Sun–Sat order).

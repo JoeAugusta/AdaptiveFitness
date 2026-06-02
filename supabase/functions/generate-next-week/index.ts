@@ -26,6 +26,200 @@ function computeRpeGap(avgLoggedRpe: number, targetRpe: number): number {
   return targetRpe - avgLoggedRpe;
 }
 
+interface AdaptationChange {
+  exerciseName: string;
+  muscleGroup: string;
+  changeType: 'increase' | 'decrease' | 'hold' | 'deload' | 'calibration';
+  previousWeight: number;
+  newWeight: number;
+  weightDelta: number;
+  avgLoggedRpe: number | null;
+  targetRpe: number | null;
+  rpeGap: number | null;
+  reason: string;
+}
+
+interface AdaptationDraft {
+  key: string;
+  exerciseName: string;
+  muscleGroup: string;
+  previousWeight: number;
+  progressedWeight: number;
+  avgLoggedRpe: number | null;
+  targetRpe: number | null;
+  rpeGap: number | null;
+  repsExceeded: boolean;
+  hadRpeData: boolean;
+  isCalibration: boolean;
+}
+
+function parseRepTargetHigh(reps: unknown, repsMax?: unknown): number {
+  if (typeof repsMax === 'number' && repsMax > 0) return repsMax;
+  if (typeof reps === 'number' && reps > 0) return reps;
+  const s = String(reps ?? '8');
+  const range = s.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (range) return Number(range[2]);
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) && n > 0 ? n : 8;
+}
+
+function avgLoggedRepsFromSets(workingSets: any[]): number | null {
+  const reps = workingSets
+    .map((s: any) => Number(s.reps ?? 0))
+    .filter((r: number) => r > 0);
+  if (reps.length === 0) return null;
+  return reps.reduce((sum: number, r: number) => sum + r, 0) / reps.length;
+}
+
+function formatAdaptationLb(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded);
+}
+
+function determineAdaptationChangeType(
+  isCalibration: boolean,
+  isDeloadWeek: boolean,
+  previousWeight: number,
+  newWeight: number,
+): AdaptationChange['changeType'] {
+  if (isCalibration) return 'calibration';
+  if (isDeloadWeek) return 'deload';
+  const delta = newWeight - previousWeight;
+  if (delta > 0.25) return 'increase';
+  if (delta < -0.25) return 'decrease';
+  return 'hold';
+}
+
+function buildAdaptationReason(params: {
+  changeType: AdaptationChange['changeType'];
+  avgLoggedRpe: number | null;
+  targetRpe: number | null;
+  rpeGap: number | null;
+  weightDelta: number;
+  repsExceeded: boolean;
+  completionTier: 'full' | 'partial' | 'low';
+  hadRpeData: boolean;
+  weekNumber: number;
+}): string {
+  const deltaAbs = formatAdaptationLb(Math.abs(params.weightDelta));
+
+  if (params.changeType === 'calibration') {
+    return "Week 1 baseline — you selected this weight. I'll tune it from here based on your effort ratings.";
+  }
+  if (params.changeType === 'deload') {
+    return `Week ${params.weekNumber} is your scheduled recovery week. Weights drop to 85% — this is programmed, not a setback. Come back stronger Week ${params.weekNumber + 1}.`;
+  }
+  if (params.changeType === 'increase' && params.repsExceeded) {
+    return `You exceeded the rep target last week. Added ${deltaAbs} lbs.`;
+  }
+  if (
+    params.changeType === 'increase' &&
+    params.rpeGap != null &&
+    params.rpeGap > 0 &&
+    params.avgLoggedRpe != null &&
+    params.targetRpe != null
+  ) {
+    return `Average RPE ${params.avgLoggedRpe.toFixed(1)} was below your ${params.targetRpe.toFixed(1)} target. Added ${deltaAbs} lbs.`;
+  }
+  if (params.changeType === 'decrease' && params.completionTier === 'low') {
+    return 'Fewer than 60% of sessions completed. Dropping weight slightly to reset and build back up.';
+  }
+  if (
+    params.changeType === 'decrease' &&
+    params.rpeGap != null &&
+    params.rpeGap < 0 &&
+    params.avgLoggedRpe != null &&
+    params.targetRpe != null
+  ) {
+    return `Average RPE ${params.avgLoggedRpe.toFixed(1)} exceeded your ${params.targetRpe.toFixed(1)} target. Dropped ${deltaAbs} lbs to bring effort back into range.`;
+  }
+  if (params.changeType === 'hold' && params.completionTier === 'partial') {
+    return 'Sessions were inconsistent last week. Holding weight until you have a full week to measure from.';
+  }
+  if (params.changeType === 'hold' && !params.hadRpeData) {
+    return 'No RPE data logged last week. Holding weight until I have your numbers.';
+  }
+  if (params.changeType === 'hold' && params.avgLoggedRpe != null) {
+    return `RPE averaged ${params.avgLoggedRpe.toFixed(1)} — right on target. Holding weight this week.`;
+  }
+  return 'Holding weight this week based on last week\'s performance.';
+}
+
+function upsertAdaptationDraft(drafts: AdaptationDraft[], draft: AdaptationDraft): void {
+  const idx = drafts.findIndex((d) => d.key === draft.key);
+  if (idx >= 0) drafts[idx] = draft;
+  else drafts.push(draft);
+}
+
+function buildAdaptationChangesFromDrafts(
+  drafts: AdaptationDraft[],
+  days: any[] | undefined,
+  opts: {
+    phase: string;
+    nextWeekNumber: number;
+    completionTier: 'full' | 'partial' | 'low';
+  },
+): AdaptationChange[] {
+  const finalWeightByKey = new Map<string, number>();
+  for (const day of days ?? []) {
+    if (day.type !== 'workout') continue;
+    for (const ex of day.exercises ?? []) {
+      const w = Number(ex.targetWeight ?? 0);
+      if (w <= 0) continue;
+      const key = String(ex.exerciseName ?? ex.name ?? '')
+        .toLowerCase()
+        .trim();
+      if (key) finalWeightByKey.set(key, w);
+    }
+  }
+
+  const isDeloadWeek = opts.phase === 'deload';
+  const changes: AdaptationChange[] = [];
+
+  for (const d of drafts) {
+    const newWeight = finalWeightByKey.get(d.key);
+    if (newWeight == null || newWeight <= 0) continue;
+
+    const displayPrevious = d.isCalibration
+      ? 0
+      : isDeloadWeek
+        ? d.progressedWeight
+        : d.previousWeight;
+    const weightDelta = Math.round((newWeight - displayPrevious) * 10) / 10;
+    const changeType = determineAdaptationChangeType(
+      d.isCalibration,
+      isDeloadWeek,
+      d.isCalibration ? d.progressedWeight : d.previousWeight,
+      newWeight,
+    );
+
+    changes.push({
+      exerciseName: d.exerciseName,
+      muscleGroup: d.muscleGroup,
+      changeType,
+      previousWeight: displayPrevious,
+      newWeight,
+      weightDelta,
+      avgLoggedRpe: d.avgLoggedRpe,
+      targetRpe: d.targetRpe,
+      rpeGap: d.rpeGap,
+      reason: buildAdaptationReason({
+        changeType,
+        avgLoggedRpe: d.avgLoggedRpe,
+        targetRpe: d.targetRpe,
+        rpeGap: d.rpeGap,
+        weightDelta,
+        repsExceeded: d.repsExceeded,
+        completionTier: opts.completionTier,
+        hadRpeData: d.hadRpeData,
+        weekNumber: opts.nextWeekNumber,
+      }),
+    });
+  }
+
+  return changes;
+}
+
 /** §3 Strength primary lift periodisation row by position in deload-skipped cycle. */
 function strengthPeriodisation(weekInCycle: number): {
   sets: number;
@@ -3007,6 +3201,8 @@ Return ONLY this exact JSON structure:
       }),
     };
 
+    const adaptationDrafts: AdaptationDraft[] = [];
+
     // ── PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────────
     // mergeNextWeekWithPreviousStructure keeps completed-week slots (preserves IDs).
     // Progress targetWeight / reps / pyramid ladders from prior plan baselines + RPE logs.
@@ -3128,6 +3324,30 @@ Return ONLY this exact JSON structure:
             loggedBaselineWeight,
             calWeight: exercise.targetWeight,
           });
+
+          const calWeight = Number(exercise.targetWeight ?? 0);
+          const calTargetRpe =
+            Number(exercise.targetRpe) > 0 ? Number(exercise.targetRpe) : 7.0;
+          if (calWeight > 0) {
+            upsertAdaptationDraft(adaptationDrafts, {
+              key: exName,
+              exerciseName: String(
+                exercise.name ?? exercise.exerciseName ?? exName,
+              ),
+              muscleGroup: String(exercise.muscleGroup ?? ''),
+              previousWeight: 0,
+              progressedWeight: calWeight,
+              avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+              targetRpe: calTargetRpe,
+              rpeGap:
+                workingSets.length > 0
+                  ? computeRpeGap(avgLoggedRpe, calTargetRpe)
+                  : null,
+              repsExceeded: false,
+              hadRpeData: workingSets.length > 0,
+              isCalibration: true,
+            });
+          }
           continue;
         }
 
@@ -3319,6 +3539,35 @@ Return ONLY this exact JSON structure:
           dayIsVolume: Boolean(dayIsVolume),
           nextWeekNumber: Number(nextWeekNumber),
         });
+
+        const progressedWeight = Number(exercise.targetWeight ?? 0);
+        if (progressedWeight > 0) {
+          const repTargetHigh = parseRepTargetHigh(
+            priorPlanExercise?.reps,
+            priorPlanExercise?.repsMax,
+          );
+          const avgReps = avgLoggedRepsFromSets(workingSets);
+          const repsExceeded =
+            avgReps != null && avgReps > repTargetHigh + 0.5;
+          upsertAdaptationDraft(adaptationDrafts, {
+            key: exName,
+            exerciseName: String(
+              exercise.name ?? exercise.exerciseName ?? exName,
+            ),
+            muscleGroup: String(exercise.muscleGroup ?? ''),
+            previousWeight: planBaseline,
+            progressedWeight,
+            avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+            targetRpe: accessoryTargetRpeForCopy,
+            rpeGap:
+              workingSets.length > 0
+                ? computeRpeGap(avgLoggedRpe, accessoryTargetRpeForCopy)
+                : null,
+            repsExceeded,
+            hadRpeData: workingSets.length > 0,
+            isCalibration: false,
+          });
+        }
       }
     }
     // ── END PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────
@@ -3380,6 +3629,12 @@ Return ONLY this exact JSON structure:
         weekData?.days ?? [],
       ),
     };
+
+    nextWeekData.adaptationChanges = buildAdaptationChangesFromDrafts(
+      adaptationDrafts,
+      nextWeekData.days,
+      { phase, nextWeekNumber, completionTier },
+    );
 
     // Step 8 — Save to Supabase atomically (fresh read to avoid race)
     const { data: freshPlan, error: freshErr } = await supabase
@@ -3448,7 +3703,13 @@ Return ONLY this exact JSON structure:
 
     // Step 9 — Return success
     return new Response(
-      JSON.stringify({ status: 'success', nextWeekNumber, phase, completionTier }),
+      JSON.stringify({
+        status: 'success',
+        nextWeekNumber,
+        phase,
+        completionTier,
+        adaptationChangeCount: nextWeekData.adaptationChanges?.length ?? 0,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error) {

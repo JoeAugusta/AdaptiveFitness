@@ -41,7 +41,7 @@ import ProjectionChart, {
   type ProjectionChartLine,
 } from '../../components/ProjectionChart';
 
-const BETA_BYPASS = true;
+import { BETA_BYPASS } from '../../constants/betaBypass';
 
 const CHART_ORANGE = '#F97316';
 const CHART_GREEN = '#22C55E';
@@ -517,9 +517,39 @@ export default function PlanPreviewScreen() {
       ? (params.goal as ProjectionChartGoal)
       : null;
 
+  const [previewGoalId, setPreviewGoalId] = useState<string | null>(null);
+  const [previewPlanJson, setPreviewPlanJson] = useState<{
+    weeks?: { days?: { type?: string; dayNumber?: number; title?: string; muscleGroups?: string[]; exercises?: { name?: string }[] }[] }[];
+    totalWeeks?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!params.previewPlanId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('plans')
+        .select('goal_id, plan_json')
+        .eq('id', params.previewPlanId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      setPreviewGoalId(data.goal_id ?? null);
+      setPreviewPlanJson((data.plan_json as typeof previewPlanJson) ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.previewPlanId]);
+
   const buildingPlanParams = useMemo(
-    () => ({ ...params, caloriePace: normalizePace(params.caloriePace) }),
-    [params],
+    () => ({
+      ...params,
+      caloriePace: normalizePace(params.caloriePace),
+      planGenerationMode: 'full' as const,
+      replacePlanId: params.previewPlanId,
+      goalId: previewGoalId ?? undefined,
+    }),
+    [params, previewGoalId],
   );
 
   const paceReadOnlyLabel = formatPaceLabel(
@@ -567,6 +597,10 @@ export default function PlanPreviewScreen() {
 
   const handlePurchase = async () => {
     if (BETA_BYPASS || Platform.OS === 'web') {
+      if (params.previewPlanId && !previewGoalId) {
+        Alert.alert('One moment', 'Your preview plan is still loading. Try again in a second.');
+        return;
+      }
       navigation.navigate('BuildingPlan', buildingPlanParams);
       return;
     }
@@ -599,6 +633,10 @@ export default function PlanPreviewScreen() {
       const customerInfo = await Purchases.restorePurchases();
       if (customerInfo.entitlements.active['pro']) {
         await updateSupabaseSubscription(customerInfo);
+        if (params.previewPlanId && !previewGoalId) {
+          Alert.alert('One moment', 'Your preview plan is still loading. Try again in a second.');
+          return;
+        }
         console.log('[PlanPreview] duration in params:', {
           planDuration: params.planDuration,
           recommendedWeeks: params.recommendedWeeks,
@@ -691,7 +729,10 @@ export default function PlanPreviewScreen() {
     value: params.planDuration ? (PLAN_DURATION_LABELS[params.planDuration] ?? '8 Weeks') : '8 Weeks',
   });
 
-  const sampleDays = (sessionStructure ?? [])
+  const previewWeekDays = previewPlanJson?.weeks?.[0]?.days ?? [];
+  const previewWorkoutDays = previewWeekDays.filter((d) => d.type === 'workout');
+
+  const sampleDaysFromStructure = (sessionStructure ?? [])
     .filter((session: SessionDay) => session.type === 'workout')
     .map((session: SessionDay, index: number) => ({
       dayNumber: index + 1,
@@ -702,17 +743,30 @@ export default function PlanPreviewScreen() {
       actualDay: trainingDays?.[index] ?? null,
     }));
 
+  const sampleDaysFromPlan = previewWorkoutDays.map((day, index) => ({
+    dayNumber: day.dayNumber ?? index + 1,
+    title: day.title ?? 'Workout',
+    muscles: (day.muscleGroups ?? []).map(
+      (m: string) => m.charAt(0).toUpperCase() + m.slice(1),
+    ),
+    actualDay: trainingDays?.[index] ?? null,
+  }));
+
+  const sampleDays =
+    sampleDaysFromPlan.length > 0 ? sampleDaysFromPlan : sampleDaysFromStructure;
+
   const visibleDays = 2;
   const visibleSampleDays = sampleDays.slice(0, visibleDays);
-  if (__DEV__) {
-    console.log('sessionStructure length:', sessionStructure?.length);
-    console.log('sampleDays length:', sampleDays.length);
-  }
-  const remainingDays = Math.max(0, sampleDays.length - visibleDays);
-  const lockText =
-    remainingDays > 0
-      ? `+ ${remainingDays} more ${remainingDays === 1 ? 'day' : 'days'} visible after unlocking`
-      : null;
+  const totalPlanWeeks =
+    previewPlanJson?.totalWeeks ??
+    (params.recommendedWeeks != null
+      ? Number(params.recommendedWeeks)
+      : parseInt(String(params.planDuration ?? '12').replace(/\D/g, ''), 10) || 12);
+  const structureWorkoutCount = (sessionStructure ?? []).filter(
+    (s: SessionDay) => s.type === 'workout',
+  ).length;
+  const lockedSessionCount = Math.max(0, structureWorkoutCount - visibleDays);
+  const showPlanLock = lockedSessionCount > 0 || sampleDays.length > visibleDays;
 
   return (
     <View style={styles.container}>
@@ -844,7 +898,20 @@ export default function PlanPreviewScreen() {
           </View>
         ))}
 
-        {lockText ? <Text style={styles.moreDays}>{lockText}</Text> : null}
+        {showPlanLock ? (
+          <View style={styles.lockCard}>
+            <Text style={styles.lockIcon}>🔒</Text>
+            <Text style={styles.lockTitle}>
+              Subscribe to unlock your full {totalPlanWeeks}-week plan
+            </Text>
+            {lockedSessionCount > 0 ? (
+              <Text style={styles.moreDays}>
+                + {lockedSessionCount} more training{' '}
+                {lockedSessionCount === 1 ? 'day' : 'days'} in your split
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         <Text style={styles.sectionLabelNutrition}>Your Daily Nutrition</Text>
 
@@ -1207,6 +1274,25 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
     color: Colors.accent,
+  },
+  lockCard: {
+    marginTop: Spacing.md,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  lockIcon: {
+    fontSize: 22,
+    marginBottom: Spacing.sm,
+  },
+  lockTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    textAlign: 'center',
   },
   moreDays: {
     fontFamily: Fonts.regular,

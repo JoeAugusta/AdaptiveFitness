@@ -26,9 +26,11 @@ import PlanCompleteScreen from '../screens/PlanCompleteScreen';
 import PlanViewScreen from '../screens/PlanViewScreen';
 import WorkoutHomeScreen from '../screens/WorkoutHomeScreen';
 import WeeklyCoachSummaryScreen from '../screens/WeeklyCoachSummaryScreen';
+import AdaptationFeedScreen from '../screens/AdaptationFeedScreen';
 import ProgressChartsScreen from '../screens/ProgressChartsScreen';
 import GoalTrackerScreen from '../screens/GoalTrackerScreen';
 import PersonalRecordsScreen from '../screens/PersonalRecordsScreen';
+import ProgressPhotoScreen from '../screens/ProgressPhotoScreen';
 import BodyMeasurementsScreen from '../screens/BodyMeasurementsScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import SubscriptionManagementScreen from '../screens/SubscriptionManagementScreen';
@@ -36,6 +38,7 @@ import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen'
 import MacroTrackerScreen from '../screens/MacroTrackerScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
 import WorkoutHistoryScreen from '../screens/WorkoutHistoryScreen';
+import ExerciseHistoryDetailScreen from '../screens/ExerciseHistoryDetailScreen';
 import FreeSessionScreen from '../screens/FreeSessionScreen';
 
 // ── Nested stack navigators (untyped — screen files own their nav prop types) ──
@@ -55,6 +58,7 @@ function HomeTabStack() {
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Dashboard" component={HomeScreen} />
       <HomeStack.Screen name="WeeklyCoachSummary" component={WeeklyCoachSummaryScreen} />
+      <HomeStack.Screen name="AdaptationFeed" component={AdaptationFeedScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -66,6 +70,10 @@ function WorkoutTabStack() {
       <WorkoutStack.Screen name="PlanView" component={PlanViewScreen} />
       <WorkoutStack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
       <WorkoutStack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
+      <WorkoutStack.Screen
+        name="ExerciseHistoryDetail"
+        component={ExerciseHistoryDetailScreen}
+      />
       <WorkoutStack.Screen name="FreeSession" component={FreeSessionScreen} />
       <WorkoutStack.Screen name="PlanComplete" component={PlanCompleteScreen} />
     </WorkoutStack.Navigator>
@@ -79,6 +87,7 @@ function ProgressTabStack() {
       <ProgressStack.Screen name="GoalTracker" component={GoalTrackerScreen} />
       <ProgressStack.Screen name="PersonalRecords" component={PersonalRecordsScreen} />
       <ProgressStack.Screen name="BodyMeasurements" component={BodyMeasurementsScreen} />
+      <ProgressStack.Screen name="ProgressPhoto" component={ProgressPhotoScreen} />
     </ProgressStack.Navigator>
   );
 }

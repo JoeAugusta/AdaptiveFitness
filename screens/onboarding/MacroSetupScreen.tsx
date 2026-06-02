@@ -91,9 +91,11 @@ function roundToNearest(value: number, nearest: number): number {
 function calcBaseMacros(
   calories: number,
   weightLbs: number,
+  goal: string,
 ): { proteinG: number; carbsG: number; fatsG: number } {
-  const proteinG = roundToNearest(weightLbs * 1.0, 5);
-  const fatsG = roundToNearest((calories * 0.25) / 9, 5);
+  const proteinMultiplier = goal === 'fat_loss' ? 0.8 : 1.0;
+  const proteinG = roundToNearest(weightLbs * proteinMultiplier, 5);
+  const fatsG = Math.max(50, roundToNearest((calories * 0.25) / 9, 5));
   const remainingCals = calories - proteinG * 4 - fatsG * 9;
   const carbsG = roundToNearest(remainingCals / 4, 5);
   return { proteinG, carbsG, fatsG };
@@ -221,14 +223,25 @@ export default function MacroSetupScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
 
   useEffect(() => {
-    if (params.goal === 'fat_loss' || params.goal === 'hypertrophy') {
-      setCalories(computeTargetCalories(params, caloriePace));
-    }
-  }, [caloriePace, params.goal]);
+    const finalCalories = computeTargetCalories(params, caloriePace);
+    setCalories(finalCalories);
+    console.log('[MacroSetup] TDEE calculation:', {
+      weightKg: Number(params.weightLbs) * 0.453592,
+      heightCm:
+        (Number(params.heightFt) * 12 + Number(params.heightIn)) * 2.54,
+      age: params.age,
+      sex: params.sex,
+      daysPerWeek: params.daysPerWeek,
+      goal: params.goal,
+      tdee: computeTdee(params),
+      goalAdjustment: getGoalAdjustment(params.goal),
+      finalCalories,
+    });
+  }, [caloriePace]);
 
   const { proteinG, carbsG, fatsG } = useMemo(
-    () => calcBaseMacros(calories, Number(params.weightLbs)),
-    [calories],
+    () => calcBaseMacros(calories, Number(params.weightLbs), params.goal),
+    [calories, params.goal, params.weightLbs],
   );
 
   const handleDecrease = () => {
@@ -245,13 +258,14 @@ export default function MacroSetupScreen() {
       recommendedWeeks: params.recommendedWeeks,
       targetDate: params.targetDate,
     });
-    navigation.navigate('PlanPreview', {
+    navigation.navigate('BuildingPlan', {
       ...params,
       calories,
       proteinG,
       carbsG,
       fatsG,
       caloriePace,
+      planGenerationMode: 'preview',
     });
   };
 

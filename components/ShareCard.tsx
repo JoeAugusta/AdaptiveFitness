@@ -2,8 +2,11 @@ import { forwardRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Fonts } from '../constants/design';
 import { stripEmDash } from '../utils/jordanText';
+import { formatShareLiftLine, type ShareTopLift } from '../utils/workoutShare';
 
 export const SHARE_CARD_SIZE = 1080;
+
+const CARD_BG = '#09090B';
 
 export type ShareCardProps = {
   sessionTitle: string;
@@ -11,17 +14,27 @@ export type ShareCardProps = {
   dayNumber: number;
   totalSets: number;
   avgRpe: number;
-  volumeLbs: number;
+  durationMinutes: number;
+  topLifts: ShareTopLift[];
   jordanNote: string;
 };
-
-function formatVolumeLbs(lbs: number): string {
-  return Math.round(lbs).toLocaleString('en-US');
-}
 
 function formatAvgRpe(avgRpe: number): string {
   if (avgRpe <= 0) return '—';
   return avgRpe.toFixed(1);
+}
+
+function formatSummaryLine(
+  totalSets: number,
+  avgRpe: number,
+  durationMinutes: number,
+): string {
+  const parts = [
+    `${totalSets} ${totalSets === 1 ? 'set' : 'sets'}`,
+    `RPE ${formatAvgRpe(avgRpe)}`,
+    `${durationMinutes} min`,
+  ];
+  return parts.join('  ·  ');
 }
 
 export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
@@ -31,48 +44,55 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
     dayNumber,
     totalSets,
     avgRpe,
-    volumeLbs,
+    durationMinutes,
+    topLifts,
     jordanNote,
   },
   ref,
 ) {
   const note = stripEmDash(jordanNote);
+  const liftsToShow = topLifts.slice(0, 3);
 
   return (
-    <View
-      ref={ref}
-      style={styles.card}
-      collapsable={false}
-    >
-      <View style={styles.accentBar} />
+    <View ref={ref} style={styles.card} collapsable={false}>
       <View style={styles.inner}>
-        <Text style={styles.wordmark}>hone</Text>
-
-        <Text style={styles.completeLabel}>WORKOUT COMPLETE</Text>
+        <Text style={styles.wordmark}>Hone</Text>
+        <View style={styles.accentLine} />
 
         <Text style={styles.sessionTitle} numberOfLines={2}>
-          {sessionTitle}
+          {sessionTitle.toUpperCase()}
         </Text>
         <Text style={styles.weekDay}>
           Week {weekNumber} · Day {dayNumber}
         </Text>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{totalSets}</Text>
-            <Text style={styles.statLabel}>Sets</Text>
+        {liftsToShow.length > 0 ? (
+          <View style={styles.liftsBlock}>
+            <Text style={styles.sectionLabel}>TOP LIFTS THIS SESSION</Text>
+            {liftsToShow.map((lift) => (
+              <View key={lift.exerciseName} style={styles.liftRow}>
+                <Text style={styles.liftName} numberOfLines={2}>
+                  {lift.exerciseName}
+                </Text>
+                <Text style={styles.liftStats}>{formatShareLiftLine(lift)}</Text>
+              </View>
+            ))}
           </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{formatAvgRpe(avgRpe)}</Text>
-            <Text style={styles.statLabel}>RPE</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{formatVolumeLbs(volumeLbs)}</Text>
-            <Text style={styles.statLabel}>lbs</Text>
-          </View>
+        ) : null}
+
+        <View style={styles.dividerRow}>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <View key={i} style={styles.dividerDash} />
+          ))}
         </View>
 
-        <Text style={styles.jordanNote}>&quot;{note}&quot;</Text>
+        <Text style={styles.summaryLine}>
+          {formatSummaryLine(totalSets, avgRpe, durationMinutes)}
+        </Text>
+
+        {note ? (
+          <Text style={styles.jordanNote}>&quot;{note}&quot;</Text>
+        ) : null}
 
         <Text style={styles.footerUrl}>hone.app</Text>
       </View>
@@ -84,91 +104,104 @@ const styles = StyleSheet.create({
   card: {
     width: SHARE_CARD_SIZE,
     height: SHARE_CARD_SIZE,
-    backgroundColor: Colors.bgPrimary,
-    flexDirection: 'row',
+    backgroundColor: CARD_BG,
     overflow: 'hidden',
-  },
-  accentBar: {
-    width: 4,
-    backgroundColor: Colors.accent,
-    alignSelf: 'stretch',
   },
   inner: {
     flex: 1,
-    paddingTop: 80,
-    paddingBottom: 80,
+    paddingTop: 72,
+    paddingBottom: 72,
     paddingHorizontal: 72,
-    justifyContent: 'space-between',
   },
   wordmark: {
     fontFamily: Fonts.bold,
-    fontSize: 56,
+    fontSize: 96,
     color: Colors.accent,
     letterSpacing: -1,
   },
-  completeLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: 24,
-    color: Colors.textSecondary,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginTop: 48,
+  accentLine: {
+    height: 3,
+    backgroundColor: Colors.accent,
+    marginTop: 24,
+    marginBottom: 40,
+    alignSelf: 'stretch',
   },
   sessionTitle: {
     fontFamily: Fonts.bold,
-    fontSize: 52,
+    fontSize: 54,
     color: Colors.textPrimary,
-    marginTop: 32,
-    lineHeight: 60,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    lineHeight: 62,
   },
   weekDay: {
     fontFamily: Fonts.regular,
-    fontSize: 32,
+    fontSize: 36,
     color: Colors.textSecondary,
     marginTop: 12,
+    marginBottom: 48,
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 24,
-    marginTop: 56,
-    marginBottom: 56,
+  liftsBlock: {
+    marginBottom: 40,
+    gap: 28,
   },
-  statBox: {
-    flex: 1,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 20,
-    paddingVertical: 36,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statValue: {
+  sectionLabel: {
     fontFamily: Fonts.bold,
-    fontSize: 64,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  statLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 24,
+    fontSize: 30,
     color: Colors.textSecondary,
-    marginTop: 8,
+    letterSpacing: 6,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  liftRow: {
+    gap: 8,
+  },
+  liftName: {
+    fontFamily: Fonts.bold,
+    fontSize: 42,
+    color: Colors.textPrimary,
+    lineHeight: 48,
+  },
+  liftStats: {
+    fontFamily: Fonts.bold,
+    fontSize: 60,
+    color: Colors.accent,
+    lineHeight: 68,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 32,
+    paddingVertical: 8,
+  },
+  dividerDash: {
+    width: 48,
+    height: 3,
+    backgroundColor: Colors.textTertiary,
+    opacity: 0.45,
+    borderRadius: 2,
+  },
+  summaryLine: {
+    fontFamily: Fonts.regular,
+    fontSize: 30,
+    color: Colors.textSecondary,
+    marginBottom: 28,
   },
   jordanNote: {
     fontFamily: Fonts.regular,
-    fontSize: 34,
+    fontSize: 27,
     color: Colors.textSecondary,
     fontStyle: 'italic',
-    lineHeight: 48,
+    lineHeight: 38,
     flexShrink: 1,
+    marginBottom: 32,
   },
   footerUrl: {
     fontFamily: Fonts.regular,
-    fontSize: 26,
+    fontSize: 27,
     color: Colors.textTertiary,
     alignSelf: 'flex-end',
-    marginTop: 24,
+    marginTop: 'auto',
   },
 });

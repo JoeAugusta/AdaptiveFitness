@@ -68,7 +68,8 @@ serve(async (req) => {
   }
 
   try {
-    const { userId } = await req.json();
+    const { userId, goalType: goalTypeBody, isTrainingDay: isTrainingDayBody } =
+      await req.json();
 
     if (!userId) {
       return new Response(
@@ -82,7 +83,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const [macroRes, profileRes] = await Promise.all([
+    const [macroRes, profileRes, goalRes] = await Promise.all([
       supabase
         .from('macro_plans')
         .select('calories_target, protein_g, carbs_g, fats_g')
@@ -94,6 +95,14 @@ serve(async (req) => {
         .from('user_profiles')
         .select('dietary_style, food_allergies, weight_lbs')
         .eq('user_id', userId)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('goals')
+        .select('goal_type')
+        .eq('user_id', userId)
+        .eq('status', 'active')
         .order('id', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -118,6 +127,14 @@ serve(async (req) => {
       ? (profile!.food_allergies as string[])
       : [];
     const weightLbs = profile?.weight_lbs != null ? Number(profile.weight_lbs) : null;
+    const goalType =
+      (typeof goalTypeBody === 'string' && goalTypeBody.trim() !== ''
+        ? goalTypeBody.trim()
+        : null) ??
+      (goalRes.data?.goal_type as string | undefined) ??
+      'general fitness';
+    const isTrainingDay = isTrainingDayBody === true;
+    const dayType = isTrainingDay ? 'training day' : 'rest day';
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -134,20 +151,35 @@ The four meals (Breakfast, Lunch, Dinner, Snack) must sum to within 50 calories 
 Never suggest anything containing the user's allergens.
 Respect their dietary style strictly.
 
-jordanNote rules (follow precisely):
-- Maximum 3 sentences. Hard limit — never exceed this.
-- Voice: first person as Jordan. Never "AI", never "crush it",
-  never "Keep it up", never "You've got this".
-- If meals deviate from macro targets: lead with the coaching
-  reason FIRST, then the number. Never lead with the number.
-  Good: "Training day — I've kept protein high to support recovery,
-  which puts it slightly above your daily target."
-  Bad: "Protein landed at 190g, about 20g above target."
-- If meals hit targets: explain food choice philosophy in 2-3
-  sentences. No dry number summary.
-- Never mention specific gram amounts that differ from the user's
-  stated targets unless the coaching reason comes first.
+jordanNote rules (strict — follow precisely):
+- Maximum 2 sentences. Hard limit.
+- Voice: first person as Jordan, coach not chatbot.
+  Never "AI", never "crush it", never "Keep it up",
+  never "You've got this", never "Great choice".
+- ALWAYS reference at least one specific number from
+  the user's actual macro targets or meal data.
+  Bad: "Protein is prioritised to support your training."
+  Good: "I've anchored each meal around protein — you
+  need 175g today and this plan hits it exactly."
+- Lead with the coaching reason, not the number.
+  Bad: "Protein is 175g today."
+  Good: "Training day nutrition — I've kept carbs higher
+  to fuel your session, which puts them at 380g today."
+- If meals hit all targets cleanly: explain the food
+  philosophy in 1-2 sentences. What does this meal
+  pattern actually do for the user's specific goal?
+  Reference their goal (strength/fat_loss/hypertrophy etc)
+  if it influences the food choices.
+- If meals deviate from targets: lead with the coaching
+  reason FIRST, then the number.
 - Never use em-dashes (—). Use periods or commas instead.
+- Never mention specific gram amounts that differ from
+  the user's stated targets unless the coaching reason
+  comes first.
+- If day_type is "training day": mention carb timing
+  around the training session in jordanNote.
+- If day_type is "rest day": mention that carbs are
+  lower today and protein stays the same.
 
 Return ONLY valid JSON — no markdown, no prose:
 {
@@ -187,6 +219,8 @@ Profile:
 - dietary_style: ${dietaryStyle}
 - food_allergies: ${JSON.stringify(foodAllergies)}
 - weight_lbs: ${weightLbs ?? 'unknown'}
+- goal: ${goalType}
+- day_type: ${dayType}
 
 Return ONLY the JSON object.`,
           },

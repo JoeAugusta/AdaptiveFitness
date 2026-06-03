@@ -38,6 +38,7 @@ import {
   resolveWeeklyVolumeMuscleGroup,
 } from '../constants/strengthMuscleGroups';
 import { getStrengthProjection } from '../utils/projections';
+import { getLocalDateString } from '../utils/dateUtils';
 
 interface StrengthDataPoint {
   week: number;
@@ -81,12 +82,16 @@ function planMondayFromCreatedAt(planCreatedAt: Date): Date {
 }
 
 function localDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return getLocalDateString(d);
 }
 
 /** Mon–Sun; index aligns with dayIndex = (getDay() + 6) % 7 */
 const HEATMAP_DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const HEATMAP_ROWS = 7;
+const HEATMAP_CELL_SIZE = 28;
+const HEATMAP_CELL_GAP = 4;
+const HEATMAP_GRID_HEIGHT =
+  HEATMAP_CELL_SIZE * HEATMAP_ROWS + HEATMAP_CELL_GAP * (HEATMAP_ROWS - 1);
 
 /** Weekly Volume chart — intentional muscle → color system (keys are Title Case). */
 const MUSCLE_COLORS: Record<string, string> = {
@@ -1909,17 +1914,19 @@ export default function ProgressChartsScreen() {
                     <View>
                       <View style={styles.heatmapWeekLabelsRow}>
                         <View style={styles.heatmapWeekLabelGutter} />
-                        {Array.from({ length: heatmapTotalWeeks }, (_, colIndex) => {
-                          const showWeekLabel =
-                            colIndex % 3 === 0 || colIndex === heatmapTotalWeeks - 1;
-                          return (
-                            <View key={colIndex} style={styles.heatmapWeekLabelCell}>
-                              {showWeekLabel ? (
-                                <Text style={styles.heatmapWeekLabel}>{colIndex + 1}</Text>
-                              ) : null}
-                            </View>
-                          );
-                        })}
+                        {Array.from({ length: heatmapTotalWeeks }, (_, colIndex) => (
+                          <View
+                            key={colIndex}
+                            style={[
+                              styles.heatmapWeekLabelCell,
+                              heatmapTotalWeeks <= 10 && styles.heatmapWeekLabelCellFlex,
+                            ]}
+                          >
+                            <Text style={styles.heatmapWeekLabel}>
+                              {colIndex + 1}
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                       <View style={styles.heatmapColumnsRow}>
                         {Array.from({ length: heatmapTotalWeeks }, (_, colIndex) => {
@@ -1929,6 +1936,7 @@ export default function ProgressChartsScreen() {
                               key={colIndex}
                               style={[
                                 styles.heatmapWeekColumn,
+                                heatmapTotalWeeks <= 10 && styles.heatmapWeekColumnFlex,
                                 isCurrentWeekCol && styles.heatmapWeekColumnCurrent,
                               ]}
                             >
@@ -2433,6 +2441,7 @@ const styles = StyleSheet.create({
   heatmapDayLabelsColumn: {
     justifyContent: 'flex-start',
     marginRight: Spacing.xs,
+    minHeight: HEATMAP_GRID_HEIGHT,
   },
   heatmapWeekHeaderSpacer: {
     width: 14,
@@ -2446,13 +2455,13 @@ const styles = StyleSheet.create({
   heatmapRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-    height: 28,
+    height: HEATMAP_CELL_SIZE,
+    marginBottom: HEATMAP_CELL_GAP,
   },
   heatmapRowLabel: {
     width: 14,
-    height: 28,
-    lineHeight: 28,
+    height: HEATMAP_CELL_SIZE,
+    lineHeight: HEATMAP_CELL_SIZE,
     textAlignVertical: 'center',
     fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
@@ -2469,6 +2478,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heatmapWeekLabelCellFlex: {
+    flex: 1,
+    width: undefined,
+    minWidth: 24,
+  },
   heatmapWeekLabel: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
@@ -2482,6 +2496,13 @@ const styles = StyleSheet.create({
   heatmapWeekColumn: {
     width: 32,
     alignItems: 'center',
+    gap: HEATMAP_CELL_GAP,
+    minHeight: HEATMAP_GRID_HEIGHT,
+  },
+  heatmapWeekColumnFlex: {
+    flex: 1,
+    width: undefined,
+    minWidth: 24,
   },
   heatmapWeekColumnCurrent: {
     borderWidth: 1,
@@ -2489,13 +2510,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   heatmapCell: {
-    width: 28,
-    height: 28,
+    width: HEATMAP_CELL_SIZE,
+    height: HEATMAP_CELL_SIZE,
     borderRadius: Radius.sm,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.divider,
-    marginRight: 2,
   },
   heatmapCellActive: {
     backgroundColor: Colors.accent,

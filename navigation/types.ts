@@ -1,6 +1,37 @@
 import type { SessionDay } from '../utils/splitRecommendation';
 
-type GoalDetailParams = {
+export type SubscriptionPlanId = 'monthly' | 'quarterly' | 'annual';
+
+type BillingParams = {
+  selectedPlan?: SubscriptionPlanId;
+};
+
+/** Macro output passed into Pricing, then BuildingPlan with selectedPlan */
+type PlanGenerationInputParams = {
+  goal: string;
+  experience: string;
+  daysPerWeek: string;
+  trainingDays: string[];
+  sessionLength: string;
+  injuries: string[];
+  equipment: string;
+  excludedExercises: string[];
+  age: string;
+  sex: string;
+  heightFt: string;
+  heightIn: string;
+  weightLbs: string;
+  bodyFatPct: string | null;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatsG: number;
+  caloriePace?: string;
+  concurrentSport: { type: string[]; daysPerWeek: number } | null;
+} & GoalDetailParams &
+  PlanStructureParams;
+
+export type GoalDetailParams = {
   targetLift?: string;
   current1RM?: string;
   target1RM?: string;
@@ -99,59 +130,13 @@ export type RootStackParamList = {
     concurrentSport: { type: string[]; daysPerWeek: number } | null;
   } & GoalDetailParams &
     PlanStructureParams;
-  /** After MacroSetup — generates lite preview plan then routes to PlanPreview */
+  /** After MacroSetup — plan selection, then full plan generation */
+  Pricing: PlanGenerationInputParams;
   BuildingPlan: {
-    planGenerationMode?: 'preview' | 'full';
     replacePlanId?: string;
     goalId?: string;
-  } & {
-    goal: string;
-    experience: string;
-    daysPerWeek: string;
-    trainingDays: string[];
-    sessionLength: string;
-    injuries: string[];
-    equipment: string;
-    excludedExercises: string[];
-    age: string;
-    sex: string;
-    heightFt: string;
-    heightIn: string;
-    weightLbs: string;
-    bodyFatPct: string | null;
-    calories: number;
-    proteinG: number;
-    carbsG: number;
-    fatsG: number;
-    caloriePace?: string;
-    concurrentSport: { type: string[]; daysPerWeek: number } | null;
-  } & GoalDetailParams &
-    PlanStructureParams;
-  PlanPreview: {
-    previewPlanId?: string;
-    goal: string;
-    experience: string;
-    daysPerWeek: string;
-    trainingDays: string[];
-    sessionLength: string;
-    injuries: string[];
-    equipment: string;
-    excludedExercises: string[];
-    age: string;
-    sex: string;
-    heightFt: string;
-    heightIn: string;
-    weightLbs: string;
-    bodyFatPct: string | null;
-    calories: number;
-    proteinG: number;
-    carbsG: number;
-    fatsG: number;
-    /** fat_loss / hypertrophy calorie tier from MacroSetup; default balanced */
-    caloriePace?: string;
-    concurrentSport: { type: string[]; daysPerWeek: number } | null;
-  } & GoalDetailParams &
-    PlanStructureParams;
+  } & PlanGenerationInputParams &
+    BillingParams;
   Dashboard: undefined;
   ActiveWorkout: {
     planId: string;

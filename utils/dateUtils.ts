@@ -23,11 +23,59 @@ const DAY_LABEL_ALIASES: Record<string, (typeof CALENDAR_DAY_ORDER)[number]> = {
 };
 
 /** Local calendar date as YYYY-MM-DD (no UTC conversion). */
+export function getLocalDateString(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** @deprecated Prefer getLocalDateString — same behavior */
 export function localDateISO(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return getLocalDateString(d);
+}
+
+export function getLocalDate(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+export function formatDisplayDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+export function getNextScheduledDay(
+  scheduledDays: string[],
+  fromDate: Date = getLocalDate(),
+): string {
+  const normalized = normalizeScheduledDays(scheduledDays);
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  for (let i = 0; i < 7; i++) {
+    const candidate = new Date(fromDate);
+    candidate.setDate(fromDate.getDate() + i);
+    const dayName = dayNames[candidate.getDay()];
+    if (normalized.includes(dayName)) {
+      return getLocalDateString(candidate);
+    }
+  }
+
+  const tomorrow = new Date(fromDate);
+  tomorrow.setDate(fromDate.getDate() + 1);
+  return getLocalDateString(tomorrow);
+}
+
+export function isTodayScheduled(scheduledDays: string[]): boolean {
+  const normalized = normalizeScheduledDays(scheduledDays);
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const todayName = dayNames[new Date().getDay()];
+  return normalized.includes(todayName);
 }
 
 export function normalizeScheduledDayLabel(raw: string): string | null {
@@ -102,7 +150,7 @@ export function computeFirstSessionDate(
 
   return {
     firstSessionDate,
-    dateStr: localDateISO(firstSessionDate),
+    dateStr: getLocalDateString(firstSessionDate),
     isToday,
     displayLine,
   };
@@ -112,7 +160,7 @@ export function computeFirstSessionDate(
 export function isPlanStartDateReached(startDate: string | null | undefined): boolean {
   if (!startDate || String(startDate).trim() === '') return true;
   const dateOnly = String(startDate).split('T')[0];
-  const todayStr = localDateISO(new Date());
+  const todayStr = getLocalDateString(new Date());
   return dateOnly <= todayStr;
 }
 

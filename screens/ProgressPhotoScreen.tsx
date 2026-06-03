@@ -63,6 +63,15 @@ type AnalysisResult = {
 
 type FlowStep = 'intro' | 'capture' | 'confirm' | 'analyzing' | 'results';
 
+const PHOTO_INSTRUCTIONS = {
+  front:
+    'Stand 6–8 feet from the camera, full body visible from head to toe. Arms slightly away from sides. Neutral expression.',
+  side:
+    '90-degree side profile, full body head to toe. Arms relaxed at sides.',
+  back:
+    'Stand facing away, full body visible. Shows back development, glute and hamstring detail.',
+} as const;
+
 async function pickProgressPhoto(): Promise<string | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
@@ -97,8 +106,10 @@ export default function ProgressPhotoScreen() {
   const [step, setStep] = useState<FlowStep>('intro');
   const [frontBase64, setFrontBase64] = useState<string | null>(null);
   const [sideBase64, setSideBase64] = useState<string | null>(null);
+  const [backBase64, setBackBase64] = useState<string | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [sidePreview, setSidePreview] = useState<string | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -195,8 +206,10 @@ export default function ProgressPhotoScreen() {
     setStep('intro');
     setFrontBase64(null);
     setSideBase64(null);
+    setBackBase64(null);
     setFrontPreview(null);
     setSidePreview(null);
+    setBackPreview(null);
     setResult(null);
     setAnalyzing(false);
   };
@@ -213,6 +226,13 @@ export default function ProgressPhotoScreen() {
     if (!b64) return;
     setSideBase64(b64);
     setSidePreview(`data:image/jpeg;base64,${b64}`);
+  };
+
+  const handlePickBack = async () => {
+    const b64 = await pickProgressPhoto();
+    if (!b64) return;
+    setBackBase64(b64);
+    setBackPreview(`data:image/jpeg;base64,${b64}`);
   };
 
   const handleAnalyze = async () => {
@@ -233,6 +253,7 @@ export default function ProgressPhotoScreen() {
             weekNumber: currentWeek,
             photoBase64Front: frontBase64,
             photoBase64Side: sideBase64 ?? undefined,
+            photoBase64Back: backBase64 ?? undefined,
           },
         },
       );
@@ -272,6 +293,7 @@ export default function ProgressPhotoScreen() {
   const renderPhotoSlot = (
     label: string,
     required: boolean,
+    instruction: string,
     preview: string | null,
     onPick: () => void,
     onClear: () => void,
@@ -295,6 +317,7 @@ export default function ProgressPhotoScreen() {
           </View>
         )}
       </TouchableOpacity>
+      <Text style={styles.photoInstruction}>{instruction}</Text>
       {preview ? (
         <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={styles.retakeText}>Retake</Text>
@@ -368,17 +391,42 @@ export default function ProgressPhotoScreen() {
           <View style={styles.flowCard}>
             <Text style={styles.flowTitle}>Progress photos</Text>
             <Text style={styles.flowSub}>
-              Front photo required. Side photo improves accuracy.
+              Front photo required. Side and back photos improve accuracy.
             </Text>
             <View style={styles.photoRow}>
-              {renderPhotoSlot('Front', true, frontPreview, handlePickFront, () => {
-                setFrontBase64(null);
-                setFrontPreview(null);
-              })}
-              {renderPhotoSlot('Side', false, sidePreview, handlePickSide, () => {
-                setSideBase64(null);
-                setSidePreview(null);
-              })}
+              {renderPhotoSlot(
+                'Front',
+                true,
+                PHOTO_INSTRUCTIONS.front,
+                frontPreview,
+                handlePickFront,
+                () => {
+                  setFrontBase64(null);
+                  setFrontPreview(null);
+                },
+              )}
+              {renderPhotoSlot(
+                'Side',
+                false,
+                PHOTO_INSTRUCTIONS.side,
+                sidePreview,
+                handlePickSide,
+                () => {
+                  setSideBase64(null);
+                  setSidePreview(null);
+                },
+              )}
+              {renderPhotoSlot(
+                'Back',
+                false,
+                PHOTO_INSTRUCTIONS.back,
+                backPreview,
+                handlePickBack,
+                () => {
+                  setBackBase64(null);
+                  setBackPreview(null);
+                },
+              )}
             </View>
             <View style={styles.privacyRow}>
               <Ionicons name="lock-closed-outline" size={14} color={Colors.textTertiary} />
@@ -616,10 +664,14 @@ const styles = StyleSheet.create({
   },
   photoRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.md,
     justifyContent: 'center',
   },
-  photoSlot: { alignItems: 'center' },
+  photoSlot: {
+    alignItems: 'center',
+    width: THUMB_W + 8,
+  },
   photoSlotLabel: {
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
@@ -648,6 +700,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.micro,
     color: Colors.textTertiary,
     marginTop: 4,
+  },
+  photoInstruction: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 14,
+    marginTop: Spacing.xs,
+    width: THUMB_W + 24,
   },
   retakeText: {
     fontFamily: Fonts.semiBold,

@@ -1228,6 +1228,7 @@ interface GeneratePlanBody {
   sex?: string;
   /** Layer A: lite 2-session preview (onboarding) */
   isPreview?: boolean;
+  planGenerationMode?: 'preview' | 'full';
   userId?: string;
   deviceId?: string;
 }
@@ -1814,7 +1815,8 @@ serve(async (req) => {
 
   try {
     const body = (await req.json()) as GeneratePlanBody;
-    const isPreview = body.isPreview === true;
+    const isPreview =
+      body.isPreview === true || body.planGenerationMode === 'preview';
     const userId =
       typeof body.userId === 'string' && body.userId.trim() !== '' ? body.userId.trim() : null;
     const deviceId =
@@ -3070,7 +3072,7 @@ Never programme face pulls, cable flyes, lateral raises, curls, calf raises,
 planks, or any isolation movement for sets of 3–5 reps. This is a critical error.`;
 
     const systemPrompt = isPreview ? PREVIEW_SYSTEM_PROMPT : fullSystemPrompt;
-    const maxTokens = isPreview ? 1500 : 24000;
+    const maxTokens = isPreview ? 4000 : 12000;
 
     const response = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
@@ -3103,17 +3105,22 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       throw new Error(`Claude API error: ${data.error?.message ?? 'unknown'}`);
     }
 
-    const text = data.content?.[0]?.text ?? '';
-    console.log('[generate-plan] Claude response length:', text.length);
+    const responseText = data.content?.[0]?.text ?? '';
+    console.log('[generate-plan] Claude response length:', responseText.length);
 
-    const trimmed = text.trimEnd();
+    if (data.stop_reason === 'max_tokens') {
+      console.error('[generate-plan] TRUNCATED — increase max_tokens');
+      throw new Error('Plan generation was cut short. Please try again.');
+    }
+
+    const trimmed = responseText.trimEnd();
     if (!trimmed.endsWith('}') && !trimmed.endsWith('}```')) {
       console.error('[generate-plan] WARNING: Response may be truncated. Last 50 chars:', trimmed.slice(-50));
     }
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error('No JSON found in response:', text);
+      console.error('No JSON found in response:', responseText);
       throw new Error('No JSON found in Claude response');
     }
 
@@ -3121,7 +3128,7 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
     try {
       plan = JSON.parse(jsonMatch[0]);
     } catch (e) {
-      console.error('Parse error. Raw text:', text);
+      console.error('Parse error. Raw text:', responseText);
       throw new Error('JSON parse failed: ' + String(e));
     }
 

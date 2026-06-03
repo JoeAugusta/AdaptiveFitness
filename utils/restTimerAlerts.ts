@@ -20,8 +20,8 @@ export async function scheduleRestCompleteNotification(seconds: number): Promise
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Rest complete',
-        body: 'Time for your next set.',
+        title: 'Rest up',
+        body: 'Next set ready. Stay focused.',
         sound: true,
       },
       trigger: {
@@ -42,8 +42,8 @@ export async function playRestCompleteSound(): Promise<void> {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Rest complete',
-        body: 'Time for your next set.',
+        title: 'Rest up',
+        body: 'Next set ready. Stay focused.',
         sound: true,
       },
       trigger: null,

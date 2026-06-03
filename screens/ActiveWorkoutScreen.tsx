@@ -45,6 +45,7 @@ import {
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
 import { JordanAvatar } from '../components/JordanAvatar';
+import { RPEReferenceSheet } from '../components/RPEReferenceSheet';
 import { stripEmDash } from '../utils/jordanText';
 
 const WORKOUT_DRAFT_KEY = 'hone_workout_draft';
@@ -390,6 +391,9 @@ export default function ActiveWorkoutScreen() {
 
   // Fatigue check-in
   const [showFatigueSheet, setShowFatigueSheet] = useState(false);
+  const [showRpeNudgeModal, setShowRpeNudgeModal] = useState(false);
+  const [showRpeReference, setShowRpeReference] = useState(false);
+  const [rpeReferenceFromNudge, setRpeReferenceFromNudge] = useState(false);
   const [fatigueRating, setFatigueRating] = useState<number | null>(null);
   const fatigueEmojiScales = useRef(
     FATIGUE_OPTIONS.map(() => new Animated.Value(1)),
@@ -1161,6 +1165,18 @@ export default function ActiveWorkoutScreen() {
     setRestSecondsRemaining(0);
   };
 
+  const hasAnyRpeLogged = sets.some(
+    (s) => s.rpe !== null && s.rpe > 0,
+  );
+
+  const openFinishFlow = () => {
+    if (!hasAnyRpeLogged && sets.length > 0) {
+      setShowRpeNudgeModal(true);
+    } else {
+      setShowFatigueSheet(true);
+    }
+  };
+
   const handleBack = () => {
     Alert.alert(
       'Leave workout?',
@@ -1172,7 +1188,7 @@ export default function ActiveWorkoutScreen() {
         },
         {
           text: 'Finish & Save',
-          onPress: () => setShowFatigueSheet(true),
+          onPress: openFinishFlow,
         },
         {
           text: 'Discard Workout',
@@ -1477,7 +1493,7 @@ export default function ActiveWorkoutScreen() {
             <TouchableOpacity
               style={styles.finishButton}
               activeOpacity={0.8}
-              onPress={() => setShowFatigueSheet(true)}
+              onPress={openFinishFlow}
             >
               <Text style={styles.finishButtonText}>Finish Workout</Text>
             </TouchableOpacity>
@@ -1599,6 +1615,83 @@ export default function ActiveWorkoutScreen() {
         </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal
+        visible={showRpeNudgeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowRpeNudgeModal(false);
+          setShowFatigueSheet(true);
+        }}
+      >
+        <View style={styles.rpeNudgeRoot}>
+          <Pressable
+            style={styles.rpeNudgeOverlay}
+            onPress={() => {
+              setShowRpeNudgeModal(false);
+              setShowFatigueSheet(true);
+            }}
+          />
+          <View style={styles.rpeNudgeSheet}>
+            <View style={styles.rpeNudgeHandle} />
+
+            <View style={styles.rpeNudgeHeaderRow}>
+              <JordanAvatar size={32} />
+              <Text style={styles.rpeNudgeJordanLabel}>JORDAN</Text>
+            </View>
+
+            <Text style={styles.rpeNudgeTitle}>
+              No effort ratings this session.
+            </Text>
+
+            <Text style={styles.rpeNudgeBody}>
+              RPE tells me how hard each set was. Without it, I'm estimating
+              your Week {(resolvedPlanWeekNumber ?? 1) + 1} weights instead of
+              calculating them from your actual effort. Rate effort on your next
+              session and your plan adapts to you specifically.
+            </Text>
+
+            <View style={styles.rpeNudgeActions}>
+              <TouchableOpacity
+                style={styles.rpeNudgeSecondary}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setShowRpeNudgeModal(false);
+                  setRpeReferenceFromNudge(true);
+                  setShowRpeReference(true);
+                }}
+              >
+                <Text style={styles.rpeNudgeSecondaryText}>What is RPE?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rpeNudgePrimary}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setShowRpeNudgeModal(false);
+                  setShowFatigueSheet(true);
+                }}
+              >
+                <Text style={styles.rpeNudgePrimaryText}>
+                  Got it — I'll rate next time
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <RPEReferenceSheet
+        visible={showRpeReference}
+        onClose={() => {
+          setShowRpeReference(false);
+          if (rpeReferenceFromNudge) {
+            setRpeReferenceFromNudge(false);
+            setShowFatigueSheet(true);
+          }
+        }}
+      />
 
       <Modal
         visible={showPreSessionModal}
@@ -2046,5 +2139,81 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+  },
+
+  rpeNudgeRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  rpeNudgeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  rpeNudgeSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    padding: Spacing.xl,
+    paddingBottom: 48,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  rpeNudgeHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
+  },
+  rpeNudgeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  rpeNudgeJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  rpeNudgeTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  rpeNudgeBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 24,
+    marginBottom: Spacing.xl,
+  },
+  rpeNudgeActions: {
+    gap: Spacing.sm,
+  },
+  rpeNudgePrimary: {
+    height: 56,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rpeNudgePrimaryText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  rpeNudgeSecondary: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rpeNudgeSecondaryText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
   },
 });

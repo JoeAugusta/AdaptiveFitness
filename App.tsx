@@ -6,6 +6,9 @@ import {
   NavigationContainer,
 } from '@react-navigation/native';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import { BETA_BYPASS } from './constants/betaBypass';
 import {
   useFonts,
   DMSans_400Regular,
@@ -60,6 +63,26 @@ export default function App() {
       }
     });
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (BETA_BYPASS) return;
+    if (Platform.OS === 'web') return;
+
+    const apiKey = Platform.OS === 'ios'
+      ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY ?? ''
+      : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? '';
+
+    if (!apiKey || apiKey === 'placeholder') {
+      console.warn('[RevenueCat] No API key configured');
+      return;
+    }
+
+    Purchases.configure({ apiKey });
+
+    if (__DEV__) {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    }
   }, []);
 
   const [fontsLoaded, fontError] = useFonts({

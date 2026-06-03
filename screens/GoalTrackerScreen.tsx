@@ -33,6 +33,7 @@ import ProjectionChart, {
 import { useMetric } from '../utils/units';
 import { buildGoalHeroModel, type GoalHeroModel } from '../utils/goalTrackerHero';
 import { matchesTargetLift, epleyEstimated1RMLbs } from '../utils/strengthGoalLift';
+import { getLocalDate, getLocalDateString } from '../utils/dateUtils';
 import { parseSetsJson } from '../utils/workoutHistoryData';
 
 const TRACKER_CHART_STROKE: Record<string, string> = {
@@ -721,10 +722,10 @@ export default function GoalTrackerScreen() {
       if (activePlan && activeGoal) {
         const planStartDate =
           (activePlan.created_at ?? '').split('T')[0] ||
-          new Date().toISOString().split('T')[0];
-        const thirtyDaysAgo = new Date();
+          getLocalDateString();
+        const thirtyDaysAgo = getLocalDate();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const weightSince = thirtyDaysAgo.toISOString().split('T')[0];
+        const weightSince = getLocalDateString(thirtyDaysAgo);
         const summaryQuery =
           activePlan.current_week > 1
             ? supabase

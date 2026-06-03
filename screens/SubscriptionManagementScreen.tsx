@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, {
   PURCHASES_ERROR_CODE,
   PurchasesError,
@@ -20,6 +22,11 @@ import Purchases, {
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { Ionicons } from '@expo/vector-icons';
+import { useEntitlement } from '../hooks/useEntitlement';
+import { BETA_BYPASS } from '../constants/betaBypass';
+import type { SubscriptionPlanId } from '../navigation/types';
+
+const ONBOARDING_SELECTED_PLAN_KEY = 'hone_onboarding_selected_plan';
 
 // ── Date helper ──
 
@@ -59,19 +66,73 @@ function SkeletonContent({ pulseAnim }: { pulseAnim: Animated.Value }) {
 
 // ── Main screen ──
 
+type PlanPickerProps = {
+  planId: SubscriptionPlanId;
+  label: string;
+  price: string;
+  period: string;
+  badge?: string;
+  badgeAccent?: boolean;
+  selected: boolean;
+  onSelect: () => void;
+};
+
+function PlanPickerCard({
+  label,
+  price,
+  period,
+  badge,
+  badgeAccent,
+  selected,
+  onSelect,
+}: PlanPickerProps) {
+  return (
+    <Pressable
+      style={[styles.planCard, selected && styles.planCardSelected]}
+      onPress={onSelect}
+    >
+      <View style={styles.planCardTop}>
+        <Text style={styles.planLabel}>{label}</Text>
+        {badge ? (
+          <View
+            style={[
+              styles.planBadge,
+              badgeAccent ? styles.planBadgeAccent : styles.planBadgeMuted,
+            ]}
+          >
+            <Text
+              style={[
+                styles.planBadgeText,
+                badgeAccent && styles.planBadgeTextOnAccent,
+              ]}
+            >
+              {badge}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.planPrice}>{price}</Text>
+      <Text style={styles.planPeriod}>{period}</Text>
+    </Pressable>
+  );
+}
+
 export default function SubscriptionManagementScreen() {
   const navigation = useNavigation();
+  const { status: entitlementStatus } = useEntitlement();
 
   const [isProActive, setIsProActive] = useState(false);
   const [willRenew, setWillRenew] = useState(false);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   const [originalPurchaseDate, setOriginalPurchaseDate] = useState<string | null>(null);
   const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
+  const [quarterlyPackage, setQuarterlyPackage] = useState<PurchasesPackage | null>(null);
   const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanId>('annual');
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [hasHadTrial, setHasHadTrial] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
@@ -135,8 +196,21 @@ export default function SubscriptionManagementScreen() {
       setWillRenew(proEntitlement?.willRenew ?? false);
       setExpirationDate(proEntitlement?.expirationDate ?? null);
       setOriginalPurchaseDate(proEntitlement?.originalPurchaseDate ?? null);
-      setMonthlyPackage(offerings?.current?.monthly ?? null);
-      setAnnualPackage(offerings?.current?.annual ?? null);
+      const current = offerings?.current;
+      setMonthlyPackage(current?.monthly ?? null);
+      setQuarterlyPackage(
+        current?.threeMonth ??
+          current?.availablePackages.find(
+            (p) => p.identifier === '$rc_quarterly',
+          ) ??
+          null,
+      );
+      setAnnualPackage(current?.annual ?? null);
+
+      if (BETA_BYPASS) {
+        setIsProActive(true);
+        setWillRenew(true);
+      }
     } catch (e) {
       console.error('SubscriptionManagement load error:', e);
       setHasError(true);
@@ -149,12 +223,34 @@ export default function SubscriptionManagementScreen() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (BETA_BYPASS || Platform.OS === 'web') return;
+    Purchases.getCustomerInfo()
+      .then((info) => {
+        setHasHadTrial(info.allPurchasedProductIdentifiers.length > 0);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    void AsyncStorage.getItem(ONBOARDING_SELECTED_PLAN_KEY).then((stored) => {
+      if (stored === 'monthly' || stored === 'quarterly' || stored === 'annual') {
+        setSelectedPlan(stored);
+      }
+    });
+  }, []);
+
   // ── Action handlers ──
 
   const handlePurchase = async () => {
     if (Platform.OS === 'web') return;
 
-    const pkg = selectedPlan === 'annual' ? annualPackage : monthlyPackage;
+    const pkg =
+      selectedPlan === 'annual'
+        ? annualPackage
+        : selectedPlan === 'quarterly'
+          ? quarterlyPackage
+          : monthlyPackage;
     if (!pkg) {
       Alert.alert('Not Available', 'Packages not yet loaded. Please try again.');
       return;
@@ -250,6 +346,32 @@ export default function SubscriptionManagementScreen() {
   // ── Render ──
 
   const showWebStyleCta = Platform.OS === 'web' || __DEV__;
+  const showUpgradePlans =
+    entitlementStatus === 'free' || entitlementStatus === 'trial';
+  const showPaidManage = entitlementStatus === 'paid' && isProActive;
+
+  const selectedPlanPriceLabel =
+    selectedPlan === 'annual'
+      ? '$99.99/yr'
+      : selectedPlan === 'quarterly'
+        ? '$34.99/3mo'
+        : '$14.99/mo';
+
+  const purchaseCtaLabel = (() => {
+    if (entitlementStatus === 'paid') return 'Manage Subscription';
+    if (entitlementStatus === 'trial') {
+      return 'Subscribe Now — Keep Jordan After Trial';
+    }
+    if (hasHadTrial) {
+      return `Resubscribe — ${selectedPlanPriceLabel}`;
+    }
+    return 'Start 7-Day Free Trial →';
+  })();
+
+  const showTrialMessaging =
+    entitlementStatus !== 'paid' &&
+    entitlementStatus !== 'trial' &&
+    !hasHadTrial;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -333,89 +455,75 @@ export default function SubscriptionManagementScreen() {
               )}
             </View>
 
-            <View style={styles.compCard}>
-              <View style={styles.compHeaderRow}>
-                <View style={styles.compHeaderFeatureSpacer} />
-                <Text style={styles.compHeaderFree}>Free</Text>
-                <View style={styles.compHeaderProCol}>
-                  <Text style={styles.compHeaderPro}>Pro</Text>
-                  <View style={styles.compProUnderline} />
+            {!showPaidManage && (
+              <View style={styles.compCard}>
+                <View style={styles.compHeaderRow}>
+                  <View style={styles.compHeaderFeatureSpacer} />
+                  <Text style={styles.compHeaderFree}>Free</Text>
+                  <View style={styles.compHeaderProCol}>
+                    <Text style={styles.compHeaderPro}>Pro</Text>
+                    <View style={styles.compProUnderline} />
+                  </View>
                 </View>
+                {FEATURES.map(([name, freeHas, proHas], idx) => (
+                  <View
+                    key={name}
+                    style={[
+                      styles.compDataRow,
+                      idx === FEATURES.length - 1 && styles.compDataRowLast,
+                    ]}
+                  >
+                    <Text style={styles.compFeatureName} numberOfLines={2}>
+                      {name}
+                    </Text>
+                    <Text
+                      style={freeHas ? styles.compCellCheckFree : styles.compCellDash}
+                      numberOfLines={1}
+                    >
+                      {freeHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
+                    </Text>
+                    <Text
+                      style={proHas ? styles.compCellCheckPro : styles.compCellDash}
+                      numberOfLines={1}
+                    >
+                      {proHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
+                    </Text>
+                  </View>
+                ))}
               </View>
-              {FEATURES.map(([name, freeHas, proHas], idx) => (
-                <View
-                  key={name}
-                  style={[
-                    styles.compDataRow,
-                    idx === FEATURES.length - 1 && styles.compDataRowLast,
-                  ]}
-                >
-                  <Text style={styles.compFeatureName} numberOfLines={2}>
-                    {name}
-                  </Text>
-                  <Text
-                    style={freeHas ? styles.compCellCheckFree : styles.compCellDash}
-                    numberOfLines={1}
-                  >
-                    {freeHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
-                  </Text>
-                  <Text
-                    style={proHas ? styles.compCellCheckPro : styles.compCellDash}
-                    numberOfLines={1}
-                  >
-                    {proHas ? <Ionicons name="checkmark" size={14} color={Colors.success} /> : '—'}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            )}
 
-            {!isProActive ? (
+            {showUpgradePlans ? (
               <View style={styles.upgradeSection}>
                 <Text style={styles.choosePlanHeading}>CHOOSE YOUR PLAN</Text>
 
-                <TouchableOpacity
-                  style={[
-                    styles.pricingCard,
-                    selectedPlan === 'monthly' && styles.pricingCardSelected,
-                  ]}
-                  onPress={() => setSelectedPlan('monthly')}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.pricingInfo}>
-                    <Text style={styles.pricingTitle}>Monthly</Text>
-                    <View style={styles.pricingPriceRow}>
-                      <Text style={styles.pricingPriceMain}>$14.99 / month</Text>
-                    </View>
-                  </View>
-                  <View
-                    style={[
-                      styles.planRadioOuter,
-                      selectedPlan === 'monthly' && styles.planRadioOuterSelected,
-                    ]}
-                  >
-                    {selectedPlan === 'monthly' ? <View style={styles.planRadioInner} /> : null}
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.pricingCard,
-                    selectedPlan === 'annual' && styles.pricingCardSelected,
-                  ]}
-                  onPress={() => setSelectedPlan('annual')}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.pricingInfo}>
-                    <Text style={styles.pricingTitle}>Annual</Text>
-                    <View style={styles.pricingPriceRow}>
-                      <Text style={styles.pricingPriceMain}>$99.99 / year</Text>
-                      <Text style={styles.pricingPriceEquiv}>~$8.33/mo</Text>
-                    </View>
-                  </View>
-                  <View style={styles.bestValueBadge}>
-                    <Text style={styles.bestValueText}>BEST VALUE</Text>
-                  </View>
-                </TouchableOpacity>
+                <PlanPickerCard
+                  planId="monthly"
+                  label="MONTHLY"
+                  price="$14.99"
+                  period="per month"
+                  selected={selectedPlan === 'monthly'}
+                  onSelect={() => setSelectedPlan('monthly')}
+                />
+                <PlanPickerCard
+                  planId="quarterly"
+                  label="QUARTERLY"
+                  price="$34.99"
+                  period="per 3 months ($11.66/mo)"
+                  badge="SAVE 22%"
+                  selected={selectedPlan === 'quarterly'}
+                  onSelect={() => setSelectedPlan('quarterly')}
+                />
+                <PlanPickerCard
+                  planId="annual"
+                  label="ANNUAL"
+                  price="$99.99"
+                  period="per year ($8.33/mo)"
+                  badge="BEST VALUE — SAVE 44%"
+                  badgeAccent
+                  selected={selectedPlan === 'annual'}
+                  onSelect={() => setSelectedPlan('annual')}
+                />
 
                 {showWebStyleCta ? (
                   <View style={styles.ctaWeb}>
@@ -424,23 +532,28 @@ export default function SubscriptionManagementScreen() {
                 ) : (
                   <TouchableOpacity
                     style={styles.ctaDevice}
-                    onPress={handlePurchase}
+                    onPress={
+                      entitlementStatus === 'paid'
+                        ? handleManageSubscription
+                        : handlePurchase
+                    }
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.ctaDeviceText}>Start Free 7-Day Trial</Text>
+                    <Text style={styles.ctaDeviceText}>{purchaseCtaLabel}</Text>
                   </TouchableOpacity>
                 )}
 
                 <Text style={styles.finePrintBlock1}>
-                  Cancel anytime. 7-day free trial, then billed at the selected rate. Recurring
-                  subscription.
+                  {showTrialMessaging
+                    ? 'Cancel anytime. 7-day free trial, then billed at the selected rate. Recurring subscription.'
+                    : 'Subscription auto-renews at the selected rate. Cancel anytime in Settings.'}
                 </Text>
                 <Text style={styles.finePrintBlock2}>
                   Subscriptions are managed through the App Store or Google Play. Hone
                   does not have access to your payment details.
                 </Text>
               </View>
-            ) : (
+            ) : showPaidManage ? (
               <View style={styles.manageSection}>
                 <View style={styles.manageCard}>
                   <TouchableOpacity
@@ -466,7 +579,7 @@ export default function SubscriptionManagementScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            )}
+            ) : null}
 
             {isProActive ? (
               <Text style={styles.footerManagedNote}>
@@ -706,6 +819,60 @@ const styles = StyleSheet.create({
   },
 
   upgradeSection: { marginTop: 0 },
+  planCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.xl,
+    marginBottom: Spacing.md,
+  },
+  planCardSelected: {
+    borderColor: Colors.accent,
+    borderWidth: 2,
+  },
+  planCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  planLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  planBadge: {
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  planBadgeMuted: {
+    backgroundColor: Colors.bgElevated,
+  },
+  planBadgeAccent: {
+    backgroundColor: Colors.accent,
+  },
+  planBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+  },
+  planBadgeTextOnAccent: {
+    color: Colors.bgPrimary,
+  },
+  planPrice: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.display,
+    color: Colors.textPrimary,
+  },
+  planPeriod: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
+  },
   choosePlanHeading: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.label,

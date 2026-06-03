@@ -258,14 +258,13 @@ export default function MacroSetupScreen() {
       recommendedWeeks: params.recommendedWeeks,
       targetDate: params.targetDate,
     });
-    navigation.navigate('BuildingPlan', {
+    navigation.navigate('Pricing', {
       ...params,
       calories,
       proteinG,
       carbsG,
       fatsG,
       caloriePace,
-      planGenerationMode: 'preview',
     });
   };
 

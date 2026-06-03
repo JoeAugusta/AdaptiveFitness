@@ -222,8 +222,8 @@ export default function NotificationsSettingsScreen() {
         if (enabled) {
           const id = await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Time to train',
-              body: "Your workout is ready. Let's get it done.",
+              title: "Today's session is ready",
+              body: "Your workout is loaded. Jordan's waiting.",
               sound: true,
             },
             trigger: {
@@ -258,8 +258,8 @@ export default function NotificationsSettingsScreen() {
           if (value) {
             const id = await Notifications.scheduleNotificationAsync({
               content: {
-                title: 'Time to weigh in',
-                body: 'Step on the scale and log today\'s weight in Hone.',
+                title: 'Morning check-in',
+                body: 'Your weight today shapes next week\'s targets. Hop on the scale.',
                 sound: true,
               },
               trigger: {
@@ -290,8 +290,8 @@ export default function NotificationsSettingsScreen() {
       }
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Time to weigh in',
-          body: 'Step on the scale and log today\'s weight in Hone.',
+          title: 'Morning check-in',
+          body: 'Your weight today shapes next week\'s targets. Hop on the scale.',
           sound: true,
         },
         trigger: {

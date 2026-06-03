@@ -33,6 +33,7 @@ import {
 import { useMetric } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { getLocalDateString } from '../utils/dateUtils';
 import BetaFeedbackModal from '../components/BetaFeedbackModal';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -348,7 +349,11 @@ function SkeletonCard({
 export default function ProfileSettingsScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
-  const { isPro: rcIsPro, loading: rcEntitlementLoading } = useEntitlement();
+  const {
+    isPro: rcIsPro,
+    status: entitlementStatus,
+    loading: rcEntitlementLoading,
+  } = useEntitlement();
 
   const [data, setData] = useState<ScreenData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -694,7 +699,7 @@ export default function ProfileSettingsScreen() {
 
   const isPro = data?.subscriptionStatus === 'pro';
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateString();
   const isToday = latestWeightLog?.log_date === today;
 
   const trainingPrefs = data
@@ -971,6 +976,46 @@ export default function ProfileSettingsScreen() {
             </Text>
           </>
         )}
+
+        {/* ── Account ── */}
+        <Text style={styles.sectionHeading}>ACCOUNT</Text>
+        <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={[
+              styles.row,
+              styles.rowLast,
+              !rcIsPro && styles.subscriptionRowHighlight,
+            ]}
+            onPress={() => navigation.navigate('SubscriptionManagement')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.subscriptionRowLeft}>
+              <Ionicons
+                name="star-outline"
+                size={20}
+                color={rcIsPro ? Colors.textSecondary : Colors.accent}
+              />
+              <View style={styles.subscriptionRowText}>
+                <Text
+                  style={[
+                    styles.subscriptionRowTitle,
+                    !rcIsPro && styles.subscriptionRowLabelHighlight,
+                  ]}
+                >
+                  {rcIsPro ? 'Manage Subscription' : 'Upgrade to Pro'}
+                </Text>
+                <Text style={styles.subscriptionRowSublabel}>
+                  {rcIsPro
+                    ? entitlementStatus === 'trial'
+                      ? 'Free trial active'
+                      : 'Pro plan active'
+                    : 'Unlock adaptive coaching'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.rowChevron}>›</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── 5. App ── */}
         <Text style={styles.sectionHeading}>APP</Text>
@@ -1595,6 +1640,32 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  subscriptionRowHighlight: {
+    backgroundColor: Colors.accentMuted,
+  },
+  subscriptionRowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  subscriptionRowText: {
+    flex: 1,
+    gap: 2,
+  },
+  subscriptionRowTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  subscriptionRowLabelHighlight: {
+    color: Colors.accent,
+  },
+  subscriptionRowSublabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
   rowValue: {

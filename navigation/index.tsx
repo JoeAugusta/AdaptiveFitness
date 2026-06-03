@@ -12,12 +12,12 @@ import SignInScreen from '../screens/auth/SignInScreen';
 import JordanIntroScreen from '../screens/onboarding/JordanIntroScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import GoalDetailsScreen from '../screens/onboarding/GoalDetailsScreen';
+import PricingScreen from '../screens/onboarding/PricingScreen';
 import ExperienceScreen from '../screens/onboarding/ExperienceScreen';
 import RPEEducationScreen from '../screens/onboarding/RPEEducationScreen';
 import ConstraintsScreen from '../screens/onboarding/ConstraintsScreen';
 import BodyMetricsScreen from '../screens/onboarding/BodyMetricsScreen';
 import MacroSetupScreen from '../screens/onboarding/MacroSetupScreen';
-import PlanPreviewScreen from '../screens/onboarding/PlanPreviewScreen';
 import BuildingPlanScreen from '../screens/onboarding/BuildingPlanScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
@@ -204,7 +204,7 @@ export default function RootNavigator() {
       <Root.Screen name="Constraints"   component={ConstraintsScreen} />
       <Root.Screen name="BodyMetrics"  component={BodyMetricsScreen} />
       <Root.Screen name="MacroSetup"   component={MacroSetupScreen} />
-      <Root.Screen name="PlanPreview"  component={PlanPreviewScreen} />
+      <Root.Screen name="Pricing"      component={PricingScreen} />
       <Root.Screen name="BuildingPlan" component={BuildingPlanScreen} />
 
       {/* ── Main app (tab bar lives inside MainTabs) ── */}
@@ -214,6 +214,10 @@ export default function RootNavigator() {
       <Root.Screen name="ActiveWorkout"    component={ActiveWorkoutScreen} />
       <Root.Screen name="WorkoutComplete"  component={WorkoutCompleteScreen} />
       <Root.Screen name="PlanComplete" component={PlanCompleteScreen} />
+      <Root.Screen
+        name="SubscriptionManagement"
+        component={SubscriptionManagementScreen}
+      />
     </Root.Navigator>
   );
 }

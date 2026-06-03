@@ -33,6 +33,7 @@ import { getSessionIntent } from '../utils/getSessionIntent';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  getLocalDateString,
   getNextTrainingDay,
   getTodayDayLabel,
   isLastScheduledTrainingDayToday,
@@ -740,7 +741,12 @@ function getBestEpleyFromWeekLogs(
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
   const { session } = useAuth();
-  const { isPro, loading: entitlementLoading } = useEntitlement();
+  const {
+    isPro,
+    status: entitlementStatus,
+    loading: entitlementLoading,
+    trialEndsAt,
+  } = useEntitlement();
 
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planStatus, setPlanStatus] = useState<string | null>(null);
@@ -845,7 +851,7 @@ export default function HomeScreen() {
     const uid =
       uidRef.current ?? (await supabase.auth.getUser()).data.user?.id ?? null;
     if (!uid) return false;
-    const todayDate = new Date().toISOString().split('T')[0];
+    const todayDate = getLocalDateString();
     const { data: todayLog } = await supabase
       .from('weight_logs')
       .select('weight_lbs, sleep_hours')
@@ -921,7 +927,7 @@ export default function HomeScreen() {
       setProfile(profileData);
 
       // Load today's weight log
-      const todayDate = new Date().toISOString().split('T')[0];
+      const todayDate = getLocalDateString();
       const { data: todayLog } = await supabase
         .from('weight_logs')
         .select('weight_lbs, sleep_hours')
@@ -1121,7 +1127,7 @@ export default function HomeScreen() {
         (plan.current_week ?? 1) === 1 && completedDayNumbers.size === 0;
       setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
 
-      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todayDateStr = getLocalDateString();
       const { data: todayLogs } = await supabase
         .from('workout_logs')
         .select('id, logged_at')
@@ -1528,7 +1534,7 @@ export default function HomeScreen() {
       const uid = user?.id;
       if (!uid) throw new Error('No authenticated user');
       uidRef.current = uid;
-      const todayDate = new Date().toISOString().split('T')[0];
+      const todayDate = getLocalDateString();
       const { error } = await supabase
         .from('weight_logs')
         .upsert(
@@ -1688,6 +1694,18 @@ export default function HomeScreen() {
       : (planData?.currentWeek ?? 1)
     : 1;
   const needsWeekPaywall = Platform.OS !== 'web' && sessionWeekForGate >= 2;
+
+  const trialDaysLeft =
+    trialEndsAt != null
+      ? Math.ceil(
+          (trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        )
+      : null;
+  const showTrialBanner =
+    entitlementStatus === 'trial' &&
+    trialDaysLeft !== null &&
+    trialDaysLeft > 0 &&
+    trialDaysLeft <= 3;
   const displayName = (() => {
     if (profile?.full_name) {
       return profile.full_name.trim().split(' ')[0];
@@ -1843,6 +1861,29 @@ export default function HomeScreen() {
             ) : null}
           </View>
         </View>
+
+        {showTrialBanner ? (
+          <View style={styles.trialBanner}>
+            <View style={styles.trialBannerLeft}>
+              <Ionicons name="time-outline" size={16} color={Colors.accent} />
+              <Text style={styles.trialBannerText}>
+                {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} left in your
+                free trial
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                navigation.navigate('ProfileTab' as any, {
+                  screen: 'SubscriptionManagement',
+                })
+              }
+            >
+              <Text style={styles.trialBannerManage}>Manage →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {planStatus === 'completed' ? (
           <View style={styles.planCompleteCard}>
@@ -2164,17 +2205,28 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.weekUnlockButton}
                 activeOpacity={0.8}
-                onPress={() =>
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  navigation.navigate('ProfileTab' as any, {
-                    screen: 'SubscriptionManagement',
-                  })
-                }
+                onPress={() => {
+                  const rootNav = navigation.getParent()?.getParent();
+                  if (rootNav) {
+                    rootNav.navigate('SubscriptionManagement');
+                  } else {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    navigation.navigate('ProfileTab' as any, {
+                      screen: 'SubscriptionManagement',
+                    });
+                  }
+                }}
               >
-                <Text style={styles.weekUnlockTitle}>
-                  <Ionicons name="lock-closed-outline" size={16} color={Colors.textSecondary} /> Unlock Week {sessionWeekForGate}: Go Pro
-                </Text>
-                <Text style={styles.weekUnlockPrice}>$14.99/mo or $99.99/yr</Text>
+                <View style={styles.weekUnlockRow}>
+                  <Ionicons
+                    name="lock-closed"
+                    size={16}
+                    color={Colors.textPrimary}
+                  />
+                  <Text style={styles.weekUnlockTitle}>
+                    Unlock Week {sessionWeekForGate} — See Plans
+                  </Text>
+                </View>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -2717,6 +2769,36 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
+  trialBanner: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trialBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  trialBannerText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    flexShrink: 1,
+  },
+  trialBannerManage: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
   missedCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.sm,
@@ -3071,6 +3153,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
+  },
+  weekUnlockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
   weekUnlockTitle: {
     fontFamily: Fonts.bold,

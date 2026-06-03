@@ -665,6 +665,21 @@ export default function ExerciseCard({
     if (!isBodyweightExercise && (isNaN(weightLbs) || weightLbs <= 0)) return;
     onLogSet(exercise.id, setNumber, weightLbs, reps, input.rpe);
 
+    // Auto-expand RPE for next set if current set had no RPE
+    if (input.rpe === null) {
+      const nextUnloggedSet = exercise.sets.find(
+        (s) =>
+          s.setNumber > setNumber &&
+          !loggedSets.some((ls) => ls.setNumber === s.setNumber),
+      );
+      if (nextUnloggedSet) {
+        // Small delay so the set logs first visually
+        setTimeout(() => {
+          setRpeExpandedSet(nextUnloggedSet.setNumber);
+        }, 300);
+      }
+    }
+
     const lastWeekSameSet = previousSets.find((s) => s.setNumber === setNumber);
     if (!lastWeekSameSet) {
       void hapticMedium();

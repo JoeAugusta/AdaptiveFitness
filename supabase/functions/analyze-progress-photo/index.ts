@@ -30,8 +30,20 @@ CRITICAL RULES:
 - Never use phrases like "you need to lose" or "you should be"
 - Never estimate an exact body fat percentage — always give a range
   (e.g. "15-18%")
-- Focus on muscle development, visible training adaptations, and
-  composition changes
+- Assess each of the following when visible in the photos:
+UPPER BODY: shoulder development and roundness, arm size
+(bicep/tricep), chest thickness and definition, back
+width and thickness (from side/back photos)
+MIDSECTION: waist taper, abdominal visibility, oblique
+definition
+LOWER BODY: quad sweep and separation, hamstring
+development, glute fullness and shape, calf development
+OVERALL: symmetry between left/right, upper/lower
+body balance, postural alignment
+
+When a body region is not visible in any photo, do not
+comment on it. When it is visible, be specific about
+what training adaptations are apparent.
 - Never comment negatively on any body part
 - Keep coaching note to 3 sentences maximum
 - Never use em-dashes. Never use "AI". Never say "crush it".
@@ -157,12 +169,14 @@ serve(async (req) => {
       weekNumber,
       photoBase64Front,
       photoBase64Side,
+      photoBase64Back,
     } = body as {
       userId?: string;
       planId?: string;
       weekNumber?: number;
       photoBase64Front?: string;
       photoBase64Side?: string;
+      photoBase64Back?: string;
     };
 
     if (!userId || !photoBase64Front) {
@@ -309,6 +323,30 @@ serve(async (req) => {
       });
     }
 
+    if (photoBase64Back) {
+      userContent.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/jpeg',
+          data: photoBase64Back.replace(/^data:image\/[a-z+]+;base64,/i, ''),
+        },
+      });
+      userContent.push({
+        type: 'text',
+        text:
+          'BACK VIEW PHOTO (shows posterior chain, glutes, hamstrings, back development):',
+      });
+    }
+
+    const comparisonNote = priorPhotoBase64
+      ? `This is a progress check-in. The FIRST image is their baseline photo from ${new Date(priorPhoto!.analyzed_at).toLocaleDateString()}. The following images are their current check-in (front${photoBase64Side ? ', side' : ''}${photoBase64Back ? ', back' : ''}). Compare baseline to current and note specific visible changes across all visible body regions. Be specific (e.g. shoulders look fuller, quads show more separation, midsection appears leaner).`
+      : 'This is their baseline photo. Assess current composition only across all visible body regions.';
+
+    const backPhotoNote = photoBase64Back
+      ? ' A back-view photo is included — use it to assess lat width, rear delts, glutes, and hamstrings.'
+      : '';
+
     userContent.push({
       type: 'text',
       text: `Analyze this client's body composition for nutrition calibration.
@@ -322,11 +360,7 @@ Client stats:
 - Training: ${daysPerWeek} days/week
 - Current estimated body fat (self-reported at onboarding): ${onboardingBfPct ?? 'not provided'}%
 
-${
-  priorPhotoBase64
-    ? `This is a progress check-in. The FIRST image is their baseline photo from ${new Date(priorPhoto!.analyzed_at).toLocaleDateString()}. The SECOND image (and third if present) is their current photo. Compare the two and note specific visible changes — muscle development, definition, composition shifts. Be specific about what has changed (e.g. shoulders look fuller, midsection appears leaner).`
-    : 'This is their baseline photo. Assess current composition only.'
-}
+${comparisonNote}${backPhotoNote}
 
 Return ONLY the JSON object.`,
     });
@@ -399,6 +433,22 @@ Return ONLY the JSON object.`,
       }
     }
 
+    let backPath: string | null = null;
+    if (photoBase64Back) {
+      backPath = `${userId}/${ts}_back.jpg`;
+      const backBytes = base64ToBytes(photoBase64Back);
+      const { error: backUploadErr } = await supabase.storage
+        .from('progress-photos')
+        .upload(backPath, backBytes, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+      if (backUploadErr) {
+        console.warn('Back upload failed:', backUploadErr.message);
+        backPath = null;
+      }
+    }
+
     const leanMassLbs = Number(analysis.estimatedLeanMassLbs ?? 0);
     const bfMid = Number(analysis.estimatedBfMidpoint ?? 0);
     const nowIso = new Date().toISOString();
@@ -461,7 +511,14 @@ Return ONLY the JSON object.`,
         estimated_bf_pct: bfMid > 0 ? bfMid : null,
         estimated_bf_range: analysis.estimatedBfRange ?? null,
         lean_mass_lbs: leanMassLbs > 0 ? leanMassLbs : null,
-        analysis_json: analysis,
+        analysis_json: {
+          ...analysis,
+          photoUrls: {
+            front: frontPath,
+            side: sidePath ?? null,
+            back: backPath ?? null,
+          },
+        },
         macro_adjusted: macroAdjusted,
       })
       .select('id')

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
   View,
@@ -9,12 +9,16 @@ import {
   Pressable,
   ActivityIndicator,
   LayoutChangeEvent,
+  Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases, { PURCHASES_ERROR_CODE } from 'react-native-purchases';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import type { RootStackParamList } from '../../navigation/types';
+import type { RootStackParamList, SubscriptionPlanId } from '../../navigation/types';
+import { BETA_BYPASS } from '../../constants/betaBypass';
 import { scheduleReEngagementPush } from '../../utils/notifications';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../constants/design';
@@ -22,7 +26,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { JordanAvatar } from '../../components/JordanAvatar';
 import { stripEmDash } from '../../utils/jordanText';
-import { computeFirstSessionDate } from '../../utils/dateUtils';
+import {
+  computeFirstSessionDate,
+  formatDisplayDate,
+  getLocalDate,
+  getLocalDateString,
+  getNextScheduledDay,
+  isTodayScheduled,
+  normalizeScheduledDays,
+} from '../../utils/dateUtils';
 import { getDeviceId, getDeviceFingerprint } from '../../utils/device';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BuildingPlan'>;
@@ -35,41 +47,37 @@ type LoadingStep = {
   duration: number;
 };
 
+const ONBOARDING_SELECTED_PLAN_KEY = 'hone_onboarding_selected_plan';
+
 const LOADING_STEPS: LoadingStep[] = [
   {
     id: 'goals',
-    label: 'Goal & experience analysed',
-    message: 'Reading your training history and goal...',
+    label: 'Goals analyzed',
+    message: 'Analyzing your goals...',
     duration: 2000,
   },
   {
     id: 'structure',
-    label: 'Weekly structure built',
-    message: 'Mapping your split across your training days...',
+    label: 'Split built',
+    message: 'Building your training split...',
     duration: 2500,
   },
   {
-    id: 'nutrition',
-    label: 'Nutrition targets calculated',
-    message: 'Calculating your calories and macro targets...',
-    duration: 2000,
-  },
-  {
     id: 'weights',
-    label: 'Week 1 weights calibrated',
-    message: 'Setting your starting weights for Week 1...',
-    duration: 2000,
+    label: 'Week 1 calibrated',
+    message: 'Calibrating Week 1 weights...',
+    duration: 2500,
   },
   {
     id: 'coaching',
     label: 'Coaching notes written',
-    message: 'Jordan is writing your session-by-session cues...',
+    message: "Writing Jordan's coaching notes...",
     duration: 2500,
   },
   {
     id: 'ready',
     label: 'Plan ready',
-    message: 'Finishing touches...',
+    message: 'Your plan is ready.',
     duration: 1000,
   },
 ];
@@ -179,9 +187,9 @@ function resolvePlanWeeksFromParams(params: RouteType['params']): number {
 function computeTargetDate(planDurationParam: string | number | undefined): string {
   const raw = String(planDurationParam ?? '12');
   const weeks = parseInt(raw.replace(/\D/g, ''), 10) || 12;
-  const date = new Date();
+  const date = getLocalDate();
   date.setDate(date.getDate() + weeks * 7);
-  return date.toISOString().split('T')[0];
+  return getLocalDateString(date);
 }
 
 type RetryPlanContext = {
@@ -204,6 +212,7 @@ type GeneratedPlanJson = {
   totalWeeks?: number;
   jordanWelcome?: string | null;
   scheduledDays?: string[];
+  startDate?: string;
   weeks?: { days?: { type?: string; dayNumber?: number; title?: string }[] }[];
 };
 
@@ -267,16 +276,22 @@ export default function BuildingPlanScreen() {
     canRetry: boolean;
     showSubscribe?: boolean;
   } | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedStartDate, setSelectedStartDate] = useState<string | null>(null);
+  const [todayDateStr, setTodayDateStr] = useState('');
+  const [tomorrowDateStr, setTomorrowDateStr] = useState('');
+  const [todayIsScheduled, setTodayIsScheduled] = useState(false);
 
-  const planGenerationMode = params.planGenerationMode ?? 'preview';
-  const isPreviewGeneration = planGenerationMode === 'preview';
   const replacePlanId = params.replacePlanId;
+  const selectedPlan: SubscriptionPlanId = params.selectedPlan ?? 'annual';
   const [displaySubtitle, setDisplaySubtitle] = useState(LOADING_STEPS[0].message);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
 
   const stopSequenceRef = useRef(false);
   const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const retryContextRef = useRef<RetryPlanContext | null>(null);
+  const hasGeneratedRef = useRef(false);
+  const hasAdvancedFromSuccessRef = useRef(false);
 
   const avatarPulseOpacity = useRef(new Animated.Value(1)).current;
   const subtitleOpacity = useRef(new Animated.Value(1)).current;
@@ -391,16 +406,98 @@ export default function BuildingPlanScreen() {
     }
   }, [apiDone, animDone, errorState]);
 
-  useEffect(() => {
-    if (!planReady || !isPreviewGeneration || errorState) return;
-    navigation.navigate('PlanPreview', {
-      ...params,
-      previewPlanId: planId ?? undefined,
+  const goToDashboard = useCallback(() => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Dashboard' }],
     });
-  }, [planReady, isPreviewGeneration, errorState, navigation, params, planId]);
+  }, [navigation]);
+
+  const attemptPurchaseAndFinish = useCallback(async () => {
+    const startDateToSave = selectedStartDate ?? firstSessionDateISO;
+    if (startDateToSave && planId) {
+      try {
+        const { error } = await supabase
+          .from('plans')
+          .update({ start_date: startDateToSave })
+          .eq('id', planId);
+        if (error) console.error('[StartDate] UPDATE failed:', error);
+      } catch (e) {
+        console.error('[StartDate] auto-set threw:', e);
+      }
+    }
+
+    await AsyncStorage.setItem(ONBOARDING_SELECTED_PLAN_KEY, selectedPlan);
+
+    if (BETA_BYPASS || Platform.OS === 'web') {
+      scheduleReEngagementPush();
+      goToDashboard();
+      return;
+    }
+
+    try {
+      const offerings = await Purchases.getOfferings();
+      const offering = offerings.current;
+      if (offering) {
+        const quarterlyPkg =
+          offering.threeMonth ??
+          offering.availablePackages.find(
+            (p) => p.identifier === '$rc_quarterly',
+          );
+        const packageToPurchase =
+          selectedPlan === 'annual'
+            ? offering.annual
+            : selectedPlan === 'quarterly'
+              ? quarterlyPkg
+              : offering.monthly;
+
+        if (packageToPurchase) {
+          await Purchases.purchasePackage(packageToPurchase);
+        }
+      }
+    } catch (error) {
+      const purchaseError = error as { userCancelled?: boolean; code?: string };
+      if (
+        purchaseError.code !== PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR &&
+        !purchaseError.userCancelled
+      ) {
+        console.error('[purchase]', error);
+      }
+    }
+
+    scheduleReEngagementPush();
+    goToDashboard();
+  }, [selectedStartDate, firstSessionDateISO, planId, selectedPlan, goToDashboard]);
+
+  const handleSuccessCTA = useCallback(async () => {
+    if (hasAdvancedFromSuccessRef.current) return;
+    hasAdvancedFromSuccessRef.current = true;
+    await attemptPurchaseAndFinish();
+  }, [attemptPurchaseAndFinish]);
+
+  useEffect(() => {
+    if (!planReady || errorState) return;
+    if (replacePlanId) return;
+
+    const scheduledDays = normalizeScheduledDays(params.trainingDays ?? []);
+    const todayStr = getLocalDateString();
+    const tomorrow = getLocalDate();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = getNextScheduledDay(scheduledDays, tomorrow);
+    const todayScheduled = isTodayScheduled(scheduledDays);
+
+    setTodayDateStr(todayStr);
+    setTomorrowDateStr(tomorrowStr);
+    setTodayIsScheduled(todayScheduled);
+    setSelectedStartDate(todayScheduled ? todayStr : tomorrowStr);
+    stopLoadingSequence();
+    setShowSuccess(true);
+  }, [planReady, errorState, replacePlanId, params.trainingDays]);
 
   // --- Generate plan, save to Supabase, then navigate ---
   useEffect(() => {
+    if (hasGeneratedRef.current) return;
+    hasGeneratedRef.current = true;
     generateAndSavePlan(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -455,6 +552,12 @@ export default function BuildingPlanScreen() {
     setErrorState(null);
     if (isRetry) {
       stopLoadingSequence();
+      setShowSuccess(false);
+      setSelectedStartDate(null);
+      setTodayDateStr('');
+      setTomorrowDateStr('');
+      setTodayIsScheduled(false);
+      hasAdvancedFromSuccessRef.current = false;
       setApiDone(false);
       setAnimDone(false);
       setPlanReady(false);
@@ -616,7 +719,7 @@ export default function BuildingPlanScreen() {
           subMusclePreferences: params.subMusclePreferences ?? {},
           userId,
           deviceId,
-          isPreview: isPreviewGeneration,
+          isPreview: false,
         };
 
         console.log(
@@ -720,7 +823,7 @@ export default function BuildingPlanScreen() {
       const planJson = fnPayload?.plan;
       if (!planJson) throw new Error('No plan returned from Edge Function');
 
-      let savedPlan: { id: string } | null = null;
+      let savedPlan: { id: string; start_date?: string | null } | null = null;
 
       if (replacePlanId) {
         const { data: updated, error: planError } = await supabase
@@ -732,7 +835,7 @@ export default function BuildingPlanScreen() {
             is_preview: false,
           })
           .eq('id', replacePlanId)
-          .select('id')
+          .select('id, start_date')
           .maybeSingle();
 
         if (planError) throw planError;
@@ -748,9 +851,9 @@ export default function BuildingPlanScreen() {
             total_weeks: planJson.totalWeeks,
             status: 'active',
             plan_json: planJson,
-            is_preview: isPreviewGeneration,
+            is_preview: false,
           })
-          .select('id')
+          .select('id, start_date')
           .maybeSingle();
 
         if (planError) throw planError;
@@ -827,114 +930,175 @@ export default function BuildingPlanScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.content}>
-        <View style={styles.topSection}>
-          <Animated.View style={{ opacity: avatarPulseOpacity }}>
-            <JordanAvatar size={72} />
-          </Animated.View>
+      {showSuccess && !replacePlanId ? (
+        <View style={styles.successContainer}>
+          <Ionicons
+            name="checkmark-circle"
+            size={72}
+            color={Colors.success}
+          />
+          <Text style={styles.successTitle}>Your plan is ready.</Text>
 
-          <Text style={styles.buildTitle}>Building your plan</Text>
-
-          <Animated.Text
-            style={[styles.buildSubtitle, { opacity: subtitleOpacity }]}
-          >
-            {errorState ? errorState.message : displaySubtitle}
-          </Animated.Text>
-
-          {isWaitingForApi && (
-            <View style={styles.waitingRow}>
-              <ActivityIndicator
-                size="small"
-                color={Colors.accent}
-                style={styles.waitingSpinner}
-              />
-              <Text style={styles.waitingText}>
-                Jordan is finalizing your plan...
+          {todayIsScheduled ? (
+            <>
+              <Text style={styles.successSubtitle}>
+                When do you want to start?
               </Text>
-            </View>
+              <View style={styles.startDateRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.startDateCard,
+                    selectedStartDate === todayDateStr &&
+                      styles.startDateCardSelected,
+                  ]}
+                  onPress={() => setSelectedStartDate(todayDateStr)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.startDateLabel}>Start Today</Text>
+                  <Text style={styles.startDateValue}>
+                    {formatDisplayDate(todayDateStr)}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.startDateCard,
+                    selectedStartDate === tomorrowDateStr &&
+                      styles.startDateCardSelected,
+                  ]}
+                  onPress={() => setSelectedStartDate(tomorrowDateStr)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.startDateLabel}>Start Tomorrow</Text>
+                  <Text style={styles.startDateValue}>
+                    {formatDisplayDate(tomorrowDateStr)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.successSubtitle}>
+              First session: {formatDisplayDate(tomorrowDateStr)}
+            </Text>
           )}
 
-          {errorState?.canRetry ? (
-            <Pressable
-              style={styles.loadRetryButton}
-              onPress={() => generateAndSavePlan(true)}
-            >
-              <Text style={styles.loadRetryButtonText}>Try Again</Text>
-            </Pressable>
-          ) : null}
-          {errorState?.showSubscribe ? (
-            <Pressable
-              style={styles.loadRetryButton}
-              onPress={() =>
-                navigation.navigate('Dashboard', {
-                  screen: 'ProfileTab',
-                  params: { screen: 'SubscriptionManagement' },
-                } as never)
-              }
-            >
-              <Text style={styles.loadRetryButtonText}>Subscribe →</Text>
-            </Pressable>
-          ) : null}
+          <TouchableOpacity
+            style={styles.successCTA}
+            activeOpacity={0.8}
+            onPress={() => void handleSuccessCTA()}
+          >
+            <Text style={styles.successCTAText}>Go to Dashboard →</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <View style={styles.content}>
+          <View style={styles.topSection}>
+            <Animated.View style={{ opacity: avatarPulseOpacity }}>
+              <JordanAvatar size={72} />
+            </Animated.View>
 
-        <View style={styles.midSection}>
-          <View style={styles.progressTrack} onLayout={onProgressBarLayout}>
-            <Animated.View
-              style={[styles.progressFill, { width: progressFillWidth }]}
-            />
+            <Text style={styles.buildTitle}>Building your plan</Text>
+
+            <Animated.Text
+              style={[styles.buildSubtitle, { opacity: subtitleOpacity }]}
+            >
+              {errorState ? errorState.message : displaySubtitle}
+            </Animated.Text>
+
+            {isWaitingForApi && (
+              <View style={styles.waitingRow}>
+                <ActivityIndicator
+                  size="small"
+                  color={Colors.accent}
+                  style={styles.waitingSpinner}
+                />
+                <Text style={styles.waitingText}>
+                  Jordan is finalizing your plan...
+                </Text>
+              </View>
+            )}
+
+            {errorState?.canRetry ? (
+              <Pressable
+                style={styles.loadRetryButton}
+                onPress={() => generateAndSavePlan(true)}
+              >
+                <Text style={styles.loadRetryButtonText}>Try Again</Text>
+              </Pressable>
+            ) : null}
+            {errorState?.showSubscribe ? (
+              <Pressable
+                style={styles.loadRetryButton}
+                onPress={() =>
+                  navigation.navigate('Dashboard', {
+                    screen: 'ProfileTab',
+                    params: { screen: 'SubscriptionManagement' },
+                  } as never)
+                }
+              >
+                <Text style={styles.loadRetryButtonText}>Subscribe →</Text>
+              </Pressable>
+            ) : null}
           </View>
 
-          <View style={styles.stepList}>
-            {LOADING_STEPS.slice(0, currentStepIndex + 1).map((step, i) => {
-              const isComplete = completedSteps.includes(step.id);
-              const isCurrent = i === currentStepIndex && !isComplete;
+          <View style={styles.midSection}>
+            <View style={styles.progressTrack} onLayout={onProgressBarLayout}>
+              <Animated.View
+                style={[styles.progressFill, { width: progressFillWidth }]}
+              />
+            </View>
 
-              return (
-                <Animated.View
-                  key={step.id}
-                  style={[styles.stepRowOuter, { opacity: rowOpacities[i] }]}
-                >
-                  <View style={styles.stepRow}>
-                    <View style={styles.stepIconCol}>
-                      {isComplete ? (
-                        <Text style={styles.stepIconDone}>✓</Text>
-                      ) : isCurrent ? (
-                        <ActivityIndicator
-                          size="small"
-                          color={Colors.accent}
-                        />
-                      ) : (
-                        <View style={styles.stepIconPending} />
-                      )}
+            <View style={styles.stepList}>
+              {LOADING_STEPS.slice(0, currentStepIndex + 1).map((step, i) => {
+                const isComplete = completedSteps.includes(step.id);
+                const isCurrent = i === currentStepIndex && !isComplete;
+
+                return (
+                  <Animated.View
+                    key={step.id}
+                    style={[styles.stepRowOuter, { opacity: rowOpacities[i] }]}
+                  >
+                    <View style={styles.stepRow}>
+                      <View style={styles.stepIconCol}>
+                        {isComplete ? (
+                          <Text style={styles.stepIconDone}>✓</Text>
+                        ) : isCurrent ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={Colors.accent}
+                          />
+                        ) : (
+                          <View style={styles.stepIconPending} />
+                        )}
+                      </View>
+                      <Text
+                        style={
+                          isComplete
+                            ? styles.stepLabelDone
+                            : isCurrent
+                              ? styles.stepLabelCurrent
+                              : styles.stepLabelPending
+                        }
+                        numberOfLines={2}
+                      >
+                        {step.label}
+                      </Text>
                     </View>
-                    <Text
-                      style={
-                        isComplete
-                          ? styles.stepLabelDone
-                          : isCurrent
-                            ? styles.stepLabelCurrent
-                            : styles.stepLabelPending
-                      }
-                      numberOfLines={2}
-                    >
-                      {step.label}
-                    </Text>
-                  </View>
-                </Animated.View>
-              );
-            })}
+                  </Animated.View>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.bottomQuote}>
+            <Text style={styles.quoteText}>
+              Your numbers are in. Let's get to work.{'\n'}
+              Jordan
+            </Text>
           </View>
         </View>
+      )}
 
-        <View style={styles.bottomQuote}>
-          <Text style={styles.quoteText}>
-            Your numbers are in. Let's get to work.{'\n'}
-            Jordan
-          </Text>
-        </View>
-      </View>
-
-      {planReady && !isPreviewGeneration && (
+      {planReady && replacePlanId && (
         <View style={styles.handoffOverlay}>
           <View style={styles.handoffCard}>
             <View style={styles.handoffCheckCircle}>
@@ -1000,6 +1164,69 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
+  },
+  successContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.lg,
+  },
+  successTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  successSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  startDateRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+  },
+  startDateCard: {
+    flex: 1,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  startDateCardSelected: {
+    borderColor: Colors.accent,
+    borderWidth: 2,
+  },
+  startDateLabel: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  startDateValue: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  successCTA: {
+    width: '100%',
+    height: 56,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+  },
+  successCTAText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
   content: {
     flex: 1,

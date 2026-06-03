@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import { getLocalDateString } from '../utils/dateUtils';
 
 export type ConcurrentSportPlan = {
   type: string[];
@@ -83,7 +84,7 @@ export default function SportSessionModal({
   const { height: windowH } = useWindowDimensions();
   const maxSheetH = windowH * 0.92;
 
-  const todayDateString = new Date().toISOString().split('T')[0]!;
+  const todayDateString = getLocalDateString();
 
   const [durationMin, setDurationMin] = useState<number | null>(null);
   const [intensity, setIntensity] = useState<Intensity | null>(null);

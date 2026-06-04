@@ -621,7 +621,12 @@ function resolveProgressionBaseline(
   planGoal: string,
   priorPlanExercise: any,
   workingSets: LogSetLike[],
-  opts?: { wasSwapped?: boolean; loggedBaselineWeight?: number },
+  opts?: {
+    wasSwapped?: boolean;
+    loggedBaselineWeight?: number;
+    /** DC-1: false when completed week was a deload — skip logged-weight fallback. */
+    isCalibrationWeek?: boolean;
+  },
 ): {
   baseline: number;
   source: 'plan' | 'logged' | 'none' | 'swap_logged';
@@ -647,6 +652,14 @@ function resolveProgressionBaseline(
   }
 
   if (!isSelfSelectWeightGoal(planGoal)) {
+    return { baseline: 0, source: 'none' };
+  }
+
+  // When the completed week was a deload (isCalibrationWeek === false), do not
+  // fall through to logged weights. The plan-prescription path (DC-1 pre-deload
+  // fields) is the correct anchor; using logged weights here would base
+  // progression on the reduced 85% session, not the pre-deload baseline.
+  if (opts?.isCalibrationWeek === false) {
     return { baseline: 0, source: 'none' };
   }
 
@@ -970,6 +983,20 @@ function applyDeloadPassToDays(days: any[] | undefined): any[] {
     return {
       ...day,
       exercises: (day.exercises ?? []).map((ex: any) => {
+        // DC-1: stash originals before scaling so the next week can progress
+        // from the pre-deload prescription rather than the 85% value.
+        // Guard with null-check so a manual override that already stamped
+        // these fields is not overwritten.
+        if (ex.preDeloadTargetWeight == null) {
+          const tw = Number(ex.targetWeight ?? 0);
+          if (tw > 0) ex.preDeloadTargetWeight = tw;
+          ex.preDeloadSetTargets =
+            Array.isArray(ex.setTargets) && ex.setTargets.length > 0
+              ? JSON.parse(JSON.stringify(ex.setTargets))
+              : null;
+          ex.preDeloadSets = ex.sets ?? 3;
+        }
+
         const equip = String(ex.equipment ?? 'barbell');
         if (Array.isArray(ex.setTargets) && ex.setTargets.length > 0) {
           ex.setTargets = ex.setTargets.map((st: any) => ({
@@ -2078,6 +2105,18 @@ function buildPriorPlanHeavyVolumeMaps(
 // deno-lint-ignore no-explicit-any
 function getPlanBaselineWeight(priorPlanExercise: any): number {
   if (!priorPlanExercise) return 0;
+
+  // DC-1: prefer pre-deload fields so next week progresses from the weight
+  // that was prescribed before the 85% reduction, not from the reduced value.
+  const preTop = Number(priorPlanExercise.preDeloadTargetWeight ?? 0);
+  if (preTop > 0) return preTop;
+  const preTargets = priorPlanExercise.preDeloadSetTargets;
+  if (Array.isArray(preTargets) && preTargets.length > 0) {
+    const maxPre = Math.max(
+      ...preTargets.map((s: any) => Number(s.targetWeight ?? 0)),
+    );
+    if (maxPre > 0) return maxPre;
+  }
 
   if (
     priorPlanExercise.setStructure === 'pyramid' &&
@@ -3224,11 +3263,56 @@ serve(async (req) => {
 
     // Step 3 — Extract completed week data from plan_json
     const weekData = (planJson.weeks ?? []).find((w: any) => w.weekNumber === completedWeekNumber);
-    const workoutDays = (weekData?.days ?? []).filter((d: any) => d.type === 'workout');
+
+    // DC-1: if the completed week was a deload (manual override or scheduled),
+    // it is not a calibration week even when completedWeekNumber === 1.
+    // isCalibrationWeek controls whether the logged-weight fallback in
+    // resolveProgressionBaseline is allowed (it is only valid for a true
+    // first-ever baseline week, not for a deload that happened to be week 1).
+    const completedWeekWasDeload =
+      weekData?.weekOverride?.type === 'deload' ||
+      weekData?.phase === 'deload';
+    const isCalibrationWeek =
+      (completedWeekNumber === 1) && !completedWeekWasDeload;
+
+    const completedWeekWasTravel =
+      weekData?.weekOverride?.type === 'travel';
+    const travelAffectedDayNumbers: number[] = completedWeekWasTravel
+      ? (weekData.weekOverride.affectedDayNumbers ?? []).map(Number)
+      : [];
+
+    // Travel restore: replace affected days in weekData with their
+    // pre-travel snapshots so the map is built from original exercises,
+    // not travel substitutes. The travel week logs won't name-match the
+    // original exercises so they're naturally invisible to getExerciseSets.
+    let weekDataForMap = weekData;
+    if (completedWeekWasTravel && travelAffectedDayNumbers.length > 0) {
+      const snapshotDays: any[] =
+        weekData.weekOverride.snapshot ?? [];
+      const restoredDays = (weekData.days ?? []).map((day: any) => {
+        if (!travelAffectedDayNumbers.includes(Number(day.dayNumber ?? day.day))) {
+          return day;
+        }
+        const snapDay = snapshotDays.find(
+          (s: any) =>
+            Number(s.dayNumber ?? s.day) ===
+            Number(day.dayNumber ?? day.day),
+        );
+        return snapDay ?? day;
+      });
+      weekDataForMap = { ...weekData, days: restoredDays };
+    }
+
+    const workoutDays = (weekDataForMap?.days ?? []).filter((d: any) => d.type === 'workout');
     const daysPerWeek: number = planJson.daysPerWeek ?? workoutDays.length;
 
     const { heavy: priorHeavyExerciseMap, volume: priorVolumeExerciseMap } =
-      buildPriorPlanHeavyVolumeMaps(planJson, completedWeekNumber);
+      buildPriorPlanHeavyVolumeMaps(
+        { ...planJson, weeks: (planJson.weeks ?? []).map((w: any) =>
+          Number(w.weekNumber) === completedWeekNumber ? weekDataForMap : w
+        )},
+        completedWeekNumber,
+      );
 
     let exerciseIdToName: Record<string, string> = {};
     for (const week of planJson.weeks ?? []) {
@@ -3620,7 +3704,7 @@ Return ONLY this exact JSON structure:
     // Ensure weekNumber and phase are set correctly; lock layout to completed week
     nextWeekData.weekNumber = nextWeekNumber;
     nextWeekData.phase = phase;
-    nextWeekData = mergeNextWeekWithPreviousStructure(weekData, nextWeekData, nextWeekNumber, phase);
+    nextWeekData = mergeNextWeekWithPreviousStructure(weekDataForMap, nextWeekData, nextWeekNumber, phase);
 
     const planGoalForSetStructure =
       typeof (planJson as { goal?: string }).goal === 'string' &&
@@ -3670,6 +3754,28 @@ Return ONLY this exact JSON structure:
         parseSetsJson(log.sets_json),
       );
 
+      const dayWasTravelAffected =
+        completedWeekWasTravel &&
+        travelAffectedDayNumbers.includes(dayNum);
+
+      let allPlanLogsForTravel: WorkoutLogRow[] = [];
+      if (dayWasTravelAffected) {
+        const { data: travelLogData } = await supabase
+          .from('workout_logs')
+          .select('week_number, day_number, sets_json')
+          .eq('user_id', userId)
+          .eq('plan_id', planId)
+          .lt('week_number', completedWeekNumber)
+          .not('skipped', 'eq', true)
+          .order('week_number', { ascending: false });
+        allPlanLogsForTravel = (travelLogData ?? []) as WorkoutLogRow[];
+      }
+
+      const exerciseIdToNameForDay: Record<string, string> = {};
+      for (const ex of day.exercises ?? []) {
+        if (ex.id) exerciseIdToNameForDay[ex.id] = String(ex.name ?? ex.exerciseName ?? '');
+      }
+
       for (let exerciseIndex = 0; exerciseIndex < (day.exercises ?? []).length; exerciseIndex++) {
         const exercise = day.exercises[exerciseIndex];
         const exName = (exercise.exerciseName ?? exercise.name ?? '')
@@ -3698,6 +3804,110 @@ Return ONLY this exact JSON structure:
           });
         }
 
+        // Travel week: the user logged a substitute exercise, not the
+        // original. Skip current-week log matching entirely and anchor
+        // progression to the most recent pre-travel log for this exercise.
+        if (dayWasTravelAffected) {
+          const preTravelLog = findMostRecentLogForExercise(
+            allPlanLogsForTravel,
+            currentExerciseName,
+            completedWeekNumber,
+          );
+          if (!preTravelLog) {
+            console.log('[SKIP]', exName, '— travel week, no pre-travel log found');
+            continue;
+          }
+          const equip = String(exercise.equipment ?? getEquipmentForExerciseName(exName));
+          const tier = normalizeCompoundTier(
+            exercise.compoundTier ?? getCompoundTierFromName(currentExerciseName),
+          );
+          const accessoryTargetRpe =
+            Number(exercise.targetRpe) > 0 ? Number(exercise.targetRpe) : 7.0;
+          const priorPlanEx = resolvePriorPlanExercise(
+            exName,
+            dayIsVolume,
+            Boolean(
+              planGoalForSetStructure === 'strength' &&
+              strengthTargetLiftForSetStructure &&
+              isTargetLift(exercise, strengthTargetLiftForSetStructure),
+            ),
+            priorHeavyExerciseMap,
+            priorVolumeExerciseMap,
+          );
+          const planBase = getPlanBaselineWeight(priorPlanEx);
+          const baselineForProgression = planBase > 0 ? planBase : preTravelLog.weightLbs;
+          const progression = computeAccessoryProgressionTarget({
+            baselineWeight: baselineForProgression,
+            avgLoggedRpe: preTravelLog.rpe,
+            targetRpe: accessoryTargetRpe,
+            equipment: equip,
+            compoundTier: tier,
+            trainingAge: experienceForProgression,
+            exerciseName: currentExerciseName,
+          });
+          let newTargetWeight = applyMaxWeeklyIncrease(
+            baselineForProgression,
+            progression.newTargetWeight,
+            equip,
+            tier,
+          );
+          if (isPyramidExercise(exercise)) {
+            if (Array.isArray(exercise.setTargets) && exercise.setTargets.length > 0) {
+              applyPyramidSetTargetsAfterProgression(
+                exercise,
+                [],
+                newTargetWeight,
+                baselineForProgression,
+                equip,
+              );
+              newTargetWeight = Number(exercise.targetWeight ?? newTargetWeight);
+            } else {
+              newTargetWeight = stampPyramidFromDesiredTopSet(exercise, newTargetWeight, equip);
+            }
+          } else {
+            exercise.targetWeight = newTargetWeight;
+          }
+          if (
+            priorPlanEx?.preDeloadSetTargets != null &&
+            Array.isArray(priorPlanEx.preDeloadSetTargets) &&
+            priorPlanEx.preDeloadSetTargets.length > 0
+          ) {
+            exercise.sets = priorPlanEx.preDeloadSetTargets.length;
+          }
+          stampExerciseAdaptationCopyAfterProgression({
+            exercise,
+            planBaseline: baselineForProgression,
+            avgLoggedRpe: preTravelLog.rpe,
+            accessoryTargetRpeForGap: accessoryTargetRpe,
+            isTargetLiftEx: false,
+            dayIsVolume: Boolean(dayIsVolume),
+            nextWeekNumber: Number(nextWeekNumber),
+          });
+          console.log('[TRAVEL RESTORE]', {
+            name: exName,
+            preTravelWeight: preTravelLog.weightLbs,
+            preTravelRpe: preTravelLog.rpe,
+            preTravelWeek: preTravelLog.weekNumber,
+            planBase,
+            baselineForProgression,
+            newTargetWeight: Number(exercise.targetWeight ?? newTargetWeight),
+          });
+          upsertAdaptationDraft(adaptationDrafts, {
+            key: exName,
+            exerciseName: currentExerciseName,
+            muscleGroup: String(exercise.muscleGroup ?? ''),
+            previousWeight: baselineForProgression,
+            progressedWeight: Number(exercise.targetWeight ?? newTargetWeight),
+            avgLoggedRpe: preTravelLog.rpe,
+            targetRpe: accessoryTargetRpe,
+            rpeGap: progression.rpeGap,
+            repsExceeded: false,
+            hadRpeData: true,
+            isCalibration: false,
+          });
+          continue;
+        }
+
         const isTargetLiftEx =
           planGoalForSetStructure === 'strength' &&
           strengthTargetLiftForSetStructure &&
@@ -3714,13 +3924,13 @@ Return ONLY this exact JSON structure:
         let exerciseSets = getExerciseSets(
           sessionSets,
           exercise,
-          exerciseIdToName,
+          exerciseIdToNameForDay,
         );
         if (exerciseSets.length === 0 && allPlanWeekSets.length > 0) {
           exerciseSets = getExerciseSets(
             allPlanWeekSets,
             exercise,
-            exerciseIdToName,
+            exerciseIdToNameForDay,
           );
         }
         const workingSets = exerciseSets.filter(
@@ -3737,6 +3947,25 @@ Return ONLY this exact JSON structure:
               ? loggedFromSets.baselineRpe
               : 7.0
             : 7.0;
+
+        let effectiveAvgRpe = avgLoggedRpe;
+        if (
+          completedWeekWasDeload &&
+          priorPlanExercise?.preDeloadSetTargets != null &&
+          Array.isArray(priorPlanExercise.preDeloadSetTargets) &&
+          priorPlanExercise.preDeloadSetTargets.length > 0
+        ) {
+          // Use the target RPE from the pre-deload prescription as the
+          // progression anchor — the deload RPE is artificially low and
+          // would produce an oversized increment.
+          const preDeloadTopSet = priorPlanExercise.preDeloadSetTargets[
+            priorPlanExercise.preDeloadSetTargets.length - 1
+          ];
+          const preDeloadTargetRpe = Number(preDeloadTopSet?.targetRpe ?? 0);
+          if (preDeloadTargetRpe > 0) {
+            effectiveAvgRpe = preDeloadTargetRpe;
+          }
+        }
 
         console.log(
           `[EXERCISE MATCH] ${exName}: found ${workingSets.length} sets, avgRpe=${avgLoggedRpe.toFixed(1)}${isPyramid ? ' (pyramid top set)' : ''}`,
@@ -3991,10 +4220,10 @@ Return ONLY this exact JSON structure:
               loggedTopSetWeight,
               equip,
             );
-            const rpeGap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+            const rpeGap = computeRpeGap(effectiveAvgRpe, accessoryTargetRpe);
             const progression = computeAccessoryProgressionTarget({
               baselineWeight: planBaseline,
-              avgLoggedRpe,
+              avgLoggedRpe: effectiveAvgRpe,
               targetRpe: accessoryTargetRpe,
               equipment: equip,
               compoundTier: tier,
@@ -4034,7 +4263,7 @@ Return ONLY this exact JSON structure:
             stampExerciseAdaptationCopyAfterProgression({
               exercise,
               planBaseline,
-              avgLoggedRpe,
+              avgLoggedRpe: effectiveAvgRpe,
               accessoryTargetRpeForGap: accessoryTargetRpe,
               isTargetLiftEx: Boolean(isTargetLiftEx),
               dayIsVolume: Boolean(dayIsVolume),
@@ -4048,11 +4277,11 @@ Return ONLY this exact JSON structure:
               muscleGroup: String(exercise.muscleGroup ?? ''),
               previousWeight: planBaseline,
               progressedWeight,
-              avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+              avgLoggedRpe: workingSets.length > 0 ? effectiveAvgRpe : null,
               targetRpe: accessoryTargetRpe,
               rpeGap:
                 workingSets.length > 0
-                  ? computeRpeGap(avgLoggedRpe, accessoryTargetRpe)
+                  ? computeRpeGap(effectiveAvgRpe, accessoryTargetRpe)
                   : null,
               repsExceeded: false,
               hadRpeData: workingSets.length > 0,
@@ -4079,7 +4308,7 @@ Return ONLY this exact JSON structure:
             planGoalForSetStructure,
             priorPlanExercise,
             workingSets,
-            { wasSwapped, loggedBaselineWeight },
+            { wasSwapped, loggedBaselineWeight, isCalibrationWeek },
           );
 
         if (loggedBaselineWeight === 0) {
@@ -4090,6 +4319,16 @@ Return ONLY this exact JSON structure:
         if (planBaseline === 0) {
           console.log('[SKIP]', exName, '— no plan or logged baseline');
           continue;
+        }
+
+        if (
+          priorPlanExercise?.preDeloadSetTargets != null &&
+          Array.isArray(priorPlanExercise.preDeloadSetTargets) &&
+          priorPlanExercise.preDeloadSetTargets.length > 0
+        ) {
+          exercise.sets = priorPlanExercise.preDeloadSetTargets.length;
+        } else if (priorPlanExercise?.preDeloadSets != null) {
+          exercise.sets = Number(priorPlanExercise.preDeloadSets);
         }
 
         const baselineMapSource =
@@ -4137,7 +4376,7 @@ Return ONLY this exact JSON structure:
           const priorPeriodisation = strengthPeriodisation(priorWeekInCycle);
           const newPeriodisation = strengthPeriodisation(newWeekInCycle);
 
-          const gap = computeRpeGap(avgLoggedRpe, priorPeriodisation.targetRpe);
+          const gap = computeRpeGap(effectiveAvgRpe, priorPeriodisation.targetRpe);
           let increment = 5;
           if (gap >= 2) increment = 10;
           else if (gap >= 0) increment = 5;
@@ -4187,7 +4426,7 @@ Return ONLY this exact JSON structure:
         } else if (isTargetLiftEx && dayIsVolume) {
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
-          const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+          const gap = computeRpeGap(effectiveAvgRpe, accessoryTargetRpe);
           let increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
           increment = scalePositiveIncrementByExperience(
             increment,
@@ -4224,8 +4463,8 @@ Return ONLY this exact JSON structure:
           );
           const equip = String(exercise.equipment ?? 'barbell');
           const progression = computeAccessoryProgressionTarget({
-            baselineWeight: loggedBaselineWeight,
-            avgLoggedRpe,
+            baselineWeight: planBaseline,
+            avgLoggedRpe: effectiveAvgRpe,
             targetRpe: accessoryTargetRpe,
             equipment: equip,
             compoundTier: tier,
@@ -4274,7 +4513,7 @@ Return ONLY this exact JSON structure:
         stampExerciseAdaptationCopyAfterProgression({
           exercise,
           planBaseline,
-          avgLoggedRpe,
+          avgLoggedRpe: effectiveAvgRpe,
           accessoryTargetRpeForGap: accessoryTargetRpeForCopy,
           isTargetLiftEx: Boolean(isTargetLiftEx),
           dayIsVolume: Boolean(dayIsVolume),
@@ -4315,11 +4554,11 @@ Return ONLY this exact JSON structure:
             muscleGroup: String(exercise.muscleGroup ?? ''),
             previousWeight: planBaseline,
             progressedWeight,
-            avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+            avgLoggedRpe: workingSets.length > 0 ? effectiveAvgRpe : null,
             targetRpe: accessoryTargetRpeForCopy,
             rpeGap:
               workingSets.length > 0
-                ? computeRpeGap(avgLoggedRpe, accessoryTargetRpeForCopy)
+                ? computeRpeGap(effectiveAvgRpe, accessoryTargetRpeForCopy)
                 : null,
             repsExceeded,
             hadRpeData: workingSets.length > 0,

@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,6 +20,11 @@ import WorkoutResultsModal, {
   type WorkoutLog,
   type ExerciseObject,
 } from '../components/WorkoutResultsModal';
+import WeekOverrideSheet from '../components/WeekOverrideSheet';
+import {
+  applyWeekOverride,
+  clearWeekOverride,
+} from '../utils/weekOverride';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
@@ -47,6 +53,7 @@ interface PlanWeek {
   weekNumber: number;
   phase?: string;
   days: PlanDay[];
+  weekOverride?: any;
 }
 
 interface RawExercise {
@@ -89,6 +96,7 @@ interface RawWeek {
   weekNumber: number;
   phase?: string;
   days: RawDay[];
+  weekOverride?: any;
 }
 
 function findRawWeek(
@@ -156,7 +164,15 @@ function getPhaseDisplay(
   totalWeeks: number,
   enhancedRecovery: boolean = false,
   biologicalSex?: string,
+  override?: { type: string },
 ): { label: string; color: string; bg: string } {
+  if (override?.type === 'deload') {
+    return { label: 'DELOAD', color: Colors.success, bg: Colors.successMuted };
+  }
+  if (override?.type === 'travel') {
+    return { label: 'TRAVEL', color: Colors.textSecondary, bg: Colors.bgElevated };
+  }
+
   const effectivePhase =
     weekNumber === 1 && (!phase || phase === 'accumulation')
       ? 'baseline'
@@ -356,6 +372,7 @@ export default function PlanViewScreen() {
   const [resultsSummaryGoal, setResultsSummaryGoal] = useState<string | undefined>(undefined);
   const [resultsSummaryWeek, setResultsSummaryWeek] = useState<number | undefined>(undefined);
   const [resultsSummaryPhase, setResultsSummaryPhase] = useState<string | undefined>(undefined);
+  const [showOverrideSheet, setShowOverrideSheet] = useState(false);
 
   const loadPlanData = useCallback(async () => {
     setLoading(true);
@@ -432,6 +449,7 @@ export default function PlanViewScreen() {
       const mappedWeeks: PlanWeek[] = rawWeeks.map((rw) => ({
         weekNumber: rw.weekNumber,
         phase: rw.phase,
+        weekOverride: rw.weekOverride,
         days: rw.days.map((rd) => ({
           dayNumber: rd.dayNumber,
           type: rd.type,
@@ -529,7 +547,7 @@ export default function PlanViewScreen() {
       resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
     navigation.navigate('ActiveWorkout', {
       planId: pid,
-      weekNumber: selectedWeek,
+      weekNumber: planData.currentWeek,
       dayNumber: day.dayNumber,
       workoutTitle: day.title,
       lockToRouteWeek: true,
@@ -727,11 +745,64 @@ export default function PlanViewScreen() {
     planData.totalWeeks,
     planData.enhancedRecovery,
     planData.biologicalSex,
+    selectedWeekData?.weekOverride,
   );
   const weekData = selectedWeekData;
   const nextWorkoutDayNumber =
     weekData?.days.find((d) => d.type === 'workout' && !d.completed)
       ?.dayNumber ?? null;
+
+  const handleApplyDeload = async () => {
+    setShowOverrideSheet(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    const res = await applyWeekOverride({
+      userId: uid,
+      planId: pid,
+      currentWeekNumber: selectedWeek,
+      type: 'deload',
+    });
+    if (!res.ok) {
+      Alert.alert('Could not apply deload', res.reason ?? 'Unknown error');
+      return;
+    }
+    void loadPlanData();
+  };
+
+  const handleApplyTravel = async (equipment: string[]) => {
+    setShowOverrideSheet(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    const res = await applyWeekOverride({
+      userId: uid,
+      planId: pid,
+      currentWeekNumber: selectedWeek,
+      type: 'travel',
+      equipment,
+    });
+    if (!res.ok) {
+      Alert.alert('Could not apply travel mode', res.reason ?? 'Unknown error');
+      return;
+    }
+    void loadPlanData();
+  };
+
+  const handleUndoOverride = async () => {
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    const res = await clearWeekOverride({
+      planId: pid,
+      currentWeekNumber: selectedWeek,
+    });
+    if (!res.ok) {
+      Alert.alert('Could not undo override');
+      return;
+    }
+    void loadPlanData();
+  };
 
   return (
     <View style={styles.container}>
@@ -749,7 +820,7 @@ export default function PlanViewScreen() {
           <View style={styles.pillRow}>
             <View style={styles.weekPill}>
               <Text style={styles.weekPillText}>
-                Week {planData.currentWeek} of {planData.totalWeeks}
+                Week {selectedWeek} of {planData.totalWeeks}
               </Text>
             </View>
             <View style={styles.daysPill}>
@@ -767,6 +838,40 @@ export default function PlanViewScreen() {
               </Text>
             </View>
           </View>
+
+          {selectedWeek === planData.currentWeek && (
+            selectedWeekData?.weekOverride ? (
+              <View style={styles.overrideStatusRow}>
+                <Ionicons
+                  name={
+                    selectedWeekData.weekOverride.type === 'travel'
+                      ? 'airplane-outline'
+                      : 'battery-half-outline'
+                  }
+                  size={16}
+                  color={Colors.textSecondary}
+                />
+                <Text style={styles.overrideStatusText}>
+                  {selectedWeekData.weekOverride.type === 'travel'
+                    ? `Traveling · ${(selectedWeekData.weekOverride.equipment ?? []).join(', ')}`
+                    : 'Deload active'}
+                </Text>
+                <TouchableOpacity onPress={handleUndoOverride}>
+                  <Text style={styles.overrideUndoText}>Undo</Text>
+                </TouchableOpacity>
+              </View>
+            ) : nextWorkoutDayNumber !== null ? (
+              <TouchableOpacity
+                style={styles.overrideBtn}
+                activeOpacity={0.75}
+                onPress={() => setShowOverrideSheet(true)}
+              >
+                <Text style={styles.overrideBtnText}>
+                  Change this week
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          )}
         </View>
 
         <ScrollView
@@ -780,7 +885,7 @@ export default function PlanViewScreen() {
             const isLocked = wn > planData.currentWeek;
             const isCompletedWeek = wn < planData.currentWeek;
             const weekEntry = planData.weeks.find((w) => w.weekNumber === wn);
-            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery, planData.biologicalSex);
+            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery, planData.biologicalSex, weekEntry?.weekOverride);
 
             const tabStyles = [
               styles.weekTabCircle,
@@ -825,11 +930,13 @@ export default function PlanViewScreen() {
                   >
                     {wPhase.label === 'DELOAD'
                       ? 'DL'
-                      : wPhase.label === 'BASELINE'
-                        ? 'BL'
-                        : wPhase.label === 'INTENSIFICATION'
-                          ? 'INT'
-                          : 'ACC'}
+                      : wPhase.label === 'TRAVEL'
+                        ? 'TRV'
+                        : wPhase.label === 'BASELINE'
+                          ? 'BL'
+                          : wPhase.label === 'INTENSIFICATION'
+                            ? 'INT'
+                            : 'ACC'}
                   </Text>
                 ) : null}
               </TouchableOpacity>
@@ -952,6 +1059,12 @@ export default function PlanViewScreen() {
         summaryPlanGoal={resultsSummaryGoal}
         summaryWeek={resultsSummaryWeek}
         summaryPlanPhase={resultsSummaryPhase}
+      />
+      <WeekOverrideSheet
+        visible={showOverrideSheet}
+        onClose={() => setShowOverrideSheet(false)}
+        onApplyDeload={handleApplyDeload}
+        onApplyTravel={handleApplyTravel}
       />
     </View>
   );
@@ -1441,5 +1554,35 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     color: Colors.accent,
     textAlign: 'center',
+  },
+  overrideStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  overrideStatusText: {
+    flex: 1,
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  overrideUndoText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+  },
+  overrideBtn: {
+    marginTop: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  overrideBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
   },
 });

@@ -1361,6 +1361,16 @@ export default function ExerciseCard({
                     </Text>
                   </TouchableOpacity>
                 ))}
+                <TouchableOpacity
+                  onPress={() => setShowRpeReference(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
+                  style={styles.rpeInlineReferenceLink}
+                >
+                  <Text style={styles.rpeInlineReferenceLinkText}>
+                    What is RPE?
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
             {logged && trendBySet[set.setNumber] ? (
@@ -1836,11 +1846,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   rpeHelpLink: {
-    fontSize: FontSizes.label,
+    fontSize: FontSizes.body,
     fontFamily: Fonts.semiBold,
     color: Colors.accent,
     textDecorationLine: 'underline',
     paddingTop: 1,
+    paddingHorizontal: Spacing.xs,
   },
   lastWeekStrip: {
     backgroundColor: Colors.bgElevated,
@@ -2224,6 +2235,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
+  },
+  rpeInlineReferenceLink: {
+    width: '100%',
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    alignItems: 'center',
+  },
+  rpeInlineReferenceLinkText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.semiBold,
+    color: Colors.accent,
+    textDecorationLine: 'underline',
   },
   rpeInlineBtn: {
     width: 26,

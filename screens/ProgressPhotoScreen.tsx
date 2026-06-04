@@ -9,6 +9,7 @@ import {
   Image,
   Platform,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -125,6 +126,7 @@ export default function ProgressPhotoScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [photoWeightInput, setPhotoWeightInput] = useState('');
 
   const tipTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -224,6 +226,7 @@ export default function ProgressPhotoScreen() {
     setBackPreview(null);
     setResult(null);
     setAnalyzing(false);
+    setPhotoWeightInput('');
   };
 
   const handlePickFront = async () => {
@@ -256,6 +259,13 @@ export default function ProgressPhotoScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('Not signed in');
 
+      const trimmedWeight = photoWeightInput.trim();
+      const parsedWeight = parseFloat(trimmedWeight);
+      const photoWeightLbs =
+        trimmedWeight !== '' && Number.isFinite(parsedWeight) && parsedWeight > 0
+          ? parsedWeight
+          : null;
+
       const { data, error } = await supabase.functions.invoke(
         'analyze-progress-photo',
         {
@@ -266,6 +276,7 @@ export default function ProgressPhotoScreen() {
             photoBase64Front: frontBase64,
             photoBase64Side: sideBase64 ?? undefined,
             photoBase64Back: backBase64 ?? undefined,
+            photoWeightLbs,
           },
         },
       );
@@ -446,6 +457,15 @@ export default function ProgressPhotoScreen() {
                 },
               )}
             </View>
+            <Text style={styles.photoWeightLabel}>Weight when taken (optional)</Text>
+            <TextInput
+              style={styles.photoWeightInput}
+              value={photoWeightInput}
+              onChangeText={(t) => setPhotoWeightInput(t.replace(/[^0-9.]/g, ''))}
+              placeholder="lbs — leave blank to use current weight"
+              placeholderTextColor={Colors.textTertiary}
+              keyboardType="decimal-pad"
+            />
             <View style={styles.photoTipsRow}>
               <Ionicons name="bulb-outline" size={14} color={Colors.textTertiary} />
               <Text style={styles.photoTipsText}>
@@ -736,6 +756,24 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'left',
     lineHeight: 14,
+  },
+  photoWeightLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
+  },
+  photoWeightInput: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 12,
   },
   photoTipsRow: {
     flexDirection: 'row',

@@ -55,7 +55,40 @@ what training adaptations are apparent.
 - If you cannot make a reliable estimate from the photo quality,
   say so honestly and do not guess
 
+CRITICAL ANALYSIS ORDER — follow exactly:
+
+Step 1: Analyze ONLY the current photo(s).
+Estimate body fat percentage based solely on what you see in the image.
+Do NOT reference prior check-in estimates yet. Do not anchor to previous values.
+
+Key indicators to weight heavily:
+- Waist circumference relative to shoulders
+- Abdominal fat accumulation and definition
+- Love handle presence and thickness
+- Chest softness vs muscle definition
+- Overall torso shape and fat distribution
+
+Do NOT overweight:
+- Arm size (muscular arms exist at high BF%)
+- Shoulder width (frame-based, not BF indicator)
+- Overall muscularity (muscular ≠ lean)
+
+Step 2: AFTER locking the BF estimate from Step 1, calculate lean mass using the weight provided.
+
+Step 3: ONLY THEN compare to prior check-ins to assess progress direction.
+
+The historical context must NEVER change the BF estimate from Step 1.
+It can only inform the progress narrative.
+
 When comparing photos:
+- First classify the PRIMARY visual change as one of:
+  A) Fat loss dominant (>60% of change is fat loss)
+  B) Muscle gain dominant (>60% of change is muscle)
+  C) True recomposition (roughly equal fat/muscle)
+  D) Maintenance (minimal change)
+- Then write the analysis narrative around the dominant change category.
+  Do not default to assuming recomposition — most users are either cutting
+  or bulking, not doing both equally.
 - Be specific about visible changes (fuller shoulders, more defined arms, leaner midsection)
 - Note which muscle groups show the most development
 - Keep observations objective and coaching-focused
@@ -66,6 +99,19 @@ When comparing photos:
   If the user appears more muscular but at similar body fat, state that
   directly: "The primary change appears to be increased muscle fullness
   rather than fat loss, which is a positive recomposition signal."
+
+Before returning results, validate internally:
+lean_mass = weight × (1 - bf_pct / 100)
+
+Check: does your BF% estimate produce the lean mass you stated?
+
+If lean_mass_stated does NOT match weight × (1 - bf_midpoint / 100) within 5 lbs,
+revise the BF% estimate until they are internally consistent.
+
+Example:
+Weight: 200 lbs, stated lean mass: 143 lbs
+Implied BF: (200-143)/200 = 28.5%
+If you wrote 16-20% BF, that is inconsistent. Revise to 26-30% BF.
 
 Coaching tone:
 - Never guarantee outcomes or timelines. Replace certainty phrasing like
@@ -186,6 +232,7 @@ serve(async (req) => {
       photoBase64Front,
       photoBase64Side,
       photoBase64Back,
+      photoWeightLbs,
     } = body as {
       userId?: string;
       planId?: string;
@@ -193,6 +240,7 @@ serve(async (req) => {
       photoBase64Front?: string;
       photoBase64Side?: string;
       photoBase64Back?: string;
+      photoWeightLbs?: number;
     };
 
     if (!userId || !photoBase64Front) {
@@ -290,6 +338,18 @@ serve(async (req) => {
     }
 
     const weightLbs = Number(profile?.weight_lbs ?? 0);
+    const photoWeight =
+      photoWeightLbs != null && Number.isFinite(Number(photoWeightLbs)) &&
+        Number(photoWeightLbs) > 0
+        ? Number(photoWeightLbs)
+        : null;
+    const weightForLeanMass = photoWeight ?? weightLbs;
+    const weightNote =
+      photoWeight != null && photoWeight !== weightLbs
+        ? `(Note: current weight is ${weightLbs} lbs — use photo weight for lean mass calculation)`
+        : photoWeight == null
+        ? '(Note: weight at time of photo was not provided — using current profile weight for lean mass calculation)'
+        : '';
     const heightFt = Number(profile?.height_ft ?? 5);
     const heightIn = Number(profile?.height_in ?? 10);
     const age = Number(profile?.age ?? 30);
@@ -368,7 +428,8 @@ serve(async (req) => {
       text: `Analyze this client's body composition for nutrition calibration.
 
 Client stats:
-- Weight: ${weightLbs} lbs
+- Weight at time of photo: ${weightForLeanMass} lbs
+  ${weightNote}
 - Height: ${heightFt}'${heightIn}"
 - Sex: ${sex}
 - Age: ${age}
@@ -492,7 +553,7 @@ Return ONLY the JSON object.`,
       if (Math.abs(targetCalories - currentCalories) > 100) {
         const macros = calcMacrosFromCalories(
           targetCalories,
-          weightLbs,
+          weightForLeanMass > 0 ? weightForLeanMass : weightLbs,
           goalType,
         );
         const { error: macroInsertErr } = await supabase.from('macro_plans').insert({

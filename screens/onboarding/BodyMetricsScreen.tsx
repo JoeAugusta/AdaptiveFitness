@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,21 @@ import type { RouteProp } from '@react-navigation/native';
 import Slider from '@react-native-community/slider';
 import type { RootStackParamList } from '../../navigation/types';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
+import { JordanAvatar } from '../../components/JordanAvatar';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { cmToFtIn, LBS_TO_KG, useMetric } from '../../utils/units';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BodyMetrics'>;
 type RouteType = RouteProp<RootStackParamList, 'BodyMetrics'>;
 
-type FocusField = 'age' | 'heightFt' | 'heightIn' | 'heightCm' | 'weight' | null;
+type FocusField =
+  | 'age'
+  | 'heightFt'
+  | 'heightIn'
+  | 'heightCm'
+  | 'weight'
+  | 'targetWeight'
+  | null;
 
 interface SexOption {
   id: string;
@@ -65,6 +73,7 @@ export default function BodyMetricsScreen() {
   const [heightIn, setHeightIn] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
+  const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState<number | null>(null);
   const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -78,6 +87,33 @@ export default function BodyMetricsScreen() {
       ? heightCm.trim() !== ''
       : heightFt.trim() !== '' && heightIn.trim() !== '');
 
+  const currentWeightLbsForDelta = useMemo(() => {
+    const raw = weightLbs.trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    return isMetric ? Math.round(n / LBS_TO_KG) : n;
+  }, [weightLbs, isMetric]);
+
+  const targetWeightJordanNote = useMemo(() => {
+    const targetTrimmed = goalTargetWeight.trim();
+    if (!targetTrimmed || currentWeightLbsForDelta == null) return null;
+    const targetParsed = Number(targetTrimmed);
+    if (!Number.isFinite(targetParsed)) return null;
+    const targetLbs = isMetric ? Math.round(targetParsed / LBS_TO_KG) : targetParsed;
+    const weightDelta = targetLbs - currentWeightLbsForDelta;
+    if (Math.abs(weightDelta) <= 2) return null;
+    if (weightDelta < 0) {
+      return (
+        'Slight deficit — enough to lose fat without hurting your performance. ' +
+        'Protein stays high to protect muscle.'
+      );
+    }
+    return (
+      'Surplus calibrated for muscle building. Enough to fuel growth without excess fat gain.'
+    );
+  }, [goalTargetWeight, currentWeightLbsForDelta, isMetric]);
+
   const handleContinue = () => {
     if (!canContinue) return;
     setValidationError(null);
@@ -85,6 +121,7 @@ export default function BodyMetricsScreen() {
     let heightFtOut = heightFt.trim();
     let heightInOut = heightIn.trim();
     let weightLbsOut = weightLbs.trim();
+    let goalTargetWeightOut: string | undefined;
 
     if (isMetric) {
       const cm = Number(heightCm);
@@ -101,6 +138,13 @@ export default function BodyMetricsScreen() {
       heightFtOut = String(ft);
       heightInOut = String(inches);
       weightLbsOut = String(Math.round(kg / LBS_TO_KG));
+      const targetKg = goalTargetWeight.trim();
+      if (targetKg) {
+        const kgTarget = Number(targetKg);
+        if (Number.isFinite(kgTarget) && kgTarget >= 20 && kgTarget <= 320) {
+          goalTargetWeightOut = String(Math.round(kgTarget / LBS_TO_KG));
+        }
+      }
     } else {
       const ft = Number(heightFt);
       const inch = Number(heightIn);
@@ -117,6 +161,15 @@ export default function BodyMetricsScreen() {
         setValidationError('Weight should be between 50 and 700 lbs.');
         return;
       }
+      const targetLbsRaw = goalTargetWeight.trim();
+      if (targetLbsRaw) {
+        const targetLbs = Number(targetLbsRaw);
+        if (!Number.isFinite(targetLbs) || targetLbs < 50 || targetLbs > 700) {
+          setValidationError('Target weight should be between 50 and 700 lbs.');
+          return;
+        }
+        goalTargetWeightOut = String(Math.round(targetLbs));
+      }
     }
 
     console.log('[BodyMetrics] duration in params:', {
@@ -132,6 +185,12 @@ export default function BodyMetricsScreen() {
       heightIn: heightInOut,
       weightLbs: weightLbsOut,
       bodyFatPct: bodyFatPct !== null ? String(bodyFatPct) : null,
+      ...(goalTargetWeightOut != null
+        ? {
+            goalTargetWeight: goalTargetWeightOut,
+            targetWeightLbs: goalTargetWeightOut,
+          }
+        : {}),
     });
   };
 
@@ -298,6 +357,7 @@ export default function BodyMetricsScreen() {
         </View>
 
         <View style={[styles.metricCard, styles.metricCardStack]}>
+          <Text style={styles.weightFieldLabel}>Current weight</Text>
           <View style={styles.weightRow}>
             <TextInput
               style={[
@@ -317,6 +377,39 @@ export default function BodyMetricsScreen() {
             />
             <Text style={styles.unitLabel}>{isMetric ? 'kg' : 'lbs'}</Text>
           </View>
+
+          <Text style={[styles.weightFieldLabel, styles.weightFieldLabelSpaced]}>
+            Target weight
+          </Text>
+          <View style={styles.weightRow}>
+            <TextInput
+              style={[
+                styles.textInputField,
+                styles.weightInput,
+                focusedField === 'targetWeight' && styles.textInputFocused,
+              ]}
+              value={goalTargetWeight}
+              onChangeText={setGoalTargetWeight}
+              keyboardType="numeric"
+              placeholder={isMetric ? '75' : '165'}
+              placeholderTextColor={Colors.textTertiary}
+              maxLength={4}
+              returnKeyType="done"
+              onFocus={() => setFocusedField('targetWeight')}
+              onBlur={() => setFocusedField(null)}
+            />
+            <Text style={styles.unitLabel}>{isMetric ? 'kg' : 'lbs'}</Text>
+          </View>
+          <Text style={styles.targetWeightHint}>
+            Optional — leave blank to maintain current weight
+          </Text>
+
+          {targetWeightJordanNote ? (
+            <View style={styles.jordanWeightNote}>
+              <JordanAvatar size={18} />
+              <Text style={styles.jordanWeightNoteText}>{targetWeightJordanNote}</Text>
+            </View>
+          ) : null}
         </View>
 
         {validationError ? (
@@ -368,6 +461,12 @@ export default function BodyMetricsScreen() {
           >
             <Text style={styles.bfSkipText}>Skip — I don't know my body fat</Text>
           </TouchableOpacity>
+          {bodyFatPct === null ? (
+            <Text style={styles.bfSkipNote}>
+              Without body fat %, calorie targets may be 250-300 kcal lower than your
+              actual needs. A rough estimate is fine.
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -548,6 +647,39 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  weightFieldLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  weightFieldLabelSpaced: {
+    marginTop: Spacing.md,
+  },
+  targetWeightHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: Spacing.xs,
+  },
+  jordanWeightNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.accentMuted,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    borderRadius: Radius.md,
+  },
+  jordanWeightNoteText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
   unitLabel: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
@@ -661,6 +793,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
     textDecorationLine: 'underline',
+  },
+  bfSkipNote: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 
   footer: {

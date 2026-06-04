@@ -637,6 +637,16 @@ export default function BuildingPlanScreen() {
 
         planWeeksResolved = resolvePlanWeeksFromParams(params);
 
+        const goalTargetWeightLbs = (() => {
+          const raw =
+            params.goalTargetWeight?.trim() ||
+            params.targetWeightLbs?.trim() ||
+            '';
+          if (!raw) return null;
+          const n = parseFloat(raw);
+          return Number.isFinite(n) && n > 0 ? n : null;
+        })();
+
         const { data: gData, error: goalError } = await supabase
           .from('goals')
           .insert({
@@ -651,6 +661,7 @@ export default function BuildingPlanScreen() {
             starting_weight_lbs: params.startingWeightLbs
               ? parseFloat(params.startingWeightLbs)
               : null,
+            target_weight_lbs: goalTargetWeightLbs,
             status: 'active',
             target_date: computeTargetDate(
               params.planDuration ?? params.recommendedWeeks ?? 12,
@@ -671,6 +682,7 @@ export default function BuildingPlanScreen() {
           carbs_g: params.carbsG,
           fats_g: params.fatsG,
           calorie_pace: params.caloriePace ?? 'balanced',
+          target_weight_lbs: goalTargetWeightLbs,
         });
 
         const { data: { user } } = await supabase.auth.getUser();
@@ -712,6 +724,8 @@ export default function BuildingPlanScreen() {
 
         generatePlanBody = {
           ...params,
+          goalTargetWeight: params.goalTargetWeight,
+          targetWeightLbs: params.targetWeightLbs ?? params.goalTargetWeight,
           daysPerWeek: daysPerWeekResolved,
           totalWeeks: planWeeksResolved,
           recommendedWeeks: planWeeksResolved,
@@ -758,6 +772,8 @@ export default function BuildingPlanScreen() {
 
         generatePlanBody = {
           ...params,
+          goalTargetWeight: params.goalTargetWeight,
+          targetWeightLbs: params.targetWeightLbs ?? params.goalTargetWeight,
           daysPerWeek: daysPerWeekResolved,
           totalWeeks: planWeeksResolved,
           recommendedWeeks: planWeeksResolved,

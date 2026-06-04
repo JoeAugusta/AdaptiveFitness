@@ -45,6 +45,8 @@ import {
   isTodayTrainingDay,
   normalizeScheduledDays,
 } from '../utils/dateUtils';
+import ActivityLogSheet, { type ActivityLogRow } from '../components/ActivityLogSheet';
+import { resolveActivityCaloriesBurned } from '../utils/activityCalories';
 
 interface MacroTargets {
   calories: number;
@@ -575,6 +577,10 @@ export default function MacroTrackerScreen() {
   const [planNutritionContext, setPlanNutritionContext] =
     useState<PlanNutritionContext | null>(null);
   const [profileWeightLbs, setProfileWeightLbs] = useState<number | null>(null);
+  const [nutritionUserId, setNutritionUserId] = useState<string | null>(null);
+  const [activePlanId, setActivePlanId] = useState<string | null>(null);
+  const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
+  const [showActivityLogSheet, setShowActivityLogSheet] = useState(false);
   const [editingMacroField, setEditingMacroField] = useState<MacroEditField | null>(
     null,
   );
@@ -623,6 +629,7 @@ export default function MacroTrackerScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       if (!userId) return;
+      setNutritionUserId(userId);
 
       const today = todayStr();
       const weekAgo = daysAgoStr(6);
@@ -652,12 +659,12 @@ export default function MacroTrackerScreen() {
         supabase
           .from('macro_plans')
           .select(
-            'calories_target, protein_g, carbs_g, fats_g, goal_id, calorie_pace, goals(goal_type)',
+            'calories_target, protein_g, carbs_g, fats_g, goal_id, calorie_pace',
           )
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single(),
+          .maybeSingle(),
         supabase
           .from('macro_logs')
           .select('id, meal_name, calories, protein_g, carbs_g, fats_g')
@@ -678,7 +685,7 @@ export default function MacroTrackerScreen() {
           : Promise.resolve({ data: null, error: null }),
         supabase
           .from('plans')
-          .select('plan_json, status')
+          .select('id, plan_json, status')
           .eq('user_id', userId)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
@@ -703,12 +710,29 @@ export default function MacroTrackerScreen() {
           fats_g: number;
           goal_id?: string | null;
           calorie_pace?: string | null;
-          goals?: { goal_type?: string } | { goal_type?: string }[] | null;
         };
-        const rel = tr.goals;
-        const gRow = Array.isArray(rel) ? rel[0] : rel;
-        const goalType =
-          gRow && typeof gRow.goal_type === 'string' ? gRow.goal_type : null;
+
+        let goalType: string | null = null;
+        if (tr.goal_id) {
+          const { data: goalRow } = await supabase
+            .from('goals')
+            .select('goal_type')
+            .eq('id', tr.goal_id)
+            .maybeSingle();
+          goalType = goalRow?.goal_type ?? null;
+        }
+        if (!goalType) {
+          const { data: activeGoal } = await supabase
+            .from('goals')
+            .select('goal_type')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .order('id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          goalType = activeGoal?.goal_type ?? null;
+        }
+
         setNutritionGoalType(goalType);
         setMacroPlanMeta({
           goal_id: tr.goal_id ?? null,
@@ -727,9 +751,11 @@ export default function MacroTrackerScreen() {
       }
 
       const planRow = planRes.data as {
+        id?: string;
         plan_json?: Record<string, unknown>;
         status?: string;
       } | null;
+      setActivePlanId(planRow?.id ?? null);
       const pj = planRow?.plan_json ?? {};
       const scheduledRaw = Array.isArray(pj.scheduledDays)
         ? (pj.scheduledDays as string[])
@@ -806,6 +832,21 @@ export default function MacroTrackerScreen() {
         dailyMap.set(d, existing);
       }
       setWeeklyData(Array.from(dailyMap.values()));
+
+      if (planRow?.id) {
+        const { data: sportLogRow } = await supabase
+          .from('sport_logs')
+          .select(
+            'id, user_id, plan_id, logged_at, sport_type, duration_min, intensity, calories_burned',
+          )
+          .eq('user_id', userId)
+          .eq('plan_id', planRow.id)
+          .eq('logged_at', today)
+          .maybeSingle();
+        setTodayActivityLog((sportLogRow as ActivityLogRow | null) ?? null);
+      } else {
+        setTodayActivityLog(null);
+      }
     } catch (e) {
       console.error('MacroTracker load error:', e);
     } finally {
@@ -837,7 +878,24 @@ export default function MacroTrackerScreen() {
     return applyTrainingDayMacroAdjust(targets, isTrainingDay);
   }, [targets, showDayTypeIndicator, isTrainingDay]);
 
+  console.log('[MACRO ADJUST]', {
+    baseCalories: targets?.calories,
+    isTrainingDay,
+    showDayTypeIndicator,
+    adjustedCalories: adjustedTargets?.calories,
+  });
+
   const t = adjustedTargets ?? baseTargets;
+
+  const activityCalories = useMemo(() => {
+    if (!todayActivityLog) return 0;
+    const w =
+      profileWeightLbs != null && profileWeightLbs > 0 ? profileWeightLbs : 170;
+    return resolveActivityCaloriesBurned(todayActivityLog, w);
+  }, [todayActivityLog, profileWeightLbs]);
+
+  const displayCalorieTarget = t.calories + activityCalories;
+  const baseCalorieTarget = t.calories;
 
   const adjustDraftInvalid =
     adjustDraft != null &&
@@ -904,8 +962,11 @@ export default function MacroTrackerScreen() {
     [todayLogs],
   );
 
-  const calPct = t.calories > 0 ? (todayTotals.calories / t.calories) * 100 : 0;
-  const remaining = t.calories - todayTotals.calories;
+  const calPct =
+    displayCalorieTarget > 0
+      ? (todayTotals.calories / displayCalorieTarget) * 100
+      : 0;
+  const remaining = displayCalorieTarget - todayTotals.calories;
 
   // Weekly stats
   const weeklyStats = useMemo(() => {
@@ -970,10 +1031,10 @@ export default function MacroTrackerScreen() {
 
   const calorieOvershootAmount = useMemo(
     () =>
-      todayTotals.calories > t.calories
-        ? Math.round(todayTotals.calories - t.calories)
+      todayTotals.calories > displayCalorieTarget
+        ? Math.round(todayTotals.calories - displayCalorieTarget)
         : 0,
-    [todayTotals.calories, t.calories],
+    [todayTotals.calories, displayCalorieTarget],
   );
   const showCalOvershootBanner = calorieOvershootAmount > 50;
 
@@ -1405,8 +1466,40 @@ export default function MacroTrackerScreen() {
                 <Text style={styles.adjustTargetsLink}>Adjust targets →</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
-            <Text style={styles.calorieTargetLine}>/ {t.calories} kcal</Text>
+            {activityCalories > 0 ? (
+              <>
+                <Text style={styles.calorieAdjustedBig}>
+                  {displayCalorieTarget.toLocaleString()} kcal today
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowActivityLogSheet(true)}
+                  activeOpacity={0.7}
+                  disabled={!activePlanId}
+                >
+                  <Text style={styles.calorieAdjustedBreakdown}>
+                    {`${baseCalorieTarget.toLocaleString()} base + ${activityCalories.toLocaleString()} ${todayActivityLog?.sport_type ?? 'activity'}`}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
+                <Text style={styles.calorieTargetLine}>
+                  {`logged of ${displayCalorieTarget.toLocaleString()} kcal`}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.calorieBig}>{todayTotals.calories}</Text>
+                <Text style={styles.calorieTargetLine}>/ {t.calories} kcal</Text>
+                <TouchableOpacity
+                  onPress={() => setShowActivityLogSheet(true)}
+                  activeOpacity={0.7}
+                  disabled={!activePlanId}
+                >
+                  <Text style={styles.activityTargetHint}>
+                    Log activity to adjust today's target →
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
             {showDayTypeIndicator ? (
               isTrainingDay ? (
                 <View style={styles.dayTypePill}>
@@ -1932,6 +2025,20 @@ export default function MacroTrackerScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {nutritionUserId != null && activePlanId != null ? (
+        <ActivityLogSheet
+          visible={showActivityLogSheet}
+          onClose={() => setShowActivityLogSheet(false)}
+          onSaved={() => {
+            void loadData();
+          }}
+          userId={nutritionUserId}
+          planId={activePlanId}
+          weightLbs={profileWeightLbs ?? 170}
+          existingLog={todayActivityLog}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -1993,6 +2100,25 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
+  },
+  calorieAdjustedBig: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.accent,
+    marginTop: 4,
+  },
+  calorieAdjustedBreakdown: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  activityTargetHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 6,
   },
   calorieBig: {
     fontFamily: Fonts.bold,

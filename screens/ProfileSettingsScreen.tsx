@@ -1036,7 +1036,7 @@ export default function ProfileSettingsScreen() {
             onPress={() => navigation.navigate('NotificationsSettings' as never)}
             activeOpacity={0.7}
           >
-            <Text style={styles.rowLabel}>Workout Reminders</Text>
+            <Text style={styles.rowLabel}>Notifications</Text>
             <Text style={styles.rowChevron}>›</Text>
           </TouchableOpacity>
           {showRateApp ? (

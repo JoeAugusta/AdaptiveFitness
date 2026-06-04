@@ -1078,61 +1078,16 @@ function FatLossContent({
 }) {
   const { isMetric, setIsMetric } = useMetric();
   const [currentWeightLbs, setCurrentWeightLbs] = useState('');
-  const [targetWeightLbs, setTargetWeightLbs] = useState('');
   const [targetDate, setTargetDate] = useState<string | null>(null);
-  const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(
-    null,
-  );
+  const [focusedField, setFocusedField] = useState<'current' | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const canContinue =
-    currentWeightLbs.trim() !== '' &&
-    targetWeightLbs.trim() !== '' &&
-    !!targetDate;
-
-  const rateCheck = useMemo(() => {
-    if (!currentWeightLbs.trim() || !targetWeightLbs.trim() || !targetDate) return null;
-    const weeks = TIMELINE_WEEKS[targetDate];
-    const currentLbs = toLbs(Number(currentWeightLbs), isMetric);
-    const targetLbs = toLbs(Number(targetWeightLbs), isMetric);
-    const weeklyRateLbs = (currentLbs - targetLbs) / weeks;
-    const weeklyRate = isMetric
-      ? weeklyRateLbs * LBS_TO_KG
-      : weeklyRateLbs;
-    const rateUnit = isMetric ? 'kg' : 'lbs';
-
-    if (weeklyRate <= 0) {
-      return {
-        message: 'Your target weight is higher than your current weight. Please check your numbers.',
-        color: Colors.danger,
-      };
-    }
-    if (weeklyRate <= 1) {
-      return {
-        message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. This is a safe, sustainable rate. Great choice.`,
-        color: Colors.success,
-      };
-    }
-    if (weeklyRate <= 1.5) {
-      return {
-        message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. Aggressive but achievable with strict adherence.`,
-        color: Colors.warning,
-      };
-    }
-    return {
-      message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. This is very aggressive. Consider a longer timeline.`,
-      color: Colors.danger,
-    };
-  }, [currentWeightLbs, targetWeightLbs, targetDate, isMetric]);
+  const canContinue = currentWeightLbs.trim() !== '' && !!targetDate;
 
   const submitFatLossParams = () => {
     setValidationError(null);
     const currentRaw = Number(currentWeightLbs);
-    const targetRaw = Number(targetWeightLbs);
-    if (
-      !isValidBodyWeightInput(currentRaw, isMetric) ||
-      !isValidBodyWeightInput(targetRaw, isMetric)
-    ) {
+    if (!isValidBodyWeightInput(currentRaw, isMetric)) {
       setValidationError(
         isMetric
           ? 'Enter valid weights between 20 and 320 kg.'
@@ -1141,14 +1096,8 @@ function FatLossContent({
       return null;
     }
     const currentLbs = toLbs(currentRaw, isMetric);
-    const targetLbsVal = toLbs(targetRaw, isMetric);
-    if (targetLbsVal >= currentLbs) {
-      setValidationError('Target weight must be lower than your current weight.');
-      return null;
-    }
     return {
       startingWeightLbs: String(currentLbs),
-      targetWeightLbs: String(targetLbsVal),
       targetDate,
       planDuration: targetDate ?? '12w',
       recommendedWeeks:
@@ -1187,36 +1136,10 @@ function FatLossContent({
         />
       </View>
 
-      <View style={[styles.inputFieldBlock, styles.inputFieldStack]}>
-        <Text style={styles.inputLabel}>
-          {isMetric ? 'Target weight (kg)' : 'Target weight (lbs)'}
-        </Text>
-        <TextInput
-          style={[
-            styles.textInputField,
-            focusedField === 'target' && styles.textInputFocused,
-          ]}
-          placeholder={isMetric ? 'e.g. 75' : 'e.g. 165'}
-          placeholderTextColor={Colors.textTertiary}
-          keyboardType="numeric"
-          value={targetWeightLbs}
-          onChangeText={setTargetWeightLbs}
-          onFocus={() => setFocusedField('target')}
-          onBlur={() => setFocusedField(null)}
-        />
-      </View>
-
       {validationError ? (
         <Text style={styles.errorText}>{validationError}</Text>
       ) : null}
 
-      {rateCheck && (
-        <View style={styles.infoCard}>
-          <Text style={[styles.infoCardBody, { color: rateCheck.color }]}>
-            {rateCheck.message}
-          </Text>
-        </View>
-      )}
       {targetDate && FAT_LOSS_EXPECTATIONS[targetDate] && (
         <View style={styles.infoCard}>
           <Text style={styles.infoCardLabel}>JORDAN</Text>
@@ -1472,13 +1395,10 @@ function PowerHypertrophyContent({
     deadlift: null,
     overheadPress: null,
   });
-
   const selectedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
 
   const projLow = (selectedWeeks * 0.4).toFixed(0);
   const projHigh = (selectedWeeks * 3.0).toFixed(0);
-  const leanLow = (selectedWeeks * 0.25).toFixed(1);
-  const leanHigh = (selectedWeeks * 0.5).toFixed(1);
 
   const parseLiftInput = (v: string): number | null => {
     const trimmed = v.trim();
@@ -1647,15 +1567,6 @@ function PowerHypertrophyContent({
               +{projLow}–{projHigh} lbs
             </Text>
             <Text style={styles.phProjectionSub}>across your main lifts</Text>
-          </View>
-        </View>
-        <View style={styles.phProjectionRow}>
-          <Text style={styles.phProjectionLabel}>LEAN MASS</Text>
-          <View style={styles.phProjectionRight}>
-            <Text style={[styles.phProjectionValue, { color: Colors.success }]}>
-              +{leanLow}–{leanHigh} lbs
-            </Text>
-            <Text style={styles.phProjectionSub}>estimated</Text>
           </View>
         </View>
         <Text style={styles.phProjectionDisclaimer}>

@@ -65,12 +65,22 @@ type AnalysisResult = {
 type FlowStep = 'intro' | 'capture' | 'confirm' | 'analyzing' | 'results';
 
 const PHOTO_INSTRUCTIONS = {
-  front:
-    'Stand 6–8 feet from the camera, full body visible from head to toe. Arms slightly away from sides. Neutral expression.',
-  side:
-    '90-degree side profile, full body head to toe. Arms relaxed at sides.',
-  back:
-    'Stand facing away, full body visible. Shows back development, glute and hamstring detail.',
+  front: [
+    'Full body head to toe',
+    'Arms slightly away from sides',
+    'Stand 6-8 ft from camera',
+    'Natural lighting preferred',
+  ],
+  side: [
+    '90-degree profile',
+    'Full body visible',
+    'Arms relaxed',
+  ],
+  back: [
+    'Facing away',
+    'Full body visible',
+    'Arms relaxed',
+  ],
 } as const;
 
 async function pickProgressPhoto(): Promise<string | null> {
@@ -295,7 +305,7 @@ export default function ProgressPhotoScreen() {
   const renderPhotoSlot = (
     label: string,
     required: boolean,
-    instruction: string,
+    instructions: readonly string[],
     preview: string | null,
     onPick: () => void,
     onClear: () => void,
@@ -319,7 +329,13 @@ export default function ProgressPhotoScreen() {
           </View>
         )}
       </TouchableOpacity>
-      <Text style={styles.photoInstruction}>{instruction}</Text>
+      <View style={styles.photoInstructionList}>
+        {instructions.map((line) => (
+          <Text key={line} style={styles.photoInstruction}>
+            • {line}
+          </Text>
+        ))}
+      </View>
       {preview ? (
         <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={styles.retakeText}>Retake</Text>
@@ -429,6 +445,12 @@ export default function ProgressPhotoScreen() {
                   setBackPreview(null);
                 },
               )}
+            </View>
+            <View style={styles.photoTipsRow}>
+              <Ionicons name="bulb-outline" size={14} color={Colors.textTertiary} />
+              <Text style={styles.photoTipsText}>
+                Natural lighting improves accuracy. Avoid post-workout pump photos.
+              </Text>
             </View>
             <View style={styles.privacyRow}>
               <Ionicons name="lock-closed-outline" size={14} color={Colors.textTertiary} />
@@ -703,14 +725,28 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginTop: 4,
   },
+  photoInstructionList: {
+    marginTop: Spacing.xs,
+    width: THUMB_W + 24,
+    gap: 2,
+  },
   photoInstruction: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
     color: Colors.textTertiary,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 14,
-    marginTop: Spacing.xs,
-    width: THUMB_W + 24,
+  },
+  photoTipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  photoTipsText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
   retakeText: {
     fontFamily: Fonts.semiBold,

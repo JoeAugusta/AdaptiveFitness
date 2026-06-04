@@ -14,6 +14,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
+import { JordanAvatar } from '../../components/JordanAvatar';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 const COLOR_PROTEIN = Colors.accent;
@@ -101,74 +102,110 @@ function calcBaseMacros(
   return { proteinG, carbsG, fatsG };
 }
 
-function computeTdee(params: RouteType['params']): number {
+function calculateBMR(params: {
+  weightLbs: number;
+  heightFt: number;
+  heightIn: number;
+  age: number;
+  sex: 'male' | 'female' | 'other';
+  bodyFatPct?: number | null;
+}): number {
+  const weightKg = params.weightLbs * 0.453592;
   const heightCm =
-    (Number(params.heightFt) * 12 + Number(params.heightIn)) * 2.54;
-  const weightKg = Number(params.weightLbs) * 0.453592;
-  const age = Number(params.age);
+    (params.heightFt * 12 + params.heightIn) * 2.54;
 
-  const bmrMale = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
-  const bmrFemale = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
-
-  let bmr: number;
-  if (params.sex === 'male') {
-    bmr = bmrMale;
-  } else if (params.sex === 'female') {
-    bmr = bmrFemale;
-  } else {
-    bmr = (bmrMale + bmrFemale) / 2;
+  // Katch-McArdle when body fat % is available
+  if (
+    params.bodyFatPct != null &&
+    params.bodyFatPct > 0 &&
+    params.bodyFatPct < 100
+  ) {
+    const leanMassKg = weightKg * (1 - params.bodyFatPct / 100);
+    return 370 + 21.6 * leanMassKg;
   }
 
-  const days = Number(params.daysPerWeek);
-  let activityMultiplier: number;
-  if (days <= 2) {
-    activityMultiplier = 1.375;
-  } else if (days <= 4) {
-    activityMultiplier = 1.55;
-  } else if (days <= 6) {
-    activityMultiplier = 1.725;
-  } else {
-    activityMultiplier = 1.9;
-  }
-
-  let tdee = bmr * activityMultiplier;
-
-  // GAP-1: Concurrent sport TDEE adjustment
-  const concurrentSport = params.concurrentSport;
-  if (concurrentSport) {
-    const intensityCal: Record<string, number> = {
-      martial_arts: 150,
-      team_sports: 150,
-      running: 120,
-      cycling: 120,
-      swimming: 130,
-      other: 100,
-    };
-    const avgIntensity =
-      concurrentSport.type.reduce(
-        (sum, t) => sum + (intensityCal[t] ?? 100),
-        0,
-      ) / concurrentSport.type.length;
-    tdee += avgIntensity * concurrentSport.daysPerWeek;
-  }
-
-  return tdee;
+  // Fallback: Mifflin-St Jeor
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * params.age;
+  if (params.sex === 'male') return base + 5;
+  if (params.sex === 'female') return base - 161;
+  return base - 78; // other: midpoint
 }
 
-function getGoalAdjustment(goal: string): number {
-  switch (goal) {
-    case 'strength':
-    case 'power_hypertrophy':
-      return 200;
-    case 'hypertrophy':
-      return 300;
-    case 'fat_loss':
-      return -400;
-    case 'recomp':
-    case 'general':
-    default:
-      return 0;
+function getActivityMultiplier(daysPerWeek: number): number {
+  if (daysPerWeek <= 2) return 1.375;
+  if (daysPerWeek <= 4) return 1.55;
+  if (daysPerWeek <= 6) return 1.725;
+  return 1.9;
+}
+
+function resolveTargetWeightLbs(params: RouteType['params']): number | null {
+  const raw =
+    params.goalTargetWeight?.trim() ||
+    params.targetWeightLbs?.trim() ||
+    '';
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function calculateCalorieAdjustment(params: {
+  goalType: string;
+  currentWeightLbs: number;
+  targetWeightLbs: number | null;
+}): number {
+  const current = params.currentWeightLbs;
+  const target = params.targetWeightLbs ?? current;
+  const delta = target - current;
+
+  const wantsToLose = delta < -2;
+  const wantsToGain = delta > 2;
+
+  // fat_loss always in deficit
+  if (params.goalType === 'fat_loss') {
+    return -400;
   }
+
+  // recomp and general always maintenance
+  if (params.goalType === 'recomp' || params.goalType === 'general') {
+    return 0;
+  }
+
+  // strength, hypertrophy, power_hypertrophy: direction driven by weight goal
+  if (wantsToLose) return -200;
+  if (wantsToGain) {
+    if (params.goalType === 'strength') return 200;
+    if (params.goalType === 'hypertrophy') return 300;
+    if (params.goalType === 'power_hypertrophy') return 250;
+    return 200;
+  }
+  return 0; // maintaining
+}
+
+function computeTdee(params: RouteType['params']): number {
+  const bodyFatRaw = params.bodyFatPct;
+  const bodyFatPct =
+    bodyFatRaw != null && bodyFatRaw !== ''
+      ? Number(bodyFatRaw)
+      : null;
+  const sex =
+    params.sex === 'male' || params.sex === 'female' || params.sex === 'other'
+      ? params.sex
+      : 'other';
+
+  const bmr = calculateBMR({
+    weightLbs: Number(params.weightLbs),
+    heightFt: Number(params.heightFt),
+    heightIn: Number(params.heightIn),
+    age: Number(params.age),
+    sex,
+    bodyFatPct:
+      bodyFatPct != null && Number.isFinite(bodyFatPct) ? bodyFatPct : null,
+  });
+
+  const daysPerWeek = Math.min(7, Math.max(1, Number(params.daysPerWeek) || 4));
+  const activityMultiplier = getActivityMultiplier(daysPerWeek);
+
+  return bmr * activityMultiplier;
 }
 
 function computeTargetCalories(
@@ -176,7 +213,13 @@ function computeTargetCalories(
   caloriePace: string,
 ): number {
   const tdee = computeTdee(params);
-  const goalAdjustment = getGoalAdjustment(params.goal);
+  const currentWeightLbs = Number(params.weightLbs);
+  const targetWeightLbs = resolveTargetWeightLbs(params);
+  const goalAdjustment = calculateCalorieAdjustment({
+    goalType: params.goal,
+    currentWeightLbs,
+    targetWeightLbs,
+  });
   const paceAdjustment = (() => {
     const goalPaces = PACE_CONFIG[params.goal as keyof typeof PACE_CONFIG];
     if (!goalPaces) return goalAdjustment;
@@ -234,7 +277,11 @@ export default function MacroSetupScreen() {
       daysPerWeek: params.daysPerWeek,
       goal: params.goal,
       tdee: computeTdee(params),
-      goalAdjustment: getGoalAdjustment(params.goal),
+      goalAdjustment: calculateCalorieAdjustment({
+        goalType: params.goal,
+        currentWeightLbs: Number(params.weightLbs),
+        targetWeightLbs: resolveTargetWeightLbs(params),
+      }),
       finalCalories,
     });
   }, [caloriePace]);
@@ -243,6 +290,36 @@ export default function MacroSetupScreen() {
     () => calcBaseMacros(calories, Number(params.weightLbs), params.goal),
     [calories, params.goal, params.weightLbs],
   );
+
+  const jordanCalorieNote = useMemo(() => {
+    const currentWeightLbs = Number(params.weightLbs);
+    const goalTargetWeight = resolveTargetWeightLbs(params);
+    const targetWeight = goalTargetWeight ?? currentWeightLbs;
+    const delta = targetWeight - currentWeightLbs;
+    const goalType = params.goal;
+
+    if (goalType === 'fat_loss' || delta < -2) {
+      return (
+        'Slight deficit to support fat loss while protecting your muscle. Protein ' +
+        'stays high so lean mass is preserved during training.'
+      );
+    }
+    if (delta > 2) {
+      return (
+        'Surplus calibrated for muscle building. Enough to fuel growth ' +
+        'without excess fat gain.'
+      );
+    }
+    return (
+      'Maintenance calories — body recomposition focus. Weight stays ' +
+      'steady while body composition shifts.'
+    );
+  }, [
+    params.goal,
+    params.weightLbs,
+    params.goalTargetWeight,
+    params.targetWeightLbs,
+  ]);
 
   const handleDecrease = () => {
     setCalories((prev) => Math.max(MIN_CALORIES, prev - CALORIE_STEP));
@@ -369,6 +446,11 @@ export default function MacroSetupScreen() {
           <Text style={styles.goalNote}>
             Based on your {formatGoalLabel(params.goal)} goal
           </Text>
+        </View>
+
+        <View style={styles.calorieDirectionCard}>
+          <JordanAvatar size={20} />
+          <Text style={styles.calorieDirectionText}>{jordanCalorieNote}</Text>
         </View>
 
         <Text style={styles.macroAdjustNote}>{MACRO_WEEKLY_ADJUST_NOTE}</Text>
@@ -608,6 +690,25 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginTop: 12,
     textAlign: 'center',
+  },
+  calorieDirectionCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+    padding: Spacing.md,
+    backgroundColor: Colors.accentMuted,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBorder,
+    borderRadius: Radius.md,
+  },
+  calorieDirectionText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
   macroAdjustNote: {
     fontFamily: Fonts.regular,

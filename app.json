@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hone",
-    "slug": "hone",
+    "slug": "AdaptiveFitness",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -28,7 +28,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "react-native-purchases",
       [
         "expo-notifications",
         {

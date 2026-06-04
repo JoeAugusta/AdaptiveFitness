@@ -232,11 +232,19 @@ export function applyTrainingDayMacroAdjust(
     targets.carbs_g * carbMultiplier,
     MACRO_ADJUST.carbsStep,
   );
-  const calDiff = (adjustedCarbs - targets.carbs_g) * 4;
+  // Keep total calories fixed — only redistribute between carbs and fats
+  const carbCalDiff = (adjustedCarbs - targets.carbs_g) * 4;
+  const adjustedFats = Math.max(
+    MACRO_ADJUST.fatsMin,
+    roundToNearest(
+      targets.fats_g - carbCalDiff / 9,
+      MACRO_ADJUST.fatsStep,
+    ),
+  );
   return {
-    calories: roundToNearest(targets.calories + calDiff, MACRO_ADJUST.calStep),
+    calories: targets.calories,
     protein_g: targets.protein_g,
     carbs_g: adjustedCarbs,
-    fats_g: targets.fats_g,
+    fats_g: adjustedFats,
   };
 }

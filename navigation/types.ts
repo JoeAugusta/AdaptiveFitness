@@ -41,6 +41,8 @@ export type GoalDetailParams = {
   subMusclePreferences?: Record<string, string>;
   startingWeightLbs?: string;
   targetWeightLbs?: string;
+  /** Optional nutrition target; blank at GoalDetails → maintenance (current weight) */
+  goalTargetWeight?: string;
   targetDate?: string;
   targetBodyFatPct?: string;
   recompFocus?: string;

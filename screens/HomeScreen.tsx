@@ -52,10 +52,15 @@ import {
 import { useMetric, convertSessionFocus } from '../utils/units';
 import CardioDayCard from '../components/CardioDayCard';
 import CardioDoneCard from '../components/CardioDoneCard';
-import SportSessionModal, {
-  type ConcurrentSportPlan,
-  type SportLogRow,
-} from '../components/SportSessionModal';
+import ActivityLogSheet, { type ActivityLogRow } from '../components/ActivityLogSheet';
+import { resolveActivityCaloriesBurned } from '../utils/activityCalories';
+
+function formatActivityIntensityShort(intensity: string): string {
+  if (intensity === 'low') return 'Low';
+  if (intensity === 'moderate') return 'Moderate';
+  if (intensity === 'high') return 'High';
+  return intensity.charAt(0).toUpperCase() + intensity.slice(1);
+}
 import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { epleyEstimated1RMLbs, matchesTargetLift } from '../utils/strengthGoalLift';
@@ -179,32 +184,6 @@ function getPlanWeekNumber(w: unknown): number | undefined {
   const o = w as { weekNumber?: unknown; week_number?: unknown; number?: unknown };
   const n = o.weekNumber ?? o.week_number ?? o.number;
   return typeof n === 'number' && !Number.isNaN(n) ? n : undefined;
-}
-
-/** plan_json.concurrentSport: { type: string[], daysPerWeek } — card only if type[].length > 0 */
-function concurrentSportFromPlanJson(raw: unknown): ConcurrentSportPlan | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const o = raw as { type?: unknown; daysPerWeek?: unknown };
-  if (!Array.isArray(o.type) || o.type.length === 0) return null;
-  const types = o.type.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
-  if (types.length === 0) return null;
-  const daysPerWeek =
-    typeof o.daysPerWeek === 'number' && !Number.isNaN(o.daysPerWeek) ? o.daysPerWeek : 0;
-  return { type: types, daysPerWeek };
-}
-
-function formatSportTypeDisplayName(sportType: string): string {
-  return sportType
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
-function formatSportIntensityLabel(intensity: string): string {
-  if (intensity === 'low') return 'Low';
-  if (intensity === 'moderate') return 'Moderate';
-  if (intensity === 'high') return 'High';
-  return intensity;
 }
 
 function formatJordanCardUpdatedLabel(
@@ -644,12 +623,10 @@ export default function HomeScreen() {
     planJson: Record<string, unknown>;
   } | null>(null);
   const [cardioCompleted, setCardioCompleted] = useState(false);
-  const [planConcurrentSport, setPlanConcurrentSport] = useState<ConcurrentSportPlan | null>(
-    null,
-  );
-  const [todaySportLog, setTodaySportLog] = useState<SportLogRow | null>(null);
-  const [showSportSessionModal, setShowSportSessionModal] = useState(false);
-  const [sportDashboardUserId, setSportDashboardUserId] = useState<string | null>(null);
+  const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
+  const [showActivityLogSheet, setShowActivityLogSheet] = useState(false);
+  const [activityDashboardUserId, setActivityDashboardUserId] = useState<string | null>(null);
+  const [dashboardWeightLbs, setDashboardWeightLbs] = useState(170);
   const [goalProgress, setGoalProgress] = useState<{
     targetLift: string | null;
     current1RM: number;
@@ -722,9 +699,9 @@ export default function HomeScreen() {
         setIsWeek1NoSessionsYet(false);
         setHasLoggedWorkoutToday(false);
         setPlanSnapshotForMissed(null);
-        setPlanConcurrentSport(null);
+        setTodayActivityLog(null);
         setTodaySportLog(null);
-        setSportDashboardUserId(null);
+        setActivityDashboardUserId(null);
         setProfile(null);
         setGoalProgress(null);
         setProgressedCount(null);
@@ -733,7 +710,7 @@ export default function HomeScreen() {
         return;
       }
       uidRef.current = userId;
-      setSportDashboardUserId(userId);
+      setActivityDashboardUserId(userId);
 
       const { data: profileData } = await supabase
         .from('user_profiles')
@@ -744,6 +721,10 @@ export default function HomeScreen() {
         .maybeSingle();
 
       setProfile(profileData);
+      const profileWeight = Number(profileData?.weight_lbs ?? 0);
+      setDashboardWeightLbs(
+        Number.isFinite(profileWeight) && profileWeight > 0 ? profileWeight : 170,
+      );
 
       // Load today's weight log
       const todayDate = getLocalDateString();
@@ -755,7 +736,9 @@ export default function HomeScreen() {
         .maybeSingle();
 
       if (todayLog) {
-        setTodayWeight(todayLog.weight_lbs as number);
+        const w = todayLog.weight_lbs as number;
+        setTodayWeight(w);
+        if (w > 0) setDashboardWeightLbs(w);
         setTodaySleepHours(mapDbSleepHoursToPill(todayLog.sleep_hours));
         setWeightLoggedToday(true);
       } else {
@@ -785,7 +768,7 @@ export default function HomeScreen() {
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
         setPlanSnapshotForMissed(null);
-        setPlanConcurrentSport(null);
+        setTodayActivityLog(null);
         setTodaySportLog(null);
         setIsWeek1NoSessionsYet(false);
         setHasLoggedWorkoutToday(false);
@@ -836,7 +819,7 @@ export default function HomeScreen() {
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
         setIsWeek1NoSessionsYet(false);
-        setPlanConcurrentSport(null);
+        setTodayActivityLog(null);
         setTodaySportLog(null);
         setHasLoggedWorkoutToday(false);
         loadStats(userId, planRow.id, planRow.current_week ?? 1);
@@ -863,7 +846,7 @@ export default function HomeScreen() {
         setDevBypassDayGate(false);
         setIsWeek1NoSessionsYet(false);
         setPlanSnapshotForMissed(null);
-        setPlanConcurrentSport(null);
+        setTodayActivityLog(null);
         setTodaySportLog(null);
         setHasLoggedWorkoutToday(false);
         setProgressedCount(null);
@@ -1088,21 +1071,14 @@ export default function HomeScreen() {
       }
       setCardioCompleted(cardioLoggedToday);
 
-      const rawConcurrentSport = (planJson as { concurrentSport?: unknown }).concurrentSport;
-      const normalizedConcurrentSport = concurrentSportFromPlanJson(rawConcurrentSport);
-      setPlanConcurrentSport(normalizedConcurrentSport);
-      if (normalizedConcurrentSport) {
-        const { data: sportLogRow } = await supabase
-          .from('sport_logs')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('plan_id', plan.id)
-          .eq('logged_at', todayDate)
-          .maybeSingle();
-        setTodaySportLog((sportLogRow as SportLogRow | null) ?? null);
-      } else {
-        setTodaySportLog(null);
-      }
+      const { data: sportLogRow } = await supabase
+        .from('sport_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('plan_id', plan.id)
+        .eq('logged_at', todayDate)
+        .maybeSingle();
+      setTodayActivityLog((sportLogRow as ActivityLogRow | null) ?? null);
 
       const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
       const distinctDays = completedSessions;
@@ -2231,44 +2207,39 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {planConcurrentSport != null &&
-        planConcurrentSport.type.length > 0 &&
-        planData != null &&
-        planStatus !== 'completed' ? (
-          todaySportLog != null ? (
-            <View style={[styles.sportLogCard, styles.sportLogCardLogged]}>
-              <View style={styles.sportLogLeftCol}>
-                <View style={styles.sportLogTopRow}>
+        {planData != null && planStatus !== 'completed' ? (
+          todayActivityLog != null ? (
+            <View style={[styles.weightLogCard, styles.activityLogCardBelowWeight]}>
+              <View style={styles.weightLogLeft}>
+                <View style={styles.weightLoggedRow}>
                   <Ionicons name="checkmark" size={16} color={Colors.success} />
-                  <Text style={styles.sportLogLoggedTitle}>Sport Logged</Text>
+                  <Text style={styles.weightLogTitleLogged}>
+                    {`${todayActivityLog.sport_type} · ${todayActivityLog.duration_min} min · ${formatActivityIntensityShort(todayActivityLog.intensity)}`}
+                  </Text>
                 </View>
-                <Text style={styles.sportLogSubLogged}>
-                  {`${todaySportLog.duration_min} min · ${formatSportIntensityLabel(todaySportLog.intensity)}`}
+                <Text style={styles.weightLogSub}>
+                  {`+ ${resolveActivityCaloriesBurned(todayActivityLog, dashboardWeightLbs)} kcal added to today's target`}
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setShowSportSessionModal(true)}
+                onPress={() => setShowActivityLogSheet(true)}
                 activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.sportLogEdit}>Edit</Text>
+                <Text style={styles.weightEditBtn}>Edit</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <Pressable
-              style={styles.sportLogCard}
-              onPress={() => setShowSportSessionModal(true)}
+              style={styles.activityLogCard}
+              onPress={() => setShowActivityLogSheet(true)}
             >
-              <View style={styles.sportLogLeftCol}>
-                <View style={styles.sportLogTopRow}>
-                  <Ionicons name="flash-outline" size={20} color={Colors.accent} />
-                  <Text style={styles.sportLogTitle}>Log Sport Session</Text>
-                </View>
-                <Text style={styles.sportLogSportName}>
-                  {formatSportTypeDisplayName(planConcurrentSport.type[0]!)}
+              <View style={styles.activityLogLeft}>
+                <Text style={styles.activityLogHeader}>Additional Activity</Text>
+                <Text style={styles.activityLogSub}>
+                  Log sport or exercise to adjust today's calorie target
                 </Text>
               </View>
-              <Text style={styles.sportLogCTA}>Log →</Text>
+              <Ionicons name="add-circle-outline" size={24} color={Colors.accent} />
             </Pressable>
           )
         ) : null}
@@ -2608,17 +2579,17 @@ export default function HomeScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {planConcurrentSport != null && planData != null && sportDashboardUserId != null ? (
-        <SportSessionModal
-          visible={showSportSessionModal}
-          onClose={() => setShowSportSessionModal(false)}
+      {planData != null && activityDashboardUserId != null ? (
+        <ActivityLogSheet
+          visible={showActivityLogSheet}
+          onClose={() => setShowActivityLogSheet(false)}
           onSaved={() => {
             void loadDashboardData();
           }}
-          userId={sportDashboardUserId}
+          userId={activityDashboardUserId}
           planId={planData.planId}
-          concurrentSport={planConcurrentSport}
-          existingLog={todaySportLog}
+          weightLbs={todayWeight ?? dashboardWeightLbs}
+          existingLog={todayActivityLog}
         />
       ) : null}
     </SafeAreaView>
@@ -3494,75 +3465,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  sportLogCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
+  activityLogCardBelowWeight: {
+    marginTop: 0,
+  },
+  activityLogCard: {
     marginHorizontal: Spacing.xl,
     marginTop: 0,
     marginBottom: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  sportLogCardLogged: {
-    borderColor: Colors.divider,
-  },
-  sportLogLeftCol: {
+  activityLogLeft: {
     flex: 1,
+    marginRight: Spacing.md,
   },
-  sportLogTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sportLogBolt: {
-    fontFamily: Fonts.regular,
-    fontSize: 18,
-    color: Colors.accent,
-  },
-  sportLogTitle: {
-    marginLeft: 8,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
-    color: Colors.textPrimary,
-  },
-  sportLogSportName: {
-    marginTop: 2,
-    marginLeft: 26,
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-  },
-  sportLogCTA: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
-  },
-  sportLogCheck: {
-    color: Colors.success,
+  activityLogHeader: {
     fontFamily: Fonts.bold,
-    fontSize: 16,
-  },
-  sportLogLoggedTitle: {
-    marginLeft: 8,
+    fontSize: FontSizes.title,
     color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
   },
-  sportLogSubLogged: {
-    marginTop: 2,
-    marginLeft: 24,
+  activityLogSub: {
+    marginTop: 4,
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
     fontSize: FontSizes.caption,
-  },
-  sportLogEdit: {
-    fontFamily: Fonts.semiBold,
     color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
   },
   weightLogLeft: {
     flex: 1,

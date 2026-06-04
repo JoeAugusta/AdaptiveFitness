@@ -21,6 +21,159 @@ const RATE_LIMIT_ENABLED = !BETA_BYPASS;
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
+type CalorieDirection = 'deficit' | 'surplus' | 'maintenance';
+
+function calculateBMR(params: {
+  weightLbs: number;
+  heightFt: number;
+  heightIn: number;
+  age: number;
+  sex: 'male' | 'female' | 'other';
+  bodyFatPct?: number | null;
+}): number {
+  const weightKg = params.weightLbs * 0.453592;
+  const heightCm = (params.heightFt * 12 + params.heightIn) * 2.54;
+
+  if (
+    params.bodyFatPct != null &&
+    params.bodyFatPct > 0 &&
+    params.bodyFatPct < 100
+  ) {
+    const leanMassKg = weightKg * (1 - params.bodyFatPct / 100);
+    return 370 + 21.6 * leanMassKg;
+  }
+
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * params.age;
+  if (params.sex === 'male') return base + 5;
+  if (params.sex === 'female') return base - 161;
+  return base - 78;
+}
+
+function getActivityMultiplier(daysPerWeek: number): number {
+  if (daysPerWeek <= 2) return 1.375;
+  if (daysPerWeek <= 4) return 1.55;
+  if (daysPerWeek <= 6) return 1.725;
+  return 1.9;
+}
+
+function deriveCalorieDirection(
+  calorieTarget: number,
+  tdee: number,
+): CalorieDirection {
+  if (calorieTarget < tdee - 50) return 'deficit';
+  if (calorieTarget > tdee + 50) return 'surplus';
+  return 'maintenance';
+}
+
+function resolveGoalTargetWeightLbs(body: GeneratePlanBody): number | null {
+  const candidates: unknown[] = [body.goalTargetWeight, body.targetWeightLbs];
+  for (const c of candidates) {
+    const n = typeof c === 'string' ? parseFloat(c) : Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+function computeNutritionContext(
+  body: GeneratePlanBody,
+  daysPerWeek: number,
+): {
+  calorieDirection: CalorieDirection;
+  targetWeightLbs: number | null;
+  currentWeightLbs: number;
+  weightDeltaLbs: number;
+  tdee: number;
+} {
+  const weightRaw = body.weightLbs;
+  const startRaw = body.startingWeightLbs;
+  const currentWeightLbs = (() => {
+    const w = typeof weightRaw === 'string' ? parseFloat(weightRaw) : Number(weightRaw);
+    if (Number.isFinite(w) && w > 0) return w;
+    const s = typeof startRaw === 'string' ? parseFloat(startRaw) : Number(startRaw);
+    if (Number.isFinite(s) && s > 0) return s;
+    return 170;
+  })();
+
+  const targetWeightLbs = resolveGoalTargetWeightLbs(body);
+  const effectiveTarget = targetWeightLbs ?? currentWeightLbs;
+  const weightDeltaLbs = effectiveTarget - currentWeightLbs;
+
+  const bfRaw = body.bodyFatPct;
+  const bodyFatPct =
+    bfRaw != null && bfRaw !== ''
+      ? Number(bfRaw)
+      : null;
+  const sex =
+    body.sex === 'male' || body.sex === 'female' || body.sex === 'other'
+      ? body.sex
+      : body.biologicalSex === 'female'
+      ? 'female'
+      : body.biologicalSex === 'male'
+      ? 'male'
+      : 'other';
+
+  const liftingDaysOnly = Math.min(7, Math.max(1, daysPerWeek));
+
+  const tdee = computeTdeeFromProfile({
+    weightLbs: currentWeightLbs,
+    heightFt: Number(body.heightFt ?? 5),
+    heightIn: Number(body.heightIn ?? 10),
+    age: Number(body.age ?? 30),
+    sex,
+    bodyFatPct:
+      bodyFatPct != null && Number.isFinite(bodyFatPct) ? bodyFatPct : null,
+    effectiveDays: liftingDaysOnly,
+  });
+
+  const caloriesTarget = Number(body.calories);
+  const calorieDirection =
+    Number.isFinite(caloriesTarget) && caloriesTarget > 0
+      ? deriveCalorieDirection(caloriesTarget, tdee)
+      : weightDeltaLbs < -2
+      ? 'deficit'
+      : weightDeltaLbs > 2
+      ? 'surplus'
+      : 'maintenance';
+
+  return {
+    calorieDirection,
+    targetWeightLbs,
+    currentWeightLbs,
+    weightDeltaLbs,
+    tdee,
+  };
+}
+
+function computeTdeeFromProfile(input: {
+  weightLbs: number;
+  heightFt: number;
+  heightIn: number;
+  age: number;
+  sex: 'male' | 'female' | 'other';
+  bodyFatPct?: number | null;
+  effectiveDays: number;
+}): number {
+  const bmr = calculateBMR({
+    weightLbs: input.weightLbs,
+    heightFt: input.heightFt,
+    heightIn: input.heightIn,
+    age: input.age,
+    sex: input.sex,
+    bodyFatPct: input.bodyFatPct,
+  });
+  return bmr * getActivityMultiplier(input.effectiveDays);
+}
+
+function buildNutritionContextBlock(calorieDirection: CalorieDirection): string {
+  const deficitNote =
+    calorieDirection === 'deficit'
+      ? `This user is training for performance while in a calorie deficit. Coaching notes should acknowledge that recovery may be slightly slower and progression more conservative than a surplus phase. This is normal and expected — do not treat it as underperformance.`
+      : '';
+  return `Nutrition context: the user is in a calorie ${calorieDirection}.
+
+${deficitNote}`.trim();
+}
+
 const PREVIEW_SYSTEM_PROMPT = `Generate a 2-session preview workout plan for this athlete.
 Show enough to demonstrate the coaching quality — real exercises,
 real weights, Jordan's voice. This is a preview only.
@@ -1210,7 +1363,15 @@ interface GeneratePlanBody {
   /** Fat-loss timeline chip id (8w, 12w, …) */
   targetDate?: string | null;
   split?: string;
-  targetWeightLbs?: number;
+  targetWeightLbs?: number | string;
+  goalTargetWeight?: number | string;
+  startingWeightLbs?: number | string;
+  calories?: number;
+  weightLbs?: number | string;
+  heightFt?: number | string;
+  heightIn?: number | string;
+  age?: number | string;
+  bodyFatPct?: number | string | null;
   caloriePace?: string;
   /** GAP-5: Power-hypertrophy optional multi-lift current 1RM estimates */
   currentLifts?: {
@@ -1942,6 +2103,11 @@ serve(async (req) => {
         : trainingDays.length > 0
           ? trainingDays.length
           : daysPerWeekParsed;
+
+    const nutritionContext = computeNutritionContext(body, actualDaysPerWeek);
+    const nutritionContextBlock = buildNutritionContextBlock(
+      nutritionContext.calorieDirection,
+    );
 
     const volumeTargets = getVolumeTargets(
       actualDaysPerWeek,
@@ -2926,6 +3092,10 @@ Your job: create a properly structured, goal-appropriate training week.${
     : ' Use realistic prescribed starting weights (especially strength: 1RM-based).'
 }
 
+${nutritionContextBlock}
+
+When writing coachingNote and sessionFocus: do not suggest aggressive weight or load increases when the user is in a calorie deficit. Progression language should match their nutrition phase (deficit, surplus, or maintenance).
+
 STYLE RULE: Never use em-dashes (—) in any response.
 Use periods or commas instead. This applies to all
 coaching copy, Jordan's voice, and any explanatory text.
@@ -3155,6 +3325,10 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       experience: body.experience ?? null,
       equipment: body.equipment ?? null,
       goal: goal,
+      targetWeightLbs: nutritionContext.targetWeightLbs,
+      calorieDirection: nutritionContext.calorieDirection,
+      currentWeightLbs: nutritionContext.currentWeightLbs,
+      weightDeltaLbs: nutritionContext.weightDeltaLbs,
       targetLift: strengthProgramLiftId,
       goalLift: strengthProgramLiftId,
       split: splitForNormalized,

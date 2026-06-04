@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 type MealName = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
+type CalorieDirection = 'deficit' | 'surplus' | 'maintenance';
 
 interface MealItem {
   name: MealName;
@@ -27,6 +28,13 @@ interface MealSuggestionsPayload {
     fats_g: number;
   };
   jordanNote: string;
+}
+
+interface WeightGoalContext {
+  calorieDirection: CalorieDirection;
+  targetWeightLbs: number | null;
+  currentWeightLbs: number;
+  weightDeltaLbs: number;
 }
 
 const EXPECTED_MEAL_NAMES: MealName[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -62,94 +70,106 @@ function validateSuggestions(
   return true;
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+function parseCalorieDirectionFromPlan(
+  planJson: Record<string, unknown> | null,
+): CalorieDirection | null {
+  const v = planJson?.calorieDirection;
+  if (v === 'deficit' || v === 'surplus' || v === 'maintenance') return v;
+  return null;
+}
+
+function parsePositiveNumber(value: unknown): number | null {
+  const n = typeof value === 'string' ? parseFloat(value) : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function resolveTargetWeightLbs(
+  macroPlan: { target_weight_lbs?: number | null },
+  goal: {
+    target_weight_lbs?: number | null;
+    starting_weight_lbs?: number | null;
+  } | null,
+  planJson: Record<string, unknown> | null,
+): number | null {
+  const fromMacro = parsePositiveNumber(macroPlan.target_weight_lbs);
+  if (fromMacro != null) return fromMacro;
+
+  const fromGoal = parsePositiveNumber(goal?.target_weight_lbs);
+  if (fromGoal != null) return fromGoal;
+
+  if (planJson) {
+    for (const key of ['goalTargetWeight', 'targetWeightLbs', 'target_weight_lbs']) {
+      const n = parsePositiveNumber(planJson[key]);
+      if (n != null) return n;
+    }
   }
 
-  try {
-    const { userId, goalType: goalTypeBody, isTrainingDay: isTrainingDayBody } =
-      await req.json();
+  return null;
+}
 
-    if (!userId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: userId' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
-      );
-    }
+function buildWeightGoalContext(
+  currentWeightLbs: number,
+  targetWeightLbs: number | null,
+  planJson: Record<string, unknown> | null,
+): WeightGoalContext {
+  const effectiveTarget = targetWeightLbs ?? currentWeightLbs;
+  const weightDeltaLbs = effectiveTarget - currentWeightLbs;
+  const calorieDirection =
+    parseCalorieDirectionFromPlan(planJson) ??
+    (weightDeltaLbs < -2
+      ? 'deficit'
+      : weightDeltaLbs > 2
+      ? 'surplus'
+      : 'maintenance');
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
+  return {
+    calorieDirection,
+    targetWeightLbs: targetWeightLbs,
+    currentWeightLbs,
+    weightDeltaLbs,
+  };
+}
 
-    const [macroRes, profileRes, goalRes] = await Promise.all([
-      supabase
-        .from('macro_plans')
-        .select('calories_target, protein_g, carbs_g, fats_g')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from('user_profiles')
-        .select('dietary_style, food_allergies, weight_lbs')
-        .eq('user_id', userId)
-        .order('id', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from('goals')
-        .select('goal_type')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .order('id', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+function buildCalorieDirectionSystemBlock(
+  calorieDirection: CalorieDirection,
+): string {
+  const directionGuidance =
+    calorieDirection === 'deficit'
+      ? 'Prioritize protein in every meal to protect lean mass. Keep meals satisfying despite the calorie restriction. Never suggest meals that dramatically undercut the daily target.'
+      : calorieDirection === 'surplus'
+      ? 'Meals should support muscle building. Include carbohydrates around training windows. Do not suggest low-calorie meals that undercut the surplus target.'
+      : 'Focus on food quality and consistency. Protein remains the priority at every meal.';
 
-    const macroPlan = macroRes.data;
-    if (!macroPlan) {
-      return new Response(
-        JSON.stringify({ error: 'No macro plan found' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
-      );
-    }
+  return `The user is currently in a calorie ${calorieDirection}.
 
-    const caloriesTarget = Number(macroPlan.calories_target);
-    const proteinG = Number(macroPlan.protein_g);
-    const carbsG = Number(macroPlan.carbs_g);
-    const fatsG = Number(macroPlan.fats_g);
+${directionGuidance}
 
-    const profile = profileRes.data;
-    const dietaryStyle = profile?.dietary_style ?? 'omnivore';
-    const foodAllergies = Array.isArray(profile?.food_allergies)
-      ? (profile!.food_allergies as string[])
-      : [];
-    const weightLbs = profile?.weight_lbs != null ? Number(profile.weight_lbs) : null;
-    const goalType =
-      (typeof goalTypeBody === 'string' && goalTypeBody.trim() !== ''
-        ? goalTypeBody.trim()
-        : null) ??
-      (goalRes.data?.goal_type as string | undefined) ??
-      'general fitness';
-    const isTrainingDay = isTrainingDayBody === true;
-    const dayType = isTrainingDay ? 'training day' : 'rest day';
+IMPORTANT: The daily calorie target shown is the BASE target from lifting days only. On days when the user logs additional sport activity, their target increases automatically. Meals are planned to the base target. Additional sport calories are handled separately.`;
+}
 
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
-        system: `You are Jordan, a nutrition coach. Generate a set of daily meal suggestions calibrated exactly to the user's macro targets.
+function buildWeightGoalSystemBlock(ctx: WeightGoalContext): string {
+  const { currentWeightLbs, targetWeightLbs, weightDeltaLbs } = ctx;
+  const targetLine =
+    targetWeightLbs != null &&
+    Math.abs(targetWeightLbs - currentWeightLbs) > 0.5
+      ? `Target weight: ${targetWeightLbs} lbs (${weightDeltaLbs > 0 ? 'gaining' : 'losing'} ${Math.abs(Math.round(weightDeltaLbs))} lbs).`
+      : 'Maintaining current weight.';
+
+  return `Current weight: ${currentWeightLbs} lbs.
+${targetLine}`;
+}
+
+function buildMealSystemPrompt(
+  weightCtx: WeightGoalContext,
+): string {
+  return `You are Jordan, a nutrition coach. Generate a set of daily meal suggestions calibrated exactly to the user's macro targets.
 The four meals (Breakfast, Lunch, Dinner, Snack) must sum to within 50 calories of the daily target and within 10g of the protein target. Be specific — real food names, real portions.
 Never suggest anything containing the user's allergens.
 Respect their dietary style strictly.
+
+${buildCalorieDirectionSystemBlock(weightCtx.calorieDirection)}
+
+${buildWeightGoalSystemBlock(weightCtx)}
 
 jordanNote rules (strict — follow precisely):
 - Maximum 2 sentences. Hard limit.
@@ -170,6 +190,7 @@ jordanNote rules (strict — follow precisely):
   pattern actually do for the user's specific goal?
   Reference their goal (strength/fat_loss/hypertrophy etc)
   if it influences the food choices.
+- Align meal philosophy with their calorie ${weightCtx.calorieDirection} and weight goal context above.
 - If meals deviate from targets: lead with the coaching
   reason FIRST, then the number.
 - Never use em-dashes (—). Use periods or commas instead.
@@ -203,22 +224,161 @@ Return ONLY valid JSON — no markdown, no prose:
   "jordanNote": string
 }
 
-The meals array must contain exactly four items in this order: Breakfast, Lunch, Dinner, Snack.`,
+The meals array must contain exactly four items in this order: Breakfast, Lunch, Dinner, Snack.`;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { userId, goalType: goalTypeBody, isTrainingDay: isTrainingDayBody } =
+      await req.json();
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: userId' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
+    const [macroRes, profileRes, goalRes, planRes] = await Promise.all([
+      supabase
+        .from('macro_plans')
+        .select('calories_target, protein_g, carbs_g, fats_g, target_weight_lbs')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('user_profiles')
+        .select('dietary_style, food_allergies, weight_lbs')
+        .eq('user_id', userId)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('goals')
+        .select('goal_type, target_weight_lbs, starting_weight_lbs')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('plans')
+        .select('plan_json')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const macroPlan = macroRes.data;
+    if (!macroPlan) {
+      return new Response(
+        JSON.stringify({ error: 'No macro plan found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+      );
+    }
+
+    const dailyCalories = Number(macroPlan.calories_target);
+    console.log('[MEALS CALORIE SOURCE]', {
+      macroPlansTarget: macroPlan?.calories_target,
+      usingValue: dailyCalories,
+    });
+
+    if (!Number.isFinite(dailyCalories) || dailyCalories <= 0) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid macro plan calorie target' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+      );
+    }
+
+    const proteinG = Number(macroPlan.protein_g);
+    const carbsG = Number(macroPlan.carbs_g);
+    const fatsG = Number(macroPlan.fats_g);
+
+    const profile = profileRes.data;
+    const dietaryStyle = profile?.dietary_style ?? 'omnivore';
+    const foodAllergies = Array.isArray(profile?.food_allergies)
+      ? (profile!.food_allergies as string[])
+      : [];
+
+    const currentWeightLbs =
+      profile?.weight_lbs != null && Number(profile.weight_lbs) > 0
+        ? Number(profile.weight_lbs)
+        : goalRes.data?.starting_weight_lbs != null
+        ? Number(goalRes.data.starting_weight_lbs)
+        : 0;
+
+    const planJson =
+      planRes.data?.plan_json && typeof planRes.data.plan_json === 'object'
+        ? (planRes.data.plan_json as Record<string, unknown>)
+        : null;
+
+    const targetWeightLbs = resolveTargetWeightLbs(
+      macroPlan,
+      goalRes.data,
+      planJson,
+    );
+
+    const weightCtx = buildWeightGoalContext(
+      currentWeightLbs > 0 ? currentWeightLbs : 170,
+      targetWeightLbs,
+      planJson,
+    );
+
+    const goalType =
+      (typeof goalTypeBody === 'string' && goalTypeBody.trim() !== ''
+        ? goalTypeBody.trim()
+        : null) ??
+      (goalRes.data?.goal_type as string | undefined) ??
+      'general fitness';
+    const isTrainingDay = isTrainingDayBody === true;
+    const dayType = isTrainingDay ? 'training day' : 'rest day';
+
+    const systemPrompt = buildMealSystemPrompt(weightCtx);
+
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
             content: `Generate today's meal plan for this athlete.
 
 Macro targets:
-- calories_target: ${caloriesTarget}
+- calories_target: ${dailyCalories}
 - protein_g: ${proteinG}
 - carbs_g: ${carbsG}
 - fats_g: ${fatsG}
 
+Weight goal context:
+- calorieDirection: ${weightCtx.calorieDirection}
+- currentWeightLbs: ${weightCtx.currentWeightLbs}
+- targetWeightLbs: ${weightCtx.targetWeightLbs ?? 'null (maintaining)'}
+- weightDeltaLbs: ${weightCtx.weightDeltaLbs}
+
 Profile:
 - dietary_style: ${dietaryStyle}
 - food_allergies: ${JSON.stringify(foodAllergies)}
-- weight_lbs: ${weightLbs ?? 'unknown'}
+- weight_lbs: ${currentWeightLbs > 0 ? currentWeightLbs : 'unknown'}
 - goal: ${goalType}
 - day_type: ${dayType}
 
@@ -257,7 +417,7 @@ Return ONLY the JSON object.`,
       );
     }
 
-    if (!validateSuggestions(parsed, caloriesTarget)) {
+    if (!validateSuggestions(parsed, dailyCalories)) {
       return new Response(
         JSON.stringify({ error: 'Generation failed' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
@@ -270,7 +430,7 @@ Return ONLY the JSON object.`,
       {
         user_id: userId,
         suggestions_json: suggestions,
-        calories_target: caloriesTarget,
+        calories_target: dailyCalories,
         generated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id' },
@@ -298,5 +458,4 @@ Return ONLY the JSON object.`,
 });
 
 // DEPLOY:
-// supabase functions deploy generate-meals
-// JWT verification: DISABLED in Supabase Dashboard
+// supabase functions deploy generate-meals --no-verify-jwt

@@ -15,11 +15,12 @@ import Slider from '@react-native-community/slider';
 import type { RootStackParamList } from '../../navigation/types';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import { cmToFtIn, LBS_TO_KG, useMetric } from '../../utils/units';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'BodyMetrics'>;
 type RouteType = RouteProp<RootStackParamList, 'BodyMetrics'>;
 
-type FocusField = 'age' | 'heightFt' | 'heightIn' | 'weight' | null;
+type FocusField = 'age' | 'heightFt' | 'heightIn' | 'heightCm' | 'weight' | null;
 
 interface SexOption {
   id: string;
@@ -56,25 +57,68 @@ export default function BodyMetricsScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const insets = useSafeAreaInsets();
+  const { isMetric, setIsMetric } = useMetric();
 
   const [sex, setSex] = useState<string | null>(null);
   const [age, setAge] = useState('');
   const [heightFt, setHeightFt] = useState('');
   const [heightIn, setHeightIn] = useState('');
+  const [heightCm, setHeightCm] = useState('');
   const [weightLbs, setWeightLbs] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState<number | null>(null);
   const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const canContinue =
     sex !== null &&
     age.trim() !== '' &&
-    heightFt.trim() !== '' &&
-    heightIn.trim() !== '' &&
-    weightLbs.trim() !== '';
+    weightLbs.trim() !== '' &&
+    (isMetric
+      ? heightCm.trim() !== ''
+      : heightFt.trim() !== '' && heightIn.trim() !== '');
 
   const handleContinue = () => {
     if (!canContinue) return;
+    setValidationError(null);
+
+    let heightFtOut = heightFt.trim();
+    let heightInOut = heightIn.trim();
+    let weightLbsOut = weightLbs.trim();
+
+    if (isMetric) {
+      const cm = Number(heightCm);
+      const kg = Number(weightLbs);
+      if (!Number.isFinite(cm) || cm < 100 || cm > 250) {
+        setValidationError('Height should be between 100 and 250 cm.');
+        return;
+      }
+      if (!Number.isFinite(kg) || kg < 20 || kg > 320) {
+        setValidationError('Weight should be between 20 and 320 kg.');
+        return;
+      }
+      const { ft, inches } = cmToFtIn(cm);
+      heightFtOut = String(ft);
+      heightInOut = String(inches);
+      weightLbsOut = String(Math.round(kg / LBS_TO_KG));
+    } else {
+      const ft = Number(heightFt);
+      const inch = Number(heightIn);
+      const lbs = Number(weightLbs);
+      if (!Number.isFinite(ft) || ft < 3 || ft > 8) {
+        setValidationError('Height should be between 3 and 8 ft.');
+        return;
+      }
+      if (!Number.isFinite(inch) || inch < 0 || inch > 11) {
+        setValidationError('Inches should be between 0 and 11.');
+        return;
+      }
+      if (!Number.isFinite(lbs) || lbs < 50 || lbs > 700) {
+        setValidationError('Weight should be between 50 and 700 lbs.');
+        return;
+      }
+    }
+
     console.log('[BodyMetrics] duration in params:', {
       planDuration: route.params.planDuration,
       recommendedWeeks: route.params.recommendedWeeks,
@@ -84,9 +128,9 @@ export default function BodyMetricsScreen() {
       ...route.params,
       age: age.trim(),
       sex: sex!,
-      heightFt: heightFt.trim(),
-      heightIn: heightIn.trim(),
-      weightLbs: weightLbs.trim(),
+      heightFt: heightFtOut,
+      heightIn: heightInOut,
+      weightLbs: weightLbsOut,
       bodyFatPct: bodyFatPct !== null ? String(bodyFatPct) : null,
     });
   };
@@ -171,43 +215,86 @@ export default function BodyMetricsScreen() {
         <Text style={styles.sectionHeading}>Height & Weight</Text>
         <Text style={styles.sectionLead}>Enter your measurements.</Text>
 
+        <View style={styles.unitToggleRow}>
+          <TouchableOpacity
+            style={[styles.unitPill, !isMetric && styles.unitPillActive]}
+            onPress={() => void setIsMetric(false)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.unitPillText, !isMetric && styles.unitPillTextActive]}>
+              lbs / ft
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.unitPill, isMetric && styles.unitPillActive]}
+            onPress={() => void setIsMetric(true)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.unitPillText, isMetric && styles.unitPillTextActive]}>
+              kg / cm
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.metricCard}>
-          <View style={styles.heightRow}>
-            <TextInput
-              style={[
-                styles.textInputField,
-                styles.heightFtInput,
-                focusedField === 'heightFt' && styles.textInputFocused,
-              ]}
-              value={heightFt}
-              onChangeText={setHeightFt}
-              keyboardType="numeric"
-              placeholder="5"
-              placeholderTextColor={Colors.textTertiary}
-              maxLength={1}
-              returnKeyType="done"
-              onFocus={() => setFocusedField('heightFt')}
-              onBlur={() => setFocusedField(null)}
-            />
-            <Text style={styles.unitLabel}>ft</Text>
-            <TextInput
-              style={[
-                styles.textInputField,
-                styles.heightInInput,
-                focusedField === 'heightIn' && styles.textInputFocused,
-              ]}
-              value={heightIn}
-              onChangeText={setHeightIn}
-              keyboardType="numeric"
-              placeholder="11"
-              placeholderTextColor={Colors.textTertiary}
-              maxLength={2}
-              returnKeyType="done"
-              onFocus={() => setFocusedField('heightIn')}
-              onBlur={() => setFocusedField(null)}
-            />
-            <Text style={styles.unitLabel}>in</Text>
-          </View>
+          {isMetric ? (
+            <View style={styles.heightRow}>
+              <TextInput
+                style={[
+                  styles.textInputField,
+                  styles.heightCmInput,
+                  focusedField === 'heightCm' && styles.textInputFocused,
+                ]}
+                value={heightCm}
+                onChangeText={setHeightCm}
+                keyboardType="numeric"
+                placeholder="180"
+                placeholderTextColor={Colors.textTertiary}
+                maxLength={3}
+                returnKeyType="done"
+                onFocus={() => setFocusedField('heightCm')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Text style={styles.unitLabel}>cm</Text>
+            </View>
+          ) : (
+            <View style={styles.heightRow}>
+              <TextInput
+                style={[
+                  styles.textInputField,
+                  styles.heightFtInput,
+                  focusedField === 'heightFt' && styles.textInputFocused,
+                ]}
+                value={heightFt}
+                onChangeText={setHeightFt}
+                keyboardType="numeric"
+                placeholder="5"
+                placeholderTextColor={Colors.textTertiary}
+                maxLength={1}
+                returnKeyType="done"
+                onFocus={() => setFocusedField('heightFt')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Text style={styles.unitLabel}>ft</Text>
+              <TextInput
+                style={[
+                  styles.textInputField,
+                  styles.heightInInput,
+                  focusedField === 'heightIn' && styles.textInputFocused,
+                ]}
+                value={heightIn}
+                onChangeText={setHeightIn}
+                keyboardType="numeric"
+                placeholder="11"
+                placeholderTextColor={Colors.textTertiary}
+                maxLength={2}
+                returnKeyType="done"
+                onFocus={() => setFocusedField('heightIn')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Text style={styles.unitLabel}>in</Text>
+            </View>
+          )}
         </View>
 
         <View style={[styles.metricCard, styles.metricCardStack]}>
@@ -221,16 +308,20 @@ export default function BodyMetricsScreen() {
               value={weightLbs}
               onChangeText={setWeightLbs}
               keyboardType="numeric"
-              placeholder="185"
+              placeholder={isMetric ? '80' : '175'}
               placeholderTextColor={Colors.textTertiary}
               maxLength={4}
               returnKeyType="done"
               onFocus={() => setFocusedField('weight')}
               onBlur={() => setFocusedField(null)}
             />
-            <Text style={styles.unitLabel}>lbs</Text>
+            <Text style={styles.unitLabel}>{isMetric ? 'kg' : 'lbs'}</Text>
           </View>
         </View>
+
+        {validationError ? (
+          <Text style={styles.validationError}>{validationError}</Text>
+        ) : null}
 
         {/* Body fat slider */}
         <View style={styles.bfSection}>
@@ -444,6 +535,10 @@ const styles = StyleSheet.create({
     width: 56,
     minWidth: 56,
   },
+  heightCmInput: {
+    flex: 1,
+    minWidth: 0,
+  },
   weightRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -457,6 +552,37 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  unitToggleRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    padding: 3,
+    marginBottom: Spacing.xl,
+    gap: 3,
+  },
+  unitPill: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+  },
+  unitPillActive: {
+    backgroundColor: Colors.accent,
+  },
+  unitPillText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  unitPillTextActive: {
+    color: Colors.textPrimary,
+  },
+  validationError: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.danger,
+    marginTop: Spacing.sm,
   },
 
   bfSection: {

@@ -16,6 +16,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { getStrengthProjectionRange } from '../../utils/projections';
+import { LBS_TO_KG, useMetric } from '../../utils/units';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GoalDetails'>;
 type RouteType = RouteProp<RootStackParamList, 'GoalDetails'>;
@@ -92,6 +93,51 @@ const TIMELINE_WEEKS: Record<string, number> = {
   '16w': 16,
   '24w': 24,
 };
+
+function toLbs(val: number, isMetric: boolean): number {
+  return isMetric ? Math.round(val / LBS_TO_KG) : val;
+}
+
+function isValid1RMInput(val: number, isMetric: boolean): boolean {
+  if (!Number.isFinite(val)) return false;
+  return isMetric ? val >= 20 && val <= 400 : val >= 45 && val <= 900;
+}
+
+function isValidBodyWeightInput(val: number, isMetric: boolean): boolean {
+  if (!Number.isFinite(val)) return false;
+  return isMetric ? val >= 20 && val <= 320 : val >= 50 && val <= 700;
+}
+
+function UnitToggleRow({
+  isMetric,
+  setIsMetric,
+}: {
+  isMetric: boolean;
+  setIsMetric: (value: boolean) => Promise<void>;
+}) {
+  return (
+    <View style={styles.unitToggleRow}>
+      <TouchableOpacity
+        style={[styles.unitPill, !isMetric && styles.unitPillActive]}
+        onPress={() => void setIsMetric(false)}
+        activeOpacity={0.75}
+      >
+        <Text style={[styles.unitPillText, !isMetric && styles.unitPillTextActive]}>
+          lbs
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.unitPill, isMetric && styles.unitPillActive]}
+        onPress={() => void setIsMetric(true)}
+        activeOpacity={0.75}
+      >
+        <Text style={[styles.unitPillText, isMetric && styles.unitPillTextActive]}>
+          kg
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 const SECONDARY_LIFT_OPTIONS: Option[] = [
   { id: 'bench_press', label: 'Bench Press' },
@@ -263,6 +309,7 @@ function StrengthContent({
 }) {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const { isMetric, setIsMetric } = useMetric();
   const [planDurationChipsReady, setPlanDurationChipsReady] = useState(false);
   const [targetLift, setTargetLift] = useState<string | null>(null);
   const [current1RM, setCurrent1RM] = useState('');
@@ -276,6 +323,7 @@ function StrengthContent({
   const [currentSplit, setCurrentSplit] = useState<string | null>(null);
   const [splitDuration, setSplitDuration] = useState<string | null>(null);
   const [currentSplitOther, setCurrentSplitOther] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const strengthLiftCategory = getStrengthLiftCategory(targetLift);
   const strengthSplitOptions = useMemo(
@@ -305,8 +353,8 @@ function StrengthContent({
 
   useEffect(() => {
     if (durationManuallySet) return;
-    const c = Number(current1RM);
-    const t = Number(target1RM);
+    const c = toLbs(Number(current1RM), isMetric);
+    const t = toLbs(Number(target1RM), isMetric);
     if (
       !current1RM.trim() ||
       !target1RM.trim() ||
@@ -319,12 +367,12 @@ function StrengthContent({
     const { weeksToTarget } = getStrengthProjectionRange(c, t, 12);
     const chip = weeksToTarget <= 8 ? '8w' : weeksToTarget <= 12 ? '12w' : '16w';
     setPlanDuration(chip);
-  }, [current1RM, target1RM, durationManuallySet]);
+  }, [current1RM, target1RM, durationManuallySet, isMetric]);
 
   const strengthFeasibilityBody = useMemo(() => {
     if (!current1RM.trim() || !target1RM.trim()) return null;
-    const c = Number(current1RM);
-    const t = Number(target1RM);
+    const c = toLbs(Number(current1RM), isMetric);
+    const t = toLbs(Number(target1RM), isMetric);
     if (!Number.isFinite(c) || !Number.isFinite(t) || t <= c) return null;
     const selectedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
     const { low, high, weeksToTarget } = getStrengthProjectionRange(
@@ -334,10 +382,12 @@ function StrengthContent({
     );
     const gap = t - c;
     const canReachGoal = high >= gap;
+    const unit = isMetric ? 'kg' : 'lbs';
+    const targetDisplay = isMetric ? Math.round(t * LBS_TO_KG) : t;
     return canReachGoal
-      ? `In ${selectedWeeks} weeks, expect +${low}–${high} lbs depending on your experience level. At the right pace, reaching ${t} lbs is within reach.`
-      : `Reaching ${t} lbs typically takes around ${weeksToTarget} weeks. In ${selectedWeeks} weeks, expect +${low}–${high} lbs. Your exact rate depends on your experience level.`;
-  }, [current1RM, target1RM, planDuration]);
+      ? `In ${selectedWeeks} weeks, expect +${low}–${high} lbs depending on your experience level. At the right pace, reaching ${targetDisplay} ${unit} is within reach.`
+      : `Reaching ${targetDisplay} ${unit} typically takes around ${weeksToTarget} weeks. In ${selectedWeeks} weeks, expect +${low}–${high} lbs. Your exact rate depends on your experience level.`;
+  }, [current1RM, target1RM, planDuration, isMetric]);
 
   const handleSecondaryLift = (id: string) => {
     if (id !== 'none' && id === targetLift) {
@@ -350,8 +400,45 @@ function StrengthContent({
 
   const recommendedWeeks = TIMELINE_WEEKS[planDuration] ?? 12;
 
+  const submitStrengthParams = () => {
+    setValidationError(null);
+    const cRaw = Number(current1RM);
+    const tRaw = Number(target1RM);
+    if (!isValid1RMInput(cRaw, isMetric) || !isValid1RMInput(tRaw, isMetric)) {
+      setValidationError(
+        isMetric
+          ? 'Enter valid 1RM values between 20 and 400 kg.'
+          : 'Enter valid 1RM values between 45 and 900 lbs.',
+      );
+      return null;
+    }
+    const c = toLbs(cRaw, isMetric);
+    const t = toLbs(tRaw, isMetric);
+    if (t <= c) {
+      setValidationError('Target 1RM must be higher than your current 1RM.');
+      return null;
+    }
+    return {
+      targetLift,
+      current1RM: String(c),
+      target1RM: String(t),
+      secondaryLift,
+      planDuration,
+      recommendedWeeks,
+      currentSplit: currentSplit ?? null,
+      currentSplitOther:
+        currentSplit === 'Other' && currentSplitOther.trim()
+          ? currentSplitOther.trim()
+          : null,
+      splitDuration: splitDuration ?? null,
+      trainingBackground: trainingBackground ?? null,
+    };
+  };
+
   const handleSkipToExperience = () => {
     if (!planDurationChipsReady || !canContinue) return;
+    const params = submitStrengthParams();
+    if (!params) return;
     navigation.navigate('Experience', {
       ...route.params,
       priorityMuscles: [],
@@ -359,15 +446,12 @@ function StrengthContent({
       splitDuration: splitDuration ?? undefined,
       recommendedWeeks,
       trainingBackground: trainingBackground ?? null,
-      targetLift,
-      current1RM: current1RM.trim(),
-      target1RM: target1RM.trim(),
-      secondaryLift,
-      planDuration,
-      currentSplitOther:
-        currentSplit === 'Other' && currentSplitOther.trim()
-          ? currentSplitOther.trim()
-          : undefined,
+      targetLift: params.targetLift,
+      current1RM: params.current1RM,
+      target1RM: params.target1RM,
+      secondaryLift: params.secondaryLift,
+      planDuration: params.planDuration,
+      currentSplitOther: params.currentSplitOther ?? undefined,
     } as RootStackParamList['Experience']);
   };
 
@@ -377,23 +461,10 @@ function StrengthContent({
       subtitle="Tell us your current numbers and where you want to get to."
       canContinue={canContinue}
       buttonLabel="Continue"
-      onContinue={() =>
-        onContinue({
-          targetLift,
-          current1RM: current1RM.trim(),
-          target1RM: target1RM.trim(),
-          secondaryLift,
-          planDuration,
-          recommendedWeeks,
-          currentSplit: currentSplit ?? null,
-          currentSplitOther:
-            currentSplit === 'Other' && currentSplitOther.trim()
-              ? currentSplitOther.trim()
-              : null,
-          splitDuration: splitDuration ?? null,
-          trainingBackground: trainingBackground ?? null,
-        })
-      }
+      onContinue={() => {
+        const params = submitStrengthParams();
+        if (params) onContinue(params);
+      }}
     >
       <Text style={styles.sectionHeadingFirst}>Which lift?</Text>
       <View style={styles.cardsContainer}>
@@ -514,14 +585,17 @@ function StrengthContent({
       ) : null}
 
       <Text style={styles.sectionHeading}>Current & Target 1RM</Text>
+      <UnitToggleRow isMetric={isMetric} setIsMetric={setIsMetric} />
       <View style={styles.inputFieldBlock}>
-        <Text style={styles.inputLabel}>Current 1RM (lbs)</Text>
+        <Text style={styles.inputLabel}>
+          {isMetric ? 'Current 1RM (kg)' : 'Current 1RM (lbs)'}
+        </Text>
         <TextInput
           style={[
             styles.textInputField,
             focusedField === 'current' && styles.textInputFocused,
           ]}
-          placeholder="e.g. 225"
+          placeholder={isMetric ? 'e.g. 100' : 'e.g. 225'}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={current1RM}
@@ -531,13 +605,15 @@ function StrengthContent({
         />
       </View>
       <View style={[styles.inputFieldBlock, styles.inputFieldStack]}>
-        <Text style={styles.inputLabel}>Target 1RM (lbs)</Text>
+        <Text style={styles.inputLabel}>
+          {isMetric ? 'Target 1RM (kg)' : 'Target 1RM (lbs)'}
+        </Text>
         <TextInput
           style={[
             styles.textInputField,
             focusedField === 'target' && styles.textInputFocused,
           ]}
-          placeholder="e.g. 275"
+          placeholder={isMetric ? 'e.g. 120' : 'e.g. 275'}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={target1RM}
@@ -546,6 +622,10 @@ function StrengthContent({
           onBlur={() => setFocusedField(null)}
         />
       </View>
+
+      {validationError ? (
+        <Text style={styles.errorText}>{validationError}</Text>
+      ) : null}
 
       {strengthFeasibilityBody ? (
         <View style={styles.infoCard}>
@@ -996,12 +1076,14 @@ function FatLossContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
+  const { isMetric, setIsMetric } = useMetric();
   const [currentWeightLbs, setCurrentWeightLbs] = useState('');
   const [targetWeightLbs, setTargetWeightLbs] = useState('');
   const [targetDate, setTargetDate] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<'current' | 'target' | null>(
     null,
   );
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const canContinue =
     currentWeightLbs.trim() !== '' &&
@@ -1011,7 +1093,13 @@ function FatLossContent({
   const rateCheck = useMemo(() => {
     if (!currentWeightLbs.trim() || !targetWeightLbs.trim() || !targetDate) return null;
     const weeks = TIMELINE_WEEKS[targetDate];
-    const weeklyRate = (Number(currentWeightLbs) - Number(targetWeightLbs)) / weeks;
+    const currentLbs = toLbs(Number(currentWeightLbs), isMetric);
+    const targetLbs = toLbs(Number(targetWeightLbs), isMetric);
+    const weeklyRateLbs = (currentLbs - targetLbs) / weeks;
+    const weeklyRate = isMetric
+      ? weeklyRateLbs * LBS_TO_KG
+      : weeklyRateLbs;
+    const rateUnit = isMetric ? 'kg' : 'lbs';
 
     if (weeklyRate <= 0) {
       return {
@@ -1021,21 +1109,52 @@ function FatLossContent({
     }
     if (weeklyRate <= 1) {
       return {
-        message: `~${weeklyRate.toFixed(1)} lbs/week. This is a safe, sustainable rate. Great choice.`,
+        message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. This is a safe, sustainable rate. Great choice.`,
         color: Colors.success,
       };
     }
     if (weeklyRate <= 1.5) {
       return {
-        message: `~${weeklyRate.toFixed(1)} lbs/week. Aggressive but achievable with strict adherence.`,
+        message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. Aggressive but achievable with strict adherence.`,
         color: Colors.warning,
       };
     }
     return {
-      message: `~${weeklyRate.toFixed(1)} lbs/week. This is very aggressive. Consider a longer timeline.`,
+      message: `~${weeklyRate.toFixed(1)} ${rateUnit}/week. This is very aggressive. Consider a longer timeline.`,
       color: Colors.danger,
     };
-  }, [currentWeightLbs, targetWeightLbs, targetDate]);
+  }, [currentWeightLbs, targetWeightLbs, targetDate, isMetric]);
+
+  const submitFatLossParams = () => {
+    setValidationError(null);
+    const currentRaw = Number(currentWeightLbs);
+    const targetRaw = Number(targetWeightLbs);
+    if (
+      !isValidBodyWeightInput(currentRaw, isMetric) ||
+      !isValidBodyWeightInput(targetRaw, isMetric)
+    ) {
+      setValidationError(
+        isMetric
+          ? 'Enter valid weights between 20 and 320 kg.'
+          : 'Enter valid weights between 50 and 700 lbs.',
+      );
+      return null;
+    }
+    const currentLbs = toLbs(currentRaw, isMetric);
+    const targetLbsVal = toLbs(targetRaw, isMetric);
+    if (targetLbsVal >= currentLbs) {
+      setValidationError('Target weight must be lower than your current weight.');
+      return null;
+    }
+    return {
+      startingWeightLbs: String(currentLbs),
+      targetWeightLbs: String(targetLbsVal),
+      targetDate,
+      planDuration: targetDate ?? '12w',
+      recommendedWeeks:
+        targetDate != null ? TIMELINE_WEEKS[targetDate] ?? 12 : 12,
+    };
+  };
 
   return (
     <ScreenShell
@@ -1043,25 +1162,22 @@ function FatLossContent({
       subtitle="Set a goal weight and timeline so we can build the right deficit for you."
       canContinue={canContinue}
       buttonLabel="Continue"
-      onContinue={() =>
-        onContinue({
-          startingWeightLbs: currentWeightLbs.trim(),
-          targetWeightLbs: targetWeightLbs.trim(),
-          targetDate,
-          planDuration: targetDate ?? '12w',
-          recommendedWeeks:
-            targetDate != null ? TIMELINE_WEEKS[targetDate] ?? 12 : 12,
-        })
-      }
+      onContinue={() => {
+        const params = submitFatLossParams();
+        if (params) onContinue(params);
+      }}
     >
+      <UnitToggleRow isMetric={isMetric} setIsMetric={setIsMetric} />
       <View style={styles.inputFieldBlock}>
-        <Text style={styles.inputLabel}>Current Weight (lbs)</Text>
+        <Text style={styles.inputLabel}>
+          {isMetric ? 'Current weight (kg)' : 'Current weight (lbs)'}
+        </Text>
         <TextInput
           style={[
             styles.textInputField,
             focusedField === 'current' && styles.textInputFocused,
           ]}
-          placeholder="e.g. 185"
+          placeholder={isMetric ? 'e.g. 85' : 'e.g. 185'}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentWeightLbs}
@@ -1072,13 +1188,15 @@ function FatLossContent({
       </View>
 
       <View style={[styles.inputFieldBlock, styles.inputFieldStack]}>
-        <Text style={styles.inputLabel}>Target Weight (lbs)</Text>
+        <Text style={styles.inputLabel}>
+          {isMetric ? 'Target weight (kg)' : 'Target weight (lbs)'}
+        </Text>
         <TextInput
           style={[
             styles.textInputField,
             focusedField === 'target' && styles.textInputFocused,
           ]}
-          placeholder="e.g. 160"
+          placeholder={isMetric ? 'e.g. 75' : 'e.g. 165'}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={targetWeightLbs}
@@ -1087,6 +1205,10 @@ function FatLossContent({
           onBlur={() => setFocusedField(null)}
         />
       </View>
+
+      {validationError ? (
+        <Text style={styles.errorText}>{validationError}</Text>
+      ) : null}
 
       {rateCheck && (
         <View style={styles.infoCard}>
@@ -1336,7 +1458,9 @@ function PowerHypertrophyContent({
 }: {
   onContinue: (params: Record<string, unknown>) => void;
 }) {
+  const { isMetric, setIsMetric } = useMetric();
   const [planDuration, setPlanDuration] = useState('12w');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [currentLifts, setCurrentLifts] = useState<{
     benchPress: number | null;
     backSquat: number | null;
@@ -1356,10 +1480,48 @@ function PowerHypertrophyContent({
   const leanLow = (selectedWeeks * 0.25).toFixed(1);
   const leanHigh = (selectedWeeks * 0.5).toFixed(1);
 
-  const buildCurrentLifts = () => {
-    const hasAny = Object.values(currentLifts).some((v) => v !== null);
-    return hasAny ? currentLifts : null;
+  const parseLiftInput = (v: string): number | null => {
+    const trimmed = v.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return null;
+    return n;
   };
+
+  const buildCurrentLifts = () => {
+    const convert = (v: number | null) =>
+      v != null ? toLbs(v, isMetric) : null;
+    const converted = {
+      benchPress: convert(currentLifts.benchPress),
+      backSquat: convert(currentLifts.backSquat),
+      deadlift: convert(currentLifts.deadlift),
+      overheadPress: convert(currentLifts.overheadPress),
+    };
+    const hasAny = Object.values(converted).some((v) => v !== null);
+    return hasAny ? converted : null;
+  };
+
+  const validateOptionalLifts = (): boolean => {
+    const entries = Object.entries(currentLifts).filter(([, v]) => v != null) as [
+      string,
+      number,
+    ][];
+    for (const [, val] of entries) {
+      if (!isValid1RMInput(val, isMetric)) {
+        setValidationError(
+          isMetric
+            ? 'Each 1RM estimate should be between 20 and 400 kg.'
+            : 'Each 1RM estimate should be between 45 and 900 lbs.',
+        );
+        return false;
+      }
+    }
+    setValidationError(null);
+    return true;
+  };
+
+  const phPlaceholder = isMetric ? 'e.g. 100' : 'e.g. 225';
+  const unitSuffix = isMetric ? ' (kg)' : ' (lbs)';
 
   return (
     <ScreenShell
@@ -1367,7 +1529,8 @@ function PowerHypertrophyContent({
       subtitle="Build serious strength on the big lifts while adding muscle everywhere else. Heavy compounds first, hypertrophy work second. You get the best of both."
       canContinue
       buttonLabel="Continue"
-      onContinue={() =>
+      onContinue={() => {
+        if (!validateOptionalLifts()) return;
         onContinue({
           planDuration,
           recommendedWeeks: selectedWeeks,
@@ -1376,61 +1539,86 @@ function PowerHypertrophyContent({
           currentSplitOther: null,
           splitDuration: null,
           trainingBackground: null,
-        })
-      }
+        });
+      }}
     >
       <Text style={styles.sectionHeadingFirst}>CURRENT 1RM ESTIMATES</Text>
       <Text style={styles.phSubLabel}>
         Optional. Rough estimates are fine. Jordan will calibrate from your Week 1 lifts.
       </Text>
+      <UnitToggleRow isMetric={isMetric} setIsMetric={setIsMetric} />
 
       <View style={styles.phLiftBlock}>
-        <Text style={styles.phLiftLabel}>BENCH PRESS</Text>
+        <Text style={styles.phLiftLabel}>{`BENCH PRESS${unitSuffix}`}</Text>
         <TextInput
           style={styles.phLiftInput}
-          placeholder="Optional"
+          placeholder={phPlaceholder}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentLifts.benchPress?.toString() ?? ''}
-          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, benchPress: v ? parseInt(v, 10) : null }))}
+          onChangeText={(v) =>
+            setCurrentLifts((prev) => ({
+              ...prev,
+              benchPress: parseLiftInput(v),
+            }))
+          }
         />
       </View>
 
       <View style={styles.phLiftBlock}>
-        <Text style={styles.phLiftLabel}>BACK SQUAT</Text>
+        <Text style={styles.phLiftLabel}>{`BACK SQUAT${unitSuffix}`}</Text>
         <TextInput
           style={styles.phLiftInput}
-          placeholder="Optional"
+          placeholder={phPlaceholder}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentLifts.backSquat?.toString() ?? ''}
-          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, backSquat: v ? parseInt(v, 10) : null }))}
+          onChangeText={(v) =>
+            setCurrentLifts((prev) => ({
+              ...prev,
+              backSquat: parseLiftInput(v),
+            }))
+          }
         />
       </View>
 
       <View style={styles.phLiftBlock}>
-        <Text style={styles.phLiftLabel}>DEADLIFT</Text>
+        <Text style={styles.phLiftLabel}>{`DEADLIFT${unitSuffix}`}</Text>
         <TextInput
           style={styles.phLiftInput}
-          placeholder="Optional"
+          placeholder={phPlaceholder}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentLifts.deadlift?.toString() ?? ''}
-          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, deadlift: v ? parseInt(v, 10) : null }))}
+          onChangeText={(v) =>
+            setCurrentLifts((prev) => ({
+              ...prev,
+              deadlift: parseLiftInput(v),
+            }))
+          }
         />
       </View>
 
       <View style={styles.phLiftBlock}>
-        <Text style={styles.phLiftLabel}>OVERHEAD PRESS</Text>
+        <Text style={styles.phLiftLabel}>{`OVERHEAD PRESS${unitSuffix}`}</Text>
         <TextInput
           style={styles.phLiftInput}
-          placeholder="Optional"
+          placeholder={phPlaceholder}
           placeholderTextColor={Colors.textTertiary}
           keyboardType="numeric"
           value={currentLifts.overheadPress?.toString() ?? ''}
-          onChangeText={(v) => setCurrentLifts((prev) => ({ ...prev, overheadPress: v ? parseInt(v, 10) : null }))}
+          onChangeText={(v) =>
+            setCurrentLifts((prev) => ({
+              ...prev,
+              overheadPress: parseLiftInput(v),
+            }))
+          }
         />
       </View>
+
+      {validationError ? (
+        <Text style={styles.errorText}>{validationError}</Text>
+      ) : null}
 
       <Text style={styles.sectionHeading}>Plan Duration</Text>
       <View style={styles.chipRow}>
@@ -1928,6 +2116,32 @@ const styles = StyleSheet.create({
   },
   textInputFocused: {
     borderColor: Colors.accent,
+  },
+
+  unitToggleRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    padding: 3,
+    marginBottom: Spacing.lg,
+    gap: 3,
+  },
+  unitPill: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+  },
+  unitPillActive: {
+    backgroundColor: Colors.accent,
+  },
+  unitPillText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  unitPillTextActive: {
+    color: Colors.textPrimary,
   },
 
   infoCard: {

@@ -47,6 +47,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { JordanAvatar } from '../components/JordanAvatar';
 import { RPEReferenceSheet } from '../components/RPEReferenceSheet';
 import { stripEmDash } from '../utils/jordanText';
+import { buildExerciseBestsFromLogs, isNewWeightPR } from '../utils/personalRecords';
+import { persistExerciseSwapsToPlan } from '../utils/swapPersistence';
 
 const WORKOUT_DRAFT_KEY = 'hone_workout_draft';
 
@@ -300,19 +302,30 @@ function getPreviousSetsForExercise(
   exerciseId: string,
   exerciseName: string,
 ): LoggedSet[] {
-  const direct = previousSetsMap[exerciseId];
-  if (direct && direct.length > 0) return direct;
   const nameLower = exerciseName.toLowerCase().trim();
+
   for (const sets of Object.values(previousSetsMap)) {
     const s0 = sets[0];
     if (!s0) continue;
-    const en =
+    const loggedName = (
       s0.exerciseName ??
-      (s0 as LoggedSet & { name?: string }).name;
-    if (typeof en === 'string' && en.toLowerCase().trim() === nameLower) {
-      return sets;
-    }
+      (s0 as LoggedSet & { name?: string }).name ??
+      ''
+    ).toLowerCase().trim();
+    if (loggedName === nameLower) return sets;
   }
+
+  const direct = previousSetsMap[exerciseId];
+  if (direct && direct.length > 0) {
+    const s0 = direct[0];
+    const loggedName = (
+      s0?.exerciseName ??
+      (s0 as LoggedSet & { name?: string })?.name ??
+      ''
+    ).toLowerCase().trim();
+    if (loggedName === nameLower) return direct;
+  }
+
   return [];
 }
 
@@ -363,6 +376,8 @@ export default function ActiveWorkoutScreen() {
   );
   const [exerciseTargetWeightOverrides, setExerciseTargetWeightOverrides] =
     useState<Record<string, number>>({});
+  const [exercisePyramidSetsOverrides, setExercisePyramidSetsOverrides] =
+    useState<Record<string, { setNumber: number; weightLbs: number }[]>>({});
   const [coachingNotes, setCoachingNotes] = useState<
     Record<string, string | null>
   >({});
@@ -1121,11 +1136,13 @@ export default function ActiveWorkoutScreen() {
       const target = exercise.sets.find((s) => s.setNumber === setNumber);
       if (target) {
         const displayName = exerciseSwaps[exerciseId] || exercise.name;
+        const isThisExerciseSwapped =
+          exerciseSwaps[exerciseId] !== undefined;
         fetchCoachingNote(
           exerciseId,
           displayName,
           target.targetReps,
-          target.targetWeight,
+          isThisExerciseSwapped ? weight : target.targetWeight,
           target.targetRpe,
           reps,
           weight,
@@ -1139,21 +1156,50 @@ export default function ActiveWorkoutScreen() {
   const handleSwapExercise = (
     exerciseId: string,
     newName: string,
-    resetWeight?: boolean,
+    options?: {
+      resetWeight?: boolean;
+      prefilledWeight?: number;
+      pyramidSets?: { setNumber: number; weightLbs: number }[];
+    },
   ) => {
-    console.log('[swap]', newName, 'resetWeight:', resetWeight);
+    const resetWeight = options?.resetWeight ?? false;
+    const prefilledWeight = options?.prefilledWeight;
+    const pyramidSets = options?.pyramidSets;
+
     void hapticMedium();
     setExerciseSwaps((prev) => ({ ...prev, [exerciseId]: newName }));
-    if (resetWeight) {
+
+    if (pyramidSets && pyramidSets.length > 0) {
+      setExercisePyramidSetsOverrides((prev) => ({
+        ...prev,
+        [exerciseId]: pyramidSets,
+      }));
+    } else {
+      setExercisePyramidSetsOverrides((prev) => {
+        const next = { ...prev };
+        delete next[exerciseId];
+        return next;
+      });
+    }
+
+    if (prefilledWeight !== undefined) {
+      setExerciseTargetWeightOverrides((prev) => ({
+        ...prev,
+        [exerciseId]: prefilledWeight,
+      }));
+    } else if (resetWeight) {
       setExerciseTargetWeightOverrides((prev) => ({
         ...prev,
         [exerciseId]: 0,
       }));
     }
+
     showToast(
-      resetWeight
-        ? 'Exercise swapped. Choose your starting weight.'
-        : 'Exercise swapped.',
+      prefilledWeight && prefilledWeight > 0
+        ? `Exercise swapped. Weight set to ${prefilledWeight} lbs from your history.`
+        : resetWeight
+          ? 'Exercise swapped. Choose your starting weight.'
+          : 'Exercise swapped.',
     );
   };
 
@@ -1250,11 +1296,37 @@ export default function ActiveWorkoutScreen() {
       });
     }
 
+    let prsHit = 0;
+
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const userId = session?.user?.id;
+
+      if (userId && planIdForLog) {
+        const { data: priorLogs } = await supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('user_id', userId)
+          .eq('plan_id', planIdForLog)
+          .eq('skipped', false);
+
+        const historicalBests = buildExerciseBestsFromLogs(priorLogs ?? []);
+        prsHit = sets.filter((s) => {
+          const exercise = (workout?.exercises ?? []).find(
+            (ex) => ex.id === s.exerciseId,
+          );
+          const name =
+            (typeof s.exerciseName === 'string' && s.exerciseName.trim()) ||
+            exercise?.name?.trim() ||
+            '';
+          if (!name) return false;
+          const weight = Number(s.weightLbs ?? 0);
+          const reps = Number(s.reps ?? 0);
+          return isNewWeightPR(weight, reps, historicalBests[name]);
+        }).length;
+      }
 
       // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.
       // Do NOT double the value before storing — store exactly what the user entered.
@@ -1270,6 +1342,16 @@ export default function ActiveWorkoutScreen() {
       });
 
       if (insertError) throw insertError;
+
+      const swapEntries = Object.entries(exerciseSwaps);
+      if (swapEntries.length > 0 && planIdForLog && dayNumberForLog != null) {
+        await persistExerciseSwapsToPlan(
+          planIdForLog,
+          sessionWeekForLogs,
+          dayNumberForLog,
+          exerciseSwaps,
+        );
+      }
 
       // Clear crash-recovery draft on successful save
       await AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
@@ -1294,16 +1376,6 @@ export default function ActiveWorkoutScreen() {
     }
 
     setShowFatigueSheet(false);
-
-    const prsHit = sets.filter((s) => {
-      const exercise = (workout?.exercises ?? []).find(
-        (ex) => ex.id === s.exerciseId,
-      );
-      const target = exercise?.sets.find(
-        (t) => t.setNumber === s.setNumber,
-      );
-      return target && s.weightLbs > target.targetWeight;
-    }).length;
 
     const planIdForComplete =
       sessionPlanIdForLogs &&
@@ -1431,7 +1503,7 @@ export default function ActiveWorkoutScreen() {
                     previousSets={getPreviousSetsForExercise(
                       previousSetsMap,
                       exercise.id,
-                      exercise.name,
+                      exerciseSwaps[exercise.id] ?? exercise.name,
                     )}
                     isActiveCard={exerciseIdx === activeExerciseIndex}
                     swappedName={exerciseSwaps[exercise.id] ?? null}
@@ -1443,8 +1515,18 @@ export default function ActiveWorkoutScreen() {
                     onLogSet={handleLogSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}
+                    planId={
+                      sessionPlanIdForLogs ??
+                      resolvedPlanId ??
+                      (typeof params.planId === 'string'
+                        ? params.planId.trim()
+                        : params.planId)
+                    }
                     targetWeightOverride={
                       exerciseTargetWeightOverrides[exercise.id] ?? undefined
+                    }
+                    pyramidSetsOverride={
+                      exercisePyramidSetsOverrides[exercise.id] ?? undefined
                     }
                     currentWorkoutExerciseNames={(workout?.exercises ?? []).map(
                       (e) => exerciseSwaps[e.id] ?? e.name,

@@ -1,4 +1,11 @@
 import { stripEmDash } from './jordanText';
+import { epleyEstimated1RMLbs } from './strengthGoalLift';
+import {
+  buildExerciseBestsFromLogs,
+  isNewWeightPR,
+  resolveExerciseName,
+  type ExerciseBest,
+} from './personalRecords';
 
 type LogSet = {
   exerciseName?: string;
@@ -119,13 +126,81 @@ export function truncateJordanNoteForShare(text: string): string {
   return `${first}.`;
 }
 
-export function resolveSessionTitleFromPlan(
+export type SessionPrShare = {
+  exerciseName: string;
+  weightLbs: number;
+  reps: number;
+  isEstimated: boolean;
+  estimated1RM: number;
+};
+
+type LogSetForPr = LogSet & {
+  exerciseId?: string;
+  setNumber?: number;
+  name?: string;
+};
+
+/** Sets in this session that beat prior logged bests (weight-first, not e1RM). */
+export function computeSessionPrsFromLog(
+  sets: LogSetForPr[],
+  historicalBests: Record<string, ExerciseBest>,
+): SessionPrShare[] {
+  const prs: SessionPrShare[] = [];
+
+  for (const s of sets) {
+    const w = Math.round(Number(s.weightLbs ?? s.weight ?? 0));
+    const r = Number(s.reps ?? 0);
+    if (w <= 0 || r <= 0) continue;
+
+    const displayName = resolveExerciseName(s);
+    if (!displayName) continue;
+
+    if (!isNewWeightPR(w, r, historicalBests[displayName])) continue;
+
+    prs.push({
+      exerciseName: displayName,
+      weightLbs: w,
+      reps: r,
+      isEstimated: r > 1,
+      estimated1RM: epleyEstimated1RMLbs(w, r),
+    });
+  }
+
+  return prs;
+}
+
+export function pickTopSessionPr(prs: SessionPrShare[]): SessionPrShare | null {
+  if (prs.length === 0) return null;
+  return [...prs].sort((a, b) => {
+    if (b.weightLbs !== a.weightLbs) return b.weightLbs - a.weightLbs;
+    return b.reps - a.reps;
+  })[0] ?? null;
+}
+
+export { buildExerciseBestsFromLogs };
+
+type PlanSetTarget = { setNumber?: number; targetWeight?: number };
+type PlanExerciseForPr = {
+  id?: string;
+  name?: string;
+  targetWeight?: number;
+  sets?: number;
+  setTargets?: PlanSetTarget[];
+};
+
+type PlanDay = {
+  dayNumber?: number;
+  title?: string;
+  label?: string;
+  exercises?: PlanExerciseForPr[];
+};
+type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
+
+function getPlanWeekDay(
   planJson: unknown,
   weekNumber: number,
   dayNumber: number,
-): string {
-  type PlanDay = { dayNumber?: number; title?: string; label?: string };
-  type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
+): PlanDay | undefined {
   const weeks =
     planJson &&
     typeof planJson === 'object' &&
@@ -135,9 +210,24 @@ export function resolveSessionTitleFromPlan(
       ? ((planJson as { weeks: PlanWeek[] }).weeks ?? [])
       : [];
   const weekData = weeks.find((w) => Number(w.weekNumber) === weekNumber);
-  const dayData = (weekData?.days ?? []).find(
-    (d) => Number(d.dayNumber) === dayNumber,
-  );
+  return (weekData?.days ?? []).find((d) => Number(d.dayNumber) === dayNumber);
+}
+
+export function getPlanDayExercises(
+  planJson: unknown,
+  weekNumber: number,
+  dayNumber: number,
+): PlanExerciseForPr[] {
+  const dayData = getPlanWeekDay(planJson, weekNumber, dayNumber);
+  return Array.isArray(dayData?.exercises) ? dayData.exercises : [];
+}
+
+export function resolveSessionTitleFromPlan(
+  planJson: unknown,
+  weekNumber: number,
+  dayNumber: number,
+): string {
+  const dayData = getPlanWeekDay(planJson, weekNumber, dayNumber);
   const title = String(dayData?.title ?? dayData?.label ?? '').trim();
   return title || `Day ${dayNumber}`;
 }

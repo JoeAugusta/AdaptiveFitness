@@ -52,6 +52,28 @@ export function unitLabel(isMetric: boolean): string {
   return isMetric ? 'kg' : 'lbs';
 }
 
+export function cmToFtIn(cm: number): { ft: number; inches: number } {
+  const totalInches = cm / 2.54;
+  const ft = Math.floor(totalInches / 12);
+  const inches = Math.round(totalInches % 12);
+  return { ft, inches };
+}
+
+export function ftInToCm(ft: number, inches: number): number {
+  return Math.round((ft * 12 + inches) * 2.54);
+}
+
+export function formatHeight(
+  ft: number,
+  inches: number,
+  isMetric: boolean,
+): string {
+  if (isMetric) {
+    return `${ftInToCm(ft, inches)} cm`;
+  }
+  return `${ft}'${inches}"`;
+}
+
 /**
  * Convert explicit "NNN lb(s)" mentions in coach/session copy to kg when metric.
  * Only matches numbers immediately followed by lb/lbs (case-insensitive).
@@ -83,6 +105,7 @@ export function useMetric(): {
   displayToLbs: (value: number) => number;
   formatWorkoutWeight: (lbs: number) => string;
   formatBodyWeight: (lbs: number) => string;
+  formatHeight: (ft: number, inches: number) => string;
   unitLabel: string;
 } {
   const [isMetric, setIsMetricState] = useState(false);
@@ -149,6 +172,11 @@ export function useMetric(): {
     [isMetric],
   );
 
+  const formatHeightBound = useCallback(
+    (ft: number, inches: number) => formatHeight(ft, inches, isMetric),
+    [isMetric],
+  );
+
   const unitLabelStr = unitLabel(isMetric);
 
   return {
@@ -158,6 +186,7 @@ export function useMetric(): {
     displayToLbs: displayToLbsBound,
     formatWorkoutWeight: formatWorkoutWeightBound,
     formatBodyWeight: formatBodyWeightBound,
+    formatHeight: formatHeightBound,
     unitLabel: unitLabelStr,
   };
 }

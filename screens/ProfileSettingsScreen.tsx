@@ -30,7 +30,7 @@ import {
   Spacing,
   Radius,
 } from '../constants/design';
-import { useMetric } from '../utils/units';
+import { useMetric, cmToFtIn, ftInToCm } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { getLocalDateString } from '../utils/dateUtils';
@@ -149,21 +149,6 @@ function truncate(str: string, maxLen: number): string {
 
 function mapped(map: Record<string, string>, key: string | undefined): string {
   return key ? (map[key] ?? key) : '—';
-}
-
-function formatHeightFeetInches(
-  ft: number | null | undefined,
-  inch: number | null | undefined,
-): string {
-  if (
-    ft == null ||
-    inch == null ||
-    !Number.isFinite(Number(ft)) ||
-    !Number.isFinite(Number(inch))
-  ) {
-    return '—';
-  }
-  return `${ft}'${inch}"`;
 }
 
 function formatSessionLength(val: string | number | null | undefined): string {
@@ -373,6 +358,7 @@ export default function ProfileSettingsScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [heightFtDraft, setHeightFtDraft] = useState('');
   const [heightInDraft, setHeightInDraft] = useState('');
+  const [heightCmDraft, setHeightCmDraft] = useState('');
   const [ageDraft, setAgeDraft] = useState('');
   const [bodyMetricsSheetError, setBodyMetricsSheetError] = useState<string | null>(null);
   const [bodyMetricsFlash, setBodyMetricsFlash] = useState<'saved' | null>(null);
@@ -386,7 +372,7 @@ export default function ProfileSettingsScreen() {
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
-  const { isMetric, setIsMetric, formatBodyWeight } = useMetric();
+  const { isMetric, setIsMetric, formatBodyWeight, formatHeight } = useMetric();
 
   useEffect(() => {
     if (loading) {
@@ -526,9 +512,14 @@ export default function ProfileSettingsScreen() {
     const p = data?.profile;
     setHeightFtDraft(p?.height_ft != null ? String(p.height_ft) : '');
     setHeightInDraft(p?.height_in != null ? String(p.height_in) : '');
+    if (isMetric && p?.height_ft != null) {
+      setHeightCmDraft(String(ftInToCm(p.height_ft, p.height_in ?? 0)));
+    } else {
+      setHeightCmDraft('');
+    }
     setBodyMetricsSheetError(null);
     setShowHeightSheet(true);
-  }, [data?.profile]);
+  }, [data?.profile, isMetric]);
 
   const openAgeSheet = useCallback(() => {
     const p = data?.profile;
@@ -539,16 +530,31 @@ export default function ProfileSettingsScreen() {
 
   const saveHeight = useCallback(async () => {
     setBodyMetricsSheetError(null);
-    const ft = parseInt(heightFtDraft, 10);
-    const inch = parseInt(heightInDraft, 10);
-    if (!Number.isFinite(ft) || !Number.isFinite(inch)) {
-      setBodyMetricsSheetError('Enter valid numbers for feet and inches.');
-      return;
+    let ft: number;
+    let inch: number;
+
+    if (isMetric) {
+      const cm = parseInt(heightCmDraft, 10);
+      if (!Number.isFinite(cm) || cm < 100 || cm > 250) {
+        setBodyMetricsSheetError('Height should be between 100 and 250 cm.');
+        return;
+      }
+      const converted = cmToFtIn(cm);
+      ft = converted.ft;
+      inch = converted.inches;
+    } else {
+      ft = parseInt(heightFtDraft, 10);
+      inch = parseInt(heightInDraft, 10);
+      if (!Number.isFinite(ft) || !Number.isFinite(inch)) {
+        setBodyMetricsSheetError('Enter valid numbers for feet and inches.');
+        return;
+      }
+      if (ft < 3 || ft > 8 || inch < 0 || inch > 11) {
+        setBodyMetricsSheetError('Height should be roughly 3–8 ft and 0–11 in.');
+        return;
+      }
     }
-    if (ft < 3 || ft > 8 || inch < 0 || inch > 11) {
-      setBodyMetricsSheetError('Height should be roughly 3–8 ft and 0–11 in.');
-      return;
-    }
+
     setBodyMetricsSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -576,7 +582,7 @@ export default function ProfileSettingsScreen() {
     } finally {
       setBodyMetricsSaving(false);
     }
-  }, [heightFtDraft, heightInDraft]);
+  }, [heightCmDraft, heightFtDraft, heightInDraft, isMetric]);
 
   const saveAge = useCallback(async () => {
     setBodyMetricsSheetError(null);
@@ -881,10 +887,15 @@ export default function ProfileSettingsScreen() {
                 <Text style={styles.rowLabel}>Height</Text>
                 <View style={styles.goalRowRight}>
                   <Text style={[styles.rowValue, styles.goalRowValue]} numberOfLines={1}>
-                    {formatHeightFeetInches(
-                      data?.profile.height_ft,
-                      data?.profile.height_in,
-                    )}
+                    {data?.profile.height_ft != null &&
+                    data?.profile.height_in != null &&
+                    Number.isFinite(Number(data.profile.height_ft)) &&
+                    Number.isFinite(Number(data.profile.height_in))
+                      ? formatHeight(
+                          data.profile.height_ft,
+                          data.profile.height_in,
+                        )
+                      : '—'}
                   </Text>
                   <Text style={styles.rowChevron}>›</Text>
                 </View>
@@ -1305,26 +1316,40 @@ export default function ProfileSettingsScreen() {
           />
           <View style={[styles.sheetCard, { paddingBottom: Spacing.lg + insets.bottom }]}>
             <Text style={styles.sheetTitle}>Edit Height</Text>
-            <View style={styles.sheetHeightInputs}>
-              <TextInput
-                style={styles.sheetInputNarrow}
-                value={heightFtDraft}
-                onChangeText={setHeightFtDraft}
-                keyboardType="number-pad"
-                placeholder="5"
-                placeholderTextColor={Colors.textTertiary}
-              />
-              <Text style={styles.sheetBetweenLabel}>ft</Text>
-              <TextInput
-                style={styles.sheetInputNarrow}
-                value={heightInDraft}
-                onChangeText={setHeightInDraft}
-                keyboardType="number-pad"
-                placeholder="11"
-                placeholderTextColor={Colors.textTertiary}
-              />
-              <Text style={styles.sheetBetweenLabel}>in</Text>
-            </View>
+            {isMetric ? (
+              <View style={styles.sheetHeightInputs}>
+                <TextInput
+                  style={styles.sheetInputFull}
+                  value={heightCmDraft}
+                  onChangeText={setHeightCmDraft}
+                  keyboardType="number-pad"
+                  placeholder="180"
+                  placeholderTextColor={Colors.textTertiary}
+                />
+                <Text style={styles.sheetBetweenLabel}>cm</Text>
+              </View>
+            ) : (
+              <View style={styles.sheetHeightInputs}>
+                <TextInput
+                  style={styles.sheetInputNarrow}
+                  value={heightFtDraft}
+                  onChangeText={setHeightFtDraft}
+                  keyboardType="number-pad"
+                  placeholder="5"
+                  placeholderTextColor={Colors.textTertiary}
+                />
+                <Text style={styles.sheetBetweenLabel}>ft</Text>
+                <TextInput
+                  style={styles.sheetInputNarrow}
+                  value={heightInDraft}
+                  onChangeText={setHeightInDraft}
+                  keyboardType="number-pad"
+                  placeholder="11"
+                  placeholderTextColor={Colors.textTertiary}
+                />
+                <Text style={styles.sheetBetweenLabel}>in</Text>
+              </View>
+            )}
             {bodyMetricsSheetError && showHeightSheet ? (
               <Text style={styles.sheetError}>{bodyMetricsSheetError}</Text>
             ) : null}

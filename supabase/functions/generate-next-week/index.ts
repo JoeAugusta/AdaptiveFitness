@@ -514,6 +514,52 @@ function getWeek1Baseline(setsJson: LogSetLike[]): {
   return { baselineWeight: avgWeight, baselineRpe: avgRpe, isRampPattern: false };
 }
 
+/** Pyramid = top set is the working set; straight = average across working sets. */
+function isPyramidExercise(exercise: {
+  setStructure?: string;
+  setTargets?: Array<{ targetWeight?: number }>;
+}): boolean {
+  if (exercise?.setStructure === 'pyramid') return true;
+  const targets = exercise?.setTargets ?? [];
+  if (targets.length < 2) return false;
+  const first = Number(targets[0]?.targetWeight ?? 0);
+  const last = Number(targets[targets.length - 1]?.targetWeight ?? 0);
+  return last > first;
+}
+
+function getLoggedBaselineFromSets(
+  sets: LogSetLike[],
+  isPyramid: boolean,
+): { baselineWeight: number; baselineRpe: number } {
+  if (!sets || sets.length === 0) {
+    return { baselineWeight: 0, baselineRpe: 0 };
+  }
+
+  if (isPyramid) {
+    const topWeight = Math.max(...sets.map((s) => normalizeLogSetWeightLbs(s)));
+    if (topWeight <= 0) {
+      return { baselineWeight: 0, baselineRpe: 0 };
+    }
+    const topSets = sets.filter(
+      (s) => normalizeLogSetWeightLbs(s) === topWeight,
+    );
+    const rpeSum = topSets.reduce(
+      (sum, s) => sum + Number((s as LogSetLike).rpe ?? 0),
+      0,
+    );
+    const baselineRpe = topSets.length > 0 ? rpeSum / topSets.length : 0;
+    return { baselineWeight: topWeight, baselineRpe };
+  }
+
+  const baselineWeight =
+    sets.reduce((sum, s) => sum + normalizeLogSetWeightLbs(s), 0) /
+    sets.length;
+  const baselineRpe =
+    sets.reduce((sum, s) => sum + Number((s as LogSetLike).rpe ?? 0), 0) /
+    sets.length;
+  return { baselineWeight, baselineRpe };
+}
+
 /** Per workout log, then take strongest session baseline (avoids breaking ramp across days). */
 function getWeek1BaselineFromLogs(
   logs: { sets_json?: LogSetLike[] | null }[],
@@ -575,10 +621,24 @@ function resolveProgressionBaseline(
   planGoal: string,
   priorPlanExercise: any,
   workingSets: LogSetLike[],
-): { baseline: number; source: 'plan' | 'logged' | 'none' } {
+  opts?: { wasSwapped?: boolean; loggedBaselineWeight?: number },
+): {
+  baseline: number;
+  source: 'plan' | 'logged' | 'none' | 'swap_logged';
+} {
+  if (
+    opts?.wasSwapped &&
+    Number(opts.loggedBaselineWeight ?? 0) > 0
+  ) {
+    return {
+      baseline: Number(opts.loggedBaselineWeight),
+      source: 'swap_logged',
+    };
+  }
+
   const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
 
-  /** Self-select Week 1: prescription is targetWeight 0 — ignore stray setTargets for baseline. */
+  /** priorTargetWeight 0 = self-select prescription, not calibration — use logged working weight as baseline. */
   if (priorTargetWeight > 0 || !isSelfSelectWeightGoal(planGoal)) {
     const fromPlan = getPlanBaselineWeight(priorPlanExercise);
     if (fromPlan > 0) {
@@ -590,7 +650,10 @@ function resolveProgressionBaseline(
     return { baseline: 0, source: 'none' };
   }
 
-  const fromLogs = getWeek1Baseline(workingSets).baselineWeight;
+  const fromLogs = getLoggedBaselineFromSets(
+    workingSets,
+    isPyramidExercise(priorPlanExercise ?? {}),
+  ).baselineWeight;
   if (fromLogs > 0) {
     return { baseline: fromLogs, source: 'logged' };
   }
@@ -606,6 +669,38 @@ function getEquipmentForExerciseName(exerciseName: string): string {
   ].sort((a, b) => b[0].length - a[0].length);
   for (const [mapKey, equip] of sortedEntries) {
     if (key.includes(mapKey) || mapKey.includes(key)) return equip;
+  }
+  return 'barbell';
+}
+
+function deriveEquipmentFromName(name: string): string {
+  const n = String(name ?? '').toLowerCase();
+  if (n.includes('dumbbell') || n.includes(' db ')) {
+    return 'dumbbell';
+  }
+  if (n.includes('barbell')) return 'barbell';
+  if (n.includes('cable')) return 'cable';
+  if (
+    n.includes('machine') ||
+    n.includes('leg press') ||
+    n.includes('leg curl') ||
+    n.includes('leg extension') ||
+    n.includes('calf raise') ||
+    n.includes('lat pulldown') ||
+    n.includes('hack squat')
+  ) {
+    return 'machine';
+  }
+  if (
+    n.includes('pull-up') ||
+    n.includes('pullup') ||
+    n.includes('chin-up') ||
+    n.includes('chinup') ||
+    n.includes('push-up') ||
+    n.includes('pushup') ||
+    n.includes('dip')
+  ) {
+    return 'bodyweight';
   }
   return 'barbell';
 }
@@ -696,6 +791,164 @@ function capIsolationDumbbellCableIncrement(
   return increment;
 }
 
+function applyMinimumIncrement(
+  rawIncrement: number,
+  _equipment: string,
+  rpeGap: number,
+  compoundTier: string,
+): number {
+  const isIsolation = compoundTier === 'isolation';
+  const isPrimary = compoundTier === 'primary_compound';
+
+  if (isIsolation) {
+    if (rpeGap >= 2.0) return 10;
+    if (rpeGap >= 1.0) return 5;
+    return 5;
+  }
+
+  if (isPrimary) {
+    if (rpeGap >= 2.0) return Math.max(rawIncrement, 10);
+    if (rpeGap >= 1.0) return Math.max(rawIncrement, 10);
+    return Math.max(rawIncrement, 5);
+  }
+
+  if (rpeGap >= 2.0) return Math.max(rawIncrement, 10);
+  if (rpeGap >= 1.0) return Math.max(rawIncrement, 5);
+  return Math.max(rawIncrement, 5);
+}
+
+function normalizeCompoundTier(
+  compoundTier: string | undefined | null,
+): 'primary_compound' | 'secondary_compound' | 'isolation' {
+  const t = String(compoundTier ?? 'isolation').toLowerCase().trim();
+  if (t === 'primary_compound') return 'primary_compound';
+  if (t === 'secondary_compound') return 'secondary_compound';
+  if (t === 'isolation') return 'isolation';
+  return 'isolation';
+}
+
+function getAccessoryRawIncrement(
+  avgLoggedRpe: number,
+  targetRpe: number,
+  equipment: string,
+  compoundTier: string,
+  trainingAge: string,
+): number {
+  let increment = accessoryWeightIncrement(avgLoggedRpe, targetRpe, equipment);
+  if (increment > 0) {
+    increment *= experienceProgressionMultiplier(trainingAge);
+    if (
+      trainingAge === 'advanced' &&
+      compoundTier !== 'isolation' &&
+      increment > 0
+    ) {
+      increment = Math.round(increment / 1.25) * 1.25;
+    }
+    increment = capIsolationDumbbellCableIncrement(
+      increment,
+      compoundTier,
+      equipment,
+    );
+  }
+  return increment;
+}
+
+function computeAccessoryProgressionTarget(params: {
+  baselineWeight: number;
+  avgLoggedRpe: number;
+  targetRpe: number;
+  equipment: string;
+  compoundTier: string;
+  trainingAge: string;
+  exerciseName?: string;
+}): {
+  newTargetWeight: number;
+  changeType: 'increase' | 'maintain' | 'decrease';
+  increment: number;
+  rpeGap: number;
+} {
+  const {
+    baselineWeight,
+    avgLoggedRpe,
+    targetRpe,
+    equipment,
+    compoundTier,
+    trainingAge,
+    exerciseName,
+  } = params;
+  const tier = normalizeCompoundTier(compoundTier);
+  const rpeGap = computeRpeGap(avgLoggedRpe, targetRpe);
+  const shouldDecrease = rpeGap < -1.0;
+  const shouldHold = rpeGap >= -1.0 && rpeGap < 0;
+  const rawIncrementValue = getAccessoryRawIncrement(
+    avgLoggedRpe,
+    targetRpe,
+    equipment,
+    tier,
+    trainingAge,
+  );
+
+  if (shouldDecrease) {
+    const rawDecrement =
+      rawIncrementValue < 0
+        ? Math.abs(rawIncrementValue)
+        : Math.abs(
+            accessoryWeightIncrement(avgLoggedRpe, targetRpe, equipment),
+          );
+    const newTargetWeight = roundToEquipmentIncrement(
+      baselineWeight - rawDecrement,
+      equipment,
+    );
+    return {
+      newTargetWeight,
+      changeType: 'decrease',
+      increment: newTargetWeight - baselineWeight,
+      rpeGap,
+    };
+  }
+
+  if (shouldHold) {
+    const newTargetWeight = roundToEquipmentIncrement(
+      baselineWeight,
+      equipment,
+    );
+    return {
+      newTargetWeight,
+      changeType: 'maintain',
+      increment: 0,
+      rpeGap,
+    };
+  }
+
+  const rawIncrement =
+    rawIncrementValue > 0
+      ? rawIncrementValue
+      : Math.max(0, accessoryWeightIncrement(avgLoggedRpe, targetRpe, equipment));
+  const adjusted = applyMinimumIncrement(
+    rawIncrement,
+    equipment ?? 'barbell',
+    rpeGap,
+    tier,
+  );
+  console.log('[INCREMENT CHECK]', {
+    name: exerciseName ?? '',
+    compoundTier: tier,
+    rpeGap,
+    rawIncrement,
+    adjustedIncrement: adjusted,
+  });
+  const newTargetWeight = roundToEquipmentIncrement(
+    baselineWeight + adjusted,
+    equipment,
+  );
+  return {
+    newTargetWeight,
+    changeType: 'increase',
+    increment: adjusted,
+    rpeGap,
+  };
+}
+
 function scalePositiveIncrementByExperience(
   increment: number,
   trainingAge: string,
@@ -706,88 +959,6 @@ function scalePositiveIncrementByExperience(
     scaled = Math.round(scaled / 1.25) * 1.25;
   }
   return scaled;
-}
-
-/**
- * Final W1→W2 pass: overwrite prescriptions from logged working weight only.
- * Runs after rebuildPyramid so pyramid back-calc cannot inflate loads.
- */
-// deno-lint-ignore no-explicit-any
-function applyW1CalibrationPass(
-  days: any[] | undefined,
-  completedWeekNumber: number,
-  dedupedLogs: any[],
-  exerciseIdToName: Record<string, string>,
-  priorHeavyExerciseMap: Map<string, any>,
-  priorVolumeExerciseMap: Map<string, any>,
-  planJson: any,
-  completedWeekDays: any[],
-): any[] {
-  if (Number(completedWeekNumber) !== 1) return days ?? [];
-
-  const allWeekSets = dedupedLogs.flatMap((log: any) =>
-    parseSetsJson(log.sets_json),
-  );
-
-  return (days ?? []).map((day: any) => {
-    if (day.type !== 'workout') return day;
-    const dayNum = Number(day.dayNumber ?? day.day);
-    const dayIsVolume = isVolumeDay(day, planJson, completedWeekDays);
-    const dayLog = dedupedLogs.find(
-      (log: any) => Number(log.day_number) === dayNum,
-    );
-    const daySets = parseSetsJson(dayLog?.sets_json);
-    const setsForMatch = daySets.length > 0 ? daySets : allWeekSets;
-
-    return {
-      ...day,
-      exercises: (day.exercises ?? []).map((exercise: any) => {
-        const exName = String(exercise.exerciseName ?? exercise.name ?? '')
-          .toLowerCase()
-          .trim();
-
-        const priorPlanExercise = resolvePriorPlanExercise(
-          exName,
-          dayIsVolume,
-          false,
-          priorHeavyExerciseMap,
-          priorVolumeExerciseMap,
-        );
-        if (Number(priorPlanExercise?.targetWeight ?? 0) > 0) {
-          return exercise;
-        }
-
-        let matched = getExerciseSets(setsForMatch, exercise, exerciseIdToName);
-        if (matched.length === 0 && allWeekSets.length > 0) {
-          matched = getExerciseSets(allWeekSets, exercise, exerciseIdToName);
-        }
-        const workingSets = matched.filter((s: any) => s.isWarmup !== true);
-        const loggedBaselineWeight = getWeek1Baseline(workingSets).baselineWeight;
-        if (loggedBaselineWeight <= 0) return exercise;
-
-        const equip = String(
-          exercise.equipment ?? getEquipmentForExerciseName(exName),
-        );
-        const out = { ...exercise };
-
-        if (out.setStructure === 'pyramid') {
-          stampPyramidFromDesiredTopSet(out, loggedBaselineWeight, equip);
-        } else {
-          out.targetWeight = roundToEquipmentPrecision(
-            loggedBaselineWeight,
-            equip,
-          );
-        }
-
-        console.log('[CALIBRATION W1→W2 FINAL]', {
-          name: exName,
-          loggedBaselineWeight,
-          targetWeight: out.targetWeight,
-        });
-        return out;
-      }),
-    };
-  });
 }
 
 /** Deload week: −15% load and −1 set (min 2) after progression math */
@@ -824,11 +995,9 @@ function applyDeloadPassToDays(days: any[] | undefined): any[] {
   });
 }
 
-/** §5 round helper: barbell/dumbbell → 2.5, else stack (cable/machine/etc.) → 5 */
+/** §5 round helper — delegates to equipment-aware increments. */
 function accessoryRoundNewWeight(weight: number, equipmentRaw: string): number {
-  const equipment = String(equipmentRaw ?? 'barbell').toLowerCase();
-  const roundTo = ['barbell', 'dumbbell'].includes(equipment) ? 2.5 : 5;
-  return Math.round(weight / roundTo) * roundTo;
+  return roundToEquipmentIncrement(weight, equipmentRaw);
 }
 
 /** Top working set ≈ pyramid anchor × this factor (inverse when solving anchor from desired top weight). */
@@ -860,10 +1029,27 @@ function stampPyramidFromDesiredTopSet(
   desiredTopSet: number,
   equip: string,
 ): number {
+  const topRounded = roundToEquipmentIncrement(desiredTopSet, equip);
+
+  if (Array.isArray(exercise.setTargets) && exercise.setTargets.length >= 2) {
+    const oldTopWeight = Math.max(
+      ...exercise.setTargets.map((s: any) => Number(s.targetWeight ?? 0)),
+    );
+    if (oldTopWeight > 0) {
+      exercise.setTargets = scalePyramidSetTargets(
+        exercise.setTargets as PyramidSetTargetRow[],
+        oldTopWeight,
+        topRounded,
+        equip,
+      );
+      exercise.targetWeight = topRounded;
+      return topRounded;
+    }
+  }
+
   const setCount = Array.isArray(exercise.setTargets)
     ? exercise.setTargets.length
     : exercise.sets ?? 4;
-  const topRounded = roundToEquipmentPrecision(desiredTopSet, equip);
   const nextTargets = buildProgressionPyramidSetTargets(
     topRounded,
     setCount,
@@ -993,6 +1179,29 @@ function strengthTargetJordanCopyFromProgress(
   };
 }
 
+function isExerciseSwappedThisWeek(exercise: {
+  originalName?: string;
+  name?: string;
+  exerciseName?: string;
+}): boolean {
+  const original = String(exercise.originalName ?? '').trim();
+  const current = String(exercise.name ?? exercise.exerciseName ?? '').trim();
+  return (
+    original.length > 0 && original.toLowerCase() !== current.toLowerCase()
+  );
+}
+
+/** Large log vs prescription mismatch — meaningless when the slot was swapped. */
+function isLoggingWeightAnomaly(
+  loggedWeight: number,
+  planBaseline: number,
+  wasSwapped: boolean,
+): boolean {
+  if (wasSwapped) return false;
+  if (loggedWeight <= 0 || planBaseline <= 0) return false;
+  return loggedWeight > planBaseline * 1.5 || loggedWeight < planBaseline * 0.5;
+}
+
 /**
  * Writes coaching / adaptation sheet fields AFTER targetWeight progression so copy matches prescription.
  * Pass accessoryTargetRpeForGap from last week's prescribed target RPE (prior periodisation row for heavy primary).
@@ -1006,6 +1215,8 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
   isTargetLiftEx: boolean;
   dayIsVolume: boolean;
   nextWeekNumber: number;
+  wasSwapped?: boolean;
+  loggedBaselineWeight?: number;
 }): void {
   const {
     exercise,
@@ -1015,44 +1226,63 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
     isTargetLiftEx,
     dayIsVolume,
     nextWeekNumber,
+    wasSwapped = false,
+    loggedBaselineWeight,
   } = params;
 
   const newWeight = Number(exercise.targetWeight ?? 0);
-  const delta = Math.round(newWeight - planBaseline);
+  const prevWeight =
+    loggedBaselineWeight != null && loggedBaselineWeight > 0
+      ? loggedBaselineWeight
+      : planBaseline;
+  const diff = Math.round(newWeight - prevWeight);
   const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpeForGap);
 
   let headline: string;
   let body: string;
 
-  if (gap >= 3) {
-    headline = 'Resetting the load — finding your real working weight';
+  if (wasSwapped) {
+    const originalName = String(exercise.originalName ?? '').trim();
+    const displayName = String(
+      exercise.name ?? exercise.exerciseName ?? '',
+    ).trim();
+    headline = `New exercise baseline — ${newWeight} lbs`;
     body =
-      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} is well below working intensity — jumping to ${newWeight} lbs to find a load that actually challenges you.`;
-  } else if (gap >= 2) {
-    headline = `Up ${delta} lbs — closing the gap`;
+      `Switched from ${originalName} — starting fresh at ${newWeight} lbs for ${displayName}.`;
+  } else if (diff > 0) {
+    if (gap >= 3) {
+      headline = `Up ${diff} lbs — closing the gap`;
+      body =
+        `${prevWeight} lbs at RPE ${avgLoggedRpe.toFixed(1)} is well below working intensity — jumping to ${newWeight} lbs to find a load that actually challenges you.`;
+    } else if (gap >= 2) {
+      headline = `Up ${diff} lbs — closing the gap`;
+      body =
+        `${prevWeight} lbs at RPE ${avgLoggedRpe.toFixed(1)} left too much in the tank. Adding load to bring the stimulus in line with your target.`;
+    } else if (gap >= 1) {
+      headline = `Up ${diff} lbs — building on last week`;
+      body =
+        `${prevWeight} lbs at RPE ${avgLoggedRpe.toFixed(1)} was within your range — adding load to keep the stimulus honest.`;
+    } else {
+      headline = `Up ${diff} lbs — building on last week`;
+      body = `On target last week. Small load increase for continued adaptation.`;
+    }
+  } else if (diff < 0) {
+    headline = `Down ${Math.abs(diff)} lbs — recovery week`;
     body =
-      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} left too much in the tank. Adding load to bring the stimulus in line with your target.`;
-  } else if (gap >= 1) {
-    headline = `Up ${delta} lbs — building on last week`;
-    body =
-      `${planBaseline} lbs at RPE ${avgLoggedRpe.toFixed(1)} was within your range — adding load to keep the stimulus honest.`;
-  } else if (gap >= 0) {
-    headline = `Up ${delta} lbs — progressing as planned`;
-    body = `On target last week. Small load increase for continued adaptation.`;
+      `Last week's effort was above sustainable intensity. Reducing weight to restore quality reps.`;
   } else if (gap >= -1) {
-    headline = 'Same load — recovery priority';
+    headline = 'Same load — on track';
     body =
       `Last week ran harder than the target — holding weight this session to let the adaptation land before pushing again.`;
   } else {
-    headline = 'Pulling back the load';
-    body =
-      `Last week's effort was above sustainable intensity. Reducing weight to restore quality reps.`;
+    headline = 'Same load — on track';
+    body = `RPE averaged ${avgLoggedRpe.toFixed(1)} — right on target. Holding weight this week.`;
   }
 
-  if (isTargetLiftEx && !dayIsVolume) {
+  if (isTargetLiftEx && !dayIsVolume && !wasSwapped) {
     const newPeriodisationReps = exercise.reps;
-    if (delta > 0) {
-      headline = `Up ${delta} lbs — Week ${nextWeekNumber} intensity block`;
+    if (diff > 0) {
+      headline = `Up ${diff} lbs — Week ${nextWeekNumber} intensity block`;
       body =
         `Moving into ${exercise.sets}×${newPeriodisationReps} — fewer reps, more load. This is where the strength build begins.`;
     } else {
@@ -1535,8 +1765,40 @@ function rebuildPyramidAccessorySetTargetsAfterWeights(
           return stripSetTargetsFromExercise(ex);
         }
 
-        if ((ex.setStructure ?? '') !== 'pyramid') {
+        const pyramid =
+          isPyramidExercise(ex) ||
+          (ex.setStructure ?? '') === 'pyramid';
+
+        if (!pyramid) {
           return stripSetTargetsFromExercise(ex);
+        }
+
+        const equip = String(ex.equipment ?? 'barbell');
+
+        if (Array.isArray(ex.setTargets) && ex.setTargets.length >= 2) {
+          const oldTopWeight = Math.max(
+            ...ex.setTargets.map((st: any) => Number(st.targetWeight ?? 0)),
+          );
+          if (oldTopWeight > 0 && Math.abs(tw - oldTopWeight) >= 0.01) {
+            return {
+              ...stripSetTargetsFromExercise(ex),
+              targetWeight: tw,
+              setTargets: scalePyramidSetTargets(
+                ex.setTargets as PyramidSetTargetRow[],
+                oldTopWeight,
+                tw,
+                equip,
+              ),
+              setStructure: 'pyramid' as const,
+            };
+          }
+          if (oldTopWeight > 0) {
+            return {
+              ...ex,
+              targetWeight: tw,
+              setStructure: 'pyramid' as const,
+            };
+          }
         }
 
         const setCount =
@@ -1799,6 +2061,7 @@ function buildPriorPlanHeavyVolumeMaps(
       const name = String(ex.exerciseName ?? ex.name ?? '')
         .toLowerCase()
         .trim();
+      // Index by current name only — never under originalName (swap slots).
       if (name) map.set(name, ex);
     }
   }
@@ -1831,10 +2094,118 @@ function getPlanBaselineWeight(priorPlanExercise: any): number {
   return Number(priorPlanExercise.targetWeight ?? 0);
 }
 
+function roundToEquipmentIncrement(weight: number, _equipment: string): number {
+  return Math.round(weight / 5) * 5;
+}
+
+/** @deprecated alias — use roundToEquipmentIncrement */
 function roundToEquipmentPrecision(weight: number, equipment: string): number {
-  const equip = String(equipment ?? 'barbell').toLowerCase();
-  const roundTo = ['barbell', 'dumbbell'].includes(equip) ? 2.5 : 5;
-  return Math.round(weight / roundTo) * roundTo;
+  return roundToEquipmentIncrement(weight, equipment);
+}
+
+type PyramidSetTargetRow = {
+  setNumber: number;
+  targetWeight: number;
+  targetRpe: number;
+  targetReps: string;
+};
+
+function scalePyramidSetTargets(
+  originalSetTargets: PyramidSetTargetRow[],
+  oldTopWeight: number,
+  newTopWeight: number,
+  equipment: string,
+): PyramidSetTargetRow[] {
+  if (!originalSetTargets?.length || oldTopWeight === 0) {
+    return originalSetTargets;
+  }
+
+  return originalSetTargets.map((set, index) => {
+    const isLastSet = index === originalSetTargets.length - 1;
+
+    if (isLastSet) {
+      return { ...set, targetWeight: newTopWeight };
+    }
+
+    const ratio = Number(set.targetWeight ?? 0) / oldTopWeight;
+    const scaled = newTopWeight * ratio;
+    const rounded = roundToEquipmentIncrement(scaled, equipment);
+
+    return { ...set, targetWeight: rounded };
+  });
+}
+
+/** Update pyramid setTargets after top-set progression (hold / scale / W1 self-select build). */
+// deno-lint-ignore no-explicit-any
+function applyPyramidSetTargetsAfterProgression(
+  exercise: any,
+  matchingSets: LogSetLike[],
+  newTargetWeight: number,
+  loggedBaselineWeight: number,
+  equip: string,
+): void {
+  if (!Array.isArray(exercise.setTargets) || exercise.setTargets.length === 0) {
+    exercise.targetWeight = newTargetWeight;
+    return;
+  }
+
+  const allZero = exercise.setTargets.every(
+    (s: any) => Number(s.targetWeight ?? 0) === 0,
+  );
+
+  if (allZero) {
+    const loggedWeights = matchingSets
+      .map((s) => normalizeLogSetWeightLbs(s))
+      .filter((w) => w > 0)
+      .sort((a, b) => a - b);
+
+    if (loggedWeights.length > 0) {
+      exercise.setTargets = loggedWeights.map((w, i) => ({
+        setNumber: i + 1,
+        targetWeight: roundToEquipmentIncrement(w, equip),
+        targetRpe: Number(exercise.targetRpe ?? 7),
+        targetReps: String(exercise.reps ?? '8-12'),
+      }));
+      const builtTopWeight = Math.max(
+        ...exercise.setTargets.map((s: any) => Number(s.targetWeight ?? 0)),
+      );
+      if (newTargetWeight !== builtTopWeight) {
+        exercise.setTargets = scalePyramidSetTargets(
+          exercise.setTargets as PyramidSetTargetRow[],
+          builtTopWeight,
+          newTargetWeight,
+          equip,
+        );
+      }
+    }
+  } else if (
+    newTargetWeight ===
+    roundToEquipmentIncrement(loggedBaselineWeight, equip)
+  ) {
+    const existingTop = Math.max(
+      ...exercise.setTargets.map((s: any) => Number(s.targetWeight ?? 0)),
+    );
+    if (existingTop !== newTargetWeight) {
+      exercise.setTargets = exercise.setTargets.map(
+        (s: any, i: number) =>
+          i === exercise.setTargets.length - 1
+            ? { ...s, targetWeight: newTargetWeight }
+            : s,
+      );
+    }
+  } else {
+    const oldTopWeight = Math.max(
+      ...exercise.setTargets.map((s: any) => Number(s.targetWeight ?? 0)),
+    );
+    exercise.setTargets = scalePyramidSetTargets(
+      exercise.setTargets as PyramidSetTargetRow[],
+      oldTopWeight,
+      newTargetWeight,
+      equip,
+    );
+  }
+
+  exercise.targetWeight = newTargetWeight;
 }
 
 function getMaxWeeklyIncrease(equipment: string, compoundTier: string): number {
@@ -1845,7 +2216,7 @@ function getMaxWeeklyIncrease(equipment: string, compoundTier: string): number {
     (tier === 'primary_compound' || tier === 'secondary_compound');
   if (isBarbellCompound) return 10;
   if (equip === 'dumbbell' || equip === 'cable' || equip === 'machine') {
-    return 5;
+    return 10;
   }
   return Infinity;
 }
@@ -1873,6 +2244,84 @@ function applyMaxWeeklyIncrease(
 }
 
 /** Prior-week exercise for baseline: volume days prefer volume map, heavy days prefer heavy map. */
+function getPrevWeekExerciseName(
+  planJson: { weeks?: Array<{ weekNumber?: number; days?: Array<{ exercises?: Array<{ name?: string; exerciseName?: string }> }> }> },
+  prevWeekNumber: number,
+  dayIndex: number,
+  exerciseIndex: number,
+): string | null {
+  const prevWeek = (planJson.weeks ?? []).find(
+    (w) => Number(w.weekNumber) === prevWeekNumber,
+  );
+  const exercise =
+    prevWeek?.days?.[dayIndex]?.exercises?.[exerciseIndex];
+  return exercise?.name ?? exercise?.exerciseName ?? null;
+}
+
+type WorkoutLogRow = {
+  week_number: number;
+  sets_json?: unknown;
+};
+
+function findMostRecentLogForExercise(
+  allLogs: WorkoutLogRow[],
+  exerciseName: string,
+  beforeWeekNumber: number,
+): {
+  weightLbs: number;
+  rpe: number;
+  weekNumber: number;
+} | null {
+  const sorted = [...allLogs].sort(
+    (a, b) => Number(b.week_number) - Number(a.week_number),
+  );
+  const target = exerciseName.toLowerCase().trim();
+
+  for (const log of sorted) {
+    if (Number(log.week_number) >= beforeWeekNumber) continue;
+
+    const sets = (log.sets_json ?? []) as Array<{
+      exerciseName?: string;
+      weightLbs?: number;
+      rpe?: number;
+    }>;
+
+    const matchingSets = sets.filter(
+      (s) =>
+        String(s.exerciseName ?? '').toLowerCase().trim() === target &&
+        Number(s.weightLbs ?? 0) > 0,
+    );
+
+    if (matchingSets.length > 0) {
+      const topSet = matchingSets.reduce((best, s) =>
+        Number(s.weightLbs ?? 0) > Number(best.weightLbs ?? 0) ? s : best,
+      );
+      return {
+        weightLbs: Number(topSet.weightLbs ?? 0),
+        rpe: Number(topSet.rpe ?? 7),
+        weekNumber: Number(log.week_number),
+      };
+    }
+  }
+  return null;
+}
+
+function calculateWeightIncrement(
+  avgLoggedRpe: number,
+  targetRpe: number,
+  equipment: string,
+  compoundTier: string,
+  trainingAge: string,
+): number {
+  return resolveAccessoryLoadIncrement(
+    avgLoggedRpe,
+    targetRpe,
+    equipment,
+    compoundTier,
+    trainingAge,
+  );
+}
+
 function resolvePriorPlanExercise(
   exName: string,
   dayIsVolume: boolean,
@@ -3206,7 +3655,8 @@ Return ONLY this exact JSON structure:
     // ── PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────────
     // mergeNextWeekWithPreviousStructure keeps completed-week slots (preserves IDs).
     // Progress targetWeight / reps / pyramid ladders from prior plan baselines + RPE logs.
-    for (const day of nextWeekData.days ?? []) {
+    for (let dayIndex = 0; dayIndex < (nextWeekData.days ?? []).length; dayIndex++) {
+      const day = nextWeekData.days[dayIndex];
       if (day.type !== 'workout') continue;
 
       const dayIsVolume = isVolumeDay(day, planJson, weekData?.days);
@@ -3220,10 +3670,33 @@ Return ONLY this exact JSON structure:
         parseSetsJson(log.sets_json),
       );
 
-      for (const exercise of day.exercises ?? []) {
+      for (let exerciseIndex = 0; exerciseIndex < (day.exercises ?? []).length; exerciseIndex++) {
+        const exercise = day.exercises[exerciseIndex];
         const exName = (exercise.exerciseName ?? exercise.name ?? '')
           .toLowerCase()
           .trim();
+
+        const currentExerciseName = String(
+          exercise.name ?? exercise.exerciseName ?? '',
+        ).trim();
+        const prevWeekExerciseName = getPrevWeekExerciseName(
+          planJson,
+          completedWeekNumber,
+          dayIndex,
+          exerciseIndex,
+        );
+        const exerciseChanged =
+          prevWeekExerciseName != null &&
+          prevWeekExerciseName.toLowerCase().trim() !==
+            currentExerciseName.toLowerCase().trim();
+
+        if (exerciseChanged) {
+          console.log('[SWAP DETECT]', {
+            slot: `${dayIndex}:${exerciseIndex}`,
+            prev: prevWeekExerciseName,
+            current: currentExerciseName,
+          });
+        }
 
         const isTargetLiftEx =
           planGoalForSetStructure === 'strength' &&
@@ -3254,100 +3727,368 @@ Return ONLY this exact JSON structure:
           (s: any) => s.isWarmup !== true,
         );
 
-        const avgLoggedRpe = workingSets.length > 0
-          ? workingSets.reduce(
-              (sum: number, s: any) => sum + Number(s.rpe ?? 7),
-              0,
-            ) / workingSets.length
-          : 7.0;
+        const isPyramid =
+          isPyramidExercise(exercise) ||
+          isPyramidExercise(priorPlanExercise ?? {});
+        const loggedFromSets = getLoggedBaselineFromSets(workingSets, isPyramid);
+        const avgLoggedRpe =
+          workingSets.length > 0
+            ? loggedFromSets.baselineRpe > 0
+              ? loggedFromSets.baselineRpe
+              : 7.0
+            : 7.0;
 
         console.log(
-          `[EXERCISE MATCH] ${exName}: found ${workingSets.length} sets, avgRpe=${avgLoggedRpe.toFixed(1)}`,
+          `[EXERCISE MATCH] ${exName}: found ${workingSets.length} sets, avgRpe=${avgLoggedRpe.toFixed(1)}${isPyramid ? ' (pyramid top set)' : ''}`,
         );
 
-        const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
-        const loggedBaselineWeight = getWeek1Baseline(workingSets).baselineWeight;
+        const loggedBaselineWeight = loggedFromSets.baselineWeight;
+        const wasSwapped = isExerciseSwappedThisWeek(exercise);
+
+        if (wasSwapped) {
+          console.log('[SWAP DETECT]', {
+            slot: `${dayIndex}:${exerciseIndex}`,
+            originalName: exercise.originalName,
+            newName: currentExerciseName,
+            prevWeekName: prevWeekExerciseName,
+          });
+          const derivedEquipment = deriveEquipmentFromName(
+            String(exercise.name ?? exercise.exerciseName ?? ''),
+          );
+          if (derivedEquipment) {
+            exercise.equipment = derivedEquipment;
+          }
+        }
+
+        const equipDefault = String(
+          exercise.equipment ?? getEquipmentForExerciseName(exName),
+        );
+        const tierDefault = normalizeCompoundTier(
+          exercise.compoundTier ??
+            getCompoundTierFromName(currentExerciseName),
+        );
+        const accessoryTargetRpeDefault =
+          Number(exercise.targetRpe) > 0 ? Number(exercise.targetRpe) : 7.0;
+
+        if (wasSwapped && loggedBaselineWeight > 0) {
+          const planBaseline = roundToEquipmentPrecision(
+            loggedBaselineWeight,
+            equipDefault,
+          );
+          const progression = computeAccessoryProgressionTarget({
+            baselineWeight: planBaseline,
+            avgLoggedRpe,
+            targetRpe: accessoryTargetRpeDefault,
+            equipment: equipDefault,
+            compoundTier: tierDefault,
+            trainingAge: experienceForProgression,
+            exerciseName: currentExerciseName,
+          });
+          let newTargetWeight = applyMaxWeeklyIncrease(
+            planBaseline,
+            progression.newTargetWeight,
+            equipDefault,
+            tierDefault,
+          );
+
+          if (isPyramid) {
+            if (
+              Array.isArray(exercise.setTargets) &&
+              exercise.setTargets.length > 0
+            ) {
+              applyPyramidSetTargetsAfterProgression(
+                exercise,
+                workingSets,
+                newTargetWeight,
+                planBaseline,
+                equipDefault,
+              );
+              newTargetWeight = Number(exercise.targetWeight ?? newTargetWeight);
+            } else {
+              newTargetWeight = stampPyramidFromDesiredTopSet(
+                exercise,
+                newTargetWeight,
+                equipDefault,
+              );
+            }
+          } else {
+            exercise.targetWeight = newTargetWeight;
+          }
+
+          stampExerciseAdaptationCopyAfterProgression({
+            exercise,
+            planBaseline,
+            avgLoggedRpe,
+            accessoryTargetRpeForGap: accessoryTargetRpeDefault,
+            isTargetLiftEx: Boolean(isTargetLiftEx),
+            dayIsVolume: Boolean(dayIsVolume),
+            nextWeekNumber: Number(nextWeekNumber),
+            wasSwapped: true,
+            loggedBaselineWeight: planBaseline,
+          });
+
+          console.log('[SWAP DETECTED]', {
+            originalName: exercise.originalName,
+            newName: currentExerciseName,
+            loggedWeight: planBaseline,
+            newTargetWeight,
+            changeType: 'swap_baseline',
+            adjustedIncrement: progression.increment,
+          });
+
+          delete exercise.originalName;
+
+          upsertAdaptationDraft(adaptationDrafts, {
+            key: exName,
+            exerciseName: currentExerciseName,
+            muscleGroup: String(exercise.muscleGroup ?? ''),
+            previousWeight: planBaseline,
+            progressedWeight: newTargetWeight,
+            avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+            targetRpe: accessoryTargetRpeDefault,
+            rpeGap: progression.rpeGap,
+            repsExceeded: false,
+            hadRpeData: workingSets.length > 0,
+            isCalibration: false,
+          });
+
+          console.log(
+            `[PROGRESSION W${completedWeekNumber}→W${nextWeekNumber}]`,
+            {
+              name: exName,
+              loggedWeight: planBaseline,
+              rpeGap: progression.rpeGap,
+              increment: newTargetWeight - planBaseline,
+              newTargetWeight,
+              changeType: 'swap_baseline',
+            },
+          );
+          continue;
+        }
+
+        if (wasSwapped && loggedBaselineWeight === 0) {
+          console.log('[SKIP]', exName, '— swapped but no sets logged this week');
+          delete exercise.originalName;
+          continue;
+        }
+
+        const { baseline: anomalyPlanBaseline } = resolveProgressionBaseline(
+          planGoalForSetStructure,
+          priorPlanExercise,
+          workingSets,
+        );
+        if (
+          loggedBaselineWeight > 0 &&
+          isLoggingWeightAnomaly(
+            loggedBaselineWeight,
+            anomalyPlanBaseline,
+            wasSwapped,
+          )
+        ) {
+          console.log('[LOGGING ANOMALY]', {
+            name: currentExerciseName,
+            loggedWeight: loggedBaselineWeight,
+            planBaseline: anomalyPlanBaseline,
+            ratio: loggedBaselineWeight / anomalyPlanBaseline,
+          });
+        }
+
+        if (exerciseChanged && !wasSwapped) {
+          const historicalLog = findMostRecentLogForExercise(
+            dedupedLogs,
+            currentExerciseName,
+            nextWeekNumber,
+          );
+          const equip = equipDefault;
+          const tier = tierDefault;
+          const accessoryTargetRpe = accessoryTargetRpeDefault;
+
+          if (historicalLog) {
+            const rpeGap = computeRpeGap(historicalLog.rpe, accessoryTargetRpe);
+            const weeksSinceLogged = Math.max(
+              1,
+              nextWeekNumber - historicalLog.weekNumber,
+            );
+            const weeksMultiplier = Math.min(weeksSinceLogged, 3);
+            const baseIncrement = calculateWeightIncrement(
+              historicalLog.rpe,
+              accessoryTargetRpe,
+              equip,
+              tier,
+              experienceForProgression,
+            );
+            const totalIncrement = baseIncrement * weeksMultiplier;
+            let swapWeight = roundToEquipmentPrecision(
+              historicalLog.weightLbs + totalIncrement,
+              equip,
+            );
+            swapWeight = applyMaxWeeklyIncrease(
+              historicalLog.weightLbs,
+              swapWeight,
+              equip,
+              tier,
+            );
+
+            if (exercise.setStructure === 'pyramid') {
+              stampPyramidFromDesiredTopSet(exercise, swapWeight, equip);
+            } else {
+              exercise.targetWeight = swapWeight;
+            }
+
+            stampExerciseAdaptationCopyAfterProgression({
+              exercise,
+              planBaseline: historicalLog.weightLbs,
+              avgLoggedRpe: historicalLog.rpe,
+              accessoryTargetRpeForGap: accessoryTargetRpe,
+              isTargetLiftEx: Boolean(isTargetLiftEx),
+              dayIsVolume: Boolean(dayIsVolume),
+              nextWeekNumber: Number(nextWeekNumber),
+              loggedBaselineWeight: historicalLog.weightLbs,
+            });
+
+            upsertAdaptationDraft(adaptationDrafts, {
+              key: exName,
+              exerciseName: currentExerciseName,
+              muscleGroup: String(exercise.muscleGroup ?? ''),
+              previousWeight: historicalLog.weightLbs,
+              progressedWeight: Number(exercise.targetWeight ?? swapWeight),
+              avgLoggedRpe: historicalLog.rpe,
+              targetRpe: accessoryTargetRpe,
+              rpeGap,
+              repsExceeded: false,
+              hadRpeData: true,
+              isCalibration: false,
+            });
+
+            console.log('[SWAP PROGRESSION]', {
+              name: currentExerciseName,
+              historicalWeight: historicalLog.weightLbs,
+              historicalWeek: historicalLog.weekNumber,
+              weeksMultiplier,
+              totalIncrement,
+              newWeight: exercise.targetWeight,
+            });
+            console.log(
+              `[PROGRESSION W${completedWeekNumber}→W${nextWeekNumber}]`,
+              {
+                name: exName,
+                loggedWeight: historicalLog.weightLbs,
+                rpeGap,
+                increment: totalIncrement,
+                newTargetWeight: Number(exercise.targetWeight ?? swapWeight),
+              },
+            );
+            continue;
+          }
+
+          const loggedTopSetWeight = workingSets.reduce(
+            (max: number, s: any) =>
+              Math.max(max, Number(s.weightLbs ?? 0)),
+            0,
+          );
+          if (loggedTopSetWeight > 0) {
+            const planBaseline = roundToEquipmentPrecision(
+              loggedTopSetWeight,
+              equip,
+            );
+            const rpeGap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+            const progression = computeAccessoryProgressionTarget({
+              baselineWeight: planBaseline,
+              avgLoggedRpe,
+              targetRpe: accessoryTargetRpe,
+              equipment: equip,
+              compoundTier: tier,
+              trainingAge: experienceForProgression,
+              exerciseName: currentExerciseName,
+            });
+            let progressedWeight = applyMaxWeeklyIncrease(
+              planBaseline,
+              progression.newTargetWeight,
+              equip,
+              tier,
+            );
+            if (exercise.setStructure === 'pyramid') {
+              if (
+                Array.isArray(exercise.setTargets) &&
+                exercise.setTargets.length > 0
+              ) {
+                applyPyramidSetTargetsAfterProgression(
+                  exercise,
+                  workingSets,
+                  progressedWeight,
+                  planBaseline,
+                  equip,
+                );
+                progressedWeight = Number(exercise.targetWeight ?? progressedWeight);
+              } else {
+                progressedWeight = stampPyramidFromDesiredTopSet(
+                  exercise,
+                  progressedWeight,
+                  equip,
+                );
+              }
+            } else {
+              exercise.targetWeight = progressedWeight;
+            }
+
+            stampExerciseAdaptationCopyAfterProgression({
+              exercise,
+              planBaseline,
+              avgLoggedRpe,
+              accessoryTargetRpeForGap: accessoryTargetRpe,
+              isTargetLiftEx: Boolean(isTargetLiftEx),
+              dayIsVolume: Boolean(dayIsVolume),
+              nextWeekNumber: Number(nextWeekNumber),
+              loggedBaselineWeight: planBaseline,
+            });
+
+            upsertAdaptationDraft(adaptationDrafts, {
+              key: exName,
+              exerciseName: currentExerciseName,
+              muscleGroup: String(exercise.muscleGroup ?? ''),
+              previousWeight: planBaseline,
+              progressedWeight,
+              avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
+              targetRpe: accessoryTargetRpe,
+              rpeGap:
+                workingSets.length > 0
+                  ? computeRpeGap(avgLoggedRpe, accessoryTargetRpe)
+                  : null,
+              repsExceeded: false,
+              hadRpeData: workingSets.length > 0,
+              isCalibration: false,
+            });
+
+            console.log(
+              `[PROGRESSION W${completedWeekNumber}→W${nextWeekNumber}]`,
+              {
+                name: exName,
+                loggedWeight: planBaseline,
+                rpeGap,
+                increment: progressedWeight - planBaseline,
+                newTargetWeight: progressedWeight,
+                changeType: progression.changeType,
+              },
+            );
+            continue;
+          }
+        }
 
         const { baseline: planBaseline, source: baselineSource } =
           resolveProgressionBaseline(
             planGoalForSetStructure,
             priorPlanExercise,
             workingSets,
+            { wasSwapped, loggedBaselineWeight },
           );
 
-        if (planBaseline === 0) {
-          console.log('[SKIP]', exName, '— no plan or logged baseline');
+        if (loggedBaselineWeight === 0) {
+          console.log('[SKIP]', exName, '— no sets logged this week');
           continue;
         }
 
-        /** W1 self-select (prior targetWeight 0): W2 = logged top set only, no RPE bump. */
-        const isW1CalibrationToW2 =
-          completedWeekNumber === 1 &&
-          (isSelfSelectWeightGoal(planGoalForSetStructure) ||
-            isSelfSelectWeightGoal(goalType)) &&
-          priorTargetWeight === 0 &&
-          loggedBaselineWeight > 0;
-
-        if (isW1CalibrationToW2) {
-          const equip = String(
-            exercise.equipment ?? getEquipmentForExerciseName(exName),
-          );
-
-          if (exercise.setStructure === 'pyramid') {
-            stampPyramidFromDesiredTopSet(
-              exercise,
-              loggedBaselineWeight,
-              equip,
-            );
-          } else {
-            exercise.targetWeight = roundToEquipmentPrecision(
-              loggedBaselineWeight,
-              equip,
-            );
-          }
-
-          stampExerciseAdaptationCopyAfterProgression({
-            exercise,
-            planBaseline: loggedBaselineWeight,
-            avgLoggedRpe,
-            accessoryTargetRpeForGap: Number(exercise.targetRpe) > 0
-              ? Number(exercise.targetRpe)
-              : 7.0,
-            isTargetLiftEx: Boolean(isTargetLiftEx),
-            dayIsVolume: Boolean(dayIsVolume),
-            nextWeekNumber: Number(nextWeekNumber),
-          });
-
-          console.log('[CALIBRATION W1→W2]', {
-            name: exName,
-            priorTargetWeight,
-            loggedBaselineWeight,
-            calWeight: exercise.targetWeight,
-          });
-
-          const calWeight = Number(exercise.targetWeight ?? 0);
-          const calTargetRpe =
-            Number(exercise.targetRpe) > 0 ? Number(exercise.targetRpe) : 7.0;
-          if (calWeight > 0) {
-            upsertAdaptationDraft(adaptationDrafts, {
-              key: exName,
-              exerciseName: String(
-                exercise.name ?? exercise.exerciseName ?? exName,
-              ),
-              muscleGroup: String(exercise.muscleGroup ?? ''),
-              previousWeight: 0,
-              progressedWeight: calWeight,
-              avgLoggedRpe: workingSets.length > 0 ? avgLoggedRpe : null,
-              targetRpe: calTargetRpe,
-              rpeGap:
-                workingSets.length > 0
-                  ? computeRpeGap(avgLoggedRpe, calTargetRpe)
-                  : null,
-              repsExceeded: false,
-              hadRpeData: workingSets.length > 0,
-              isCalibration: true,
-            });
-          }
+        if (planBaseline === 0) {
+          console.log('[SKIP]', exName, '— no plan or logged baseline');
           continue;
         }
 
@@ -3367,7 +4108,8 @@ Return ONLY this exact JSON structure:
           dayIsVolume,
           baselineMapSource,
           baselineSource,
-          isW1CalibrationToW2,
+          completedWeekNumber,
+          nextWeekNumber,
           priorPrescribedWeight: priorPlanExercise?.targetWeight,
         });
 
@@ -3401,8 +4143,7 @@ Return ONLY this exact JSON structure:
           else if (gap >= 0) increment = 5;
           else if (gap >= -2) increment = 0;
           else increment = -5;
-          if (isW1CalibrationToW2) increment = 0;
-          else increment = scalePositiveIncrementByExperience(
+          increment = scalePositiveIncrementByExperience(
             increment,
             experienceForProgression,
           );
@@ -3448,8 +4189,7 @@ Return ONLY this exact JSON structure:
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
           const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
           let increment = gap >= 2 ? 10 : gap >= 0 ? 5 : gap >= -1 ? 0 : -5;
-          if (isW1CalibrationToW2) increment = 0;
-          else increment = scalePositiveIncrementByExperience(
+          increment = scalePositiveIncrementByExperience(
             increment,
             experienceForProgression,
           );
@@ -3478,55 +4218,56 @@ Return ONLY this exact JSON structure:
         } else {
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
-          const tier = String(
+          const tier = normalizeCompoundTier(
             exercise.compoundTier ??
               getCompoundTierFromName(String(exercise.name ?? '')),
           );
           const equip = String(exercise.equipment ?? 'barbell');
-          let increment = resolveAccessoryLoadIncrement(
+          const progression = computeAccessoryProgressionTarget({
+            baselineWeight: loggedBaselineWeight,
             avgLoggedRpe,
-            accessoryTargetRpe,
-            equip,
-            tier,
-            experienceForProgression,
-          );
-          if (isW1CalibrationToW2) increment = 0;
-          increment = capIsolationDumbbellCableIncrement(increment, tier, equip);
-
-          const gap = computeRpeGap(avgLoggedRpe, accessoryTargetRpe);
+            targetRpe: accessoryTargetRpe,
+            equipment: equip,
+            compoundTier: tier,
+            trainingAge: experienceForProgression,
+            exerciseName: String(exercise.name ?? exercise.exerciseName ?? exName),
+          });
           const multiplier = experienceProgressionMultiplier(
             experienceForProgression,
           );
           console.log(
-            `[PROGRESSION] ${exName}: experience=${experienceForProgression}, multiplier=${multiplier}, gap=${gap}, increment=${increment}`,
+            `[PROGRESSION] ${exName}: experience=${experienceForProgression}, multiplier=${multiplier}, gap=${progression.rpeGap}, changeType=${progression.changeType}, increment=${progression.increment}`,
           );
 
-          if (exercise.setStructure === 'pyramid') {
-            const desiredTopSet = planBaseline + increment;
-            let topWeight = stampPyramidFromDesiredTopSet(
-              exercise,
-              desiredTopSet,
-              equip,
-            );
-            topWeight = applyMaxWeeklyIncrease(
-              planBaseline,
-              topWeight,
-              equip,
-              tier,
-            );
-            exercise.targetWeight = topWeight;
+          let newTargetWeight = applyMaxWeeklyIncrease(
+            planBaseline,
+            progression.newTargetWeight,
+            equip,
+            tier,
+          );
+
+          if (isPyramid) {
+            if (
+              Array.isArray(exercise.setTargets) &&
+              exercise.setTargets.length > 0
+            ) {
+              applyPyramidSetTargetsAfterProgression(
+                exercise,
+                workingSets,
+                newTargetWeight,
+                loggedBaselineWeight,
+                equip,
+              );
+              newTargetWeight = Number(exercise.targetWeight ?? newTargetWeight);
+            } else {
+              newTargetWeight = stampPyramidFromDesiredTopSet(
+                exercise,
+                newTargetWeight,
+                equip,
+              );
+            }
           } else {
-            let straightWeight = roundToEquipmentPrecision(
-              planBaseline + increment,
-              equip,
-            );
-            straightWeight = applyMaxWeeklyIncrease(
-              planBaseline,
-              straightWeight,
-              equip,
-              tier,
-            );
-            exercise.targetWeight = straightWeight;
+            exercise.targetWeight = newTargetWeight;
           }
         }
 
@@ -3538,9 +4279,26 @@ Return ONLY this exact JSON structure:
           isTargetLiftEx: Boolean(isTargetLiftEx),
           dayIsVolume: Boolean(dayIsVolume),
           nextWeekNumber: Number(nextWeekNumber),
+          loggedBaselineWeight,
         });
 
         const progressedWeight = Number(exercise.targetWeight ?? 0);
+        const progressionIncrement = progressedWeight - planBaseline;
+        const progressionRpeGap = computeRpeGap(
+          avgLoggedRpe,
+          accessoryTargetRpeForCopy,
+        );
+        console.log(
+          `[PROGRESSION W${completedWeekNumber}→W${nextWeekNumber}]`,
+          {
+            name: exName,
+            loggedWeight: loggedBaselineWeight,
+            rpeGap: progressionRpeGap,
+            increment: progressionIncrement,
+            newTargetWeight: progressedWeight,
+          },
+        );
+
         if (progressedWeight > 0) {
           const repTargetHigh = parseRepTargetHigh(
             priorPlanExercise?.reps,
@@ -3614,20 +4372,6 @@ Return ONLY this exact JSON structure:
     nextWeekData = {
       ...nextWeekData,
       days: refreshAdaptationThisSessionSummaries(nextWeekData.days),
-    };
-
-    nextWeekData = {
-      ...nextWeekData,
-      days: applyW1CalibrationPass(
-        nextWeekData.days,
-        completedWeekNumber,
-        dedupedLogs,
-        exerciseIdToName,
-        priorHeavyExerciseMap,
-        priorVolumeExerciseMap,
-        planJson,
-        weekData?.days ?? [],
-      ),
     };
 
     nextWeekData.adaptationChanges = buildAdaptationChangesFromDrafts(

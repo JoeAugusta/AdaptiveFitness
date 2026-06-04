@@ -365,6 +365,7 @@ PPL split unavailable for lower body target lifts (squat/deadlift).
 10. Consistency Grid new-user Jordan note
 11. Progress tab default lift by goal
 12. Body metric editing in profile
+13. **Language / i18n (v2.0)** — deferred. Requires i18next + react-i18next, translation files for all UI strings, App Store localization submissions. Recommended approach: English-only Jordan copy with translated UI shell. Do not implement until v2.0.
 
 ### ✅ Recently Fixed
 

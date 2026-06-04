@@ -55,6 +55,11 @@ const UNILATERAL_IDS = new Set([
   'q06', // Bulgarian Split Squat
   'q08', // Walking Lunge
   'q10', // Leg Press (Single Leg)
+  'q11', // Reverse Lunge
+  'q12', // Step Up
+  'q13', // Leg Extension (Single Leg)
+  'cv07', // Single-Leg Calf Raise
+  'h11', // Single Leg RDL
   'b06', // Dumbbell Row (ambiguous → unilateral per safety rule)
   'g05', // Cable Kickback
   's04', // Cable Lateral Raise (single-arm cable)
@@ -124,6 +129,10 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'incline_press', rotationPriority: 1, secondaryMuscleTags: ['front_delts', 'triceps'] },
   ),
   E(
+    { id: 'c02b', name: 'Incline Barbell Press', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders', 'Triceps'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'upper_chest' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'incline_press', rotationPriority: 1, secondaryMuscleTags: ['front_delts', 'triceps'] },
+  ),
+  E(
     { id: 'c03', name: 'Dumbbell Bench Press', primaryMuscle: 'Chest', secondaryMuscles: ['Triceps', 'Shoulders'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 2, secondaryMuscleTags: ['triceps', 'front_delts'] },
   ),
@@ -144,12 +153,20 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 3, secondaryMuscleTags: [] },
   ),
   E(
+    { id: 'c05d', name: 'Low Cable Fly', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'upper_chest' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 5, secondaryMuscleTags: [] },
+  ),
+  E(
     { id: 'c05c', name: 'Cable Fly (Mid Cable)', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest', gripVariant: 'Mid Cable' },
     { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 4, secondaryMuscleTags: [] },
   ),
   E(
     { id: 'c06', name: 'Dumbbell Chest Fly', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
     { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 2, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'c06a', name: 'Dumbbell Fly', primaryMuscle: 'Chest', secondaryMuscles: ['Shoulders'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_push', rotationGroup: 'chest_isolation', rotationPriority: 3, secondaryMuscleTags: [] },
   ),
   E(
     { id: 'c07', name: 'Machine Chest Press', primaryMuscle: 'Chest', secondaryMuscles: ['Triceps'], equipment: 'machine', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'mid_chest' },
@@ -203,6 +220,14 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 'b02', name: 'Deadlift', primaryMuscle: 'Back', secondaryMuscles: ['Hamstrings', 'Glutes', 'Core'], equipment: 'barbell', category: 'compound', difficulty: 'advanced', muscleEmphasis: 'lats' },
     { compoundTier: 'primary_compound', movementPattern: 'hinge', rotationGroup: 'deadlift', rotationPriority: 1, secondaryMuscleTags: ['glutes', 'hamstrings', 'upper_back', 'core'] },
+  ),
+  E(
+    { id: 'b12', name: 'Trap Bar Deadlift', primaryMuscle: 'Back', secondaryMuscles: ['Hamstrings', 'Glutes', 'Quads'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lats' },
+    { compoundTier: 'primary_compound', movementPattern: 'hinge', rotationGroup: 'deadlift', rotationPriority: 2, secondaryMuscleTags: ['hamstrings', 'glutes', 'quads'] },
+  ),
+  E(
+    { id: 'b13', name: 'Rack Pull', primaryMuscle: 'Back', secondaryMuscles: ['Hamstrings', 'Glutes', 'Traps'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'mid_back' },
+    { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'deadlift', rotationPriority: 3, secondaryMuscleTags: ['hamstrings', 'glutes', 'traps'] },
   ),
   E(
     { id: 'b03', name: 'Pull-Up', primaryMuscle: 'Back', secondaryMuscles: ['Biceps', 'Core'], equipment: 'bodyweight', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lats' },
@@ -286,6 +311,10 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_shoulders', rotationGroup: 'lateral_delt', rotationPriority: 1, secondaryMuscleTags: [] },
   ),
   E(
+    { id: 's03b', name: 'Lateral Raise', primaryMuscle: 'Shoulders', secondaryMuscles: ['Traps'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_delt' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_shoulders', rotationGroup: 'lateral_delt', rotationPriority: 1, secondaryMuscleTags: [] },
+  ),
+  E(
     { id: 's04', name: 'Cable Lateral Raise', primaryMuscle: 'Shoulders', secondaryMuscles: ['Traps'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_delt' },
     { compoundTier: 'isolation', movementPattern: 'isolation_shoulders', rotationGroup: 'lateral_delt', rotationPriority: 2, secondaryMuscleTags: [] },
   ),
@@ -308,6 +337,27 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 's09', name: 'Machine Lateral Raise', primaryMuscle: 'Shoulders', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_delt' },
     { compoundTier: 'isolation', movementPattern: 'isolation_shoulders', rotationGroup: 'lateral_delt', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 's10', name: 'Leaning Cable Lateral Raise', primaryMuscle: 'Shoulders', secondaryMuscles: ['Traps'], equipment: 'cable', category: 'isolation', difficulty: 'intermediate', muscleEmphasis: 'lateral_delt' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_shoulders', rotationGroup: 'lateral_delt', rotationPriority: 4, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 's10a', name: 'Cable Rear Delt Fly', primaryMuscle: 'Shoulders', secondaryMuscles: ['Back', 'Traps'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'rear_delt' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_pull', rotationGroup: 'rear_delt_isolation', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 's11', name: 'Band Pull-Apart', primaryMuscle: 'Shoulders', secondaryMuscles: ['Traps', 'Back'], equipment: 'band', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'rear_delt' },
+    { usesWeight: false },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_pull', rotationGroup: 'rear_delt_isolation', rotationPriority: 4, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 's12', name: 'Reverse Pec Deck', primaryMuscle: 'Shoulders', secondaryMuscles: ['Back'], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'rear_delt' },
+    { compoundTier: 'isolation', movementPattern: 'horizontal_pull', rotationGroup: 'rear_delt_isolation', rotationPriority: 5, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 's13', name: 'Smith Machine Press', primaryMuscle: 'Shoulders', secondaryMuscles: ['Triceps'], equipment: 'machine', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'front_delt' },
+    { compoundTier: 'secondary_compound', movementPattern: 'vertical_push', rotationGroup: 'overhead_press', rotationPriority: 5, secondaryMuscleTags: ['triceps'] },
   ),
 
   E(
@@ -350,6 +400,18 @@ export const EXERCISES: Exercise[] = [
     { id: 'bi08', name: 'Preacher Curl Machine', primaryMuscle: 'Biceps', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'short_head_bicep' },
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 10, secondaryMuscleTags: [] },
   ),
+  E(
+    { id: 'bi09', name: 'Cross Body Hammer Curl', primaryMuscle: 'Biceps', secondaryMuscles: ['Forearms'], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_bicep' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 11, secondaryMuscleTags: ['brachialis'] },
+  ),
+  E(
+    { id: 'bi10', name: 'Rope Hammer Curl', primaryMuscle: 'Biceps', secondaryMuscles: ['Forearms'], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_bicep' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 12, secondaryMuscleTags: ['brachialis'] },
+  ),
+  E(
+    { id: 'bi11', name: 'Concentration Curl', primaryMuscle: 'Biceps', secondaryMuscles: [], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'short_head_bicep' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 13, secondaryMuscleTags: [] },
+  ),
 
   E(
     { id: 'tr01', name: 'Tricep Pushdown', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'lateral_head_tricep' },
@@ -388,7 +450,15 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 1, secondaryMuscleTags: [] },
   ),
   E(
+    { id: 'tr03b', name: 'Skull Crusher', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'barbell', category: 'isolation', difficulty: 'intermediate', muscleEmphasis: 'long_head_tricep' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 1, secondaryMuscleTags: [] },
+  ),
+  E(
     { id: 'tr04', name: 'Close-Grip Bench Press', primaryMuscle: 'Triceps', secondaryMuscles: ['Chest', 'Shoulders'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lateral_head_tricep' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 3, secondaryMuscleTags: ['triceps'] },
+  ),
+  E(
+    { id: 'tr04b', name: 'Close Grip Bench Press', primaryMuscle: 'Triceps', secondaryMuscles: ['Chest', 'Shoulders'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lateral_head_tricep' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 3, secondaryMuscleTags: ['triceps'] },
   ),
   E(
@@ -397,6 +467,10 @@ export const EXERCISES: Exercise[] = [
   ),
   E(
     { id: 'tr06', name: 'Dips', primaryMuscle: 'Triceps', secondaryMuscles: ['Chest', 'Shoulders'], equipment: 'bodyweight', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lateral_head_tricep' },
+    { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'dip', rotationPriority: 1, secondaryMuscleTags: ['chest', 'front_delts'] },
+  ),
+  E(
+    { id: 'tr06b', name: 'Dip', primaryMuscle: 'Triceps', secondaryMuscles: ['Chest', 'Shoulders'], equipment: 'bodyweight', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lateral_head_tricep' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'dip', rotationPriority: 1, secondaryMuscleTags: ['chest', 'front_delts'] },
   ),
   E(
@@ -418,6 +492,10 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 'tr11', name: 'Smith Machine Close Grip', primaryMuscle: 'Triceps', secondaryMuscles: ['Chest', 'Shoulders'], equipment: 'machine', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'lateral_head_tricep' },
     { compoundTier: 'secondary_compound', movementPattern: 'horizontal_push', rotationGroup: 'bench_press', rotationPriority: 7, secondaryMuscleTags: ['triceps'] },
+  ),
+  E(
+    { id: 'tr12', name: 'Cable Overhead Tricep Extension', primaryMuscle: 'Triceps', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'long_head_tricep' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_push', rotationGroup: 'tricep_extension', rotationPriority: 6, secondaryMuscleTags: [] },
   ),
 
   E(
@@ -460,6 +538,22 @@ export const EXERCISES: Exercise[] = [
     { id: 'q10', name: 'Leg Press (Single Leg)', primaryMuscle: 'Quads', secondaryMuscles: ['Glutes'], equipment: 'machine', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'quads' },
     { compoundTier: 'secondary_compound', movementPattern: 'squat', rotationGroup: 'leg_press', rotationPriority: 2, secondaryMuscleTags: ['glutes'] },
   ),
+  E(
+    { id: 'q11', name: 'Reverse Lunge', primaryMuscle: 'Quads', secondaryMuscles: ['Glutes', 'Hamstrings'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'glutes' },
+    { compoundTier: 'secondary_compound', movementPattern: 'lunge', rotationGroup: 'lunge', rotationPriority: 4, secondaryMuscleTags: ['glutes', 'hamstrings'] },
+  ),
+  E(
+    { id: 'q12', name: 'Step Up', primaryMuscle: 'Glutes', secondaryMuscles: ['Quads', 'Hamstrings'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'glutes' },
+    { compoundTier: 'secondary_compound', movementPattern: 'lunge', rotationGroup: 'lunge', rotationPriority: 5, secondaryMuscleTags: ['quads', 'hamstrings'] },
+  ),
+  E(
+    { id: 'q13', name: 'Leg Extension (Single Leg)', primaryMuscle: 'Quads', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'quads' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'quad_isolation', rotationPriority: 2, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'q14', name: 'Cable Leg Extension', primaryMuscle: 'Quads', secondaryMuscles: [], equipment: 'cable', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'quads' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'quad_isolation', rotationPriority: 3, secondaryMuscleTags: [] },
+  ),
 
   E(
     { id: 'h01', name: 'Romanian Deadlift', primaryMuscle: 'Hamstrings', secondaryMuscles: ['Glutes', 'Back'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'hamstrings' },
@@ -474,11 +568,19 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'rdl', rotationPriority: 2, secondaryMuscleTags: ['lower_back', 'glutes'] },
   ),
   E(
+    { id: 'h03b', name: 'Stiff Leg Deadlift', primaryMuscle: 'Hamstrings', secondaryMuscles: ['Glutes', 'Back'], equipment: 'barbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'rdl', rotationPriority: 2, secondaryMuscleTags: ['lower_back', 'glutes'] },
+  ),
+  E(
     { id: 'h04', name: 'Dumbbell Romanian Deadlift', primaryMuscle: 'Hamstrings', secondaryMuscles: ['Glutes'], equipment: 'dumbbell', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'hamstrings' },
     { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'rdl', rotationPriority: 4, secondaryMuscleTags: ['glutes'] },
   ),
   E(
     { id: 'h05', name: 'Nordic Hamstring Curl', primaryMuscle: 'Hamstrings', secondaryMuscles: [], equipment: 'bodyweight', category: 'isolation', difficulty: 'advanced', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'hamstring_isolation', rotationPriority: 2, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'h05b', name: 'Nordic Curl', primaryMuscle: 'Hamstrings', secondaryMuscles: [], equipment: 'bodyweight', category: 'isolation', difficulty: 'advanced', muscleEmphasis: 'hamstrings' },
     { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'hamstring_isolation', rotationPriority: 2, secondaryMuscleTags: [] },
   ),
   E(
@@ -492,6 +594,22 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 'h08', name: 'Seated Leg Curl', primaryMuscle: 'Hamstrings', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'hamstrings' },
     { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'hamstring_isolation', rotationPriority: 4, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'h09', name: 'Swiss Ball Leg Curl', primaryMuscle: 'Hamstrings', secondaryMuscles: [], equipment: 'bodyweight', category: 'isolation', difficulty: 'intermediate', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'hamstring_isolation', rotationPriority: 5, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'h10', name: 'Standing Leg Curl', primaryMuscle: 'Hamstrings', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'hamstring_isolation', rotationPriority: 6, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'h11', name: 'Single Leg RDL', primaryMuscle: 'Hamstrings', secondaryMuscles: ['Glutes'], equipment: 'dumbbell', category: 'compound', difficulty: 'intermediate', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'rdl', rotationPriority: 5, secondaryMuscleTags: ['glutes'] },
+  ),
+  E(
+    { id: 'h12', name: 'Good Morning', primaryMuscle: 'Hamstrings', secondaryMuscles: ['Glutes', 'Back'], equipment: 'barbell', category: 'compound', difficulty: 'advanced', muscleEmphasis: 'hamstrings' },
+    { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'rdl', rotationPriority: 6, secondaryMuscleTags: ['glutes', 'lower_back'] },
   ),
 
   E(
@@ -550,6 +668,14 @@ export const EXERCISES: Exercise[] = [
   E(
     { id: 'cv06', name: 'Smith Machine Calf Raise', primaryMuscle: 'Calves', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'gastrocnemius' },
     { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'calf_isolation', rotationPriority: 6, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'cv07', name: 'Single-Leg Calf Raise', primaryMuscle: 'Calves', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'gastrocnemius' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'calf_isolation', rotationPriority: 7, secondaryMuscleTags: [] },
+  ),
+  E(
+    { id: 'cv08', name: 'Calf Raise', primaryMuscle: 'Calves', secondaryMuscles: [], equipment: 'machine', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'gastrocnemius' },
+    { compoundTier: 'isolation', movementPattern: 'isolation_legs', rotationGroup: 'calf_isolation', rotationPriority: 8, secondaryMuscleTags: [] },
   ),
 
   E(

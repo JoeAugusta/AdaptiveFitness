@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { shareAsync } from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,14 +24,20 @@ import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
 import { stripEmDash } from '../utils/jordanText';
-import { hapticPR, hapticSuccess } from '../utils/haptics';
+import { hapticMedium, hapticPR, hapticSuccess } from '../utils/haptics';
 import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
+import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
+import { useMetric } from '../utils/units';
 import {
   computeSessionShareStats,
+  computeSessionPrsFromLog,
   computeTopLiftsFromSets,
   fallbackJordanNoteFromRpe,
+  buildExerciseBestsFromLogs,
+  pickTopSessionPr,
   resolveSessionTitleFromPlan,
   truncateJordanNoteForShare,
+  type SessionPrShare,
 } from '../utils/workoutShare';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
@@ -233,6 +240,9 @@ export default function WorkoutCompleteScreen() {
   const [shareCardData, setShareCardData] = useState<ShareCardProps | null>(null);
   const shareCardRef = useRef<View>(null);
   const shareCapturePendingRef = useRef(false);
+  const prCardRef = useRef<View>(null);
+  const [topPr, setTopPr] = useState<SessionPrShare | null>(null);
+  const { isMetric } = useMetric();
 
   useEffect(() => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
@@ -400,6 +410,89 @@ export default function WorkoutCompleteScreen() {
       clearTimeout(prTimer);
     };
   }, [prsHit]);
+
+  useEffect(() => {
+    if (prsHit <= 0) {
+      setTopPr(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId || cancelled) return;
+
+        const [{ data: log }, { data: priorLogs }] = await Promise.all([
+          supabase
+            .from('workout_logs')
+            .select('sets_json')
+            .eq('user_id', userId)
+            .eq('plan_id', planId)
+            .eq('week_number', weekNumber)
+            .eq('day_number', dayNumber)
+            .order('logged_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('workout_logs')
+            .select('sets_json, week_number, day_number')
+            .eq('user_id', userId)
+            .eq('plan_id', planId)
+            .eq('skipped', false),
+        ]);
+
+        if (cancelled) return;
+
+        const sets = (log?.sets_json ?? []) as Array<{
+          exerciseName?: string;
+          exerciseId?: string;
+          name?: string;
+          setNumber?: number;
+          weightLbs?: number;
+          weight?: number;
+          reps?: number;
+        }>;
+        const historicalLogs = (priorLogs ?? []).filter(
+          (row) =>
+            !(
+              row.week_number === weekNumber &&
+              row.day_number === dayNumber
+            ),
+        );
+        const historicalBests = buildExerciseBestsFromLogs(historicalLogs);
+        const sessionPrs = computeSessionPrsFromLog(sets, historicalBests);
+        setTopPr(pickTopSessionPr(sessionPrs));
+      } catch (err) {
+        if (__DEV__) console.warn('[WorkoutComplete] session PR load failed:', err);
+        if (!cancelled) setTopPr(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prsHit, planId, weekNumber, dayNumber]);
+
+  const handleSharePR = useCallback(async () => {
+    if (!topPr || !prCardRef.current) return;
+    try {
+      await hapticMedium();
+      const uri = await captureRef(prCardRef, {
+        format: 'jpg',
+        quality: 0.95,
+        width: PR_SHARE_CARD_SIZE,
+        result: 'tmpfile',
+      });
+      await shareAsync(uri, {
+        mimeType: 'image/jpeg',
+        dialogTitle: 'Share your PR',
+      });
+    } catch (e) {
+      console.warn('[PRShare]', e);
+    }
+  }, [topPr]);
 
   useEffect(() => {
     if (nextWeekReady) {
@@ -585,6 +678,51 @@ export default function WorkoutCompleteScreen() {
       if (!nextOk) {
         setGenerationError(true);
       } else {
+        const nextWeekNumber = weekNumber + 1;
+
+        const { data: planBeforeAdvance } = await supabase
+          .from('plans')
+          .select('current_week')
+          .eq('id', planId)
+          .maybeSingle();
+
+        if (Number(planBeforeAdvance?.current_week ?? 0) < nextWeekNumber) {
+          const { error: weekAdvanceErr } = await supabase
+            .from('plans')
+            .update({ current_week: nextWeekNumber })
+            .eq('id', planId);
+
+          if (weekAdvanceErr) {
+            console.warn(
+              '[WorkoutComplete] current_week update failed:',
+              weekAdvanceErr.message,
+            );
+          }
+        }
+
+        const { data: refreshedPlan, error: refreshErr } = await supabase
+          .from('plans')
+          .select('plan_json, current_week')
+          .eq('id', planId)
+          .maybeSingle();
+
+        if (refreshErr) {
+          console.warn(
+            '[WorkoutComplete] plan refetch after next week failed:',
+            refreshErr.message,
+          );
+        } else if (
+          refreshedPlan?.plan_json &&
+          Number(refreshedPlan.current_week) !== nextWeekNumber
+        ) {
+          console.warn(
+            '[WorkoutComplete] current_week still stale after update:',
+            refreshedPlan.current_week,
+            'expected',
+            nextWeekNumber,
+          );
+        }
+
         setNextWeekReady(true);
         const genData = nextWeekSettled.status === 'fulfilled'
           ? (nextWeekSettled.value.data as { adaptationChangeCount?: number } | null)
@@ -592,18 +730,14 @@ export default function WorkoutCompleteScreen() {
         if (typeof genData?.adaptationChangeCount === 'number') {
           setAdaptationChangeCount(genData.adaptationChangeCount);
         } else {
-          const { data: refreshed } = await supabase
-            .from('plans')
-            .select('plan_json')
-            .eq('id', planId)
-            .maybeSingle();
           const weeks =
-            (refreshed?.plan_json as { weeks?: unknown[] } | undefined)?.weeks ?? [];
+            (refreshedPlan?.plan_json as { weeks?: unknown[] } | undefined)?.weeks ??
+            [];
           const nextWeek = weeks.find(
             (w) =>
               rawWeekNumber(
                 w as { weekNumber?: unknown; week_number?: unknown },
-              ) === weekNumber + 1,
+              ) === nextWeekNumber,
           ) as { adaptationChanges?: unknown[] } | undefined;
           setAdaptationChangeCount(
             Array.isArray(nextWeek?.adaptationChanges)
@@ -837,6 +971,19 @@ export default function WorkoutCompleteScreen() {
         </View>
       ) : null}
 
+      {topPr ? (
+        <View style={styles.offscreen} pointerEvents="none">
+          <PRShareCard
+            cardRef={prCardRef}
+            exerciseName={topPr.exerciseName}
+            weightLbs={topPr.weightLbs}
+            isMetric={isMetric}
+            isEstimated={topPr.isEstimated}
+            rank={1}
+          />
+        </View>
+      ) : null}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -1049,6 +1196,17 @@ export default function WorkoutCompleteScreen() {
             <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
           </TouchableOpacity>
         )}
+
+        {prsHit > 0 && topPr && sharingAvailable ? (
+          <TouchableOpacity
+            style={styles.prShareBtn}
+            onPress={() => void handleSharePR()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="trophy-outline" size={18} color={Colors.accent} />
+            <Text style={styles.prShareBtnText}>Share Your PR</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={[
@@ -1351,6 +1509,29 @@ const styles = StyleSheet.create({
     left: -10000,
     top: 0,
     opacity: 0,
+  },
+  offscreen: {
+    position: 'absolute',
+    top: -1000,
+    left: 0,
+    opacity: 0,
+    pointerEvents: 'none',
+  },
+  prShareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    height: 48,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    marginTop: Spacing.md,
+  },
+  prShareBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
   },
 
   summaryBanner: {

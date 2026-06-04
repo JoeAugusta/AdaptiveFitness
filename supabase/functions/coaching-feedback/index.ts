@@ -75,6 +75,29 @@ Lead with the number, follow with the implication. No hand-holding.`,
 
     isSessionSummary = exerciseName === 'session_summary';
 
+    if (!isSessionSummary) {
+      const loggedW = Number(loggedWeight);
+      const targetW = Number(targetWeight);
+      const ratio = targetW > 0 ? loggedW / targetW : 0;
+
+      // 3x+ difference = almost certainly a swap, not an error
+      const isLikelySwap = ratio > 3.0 || (ratio > 0 && ratio < 0.33);
+
+      if (isLikelySwap) {
+        return new Response(
+          JSON.stringify({
+            feedback:
+              "Logged weight looks different from the plan target. If you swapped exercises, that's expected. Log your RPE honestly and Jordan will calibrate from here.",
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      // isAnomalous (1.5x–3x): fall through to Claude for existing feedback
+    }
+
     const perSetSystemPrompt = `${perSetToneInstruction}
 
 You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set. Respond with a single sentence of coaching feedback — no more, no less. Speak directly to the athlete. Reference their actual numbers. Tie your feedback to what the numbers mean, not just what happened.

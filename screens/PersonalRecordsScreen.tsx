@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { captureRef } from 'react-native-view-shot';
+import { shareAsync } from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,8 +20,16 @@ import {
   type PersonalRecord,
 } from '../utils/personalRecords';
 import { useMetric } from '../utils/units';
+import { hapticLight } from '../utils/haptics';
+import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
 import type { ProgressStackParamList, RootStackParamList } from '../navigation/types';
 
+type PRData = {
+  exerciseName: string;
+  weightLbs: number;
+  isEstimated?: boolean;
+  rank?: number;
+};
 
 type Nav = NativeStackNavigationProp<ProgressStackParamList, 'PersonalRecords'>;
 
@@ -27,9 +38,40 @@ export default function PersonalRecordsScreen() {
   const rootNavigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
-  const { formatWorkoutWeight } = useMetric();
+  const { formatWorkoutWeight, isMetric } = useMetric();
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPR, setSelectedPR] = useState<PRData | null>(null);
+  const prCardRef = useRef<View>(null);
+
+  const handleShareSinglePR = useCallback(async (pr: PersonalRecord, rank: number) => {
+    setSelectedPR({
+      exerciseName: pr.exerciseName,
+      weightLbs: pr.bestWeightLbs,
+      isEstimated: pr.bestReps > 1,
+      rank: rank + 1,
+    });
+    await hapticLight();
+    setTimeout(async () => {
+      if (!prCardRef.current) return;
+      try {
+        const uri = await captureRef(prCardRef, {
+          format: 'jpg',
+          quality: 0.95,
+          width: PR_SHARE_CARD_SIZE,
+          result: 'tmpfile',
+        });
+        await shareAsync(uri, {
+          mimeType: 'image/jpeg',
+          dialogTitle: `Share ${pr.exerciseName} PR`,
+        });
+      } catch (e) {
+        console.warn('[PRShare]', e);
+      } finally {
+        setSelectedPR(null);
+      }
+    }, 150);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -48,6 +90,19 @@ export default function PersonalRecordsScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.offscreen} pointerEvents="none">
+        {selectedPR ? (
+          <PRShareCard
+            cardRef={prCardRef}
+            exerciseName={selectedPR.exerciseName}
+            weightLbs={selectedPR.weightLbs}
+            isMetric={isMetric}
+            isEstimated={selectedPR.isEstimated ?? true}
+            rank={selectedPR.rank}
+          />
+        ) : null}
+      </View>
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>‹</Text>
@@ -143,6 +198,18 @@ export default function PersonalRecordsScreen() {
                     <Text style={styles.rowValue}>{formatWorkoutWeight(pr.estimated1RM)}</Text>
                     <Text style={styles.rowUnit}>est. 1RM</Text>
                   </View>
+                  <TouchableOpacity
+                    style={styles.prRowShareBtn}
+                    onPress={() => void handleShareSinglePR(pr, i)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name="share-outline"
+                      size={18}
+                      color={Colors.textSecondary}
+                    />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -283,6 +350,19 @@ const styles = StyleSheet.create({
   },
   rowRight: {
     alignItems: 'flex-end',
+    marginRight: Spacing.sm,
+  },
+  prRowShareBtn: {
+    padding: Spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  offscreen: {
+    position: 'absolute',
+    top: -1000,
+    left: 0,
+    opacity: 0,
+    pointerEvents: 'none',
   },
   rowValue: {
     fontFamily: Fonts.bold,

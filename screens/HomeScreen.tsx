@@ -30,7 +30,6 @@ import {
   CommonStyles,
 } from '../constants/design';
 import { getSessionIntent } from '../utils/getSessionIntent';
-import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getLocalDateString,
@@ -162,188 +161,9 @@ type PlanData = {
     latestJordanNoteUpdatedAt?: string | null;
     jordanWelcome?: string | null;
   };
-  /** Current week from plan_json.weeks (adaptation feed preview) */
-  adaptationChanges?: AdaptationChange[];
-  currentWeekPhase?: string;
   /** Set when the plan start_date is in the future — shows "starts on" hero */
   planStartsOn?: string | null;
 };
-
-type AdaptationChangeType =
-  | 'increase'
-  | 'decrease'
-  | 'hold'
-  | 'deload'
-  | 'calibration';
-
-type AdaptationChange = {
-  exerciseName: string;
-  muscleGroup: string;
-  changeType: AdaptationChangeType;
-  previousWeight: number;
-  newWeight: number;
-  weightDelta: number;
-  avgLoggedRpe: number | null;
-  targetRpe: number | null;
-  rpeGap: number | null;
-  reason: string;
-};
-
-const ADAPTATION_CHANGE_SORT: Record<AdaptationChangeType, number> = {
-  increase: 0,
-  hold: 1,
-  decrease: 2,
-  deload: 3,
-  calibration: 4,
-};
-
-function formatAdaptationWeightLb(n: number): string {
-  const rounded = Math.round(n * 10) / 10;
-  return rounded % 1 === 0 ? String(Math.round(rounded)) : String(rounded);
-}
-
-function sortAdaptationChanges(changes: AdaptationChange[]): AdaptationChange[] {
-  return [...changes].sort(
-    (a, b) =>
-      (ADAPTATION_CHANGE_SORT[a.changeType] ?? 9) -
-      (ADAPTATION_CHANGE_SORT[b.changeType] ?? 9),
-  );
-}
-
-function AdaptationChangeIndicator({ changeType }: { changeType: AdaptationChangeType }) {
-  const visualType = changeType === 'calibration' ? 'increase' : changeType;
-  switch (visualType) {
-    case 'increase':
-      return (
-        <Ionicons name="trending-up-outline" size={14} color={Colors.success} />
-      );
-    case 'decrease':
-      return (
-        <Ionicons name="trending-down-outline" size={14} color={Colors.danger} />
-      );
-    case 'deload':
-      return <Ionicons name="refresh-outline" size={14} color={Colors.accent} />;
-    default:
-      return <Ionicons name="remove-outline" size={14} color={Colors.textTertiary} />;
-  }
-}
-
-function adaptationWeightSummaryText(item: AdaptationChange): string {
-  switch (item.changeType) {
-    case 'increase':
-      if (item.previousWeight === 0) {
-        return `Self-select → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-      }
-      return `${formatAdaptationWeightLb(item.previousWeight)} → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-    case 'decrease':
-      return `${formatAdaptationWeightLb(item.previousWeight)} → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-    case 'hold':
-      return `Held at ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-    case 'deload':
-      return 'Deload week';
-    case 'calibration':
-      return `Self-select → ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-    default:
-      return `Held at ${formatAdaptationWeightLb(item.newWeight)} lbs`;
-  }
-}
-
-function adaptationWeightSummaryStyle(item: AdaptationChange) {
-  switch (item.changeType) {
-    case 'increase':
-      return styles.adaptationWeightIncrease;
-    case 'decrease':
-      return styles.adaptationWeightDecrease;
-    case 'deload':
-      return styles.adaptationWeightDeload;
-    default:
-      return styles.adaptationWeightHold;
-  }
-}
-
-function AdaptationChangesCard({
-  weekNumber,
-  phase,
-  changes,
-  onPress,
-}: {
-  weekNumber: number;
-  phase: string;
-  changes: AdaptationChange[];
-  onPress: () => void;
-}) {
-  const sorted = sortAdaptationChanges(changes);
-  const isDeload = phase === 'deload';
-  const preview = sorted.slice(0, 3);
-  const remaining = sorted.length - preview.length;
-
-  return (
-    <TouchableOpacity
-      style={styles.adaptationCard}
-      activeOpacity={0.85}
-      onPress={onPress}
-    >
-      <View style={styles.adaptationHeaderRow}>
-        <JordanAvatar size={24} />
-        <Text style={styles.adaptationJordanLabel}>JORDAN</Text>
-        <Text style={styles.adaptationHeaderSep}> • </Text>
-        <Text style={styles.adaptationWeekLabel}>
-          WEEK {weekNumber} ADJUSTMENTS
-        </Text>
-      </View>
-
-      <View style={styles.adaptationDivider} />
-
-      {isDeload ? (
-        <View style={styles.adaptationDeloadRow}>
-          <Ionicons name="refresh-outline" size={14} color={Colors.accent} />
-          <Text style={styles.adaptationDeloadText}>
-            Scheduled recovery week — weights at 85%
-          </Text>
-        </View>
-      ) : (
-        <>
-          {preview.map((item, index) => (
-            <View
-              key={`${item.exerciseName}-${item.changeType}-${index}`}
-              style={[
-                styles.adaptationChangeRow,
-                index > 0 && styles.adaptationChangeRowSpaced,
-              ]}
-            >
-              <AdaptationChangeIndicator changeType={item.changeType} />
-              <Text
-                style={styles.adaptationExerciseName}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {item.exerciseName}
-              </Text>
-              <Text
-                style={[
-                  styles.adaptationWeightBase,
-                  adaptationWeightSummaryStyle(item),
-                ]}
-                numberOfLines={1}
-              >
-                {adaptationWeightSummaryText(item)}
-              </Text>
-            </View>
-          ))}
-
-          {remaining > 0 ? (
-            <>
-              <View style={styles.adaptationDivider} />
-              <Text style={styles.adaptationFooter}>
-                +{remaining} more changes • See all adjustments →
-              </Text>
-            </>
-          ) : null}
-        </>
-      )}
-    </TouchableOpacity>
-  );
-}
 
 type SetItem = {
   setNumber: number;
@@ -757,7 +577,9 @@ export default function HomeScreen() {
     full_name?: string | null;
   } | null>(null);
   const [totalSessions, setTotalSessions] = useState<number>(0);
-  const [weeklyVolume, setWeeklyVolume] = useState<number>(0);
+  const [progressedCount, setProgressedCount] = useState<number | null>(null);
+  const [isWeek1, setIsWeek1] = useState(false);
+  const [isDeload, setIsDeload] = useState(false);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -868,12 +690,6 @@ export default function HomeScreen() {
     return false;
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadDashboardData();
-    }, []),
-  );
-
   useEffect(() => {
     setMissedCardDismissed(false);
   }, [planSnapshotForMissed?.planId, planSnapshotForMissed?.currentWeek]);
@@ -911,6 +727,9 @@ export default function HomeScreen() {
         setSportDashboardUserId(null);
         setProfile(null);
         setGoalProgress(null);
+        setProgressedCount(null);
+        setIsWeek1(false);
+        setIsDeload(false);
         return;
       }
       uidRef.current = userId;
@@ -953,6 +772,8 @@ export default function HomeScreen() {
         .limit(1)
         .maybeSingle();
 
+      // Week unlock / hero session always derive from this fresh row — not AsyncStorage or stale state.
+
       if (planError || !planRow) {
         setPlanStatus(null);
         setPlanData(null);
@@ -969,6 +790,9 @@ export default function HomeScreen() {
         setIsWeek1NoSessionsYet(false);
         setHasLoggedWorkoutToday(false);
         setGoalProgress(null);
+        setProgressedCount(null);
+        setIsWeek1(false);
+        setIsDeload(false);
         return;
       }
 
@@ -1042,8 +866,45 @@ export default function HomeScreen() {
         setPlanConcurrentSport(null);
         setTodaySportLog(null);
         setHasLoggedWorkoutToday(false);
+        setProgressedCount(null);
+        setIsWeek1(false);
+        setIsDeload(false);
         return;
       }
+
+      const currentWeekIndex =
+        planJson.weeks?.findIndex(
+          (w: unknown) => getPlanWeekNumber(w) === plan.current_week,
+        ) ?? -1;
+      const adaptationChanges = (
+        (currentWeekIndex >= 0
+          ? (
+              planJson.weeks?.[currentWeekIndex] as {
+                adaptationChanges?: Array<{
+                  changeType?: string;
+                  direction?: string;
+                }>;
+              }
+            )?.adaptationChanges
+          : (currentWeekData as { adaptationChanges?: unknown }).adaptationChanges) ??
+          []
+      ) as Array<{ changeType?: string; direction?: string }>;
+      const progressedExerciseCount = adaptationChanges.filter(
+        (c) =>
+          c.changeType === 'increase' ||
+          c.direction === 'up' ||
+          c.changeType === 'weight_increase',
+      ).length;
+      setProgressedCount(progressedExerciseCount);
+      setIsWeek1((plan.current_week ?? 1) === 1);
+      setIsDeload(
+        !!(
+          currentWeekIndex >= 0 &&
+          (planJson.weeks?.[currentWeekIndex] as { phase?: string })?.phase ===
+            'deload'
+        ) ||
+          currentWeekPhase === 'deload',
+      );
 
       // Plan not started until start_date (local YYYY-MM-DD) is today or earlier.
       const planStartRaw: string | null =
@@ -1087,6 +948,9 @@ export default function HomeScreen() {
         setDevBypassDayGate(false);
         setPlanSnapshotForMissed(null);
         setStatsLoading(false);
+        setProgressedCount(null);
+        setIsWeek1(false);
+        setIsDeload(false);
         return;
       }
 
@@ -1309,13 +1173,6 @@ export default function HomeScreen() {
           ).latestJordanNoteUpdatedAt,
           jordanWelcome: (planJson as { jordanWelcome?: string }).jordanWelcome ?? null,
         },
-        adaptationChanges: Array.isArray(
-          (currentWeekData as { adaptationChanges?: unknown }).adaptationChanges,
-        )
-          ? ((currentWeekData as { adaptationChanges: AdaptationChange[] })
-              .adaptationChanges)
-          : [],
-        currentWeekPhase: currentWeekPhase ?? '',
         planStartsOn: null,
       });
       setPlanSnapshotForMissed({
@@ -1401,6 +1258,12 @@ export default function HomeScreen() {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadDashboardData();
+    }, []),
+  );
+
   const loadStats = async (uid: string, planId: string, currentWeek: number) => {
     if (!planId) {
       setStatsLoading(false);
@@ -1438,7 +1301,6 @@ export default function HomeScreen() {
       if (weeklyRes.error) {
         console.error('workout_logs error:', weeklyRes.error.message);
         setWorkoutLogs([]);
-        setWeeklyVolume(0);
       } else {
         const planWeekRows =
           (weeklyRes.data ?? []) as Array<{
@@ -1450,26 +1312,6 @@ export default function HomeScreen() {
             session_fatigue_rating?: number;
             id?: string;
           }>;
-        let volumeLbs = 0;
-        for (const row of planWeekRows) {
-          if (!Array.isArray(row.sets_json)) continue;
-          for (const raw of row.sets_json) {
-            const s = raw as {
-              weightLbs?: number;
-              weight?: number;
-              reps?: number;
-              exerciseName?: string;
-            };
-            const w = Number(s.weightLbs ?? s.weight ?? 0);
-            const r = Number(s.reps ?? 0);
-            if (w > 0 && r > 0) {
-              // Unilateral exercises: reps are per-side, multiply ×2 for bilateral-equivalent volume
-              const repMultiplier = isExerciseUnilateral(s.exerciseName ?? '') ? 2 : 1;
-              volumeLbs += w * r * repMultiplier;
-            }
-          }
-        }
-        setWeeklyVolume(volumeLbs);
         setWorkoutLogs(planWeekRows);
       }
 
@@ -1511,7 +1353,21 @@ export default function HomeScreen() {
         body: { userId, planId: planData.planId, completedWeekNumber: planData.currentWeek },
       });
       if (error) throw error;
-      setPlanData((prev) => (prev ? { ...prev, showGenerateNextWeekCTA: false } : prev));
+      const nextWeekNumber = planData.currentWeek + 1;
+      const { data: planBeforeAdvance } = await supabase
+        .from('plans')
+        .select('current_week')
+        .eq('id', planData.planId)
+        .maybeSingle();
+      if (Number(planBeforeAdvance?.current_week ?? 0) < nextWeekNumber) {
+        const { error: weekAdvanceErr } = await supabase
+          .from('plans')
+          .update({ current_week: nextWeekNumber })
+          .eq('id', planData.planId);
+        if (weekAdvanceErr) {
+          console.warn('[Home] current_week update failed:', weekAdvanceErr.message);
+        }
+      }
       await loadDashboardData();
     } catch {
       Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
@@ -1720,15 +1576,7 @@ export default function HomeScreen() {
 
   const streakDisplay = currentStreak === 0 ? '—' : String(currentStreak);
   const sessionsDisplay = statsLoading ? '-' : String(totalSessions);
-  const weeklySessionCount = workoutLogs?.length ?? 0;
   const dashboardCurrentWeek = planData?.currentWeek ?? 1;
-  const volumeDisplay = statsLoading
-    ? '—'
-    : weeklyVolume >= 1000
-      ? `${(weeklyVolume / 1000).toFixed(1)}k lbs`
-      : weeklyVolume > 0
-        ? `${weeklyVolume.toLocaleString()} lbs`
-        : '—';
 
   const sessionCount = totalSessions;
   const isDay1ColdStart =
@@ -2461,24 +2309,81 @@ export default function HomeScreen() {
                   </Text>
                   <Text style={styles.quickStatLabel}>Sessions</Text>
                 </View>
-                <View style={styles.quickStatCard}>
-                  <Ionicons name="trending-up-outline" size={20} color={Colors.success} />
-                  <Text
-                    style={[
-                      styles.quickStatValue,
-                      styles.quickStatValueVolume,
-                      weeklySessionCount > 0 &&
-                        weeklyVolume > 0 &&
-                        !statsLoading
-                        ? styles.quickStatValueAccent
-                        : null,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {volumeDisplay}
+                <TouchableOpacity
+                  style={[styles.statCard, styles.statCardTappable]}
+                  onPress={() => {
+                    if (
+                      !isWeek1 &&
+                      progressedCount !== null &&
+                      progressedCount > 0
+                    ) {
+                      navigation.navigate('AdaptationFeed', {
+                        weekNumber: dashboardCurrentWeek,
+                      });
+                    }
+                  }}
+                  activeOpacity={
+                    isWeek1 || !progressedCount ? 1 : 0.7
+                  }
+                >
+                  {!isWeek1 &&
+                  progressedCount !== null &&
+                  progressedCount > 0 ? (
+                    <View style={styles.statCardChevron}>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={12}
+                        color={Colors.accent}
+                      />
+                    </View>
+                  ) : null}
+
+                  {isWeek1 ? (
+                    <Ionicons
+                      name="flag-outline"
+                      size={24}
+                      color={Colors.textTertiary}
+                    />
+                  ) : isDeload ? (
+                    <Ionicons
+                      name="battery-charging-outline"
+                      size={24}
+                      color={Colors.textTertiary}
+                    />
+                  ) : progressedCount === 0 || progressedCount === null ? (
+                    <Ionicons
+                      name="trending-up"
+                      size={24}
+                      color={Colors.textTertiary}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="trending-up"
+                      size={24}
+                      color={Colors.success}
+                    />
+                  )}
+
+                  <Text style={styles.statValue}>
+                    {isWeek1
+                      ? '—'
+                      : isDeload
+                        ? '—'
+                        : progressedCount === null
+                          ? '—'
+                          : String(progressedCount)}
                   </Text>
-                  <Text style={styles.quickStatLabel}>Week volume</Text>
-                </View>
+
+                  <Text style={styles.statLabel}>
+                    {isWeek1
+                      ? 'baseline'
+                      : isDeload
+                        ? 'deload'
+                        : progressedCount === 1
+                          ? 'exercise'
+                          : 'exercises'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -2603,20 +2508,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {planStatus === 'active' &&
-        (planData?.currentWeek ?? 1) >= 2 &&
-        (planData?.adaptationChanges?.length ?? 0) > 0 ? (
-          <AdaptationChangesCard
-            weekNumber={planData?.currentWeek ?? 2}
-            phase={planData?.currentWeekPhase ?? ''}
-            changes={planData?.adaptationChanges ?? []}
-            onPress={() =>
-              navigation.navigate('AdaptationFeed', {
-                weekNumber: planData?.currentWeek ?? 2,
-              })
-            }
-          />
-        ) : null}
           </>
         )}
       </ScrollView>
@@ -3381,6 +3272,21 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     alignItems: 'center',
   },
+  statCard: {
+    flex: 1,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    alignItems: 'center',
+  },
+  statCardTappable: {
+    position: 'relative',
+  },
+  statCardChevron: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+  },
   quickStatEmoji: {
     fontFamily: Fonts.regular,
     fontSize: 24,
@@ -3390,9 +3296,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.display,
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
-  },
-  quickStatValueVolume: {
-    fontSize: FontSizes.title,
   },
   quickStatValuePrimary: {
     color: Colors.textPrimary,
@@ -3504,99 +3407,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.caption,
     color: Colors.accent,
-  },
-  adaptationCard: {
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accent,
-    padding: Spacing.lg,
-  },
-  adaptationHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    flexWrap: 'wrap',
-  },
-  adaptationJordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-  },
-  adaptationHeaderSep: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.label,
-    color: Colors.textTertiary,
-  },
-  adaptationWeekLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-  },
-  adaptationDivider: {
-    height: 1,
-    backgroundColor: Colors.divider,
-    marginVertical: Spacing.md,
-  },
-  adaptationChangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  adaptationChangeRowSpaced: {
-    marginTop: Spacing.sm,
-  },
-  adaptationExerciseName: {
-    flex: 1,
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.caption,
-    color: Colors.textPrimary,
-  },
-  adaptationWeightBase: {
-    fontSize: FontSizes.caption,
-    textAlign: 'right',
-    flexShrink: 0,
-    maxWidth: '46%',
-  },
-  adaptationWeightIncrease: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.success,
-  },
-  adaptationWeightDecrease: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.danger,
-  },
-  adaptationWeightHold: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-  },
-  adaptationWeightDeload: {
-    fontFamily: Fonts.regular,
-    color: Colors.accent,
-  },
-  adaptationDeloadRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  adaptationDeloadText: {
-    flex: 1,
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-  },
-  adaptationFooter: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
-    marginTop: Spacing.sm,
   },
   coachLink: {
     fontFamily: Fonts.medium,

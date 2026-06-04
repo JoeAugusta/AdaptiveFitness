@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { stripEmDash } from '../utils/jordanText';
+import { useMetric } from '../utils/units';
 import {
   PHOTO_ANALYSIS_TIPS,
   daysUntilCheckIn,
@@ -95,6 +96,7 @@ async function pickProgressPhoto(): Promise<string | null> {
 export default function ProgressPhotoScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { formatBodyWeight } = useMetric();
 
   const [loading, setLoading] = useState(true);
   const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
@@ -482,7 +484,7 @@ export default function ProgressPhotoScreen() {
             ) : null}
             {result.estimatedLeanMassLbs != null ? (
               <Text style={styles.resultsLine}>
-                Lean mass: ~{Math.round(result.estimatedLeanMassLbs)} lbs
+                Lean mass: ~{formatBodyWeight(result.estimatedLeanMassLbs)}
               </Text>
             ) : null}
             {result.jordanNote ? (

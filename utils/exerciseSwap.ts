@@ -19,9 +19,8 @@ export const MACHINE_EQUIVALENTS: Record<string, string[]> = {
   'Dumbbell Shoulder Press': ['Machine Shoulder Press', 'Smith Machine Press'],
   'Lateral Raise': ['Machine Lateral Raise', 'Cable Lateral Raise'],
   // Legs
-  'Back Squat': ['Leg Press', 'Smith Machine Squat', 'Hack Squat'],
+  'Back Squat': ['Smith Machine Squat', 'Hack Squat'],
   'Front Squat': ['Hack Squat', 'Leg Press', 'Smith Machine Front Squat'],
-  'Romanian Deadlift': ['Machine RDL', 'Lying Leg Curl', 'Seated Leg Curl'],
   'Bulgarian Split Squat': ['Leg Press (Single Leg)', 'Split Squat Machine'],
   'Hip Thrust': ['Hip Thrust Machine', 'Glute Drive Machine'],
   // Arms
@@ -65,6 +64,28 @@ const PATTERN_ALIASES: Record<string, MovementPattern> = {
   'seated machine row': 'horizontal_pull',
   'pendlay row': 'horizontal_pull',
   'yates row': 'horizontal_pull',
+  'db row': 'horizontal_pull',
+  'one arm dumbbell row': 'horizontal_pull',
+  'incline barbell bench press': 'horizontal_push',
+  'incline barbell press': 'horizontal_push',
+  'flat barbell bench press': 'horizontal_push',
+  'flat dumbbell press': 'horizontal_push',
+  pushup: 'horizontal_push',
+  'push up': 'horizontal_push',
+  ohp: 'vertical_push',
+  'military press': 'vertical_push',
+  pullup: 'vertical_pull',
+  'pull up': 'vertical_pull',
+  chinup: 'vertical_pull',
+  'chin up': 'vertical_pull',
+  rdl: 'hinge',
+  'stiff-leg deadlift': 'hinge',
+  'conventional deadlift': 'hinge',
+  'leg curl': 'isolation_legs',
+  'hamstring curl': 'isolation_legs',
+  'quad extension': 'isolation_legs',
+  'calf raise (standing)': 'isolation_legs',
+  'standing calf raise': 'isolation_legs',
 };
 
 export type SwapEquipmentType =
@@ -85,13 +106,13 @@ type MuscleGroupFallbackEntry = {
 
 const MUSCLE_GROUP_ALTERNATIVES: Record<string, string[]> = {
   Chest: ['Incline Dumbbell Press', 'Cable Fly', 'Machine Chest Press', 'Push-Up'],
-  Legs: ['Leg Press', 'Hack Squat', 'Dumbbell Lunges', 'Bulgarian Split Squat'],
+  Quads: ['Leg Press', 'Hack Squat', 'Goblet Squat', 'Leg Extension'],
   Shoulders: ['Dumbbell Shoulder Press', 'Arnold Press', 'Cable Lateral Raise'],
   Arms: ['Preacher Curl', 'Hammer Curl', 'Cable Curl'],
-  Triceps: ['Overhead Tricep Extension', 'Cable Pushdown', 'Close-Grip Bench Press'],
+  Triceps: ['Overhead Tricep Extension', 'Tricep Pushdown', 'Close-Grip Bench Press'],
   Biceps: ['Preacher Curl', 'Hammer Curl', 'Incline Dumbbell Curl'],
-  Glutes: ['Hip Thrust', 'Cable Kickback', 'Bulgarian Split Squat'],
-  Hamstrings: ['Leg Curl', 'Romanian Deadlift', 'Nordic Curl'],
+  Glutes: ['Hip Thrust', 'Bulgarian Split Squat', 'Cable Kickback', 'Glute Bridge'],
+  Hamstrings: ['Lying Leg Curl', 'Seated Leg Curl', 'Romanian Deadlift', 'Nordic Curl'],
   Calves: ['Seated Calf Raise', 'Leg Press Calf Raise', 'Single-Leg Calf Raise'],
   Core: ['Plank', 'Cable Crunch', 'Ab Wheel Rollout'],
   'Rear Delts': ['Reverse Dumbbell Fly', 'Face Pull', 'Band Pull-Apart'],
@@ -208,12 +229,151 @@ const PATTERN_SWAP_POOL: Partial<Record<MovementPattern, MuscleGroupFallbackEntr
 
 /** Per-exercise swap suggestions with explicit sameWeightOk overrides. */
 export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
+  // ── CHEST — horizontal push ──
+  'barbell bench press': [
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+    { name: 'Machine Chest Press', isMachineEquivalent: true },
+    { name: 'Smith Machine Bench Press', sameWeightOk: false },
+    { name: 'Push-Up', sameWeightOk: false },
+  ],
+  'dumbbell bench press': [
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+    { name: 'Machine Chest Press', isMachineEquivalent: true },
+    { name: 'Smith Machine Bench Press', sameWeightOk: false },
+    { name: 'Push-Up', sameWeightOk: false },
+  ],
+  'machine chest press': [
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+    { name: 'Smith Machine Bench Press', sameWeightOk: false },
+    { name: 'Push-Up', sameWeightOk: false },
+  ],
+  'smith machine bench press': [
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+    { name: 'Machine Chest Press', isMachineEquivalent: true },
+  ],
+  // ── CHEST — incline push ──
+  'incline barbell press': [
+    { name: 'Incline Dumbbell Press', sameWeightOk: false },
+    { name: 'Incline Machine Press', isMachineEquivalent: true },
+    { name: 'Smith Machine Incline Press', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  'incline barbell bench press': [
+    { name: 'Incline Dumbbell Press', sameWeightOk: false },
+    { name: 'Incline Machine Press', isMachineEquivalent: true },
+    { name: 'Smith Machine Incline Press', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  'incline dumbbell press': [
+    { name: 'Incline Barbell Press', sameWeightOk: false },
+    { name: 'Incline Machine Press', isMachineEquivalent: true },
+    { name: 'Smith Machine Incline Press', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  'incline machine press': [
+    { name: 'Incline Barbell Press', sameWeightOk: false },
+    { name: 'Incline Dumbbell Press', sameWeightOk: false },
+    { name: 'Smith Machine Incline Press', sameWeightOk: false },
+  ],
+  // ── CHEST — fly / isolation ──
+  'cable fly (high to low)': [
+    { name: 'Pec Deck', isMachineEquivalent: true },
+    { name: 'Dumbbell Fly', sameWeightOk: false },
+    { name: 'Cable Fly (Low to High)', sameWeightOk: true },
+  ],
+  'cable fly (low to high)': [
+    { name: 'Pec Deck', isMachineEquivalent: true },
+    { name: 'Dumbbell Fly', sameWeightOk: false },
+    { name: 'Cable Fly (High to Low)', sameWeightOk: true },
+  ],
+  'dumbbell fly': [
+    { name: 'Pec Deck', isMachineEquivalent: true },
+    { name: 'Cable Fly (High to Low)', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  'dumbbell chest fly': [
+    { name: 'Pec Deck', isMachineEquivalent: true },
+    { name: 'Cable Fly (High to Low)', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  'pec deck': [
+    { name: 'Dumbbell Fly', sameWeightOk: false },
+    { name: 'Cable Fly (High to Low)', sameWeightOk: false },
+    { name: 'Low Cable Fly', sameWeightOk: false },
+  ],
+  // ── CHEST — dip ──
+  dip: [
+    { name: 'Machine Dip', isMachineEquivalent: true },
+    { name: 'Assisted Dip Machine', isMachineEquivalent: true },
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+  ],
+  dips: [
+    { name: 'Machine Dip', isMachineEquivalent: true },
+    { name: 'Assisted Dip Machine', isMachineEquivalent: true },
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+  ],
+  // ── BACK — horizontal pull ──
   'barbell row': [
     { name: 'Barbell Row (Overhand Wide)', sameWeightOk: true },
     { name: 'Barbell Row (Underhand)', sameWeightOk: true },
     { name: 'Barbell Row (Overhand Narrow)', sameWeightOk: true },
-    { name: 'T-Bar Row', sameWeightOk: true },
+    { name: 'T-Bar Row', sameWeightOk: false },
     { name: 'Machine Row', isMachineEquivalent: true },
+  ],
+  'barbell row (overhand wide)': [
+    { name: 'Barbell Row (Underhand)', sameWeightOk: true },
+    { name: 'Barbell Row (Overhand Narrow)', sameWeightOk: true },
+    { name: 'T-Bar Row', sameWeightOk: false },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+  ],
+  'barbell row (underhand)': [
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: true },
+    { name: 'Barbell Row (Overhand Narrow)', sameWeightOk: true },
+    { name: 'T-Bar Row', sameWeightOk: false },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+  ],
+  'barbell row (overhand narrow)': [
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: true },
+    { name: 'Barbell Row (Underhand)', sameWeightOk: true },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+  ],
+  't-bar row': [
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+    { name: 'Chest Supported Row', sameWeightOk: false },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+  ],
+  'dumbbell row': [
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+    { name: 'Chest Supported Row', sameWeightOk: false },
+    { name: 'T-Bar Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+    { name: 'Cable Row (Close Grip)', sameWeightOk: false },
+  ],
+  'chest supported row': [
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'T-Bar Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+  ],
+  'chest-supported row': [
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'T-Bar Row', sameWeightOk: false },
+    { name: 'Machine Row', isMachineEquivalent: true },
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+  ],
+  'machine row': [
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+    { name: 'Chest Supported Row', sameWeightOk: false },
+    { name: 'Cable Row (Close Grip)', sameWeightOk: false },
   ],
   'seated cable row': [
     { name: 'Cable Row (Close Grip)', sameWeightOk: true },
@@ -221,11 +381,412 @@ export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
     { name: 'Cable Row (Reverse Grip)', sameWeightOk: true },
     { name: 'Machine Row', isMachineEquivalent: true },
   ],
+  'cable row (close grip)': [
+    { name: 'Cable Row (Wide Grip)', sameWeightOk: true },
+    { name: 'Cable Row (Reverse Grip)', sameWeightOk: true },
+    { name: 'Machine Row', isMachineEquivalent: true },
+    { name: 'Dumbbell Row', sameWeightOk: false },
+  ],
+  'cable row (wide grip)': [
+    { name: 'Cable Row (Close Grip)', sameWeightOk: true },
+    { name: 'Cable Row (Reverse Grip)', sameWeightOk: true },
+    { name: 'Machine Row', isMachineEquivalent: true },
+    { name: 'Barbell Row (Overhand Wide)', sameWeightOk: false },
+  ],
+  // ── BACK — vertical pull ──
+  'pull-up': [
+    { name: 'Lat Pulldown (Wide Grip)', sameWeightOk: false },
+    { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: false },
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: false },
+  ],
+  'pull up': [
+    { name: 'Lat Pulldown (Wide Grip)', sameWeightOk: false },
+    { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: false },
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: false },
+  ],
+  'chin-up': [
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: false },
+    { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+    { name: 'Pull-Up', sameWeightOk: false },
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: false },
+  ],
+  'chin up': [
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: false },
+    { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+    { name: 'Pull-Up', sameWeightOk: false },
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: false },
+  ],
   'lat pulldown': [
     { name: 'Lat Pulldown (Wide Grip)', sameWeightOk: true },
     { name: 'Lat Pulldown (Close Grip)', sameWeightOk: true },
     { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: true },
     { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+  ],
+  'lat pulldown (wide grip)': [
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: true },
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: true },
+    { name: 'Pull-Up', sameWeightOk: false },
+    { name: 'Assisted Pull-up Machine', isMachineEquivalent: true },
+  ],
+  'lat pulldown (close grip)': [
+    { name: 'Lat Pulldown (Wide Grip)', sameWeightOk: true },
+    { name: 'Lat Pulldown (Reverse Grip)', sameWeightOk: true },
+    { name: 'Pull-Up', sameWeightOk: false },
+    { name: 'Chin-Up', sameWeightOk: false },
+  ],
+  'lat pulldown (reverse grip)': [
+    { name: 'Lat Pulldown (Wide Grip)', sameWeightOk: true },
+    { name: 'Lat Pulldown (Close Grip)', sameWeightOk: true },
+    { name: 'Chin-Up', sameWeightOk: false },
+    { name: 'Pull-Up', sameWeightOk: false },
+  ],
+  // ── SHOULDERS — vertical push ──
+  'overhead press': [
+    { name: 'Dumbbell Shoulder Press', sameWeightOk: false },
+    { name: 'Machine Shoulder Press', isMachineEquivalent: true },
+    { name: 'Arnold Press', sameWeightOk: false },
+    { name: 'Smith Machine Press', sameWeightOk: false },
+  ],
+  'dumbbell shoulder press': [
+    { name: 'Overhead Press', sameWeightOk: false },
+    { name: 'Machine Shoulder Press', isMachineEquivalent: true },
+    { name: 'Arnold Press', sameWeightOk: true },
+    { name: 'Smith Machine Press', sameWeightOk: false },
+  ],
+  'arnold press': [
+    { name: 'Dumbbell Shoulder Press', sameWeightOk: true },
+    { name: 'Overhead Press', sameWeightOk: false },
+    { name: 'Machine Shoulder Press', isMachineEquivalent: true },
+  ],
+  'machine shoulder press': [
+    { name: 'Overhead Press', sameWeightOk: false },
+    { name: 'Dumbbell Shoulder Press', sameWeightOk: false },
+    { name: 'Arnold Press', sameWeightOk: false },
+    { name: 'Smith Machine Press', sameWeightOk: false },
+  ],
+  // ── SHOULDERS — lateral isolation ──
+  'lateral raise': [
+    { name: 'Cable Lateral Raise', sameWeightOk: false },
+    { name: 'Machine Lateral Raise', isMachineEquivalent: true },
+    { name: 'Leaning Cable Lateral Raise', sameWeightOk: false },
+  ],
+  'dumbbell lateral raise': [
+    { name: 'Cable Lateral Raise', sameWeightOk: false },
+    { name: 'Machine Lateral Raise', isMachineEquivalent: true },
+    { name: 'Leaning Cable Lateral Raise', sameWeightOk: false },
+  ],
+  'cable lateral raise': [
+    { name: 'Lateral Raise', sameWeightOk: false },
+    { name: 'Machine Lateral Raise', isMachineEquivalent: true },
+    { name: 'Leaning Cable Lateral Raise', sameWeightOk: true },
+  ],
+  'machine lateral raise': [
+    { name: 'Lateral Raise', sameWeightOk: false },
+    { name: 'Cable Lateral Raise', sameWeightOk: false },
+  ],
+  // ── SHOULDERS — rear delt isolation ──
+  'face pull': [
+    { name: 'Reverse Dumbbell Fly', sameWeightOk: false },
+    { name: 'Cable Rear Delt Fly', sameWeightOk: true },
+    { name: 'Band Pull-Apart', sameWeightOk: false },
+    { name: 'Reverse Pec Deck', isMachineEquivalent: true },
+  ],
+  'reverse dumbbell fly': [
+    { name: 'Face Pull', sameWeightOk: false },
+    { name: 'Cable Rear Delt Fly', sameWeightOk: false },
+    { name: 'Reverse Pec Deck', isMachineEquivalent: true },
+    { name: 'Band Pull-Apart', sameWeightOk: false },
+  ],
+  'cable rear delt fly': [
+    { name: 'Reverse Dumbbell Fly', sameWeightOk: false },
+    { name: 'Face Pull', sameWeightOk: false },
+    { name: 'Reverse Pec Deck', isMachineEquivalent: true },
+  ],
+  // ── BICEPS — elbow flexion ──
+  'barbell curl': [
+    { name: 'Dumbbell Curl', sameWeightOk: false },
+    { name: 'Hammer Curl', sameWeightOk: false },
+    { name: 'Preacher Curl', sameWeightOk: false },
+    { name: 'Cable Curl', sameWeightOk: false },
+    { name: 'Machine Bicep Curl', isMachineEquivalent: true },
+  ],
+  'dumbbell curl': [
+    { name: 'Barbell Curl', sameWeightOk: false },
+    { name: 'Hammer Curl', sameWeightOk: true },
+    { name: 'Incline Dumbbell Curl', sameWeightOk: true },
+    { name: 'Concentration Curl', sameWeightOk: true },
+    { name: 'Cable Curl', sameWeightOk: false },
+  ],
+  'hammer curl': [
+    { name: 'Dumbbell Curl', sameWeightOk: true },
+    { name: 'Cross Body Hammer Curl', sameWeightOk: true },
+    { name: 'Cable Curl', sameWeightOk: false },
+    { name: 'Rope Hammer Curl', sameWeightOk: false },
+  ],
+  'preacher curl': [
+    { name: 'Barbell Curl', sameWeightOk: false },
+    { name: 'Dumbbell Curl', sameWeightOk: false },
+    { name: 'Machine Bicep Curl', isMachineEquivalent: true },
+    { name: 'Cable Curl', sameWeightOk: false },
+  ],
+  'cable curl': [
+    { name: 'Barbell Curl', sameWeightOk: false },
+    { name: 'Dumbbell Curl', sameWeightOk: false },
+    { name: 'Rope Hammer Curl', sameWeightOk: true },
+    { name: 'Machine Bicep Curl', isMachineEquivalent: true },
+  ],
+  'concentration curl': [
+    { name: 'Dumbbell Curl', sameWeightOk: true },
+    { name: 'Incline Dumbbell Curl', sameWeightOk: true },
+    { name: 'Cable Curl', sameWeightOk: false },
+  ],
+  'incline dumbbell curl': [
+    { name: 'Dumbbell Curl', sameWeightOk: true },
+    { name: 'Concentration Curl', sameWeightOk: true },
+    { name: 'Preacher Curl', sameWeightOk: false },
+    { name: 'Cable Curl', sameWeightOk: false },
+  ],
+  'machine bicep curl': [
+    { name: 'Barbell Curl', sameWeightOk: false },
+    { name: 'Dumbbell Curl', sameWeightOk: false },
+    { name: 'Preacher Curl', sameWeightOk: false },
+    { name: 'Cable Curl', sameWeightOk: false },
+  ],
+  // ── TRICEPS — elbow extension ──
+  'tricep pushdown': [
+    { name: 'Tricep Pushdown (Rope)', sameWeightOk: true },
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+  ],
+  'tricep pushdown (rope)': [
+    { name: 'Tricep Pushdown', sameWeightOk: true },
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+  ],
+  'skull crusher': [
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Close Grip Bench Press', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+  ],
+  'skull crushers': [
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Close Grip Bench Press', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+  ],
+  'overhead tricep extension': [
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Cable Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+  ],
+  'close grip bench press': [
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+  ],
+  'close-grip bench press': [
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Machine Tricep Extension', isMachineEquivalent: true },
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+  ],
+  'machine tricep extension': [
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Overhead Tricep Extension', sameWeightOk: false },
+    { name: 'Close Grip Bench Press', sameWeightOk: false },
+  ],
+  'cable overhead tricep extension': [
+    { name: 'Overhead Tricep Extension', sameWeightOk: true },
+    { name: 'Skull Crusher', sameWeightOk: false },
+    { name: 'Tricep Pushdown', sameWeightOk: false },
+  ],
+  'push-up': [
+    { name: 'Dumbbell Bench Press', sameWeightOk: false },
+    { name: 'Machine Chest Press', isMachineEquivalent: true },
+    { name: 'Barbell Bench Press', sameWeightOk: false },
+  ],
+  // ── DEADLIFT patterns (hip hinge) ──
+  deadlift: [
+    { name: 'Sumo Deadlift', sameWeightOk: true },
+    { name: 'Trap Bar Deadlift', sameWeightOk: false },
+    { name: 'Romanian Deadlift', sameWeightOk: false },
+    { name: 'Rack Pull', sameWeightOk: false },
+  ],
+  'sumo deadlift': [
+    { name: 'Deadlift', sameWeightOk: true },
+    { name: 'Trap Bar Deadlift', sameWeightOk: false },
+    { name: 'Romanian Deadlift', sameWeightOk: false },
+  ],
+  'trap bar deadlift': [
+    { name: 'Deadlift', sameWeightOk: false },
+    { name: 'Sumo Deadlift', sameWeightOk: false },
+    { name: 'Romanian Deadlift', sameWeightOk: false },
+  ],
+  'rack pull': [
+    { name: 'Deadlift', sameWeightOk: false },
+    { name: 'Romanian Deadlift', sameWeightOk: false },
+    { name: 'Sumo Deadlift', sameWeightOk: false },
+  ],
+  // ── LEGS — quad compound ──
+  'back squat': [
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Smith Machine Squat', sameWeightOk: false },
+    { name: 'Front Squat', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  'front squat': [
+    { name: 'Back Squat', sameWeightOk: false },
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Smith Machine Squat', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+  ],
+  'hack squat': [
+    { name: 'Back Squat', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Smith Machine Squat', sameWeightOk: false },
+    { name: 'Front Squat', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  'smith machine squat': [
+    { name: 'Back Squat', sameWeightOk: false },
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Front Squat', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  // Quad machine / push
+  'leg press': [
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Back Squat', sameWeightOk: false },
+    { name: 'Leg Press (Single Leg)', sameWeightOk: false },
+    { name: 'Smith Machine Squat', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  'leg press (single leg)': [
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Walking Lunge', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  'leg extension': [
+    { name: 'Leg Extension (Single Leg)', sameWeightOk: false },
+    { name: 'Cable Leg Extension', sameWeightOk: false },
+  ],
+  // Hamstring — knee flexion isolation
+  'lying leg curl': [
+    { name: 'Seated Leg Curl', sameWeightOk: false },
+    { name: 'Standing Leg Curl', sameWeightOk: false },
+    { name: 'Nordic Curl', sameWeightOk: false },
+    { name: 'Swiss Ball Leg Curl', sameWeightOk: false },
+  ],
+  'seated leg curl': [
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+    { name: 'Standing Leg Curl', sameWeightOk: false },
+    { name: 'Nordic Curl', sameWeightOk: false },
+    { name: 'Swiss Ball Leg Curl', sameWeightOk: false },
+  ],
+  'standing leg curl': [
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+    { name: 'Seated Leg Curl', sameWeightOk: false },
+    { name: 'Nordic Curl', sameWeightOk: false },
+  ],
+  'nordic curl': [
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+    { name: 'Seated Leg Curl', sameWeightOk: false },
+    { name: 'Swiss Ball Leg Curl', sameWeightOk: false },
+  ],
+  'nordic hamstring curl': [
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+    { name: 'Seated Leg Curl', sameWeightOk: false },
+    { name: 'Swiss Ball Leg Curl', sameWeightOk: false },
+  ],
+  // Hamstring — hip hinge
+  'romanian deadlift': [
+    { name: 'Stiff Leg Deadlift', sameWeightOk: true },
+    { name: 'Single Leg RDL', sameWeightOk: false },
+    { name: 'Good Morning', sameWeightOk: false },
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+    { name: 'Seated Leg Curl', sameWeightOk: false },
+  ],
+  'stiff leg deadlift': [
+    { name: 'Romanian Deadlift', sameWeightOk: true },
+    { name: 'Single Leg RDL', sameWeightOk: false },
+    { name: 'Good Morning', sameWeightOk: false },
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+  ],
+  'stiff-leg deadlift': [
+    { name: 'Romanian Deadlift', sameWeightOk: true },
+    { name: 'Single Leg RDL', sameWeightOk: false },
+    { name: 'Good Morning', sameWeightOk: false },
+    { name: 'Lying Leg Curl', sameWeightOk: false },
+  ],
+  // Glute-dominant / glute+quad
+  'walking lunge': [
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+    { name: 'Reverse Lunge', sameWeightOk: false },
+    { name: 'Step Up', sameWeightOk: false },
+    { name: 'Hip Thrust', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
+  ],
+  'reverse lunge': [
+    { name: 'Walking Lunge', sameWeightOk: false },
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+    { name: 'Step Up', sameWeightOk: false },
+    { name: 'Hip Thrust', sameWeightOk: false },
+  ],
+  'bulgarian split squat': [
+    { name: 'Walking Lunge', sameWeightOk: false },
+    { name: 'Reverse Lunge', sameWeightOk: false },
+    { name: 'Leg Press (Single Leg)', sameWeightOk: false },
+    { name: 'Step Up', sameWeightOk: false },
+    { name: 'Hip Thrust', sameWeightOk: false },
+  ],
+  'hip thrust': [
+    { name: 'Glute Bridge', sameWeightOk: false },
+    { name: 'Cable Kickback', sameWeightOk: false },
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+    { name: 'Romanian Deadlift', sameWeightOk: false },
+    { name: 'Step Up', sameWeightOk: false },
+  ],
+  'glute bridge': [
+    { name: 'Hip Thrust', sameWeightOk: false },
+    { name: 'Cable Kickback', sameWeightOk: false },
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+  ],
+  // Calves
+  'calf raise': [
+    { name: 'Seated Calf Raise', sameWeightOk: false },
+    { name: 'Leg Press Calf Raise', sameWeightOk: false },
+    { name: 'Single-Leg Calf Raise', sameWeightOk: false },
+  ],
+  'standing calf raise': [
+    { name: 'Seated Calf Raise', sameWeightOk: false },
+    { name: 'Leg Press Calf Raise', sameWeightOk: false },
+    { name: 'Single-Leg Calf Raise', sameWeightOk: false },
+  ],
+  'seated calf raise': [
+    { name: 'Calf Raise', sameWeightOk: false },
+    { name: 'Leg Press Calf Raise', sameWeightOk: false },
+    { name: 'Single-Leg Calf Raise', sameWeightOk: false },
+  ],
+  // Goblet / unilateral quad
+  'goblet squat': [
+    { name: 'Back Squat', sameWeightOk: false },
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Bulgarian Split Squat', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
   ],
 };
 
@@ -253,6 +814,45 @@ function resolveMachineEquivalentKey(exerciseName: string): string | null {
 
 function isInExerciseLibrary(name: string): boolean {
   return LIBRARY_NAME_SET.has(normalizeExerciseName(name));
+}
+
+/** Spec exercises not yet in the library — logged once at module load for review. */
+const SWAP_SPEC_PENDING_LIBRARY: string[] = [];
+
+function warnMissingSwapPoolTargets(): void {
+  const missingFromPool = new Set<string>();
+  for (const entries of Object.values(SWAP_POOL)) {
+    for (const entry of entries) {
+      if (!isInExerciseLibrary(entry.name)) {
+        missingFromPool.add(entry.name);
+      }
+    }
+  }
+  for (const name of missingFromPool) {
+    console.warn(
+      `[exerciseSwap] SWAP_POOL target "${name}" is not in exercise library — candidates will be skipped`,
+    );
+  }
+  for (const name of SWAP_SPEC_PENDING_LIBRARY) {
+    if (!isInExerciseLibrary(name)) {
+      console.warn(
+        `[exerciseSwap] "${name}" is in the swap spec but not in exercise library — add to exerciseLibrary.ts to enable`,
+      );
+    }
+  }
+}
+
+function filterPoolEntries(
+  sourceName: string,
+  entries: SwapPoolEntry[],
+): SwapPoolEntry[] {
+  const selfNorm = normalizeExerciseName(sourceName);
+  return entries.filter((entry) => {
+    const norm = normalizeExerciseName(entry.name);
+    if (norm === selfNorm) return false;
+    if (!isInExerciseLibrary(entry.name)) return false;
+    return true;
+  });
 }
 
 export type ExerciseSwapCandidate = {
@@ -347,8 +947,7 @@ export function buildExerciseSwapCandidates(
   const selfNorm = normalizeExerciseName(exerciseName);
   const poolEntries = SWAP_POOL[selfNorm];
   if (poolEntries?.length) {
-    return poolEntries
-      .filter((entry) => normalizeExerciseName(entry.name) !== selfNorm)
+    return filterPoolEntries(exerciseName, poolEntries)
       .slice(0, 5)
       .map((entry) => buildCandidateFromPoolEntry(exerciseName, entry));
   }
@@ -453,3 +1052,5 @@ export function buildExerciseSwapCandidates(
 
   return results.slice(0, 5);
 }
+
+warnMissingSwapPoolTargets();

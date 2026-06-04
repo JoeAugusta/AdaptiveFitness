@@ -1,4 +1,4 @@
-import { useState, Fragment, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, Fragment, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,16 @@ import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
 import { JordanAvatar } from './JordanAvatar';
-import { buildExerciseSwapCandidates, buildSwapCandidateFromName } from '../utils/exerciseSwap';
+import {
+  buildExerciseSwapCandidates,
+  buildSwapCandidateFromName,
+  type ExerciseSwapCandidate,
+} from '../utils/exerciseSwap';
+import {
+  fetchLastLoggedSetsForExercise,
+} from '../utils/swapWeightHistory';
+import { supabase } from '../Lib/supabase';
+import { EXERCISES } from '../constants/exerciseLibrary';
 import { stripEmDash } from '../utils/jordanText';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -342,9 +351,20 @@ interface ExerciseCardProps {
     reps: number,
     rpe: number | null,
   ) => void;
-  onSwapExercise: (exerciseId: string, newName: string, resetWeight?: boolean) => void;
+  onSwapExercise: (
+    exerciseId: string,
+    newName: string,
+    options?: {
+      resetWeight?: boolean;
+      prefilledWeight?: number;
+      pyramidSets?: { setNumber: number; weightLbs: number }[];
+    },
+  ) => void;
   /** When set (e.g. after swap), overrides exercise.targetWeight for display and defaults */
   targetWeightOverride?: number;
+  pyramidSetsOverride?: { setNumber: number; weightLbs: number }[];
+  /** Active plan id — used to prefill swap weight from workout history */
+  planId?: string;
   /** Display names already in today's workout — excludes swap candidates */
   currentWorkoutExerciseNames?: string[];
 }
@@ -364,6 +384,8 @@ export default function ExerciseCard({
   onLogSet,
   onSwapExercise,
   targetWeightOverride,
+  pyramidSetsOverride,
+  planId,
   currentWorkoutExerciseNames,
 }: ExerciseCardProps) {
   const { lbsToDisplay, displayToLbs, formatWorkoutWeight, isMetric } = useMetric();
@@ -374,6 +396,14 @@ export default function ExerciseCard({
       : exercise.targetWeight;
 
   const displayName = swappedName || exercise.name;
+
+  const displayedMuscleGroup = useMemo(() => {
+    const currentName = swappedName ?? exercise.name;
+    const libraryMatch = EXERCISES.find(
+      (e) => e.name.toLowerCase() === currentName.toLowerCase(),
+    );
+    return libraryMatch?.primaryMuscle ?? exercise.muscleGroup;
+  }, [swappedName, exercise.name, exercise.muscleGroup]);
   const exerciseNameLower = (
     exercise.exerciseName ??
     exercise.name ??
@@ -510,9 +540,8 @@ export default function ExerciseCard({
   const [inputValues, setInputValues] = useState<
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
-
   useEffect(() => {
-    if (targetWeightOverride === 0) {
+    if (targetWeightOverride !== undefined) {
       setInputValues({});
       setEnteredWeight(0);
       setSet1EnteredWeight(0);
@@ -524,6 +553,8 @@ export default function ExerciseCard({
   const [showRpeReference, setShowRpeReference] = useState(false);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
   const [showSwapSheet, setShowSwapSheet] = useState(false);
+  const [pendingSwapCandidate, setPendingSwapCandidate] =
+    useState<ExerciseSwapCandidate | null>(null);
   const [showAdaptationSheet, setShowAdaptationSheet] = useState(false);
   const [showEducation, setShowEducation] = useState(false);
   const [showPyramidInfo, setShowPyramidInfo] = useState(false);
@@ -560,6 +591,22 @@ export default function ExerciseCard({
     const pyramidPrefill = (() => {
       if (!isPyramid) return 0;
       if (isWeek1SelfSelect) return 0;
+
+      if (pyramidSetsOverride && pyramidSetsOverride.length > 0) {
+        const matchingSet = pyramidSetsOverride.find(
+          (s) => s.setNumber === setNumber,
+        );
+        if (matchingSet) return matchingSet.weightLbs;
+        return Math.max(...pyramidSetsOverride.map((s) => s.weightLbs));
+      }
+
+      if (
+        targetWeightOverride !== undefined &&
+        targetWeightOverride > 0
+      ) {
+        return targetWeightOverride;
+      }
+
       if (perSetTargetWeight > 0) return perSetTargetWeight;
       return exerciseTopSetWeight;
     })();
@@ -657,6 +704,8 @@ export default function ExerciseCard({
     return !isNaN(weightLbs) && weightLbs > 0;
   };
 
+  const previousWasSwapped = previousSets.some((s) => s.swapped);
+
   const handleLogSet = (setNumber: number) => {
     const input = getInputForSet(setNumber);
     const weightLbs = isBodyweightExercise ? 0 : displayToLbs(parseFloat(input.weight));
@@ -681,7 +730,9 @@ export default function ExerciseCard({
     }
 
     const lastWeekSameSet = previousSets.find((s) => s.setNumber === setNumber);
-    if (!lastWeekSameSet) {
+
+    // If last week was a different exercise (swap), skip weight comparison
+    if (!lastWeekSameSet || previousWasSwapped) {
       void hapticMedium();
       return;
     }
@@ -867,7 +918,6 @@ export default function ExerciseCard({
   const lastWeekAvgRpeStr = getLastWeekAvgRpe(previousSets);
   const lastWeekVisiblePills = lastWeekPillLabels.slice(0, 5);
   const lastWeekMoreCount = lastWeekPillLabels.length - lastWeekVisiblePills.length;
-  const previousWasSwapped = previousSets.some((s) => s.swapped);
 
   useEffect(() => () => {
     Object.values(trendTimeouts.current).forEach((timeoutId) => clearTimeout(timeoutId));
@@ -886,6 +936,54 @@ export default function ExerciseCard({
       .map((name) => buildSwapCandidateFromName(name));
   }, [exercise.name, exercise.muscleGroup, exercise.alternatives]);
 
+  const closeSwapSheet = useCallback(() => {
+    setPendingSwapCandidate(null);
+    setShowSwapSheet(false);
+  }, []);
+
+  const applySwap = useCallback(
+    async (candidate: ExerciseSwapCandidate) => {
+      const shouldResetWeight = candidate.sameWeightOk !== true;
+      let prefilledWeight = 0;
+      let pyramidSets:
+        | { setNumber: number; weightLbs: number }[]
+        | undefined;
+
+      if (planId) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (userId) {
+          const loggedSets = await fetchLastLoggedSetsForExercise(
+            userId,
+            planId,
+            candidate.name,
+          );
+          if (loggedSets && loggedSets.length > 0) {
+            prefilledWeight = Math.max(
+              ...loggedSets.map((s) => s.weightLbs),
+            );
+            const isRamp =
+              loggedSets.length >= 2 &&
+              loggedSets[loggedSets.length - 1]!.weightLbs >
+                loggedSets[0]!.weightLbs;
+            if (isRamp) {
+              pyramidSets = loggedSets;
+            }
+          }
+        }
+      }
+
+      onSwapExercise(exercise.id, candidate.name, {
+        resetWeight: shouldResetWeight,
+        prefilledWeight,
+        pyramidSets,
+      });
+    },
+    [exercise.id, onSwapExercise, planId],
+  );
+
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <View style={styles.card}>
@@ -902,7 +1000,7 @@ export default function ExerciseCard({
           </View>
           <View style={styles.cardHeaderTagsRow}>
             <View style={styles.muscleTag}>
-              <Text style={styles.muscleTagText}>{exercise.muscleGroup}</Text>
+              <Text style={styles.muscleTagText}>{displayedMuscleGroup}</Text>
             </View>
             {exercise.setStructure === 'pyramid' ? (
               <TouchableOpacity
@@ -1278,7 +1376,10 @@ export default function ExerciseCard({
       <TouchableOpacity
         style={styles.swapButton}
         activeOpacity={0.7}
-        onPress={() => setShowSwapSheet(true)}
+        onPress={() => {
+          setPendingSwapCandidate(null);
+          setShowSwapSheet(true);
+        }}
       >
         <Text style={styles.swapButtonText}>Swap Exercise →</Text>
       </TouchableOpacity>
@@ -1333,9 +1434,9 @@ export default function ExerciseCard({
         visible={showSwapSheet}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowSwapSheet(false)}
+        onRequestClose={closeSwapSheet}
       >
-        <TouchableWithoutFeedback onPress={() => setShowSwapSheet(false)}>
+        <TouchableWithoutFeedback onPress={closeSwapSheet}>
           <View style={styles.overlay} />
         </TouchableWithoutFeedback>
         <View style={styles.swapSheet}>
@@ -1347,13 +1448,13 @@ export default function ExerciseCard({
           {displayCandidates.map((candidate, index) => (
             <TouchableOpacity
               key={candidate.name ?? `swap-${index}`}
-              style={styles.swapOption}
+              style={[
+                styles.swapCandidateRow,
+                pendingSwapCandidate?.name === candidate.name &&
+                  styles.swapCandidateRowSelected,
+              ]}
               activeOpacity={0.7}
-              onPress={() => {
-                const shouldResetWeight = candidate.sameWeightOk !== true;
-                onSwapExercise(exercise.id, candidate.name, shouldResetWeight);
-                setShowSwapSheet(false);
-              }}
+              onPress={() => setPendingSwapCandidate(candidate)}
             >
               <View style={styles.swapOptionRow}>
                 <Text style={styles.swapOptionText}>{candidate.name}</Text>
@@ -1369,9 +1470,40 @@ export default function ExerciseCard({
                     </Text>
                   </View>
                 ) : null}
+                {pendingSwapCandidate?.name === candidate.name ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color={Colors.accent}
+                  />
+                ) : null}
               </View>
             </TouchableOpacity>
           ))}
+          <View style={styles.swapActionRow}>
+            <TouchableOpacity
+              style={styles.swapCancelBtn}
+              onPress={closeSwapSheet}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.swapCancelText}>Cancel</Text>
+            </TouchableOpacity>
+
+            {pendingSwapCandidate ? (
+              <TouchableOpacity
+                style={styles.swapConfirmBtn}
+                onPress={() => {
+                  void (async () => {
+                    await applySwap(pendingSwapCandidate);
+                    closeSwapSheet();
+                  })();
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.swapConfirmText}>Swap</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </Modal>
 
@@ -2243,13 +2375,18 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: Spacing.lg,
   },
-  swapOption: {
+  swapCandidateRow: {
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.md,
     padding: Spacing.lg,
     marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.divider,
+  },
+  swapCandidateRowSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
   },
   swapOptionRow: {
     flexDirection: 'row',
@@ -2277,5 +2414,39 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
     color: Colors.accent,
+  },
+  swapActionRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+  },
+  swapCancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swapCancelText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  swapConfirmBtn: {
+    flex: 2,
+    height: 48,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swapConfirmText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 });

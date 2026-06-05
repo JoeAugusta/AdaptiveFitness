@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -16,6 +18,7 @@ import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionIntent } from '../utils/getSessionIntent';
+import { getTodayDayLabel, isTodayTrainingDay } from '../utils/dateUtils';
 import WorkoutResultsModal, {
   type WorkoutLog,
   type ExerciseObject,
@@ -75,9 +78,8 @@ interface RawPlanJson {
   daysPerWeek?: number;
   title?: string;
   totalWeeks?: number;
-  /** GAP-2: Enhanced recovery flag — deload cadence is every 5th week instead of 4th */
+  scheduledDays?: string[];
   enhancedRecovery?: boolean;
-  /** GAP-8: Biological sex — female also uses 5-week deload cadence */
   biologicalSex?: string;
 }
 
@@ -186,7 +188,6 @@ function getPhaseDisplay(
     };
   }
 
-  // Female and enhanced recovery both use 5-week deload cadence
   const useExtendedCadence = enhancedRecovery || biologicalSex === 'female';
   const deloadCadence = useExtendedCadence ? 5 : 4;
   if (weekNumber % deloadCadence === 0) {
@@ -232,6 +233,7 @@ function WorkoutDayCard({
   isNextWorkout,
   onViewResults,
   loadingResults,
+  onPreviewDay,
 }: {
   day: PlanDay;
   weekPhase: string | undefined;
@@ -240,6 +242,7 @@ function WorkoutDayCard({
   isNextWorkout: boolean;
   onViewResults: (day: PlanDay) => void;
   loadingResults: boolean;
+  onPreviewDay?: (day: PlanDay) => void;
 }) {
   const PREVIEW_COUNT = 3;
   const visibleExercises = day.exercises.slice(0, PREVIEW_COUNT);
@@ -251,11 +254,22 @@ function WorkoutDayCard({
         styles.workoutDayCard,
         isNextWorkout && !day.completed && styles.workoutDayCardNext,
       ]}
-      activeOpacity={day.completed ? 0.75 : 1}
+      activeOpacity={
+        day.completed || (!isNextWorkout && onPreviewDay)
+          ? 0.75
+          : 1
+      }
       onPress={() => {
-        if (day.completed) onViewResults(day);
+        if (day.completed) {
+          onViewResults(day);
+        } else if (!isNextWorkout && onPreviewDay) {
+          onPreviewDay(day);
+        }
       }}
-      disabled={!day.completed || loadingResults}
+      disabled={
+        loadingResults ||
+        (isNextWorkout && !day.completed)
+      }
     >
       <View style={styles.workoutHeaderRow}>
         <View style={styles.workoutHeaderLeft}>
@@ -326,6 +340,9 @@ function WorkoutDayCard({
       {day.completed ? (
         <Text style={styles.viewResultsHint}>View results →</Text>
       ) : null}
+      {!day.completed && !isNextWorkout ? (
+        <Text style={styles.viewResultsHint}>Preview →</Text>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -350,7 +367,6 @@ export default function PlanViewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const planId = route.params?.planId ?? '';
-  /** Canonical plan row UUID from Supabase (use for workout_logs / ActiveWorkout) */
   const [resolvedPlanId, setResolvedPlanId] = useState('');
 
   const [planData, setPlanData] = useState<LoadedPlan | null>(null);
@@ -373,6 +389,8 @@ export default function PlanViewScreen() {
   const [resultsSummaryWeek, setResultsSummaryWeek] = useState<number | undefined>(undefined);
   const [resultsSummaryPhase, setResultsSummaryPhase] = useState<string | undefined>(undefined);
   const [showOverrideSheet, setShowOverrideSheet] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewDay, setPreviewDay] = useState<PlanDay | null>(null);
 
   const loadPlanData = useCallback(async () => {
     setLoading(true);
@@ -543,11 +561,30 @@ export default function PlanViewScreen() {
   }, [resolvedPlanId, selectedWeek]);
 
   const handleStartWorkout = (day: PlanDay) => {
-    const pid =
-      resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+
+    // Gate: only allow starting a workout on a scheduled training day.
+    const scheduledDays = rawPlanJson?.scheduledDays;
+    if (Array.isArray(scheduledDays) && scheduledDays.length > 0) {
+      const todayLabel = getTodayDayLabel();
+      if (!isTodayTrainingDay(scheduledDays, todayLabel)) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const todayIdx = dayNames.indexOf(todayLabel);
+        const normalized = scheduledDays.map((d) => d.trim().slice(0, 3));
+        const nextDay =
+          normalized.find((d) => dayNames.indexOf(d) > todayIdx) ??
+          normalized[0];
+        Alert.alert(
+          'Rest day',
+          `Today is not a scheduled training day. Your next session is ${nextDay}.`,
+        );
+        return;
+      }
+    }
+
     navigation.navigate('ActiveWorkout', {
       planId: pid,
-      weekNumber: planData.currentWeek,
+      weekNumber: planData!.currentWeek,
       dayNumber: day.dayNumber,
       workoutTitle: day.title,
       lockToRouteWeek: true,
@@ -692,6 +729,11 @@ export default function PlanViewScreen() {
     [planId, planData, rawPlanJson, resolvedPlanId, selectedWeek],
   );
 
+  const handlePreviewDay = useCallback((day: PlanDay) => {
+    setPreviewDay(day);
+    setPreviewVisible(true);
+  }, []);
+
   const headerRow = (
     <View style={styles.header}>
       <TouchableOpacity
@@ -748,9 +790,50 @@ export default function PlanViewScreen() {
     selectedWeekData?.weekOverride,
   );
   const weekData = selectedWeekData;
-  const nextWorkoutDayNumber =
-    weekData?.days.find((d) => d.type === 'workout' && !d.completed)
-      ?.dayNumber ?? null;
+  const nextWorkoutDayNumber = (() => {
+    if (!weekData) return null;
+
+    const workoutDays = weekData.days.filter((d) => d.type === 'workout');
+    const completedWorkoutDays = workoutDays.filter((d) => d.completed);
+    const daysPerWeek = planData.daysPerWeek;
+
+    // Week is complete — no next workout
+    if (completedWorkoutDays.length >= daysPerWeek) return null;
+
+    const isWeek1 = selectedWeek === 1;
+    const completedAny = completedWorkoutDays.length > 0;
+
+    // Cold-start W1: map today's calendar position to the correct plan day
+    if (isWeek1 && !completedAny && rawPlanJson?.scheduledDays && Array.isArray(rawPlanJson.scheduledDays)) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const todayLabel = dayNames[new Date().getDay()];
+      const normalizedScheduled = (rawPlanJson.scheduledDays as string[]).map(
+        (d) => d.trim().slice(0, 3),
+      );
+      const todayIndex = normalizedScheduled.indexOf(todayLabel);
+      if (todayIndex >= 0) {
+        const workoutDaysOrdered = workoutDays
+          .filter((d) => !d.completed)
+          .sort((a, b) => a.dayNumber - b.dayNumber);
+        const target = workoutDaysOrdered[todayIndex];
+        if (target) return target.dayNumber;
+      }
+    }
+
+    // Mid-week starter W1 with some sessions logged:
+    // Find the next unlogged workout AFTER the last completed day number.
+    if (isWeek1 && completedAny) {
+      const lastCompletedDayNumber = Math.max(...completedWorkoutDays.map((d) => d.dayNumber));
+      const nextAfterLast = workoutDays
+        .filter((d) => !d.completed && d.dayNumber > lastCompletedDayNumber)
+        .sort((a, b) => a.dayNumber - b.dayNumber)[0];
+      if (nextAfterLast) return nextAfterLast.dayNumber;
+      return null;
+    }
+
+    // Normal path: first unlogged workout in sequence
+    return workoutDays.find((d) => !d.completed)?.dayNumber ?? null;
+  })();
 
   const handleApplyDeload = async () => {
     setShowOverrideSheet(false);
@@ -956,6 +1039,7 @@ export default function PlanViewScreen() {
                 onStartWorkout={handleStartWorkout}
                 onViewResults={handleViewResults}
                 loadingResults={resultsLoadingDayKey === `${selectedWeek}-${day.dayNumber}`}
+                onPreviewDay={handlePreviewDay}
               />
             ) : day.type === 'cardio' ? (
               (() => {
@@ -1066,6 +1150,63 @@ export default function PlanViewScreen() {
         onApplyDeload={handleApplyDeload}
         onApplyTravel={handleApplyTravel}
       />
+
+      <Modal
+        visible={previewVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <SafeAreaView
+          style={{ flex: 1, backgroundColor: Colors.bgPrimary }}
+          edges={['top']}
+        >
+          <View style={styles.previewHeader}>
+            <TouchableOpacity
+              onPress={() => setPreviewVisible(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons
+                name="close"
+                size={24}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <Text style={styles.previewTitle}>
+              {previewDay?.title ?? 'Workout Preview'}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.previewScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.previewSubtitle}>
+              {previewDay?.sessionFocus ?? ''}
+            </Text>
+
+            {(previewDay?.exercises ?? []).map((ex, i) => (
+              <View key={ex.id ?? i} style={styles.previewExerciseRow}>
+                <View style={styles.previewExerciseLeft}>
+                  <Text style={styles.previewExerciseName}>
+                    {ex.name}
+                  </Text>
+                  <Text style={styles.previewExerciseMeta}>
+                    {ex.sets}×{ex.reps}
+                    {ex.weight > 0
+                      ? ` @ ${ex.weight} lbs`
+                      : ex.targetWeight > 0
+                        ? ` @ ${ex.targetWeight} lbs`
+                        : ' — self-select weight'}
+                    {ex.targetRpe > 0 ? ` · RPE ${ex.targetRpe}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -1097,7 +1238,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.semiBold,
   },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1119,7 +1259,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
-
   scrollView: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
@@ -1127,7 +1266,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 48,
   },
-
   planInfoCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.sm,
@@ -1187,7 +1325,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textAlign: 'center',
   },
-
   weekSelector: {
     marginTop: Spacing.lg,
     paddingHorizontal: Spacing.xl,
@@ -1248,7 +1385,6 @@ const styles = StyleSheet.create({
   weekDotLocked: {
     backgroundColor: Colors.divider,
   },
-
   workoutDayCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.md,
@@ -1379,7 +1515,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
   },
-
   restCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.md,
@@ -1417,7 +1552,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     color: Colors.textTertiary,
   },
-
   cardioDayRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1485,7 +1619,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.micro,
     color: Colors.accent,
   },
-
   lockedWeekState: {
     alignItems: 'center',
     paddingVertical: 80,
@@ -1507,7 +1640,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-
   historyLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1582,6 +1714,51 @@ const styles = StyleSheet.create({
   },
   overrideBtnText: {
     fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  previewTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  previewScroll: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: 48,
+  },
+  previewSubtitle: {
+    fontFamily: Fonts.italic,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xl,
+    lineHeight: 22,
+  },
+  previewExerciseRow: {
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  previewExerciseLeft: {
+    flex: 1,
+  },
+  previewExerciseName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  previewExerciseMeta: {
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },

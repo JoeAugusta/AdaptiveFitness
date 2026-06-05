@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
+  ActionSheetIOS,
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -257,8 +258,7 @@ export default function WorkoutCompleteScreen() {
     void hapticSuccess();
   }, []);
 
-  const handleShareWorkout = useCallback(async () => {
-    if (!sharingAvailable || shareLoading) return;
+  const prepareAndShareWorkoutCard = useCallback(async () => {
     setShareLoading(true);
     try {
       const {
@@ -329,8 +329,6 @@ export default function WorkoutCompleteScreen() {
       shareCapturePendingRef.current = false;
     }
   }, [
-    sharingAvailable,
-    shareLoading,
     planId,
     weekNumber,
     dayNumber,
@@ -339,6 +337,50 @@ export default function WorkoutCompleteScreen() {
     durationMinutes,
     prsHit,
   ]);
+
+  const handleSharePR = useCallback(async () => {
+    if (!topPr || !prCardRef.current) return;
+    try {
+      await hapticMedium();
+      const uri = await captureRef(prCardRef, {
+        format: 'jpg',
+        quality: 0.95,
+        width: PR_SHARE_CARD_SIZE,
+        result: 'tmpfile',
+      });
+      await shareAsync(uri, {
+        mimeType: 'image/jpeg',
+        dialogTitle: 'Share your PR',
+      });
+    } catch (e) {
+      console.warn('[PRShare]', e);
+    }
+  }, [topPr]);
+
+  const handleShareWorkout = useCallback(async () => {
+    if (!sharingAvailable || shareLoading) return;
+
+    if (topPr && Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Workout Card', 'PR Card', 'Both'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 0) return;
+          if (buttonIndex === 1 || buttonIndex === 3) {
+            await prepareAndShareWorkoutCard();
+          }
+          if (buttonIndex === 2 || buttonIndex === 3) {
+            await handleSharePR();
+          }
+        },
+      );
+      return;
+    }
+
+    await prepareAndShareWorkoutCard();
+  }, [sharingAvailable, shareLoading, topPr, handleSharePR, prepareAndShareWorkoutCard]);
 
   useEffect(() => {
     if (!shareCardVisible || !shareCardData || !shareCapturePendingRef.current) {
@@ -475,25 +517,6 @@ export default function WorkoutCompleteScreen() {
     };
   }, [prsHit, planId, weekNumber, dayNumber]);
 
-  const handleSharePR = useCallback(async () => {
-    if (!topPr || !prCardRef.current) return;
-    try {
-      await hapticMedium();
-      const uri = await captureRef(prCardRef, {
-        format: 'jpg',
-        quality: 0.95,
-        width: PR_SHARE_CARD_SIZE,
-        result: 'tmpfile',
-      });
-      await shareAsync(uri, {
-        mimeType: 'image/jpeg',
-        dialogTitle: 'Share your PR',
-      });
-    } catch (e) {
-      console.warn('[PRShare]', e);
-    }
-  }, [topPr]);
-
   useEffect(() => {
     if (nextWeekReady) {
       Animated.timing(fadeAnim, {
@@ -566,9 +589,58 @@ export default function WorkoutCompleteScreen() {
 
         const daysPerWeek: number = planRow?.plan_json?.daysPerWeek ?? 7;
 
+        // Cold-start mid-week: sessions before the user's calendar start
+        // position are implicitly complete. Only applies when total logged
+        // sessions equals today's position in scheduledDays (i.e. this is
+        // their first or only session so far this week at the correct slot).
+        const scheduledDays: string[] = Array.isArray(
+          (planRow?.plan_json as { scheduledDays?: string[] } | undefined)?.scheduledDays,
+        )
+          ? (planRow.plan_json as { scheduledDays: string[] }).scheduledDays
+          : [];
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const todayLabel = dayNames[new Date().getDay()];
+        const normalizedScheduled = scheduledDays.map((d) => d.trim().slice(0, 3));
+        const todayScheduledIndex = normalizedScheduled.indexOf(todayLabel);
+        // If today is at position N in scheduledDays and exactly N sessions
+        // have been logged this week, the prior slots are implicitly done.
+        const implicitSessions =
+          todayScheduledIndex > 0 &&
+          distinctLoggedDays > 0 &&
+          distinctLoggedDays <= todayScheduledIndex
+            ? todayScheduledIndex - (distinctLoggedDays - 1)
+            : 0;
+        const effectiveCompleted = distinctLoggedDays + implicitSessions;
+
         if (!cancelled) {
-          setIsWeekComplete(distinctLoggedDays >= daysPerWeek);
-          setWeekCompletionChecked(true);
+          if (effectiveCompleted >= daysPerWeek) {
+            setIsWeekComplete(true);
+            setWeekCompletionChecked(true);
+            // Fire weekly summary immediately — independent of next week generation
+            void (async () => {
+              try {
+                const { data: { session: authSession } } = await supabase.auth.getSession();
+                const uid = authSession?.user?.id;
+                if (!uid) return;
+                const { data: summaryData } = await supabase.functions.invoke(
+                  'weekly-coach-summary',
+                  { body: { userId: uid, planId, weekNumber } },
+                );
+                if (summaryData?.summary) {
+                  setShowSummaryBanner(true);
+                  await AsyncStorage.setItem(
+                    'hone_unviewed_summary_week',
+                    String(weekNumber),
+                  );
+                }
+              } catch (err) {
+                console.warn('[WorkoutComplete] weekly summary fire failed:', err);
+              }
+            })();
+          } else {
+            setIsWeekComplete(false);
+            setWeekCompletionChecked(true);
+          }
         }
       } catch {
         if (!cancelled) setWeekCompletionChecked(true);
@@ -678,51 +750,6 @@ export default function WorkoutCompleteScreen() {
       if (!nextOk) {
         setGenerationError(true);
       } else {
-        const nextWeekNumber = weekNumber + 1;
-
-        const { data: planBeforeAdvance } = await supabase
-          .from('plans')
-          .select('current_week')
-          .eq('id', planId)
-          .maybeSingle();
-
-        if (Number(planBeforeAdvance?.current_week ?? 0) < nextWeekNumber) {
-          const { error: weekAdvanceErr } = await supabase
-            .from('plans')
-            .update({ current_week: nextWeekNumber })
-            .eq('id', planId);
-
-          if (weekAdvanceErr) {
-            console.warn(
-              '[WorkoutComplete] current_week update failed:',
-              weekAdvanceErr.message,
-            );
-          }
-        }
-
-        const { data: refreshedPlan, error: refreshErr } = await supabase
-          .from('plans')
-          .select('plan_json, current_week')
-          .eq('id', planId)
-          .maybeSingle();
-
-        if (refreshErr) {
-          console.warn(
-            '[WorkoutComplete] plan refetch after next week failed:',
-            refreshErr.message,
-          );
-        } else if (
-          refreshedPlan?.plan_json &&
-          Number(refreshedPlan.current_week) !== nextWeekNumber
-        ) {
-          console.warn(
-            '[WorkoutComplete] current_week still stale after update:',
-            refreshedPlan.current_week,
-            'expected',
-            nextWeekNumber,
-          );
-        }
-
         setNextWeekReady(true);
         const genData = nextWeekSettled.status === 'fulfilled'
           ? (nextWeekSettled.value.data as { adaptationChangeCount?: number } | null)
@@ -730,20 +757,7 @@ export default function WorkoutCompleteScreen() {
         if (typeof genData?.adaptationChangeCount === 'number') {
           setAdaptationChangeCount(genData.adaptationChangeCount);
         } else {
-          const weeks =
-            (refreshedPlan?.plan_json as { weeks?: unknown[] } | undefined)?.weeks ??
-            [];
-          const nextWeek = weeks.find(
-            (w) =>
-              rawWeekNumber(
-                w as { weekNumber?: unknown; week_number?: unknown },
-              ) === nextWeekNumber,
-          ) as { adaptationChanges?: unknown[] } | undefined;
-          setAdaptationChangeCount(
-            Array.isArray(nextWeek?.adaptationChanges)
-              ? nextWeek.adaptationChanges.length
-              : 0,
-          );
+          setAdaptationChangeCount(0);
         }
       }
     } catch (err) {
@@ -754,20 +768,6 @@ export default function WorkoutCompleteScreen() {
     }
   }, [planId, weekNumber]);
 
-  useEffect(() => {
-    if (!weekCompletionChecked || !isWeekComplete || nextWeekReady || generationError) {
-      return;
-    }
-    if (autoGenStartedRef.current) return;
-    autoGenStartedRef.current = true;
-    void handleGenerateNextWeek();
-  }, [
-    weekCompletionChecked,
-    isWeekComplete,
-    nextWeekReady,
-    generationError,
-    handleGenerateNextWeek,
-  ]);
 
   useEffect(() => {
     // 1 — Checkmark spring
@@ -977,6 +977,7 @@ export default function WorkoutCompleteScreen() {
             cardRef={prCardRef}
             exerciseName={topPr.exerciseName}
             weightLbs={topPr.weightLbs}
+            reps={topPr.reps}
             isMetric={isMetric}
             isEstimated={topPr.isEstimated}
             rank={1}
@@ -1130,114 +1131,88 @@ export default function WorkoutCompleteScreen() {
             <ActivityIndicator color={Colors.accent} size="small" />
             <Text style={styles.generatingText}>One moment…</Text>
           </View>
-        ) : isWeekComplete && isGenerating ? (
-          <View style={styles.generatingState}>
-            <ActivityIndicator color={Colors.accent} size="small" />
-            <Text style={styles.generatingText}>
-              Jordan is building your Week {weekNumber + 1} — it'll be ready in a
-              moment.
-            </Text>
-          </View>
-        ) : isWeekComplete && generationError ? (
-          <View style={styles.generatingState}>
-            <Text style={styles.generatingText}>
-              Jordan is building your next week — tap to check if it's ready.
-            </Text>
-            <Pressable style={styles.retryButton} onPress={handleGenerateNextWeek}>
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </Pressable>
-          </View>
-        ) : isWeekComplete && nextWeekReady ? (
-          <Animated.View style={{ opacity: fadeAnim }}>
-            {adaptationChangeCount > 0 ? (
-              <TouchableOpacity
-                style={styles.adaptationReadyRow}
-                activeOpacity={0.7}
-                onPress={() =>
-                  (navigation as { navigate: (a: string, b?: object) => void }).navigate(
-                    'Dashboard',
-                    {
-                      screen: 'HomeTab',
-                      params: {
-                        screen: 'AdaptationFeed',
-                        params: { weekNumber: weekNumber + 1 },
-                      },
-                    },
-                  )
-                }
-              >
-                <Text style={styles.adaptationReadyText}>
-                  Week {weekNumber + 1} is ready — see what changed →
+        ) : isWeekComplete ? (
+          <View style={{ gap: Spacing.sm }}>
+            {!showSummaryBanner ? (
+              <View style={styles.weekCompleteNotice}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color={Colors.success}
+                />
+                <Text style={styles.weekCompleteNoticeText}>
+                  Week {weekNumber} complete. Generate Week{' '}
+                  {weekNumber + 1} from your dashboard when you're ready.
                 </Text>
-              </TouchableOpacity>
+              </View>
             ) : null}
             <TouchableOpacity
               style={styles.primaryButton}
               activeOpacity={0.8}
               onPress={() =>
-                navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] })
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Dashboard' }],
+                })
               }
             >
-              <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
+              <Text style={styles.primaryButtonText}>
+                Back to Dashboard
+              </Text>
             </TouchableOpacity>
-          </Animated.View>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                (navigation as any).navigate('Dashboard', {
+                  screen: 'WorkoutTab',
+                  params: {
+                    screen: 'PlanView',
+                    params: { planId, weekNumber },
+                  },
+                })
+              }
+            >
+              <Text style={styles.secondaryButtonText}>
+                View Full Plan
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              isWeekComplete && !nextWeekReady && styles.primaryButtonDisabled,
-            ]}
-            activeOpacity={0.8}
-            disabled={isWeekComplete && !nextWeekReady}
-            onPress={() =>
-              navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] })
-            }
-          >
-            <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
-          </TouchableOpacity>
+          <View style={{ gap: Spacing.sm }}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Dashboard' }],
+                })
+              }
+            >
+              <Text style={styles.primaryButtonText}>
+                Back to Dashboard
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryButton, { marginTop: 10 }]}
+              activeOpacity={0.8}
+              onPress={() =>
+                (navigation as any).navigate('Dashboard', {
+                  screen: 'WorkoutTab',
+                  params: {
+                    screen: 'PlanView',
+                    params: { planId, weekNumber },
+                  },
+                })
+              }
+            >
+              <Text style={styles.secondaryButtonText}>
+                View Full Plan
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
-
-        {prsHit > 0 && topPr && sharingAvailable ? (
-          <TouchableOpacity
-            style={styles.prShareBtn}
-            onPress={() => void handleSharePR()}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="trophy-outline" size={18} color={Colors.accent} />
-            <Text style={styles.prShareBtnText}>Share Your PR</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <TouchableOpacity
-          style={[
-            styles.secondaryButton,
-            (!weekCompletionChecked ||
-              isGenerating ||
-              (isWeekComplete && !nextWeekReady)) &&
-              styles.secondaryButtonDisabled,
-          ]}
-          activeOpacity={0.8}
-          disabled={
-            !weekCompletionChecked ||
-            isGenerating ||
-            (isWeekComplete && !nextWeekReady)
-          }
-          onPress={() =>
-            // PlanView lives under Dashboard → WorkoutTab stack (not root)
-            (navigation as { navigate: (a: string, b?: object) => void }).navigate(
-              'Dashboard',
-              {
-                screen: 'WorkoutTab',
-                params: {
-                  screen: 'PlanView',
-                  params: { planId, weekNumber },
-                },
-              },
-            )
-          }
-        >
-          <Text style={styles.secondaryButtonText}>View Full Plan</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -1421,7 +1396,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
-    gap: 10,
+    gap: Spacing.sm,
   },
   adaptationReadyRow: {
     marginBottom: Spacing.md,
@@ -1442,6 +1417,20 @@ const styles = StyleSheet.create({
   },
   primaryButtonDisabled: {
     opacity: 0.45,
+  },
+  weekCompleteNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.xs,
+  },
+  weekCompleteNoticeText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
   generatingState: {
     alignItems: 'center',
@@ -1517,23 +1506,6 @@ const styles = StyleSheet.create({
     opacity: 0,
     pointerEvents: 'none',
   },
-  prShareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    height: 48,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.accent,
-    marginTop: Spacing.md,
-  },
-  prShareBtnText: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.body,
-    color: Colors.accent,
-  },
-
   summaryBanner: {
     marginBottom: Spacing.lg,
     backgroundColor: Colors.bgCard,

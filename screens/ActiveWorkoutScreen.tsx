@@ -1313,7 +1313,10 @@ export default function ActiveWorkoutScreen() {
           .eq('skipped', false);
 
         const historicalBests = buildExerciseBestsFromLogs(priorLogs ?? []);
-        prsHit = sets.filter((s) => {
+        // 1. Only count PR if exercise has prior history (historicalBests entry exists)
+        // 2. Dedupe per exercise — take best set per exercise name, count once
+        const prByExercise = new Map<string, { weight: number; reps: number }>();
+        for (const s of sets) {
           const exercise = (workout?.exercises ?? []).find(
             (ex) => ex.id === s.exerciseId,
           );
@@ -1321,11 +1324,19 @@ export default function ActiveWorkoutScreen() {
             (typeof s.exerciseName === 'string' && s.exerciseName.trim()) ||
             exercise?.name?.trim() ||
             '';
-          if (!name) return false;
+          if (!name) continue;
           const weight = Number(s.weightLbs ?? 0);
           const reps = Number(s.reps ?? 0);
-          return isNewWeightPR(weight, reps, historicalBests[name]);
-        }).length;
+          if (weight <= 0 || reps <= 0) continue;
+          // Require prior history — week 1 with no logs doesn't count as PR
+          if (!historicalBests[name]) continue;
+          if (!isNewWeightPR(weight, reps, historicalBests[name])) continue;
+          const existing = prByExercise.get(name);
+          if (!existing || weight > existing.weight || (weight === existing.weight && reps > existing.reps)) {
+            prByExercise.set(name, { weight, reps });
+          }
+        }
+        prsHit = prByExercise.size;
       }
 
       // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.

@@ -404,15 +404,27 @@ export default function ExerciseCard({
     );
     return libraryMatch?.primaryMuscle ?? exercise.muscleGroup;
   }, [swappedName, exercise.name, exercise.muscleGroup]);
-  const exerciseNameLower = (
-    exercise.exerciseName ??
-    exercise.name ??
-    ''
-  ).toLowerCase();
+  const effectiveNameForEquipment = swappedName ?? exercise.exerciseName ?? exercise.name ?? '';
+  const exerciseNameLower = effectiveNameForEquipment.toLowerCase();
   const isWeightedVariant = exerciseNameLower.includes('weighted');
+
+  const effectiveEquipment = (() => {
+    if (!swappedName) return exercise.equipment;
+    const swapLib = EXERCISES.find(
+      (e) => e.name.toLowerCase() === swappedName.toLowerCase(),
+    );
+    if (swapLib) return swapLib.usesWeight ? swapLib.equipment : 'bodyweight';
+    const n = swappedName.toLowerCase();
+    if (n.includes('machine') || n.includes('smith')) return 'machine';
+    if (n.includes('dumbbell') || n.includes(' db ')) return 'dumbbell';
+    if (n.includes('barbell')) return 'barbell';
+    if (n.includes('cable')) return 'cable';
+    return exercise.equipment;
+  })();
+
   const isBodyweightExercise =
-    (exercise.equipment === 'bodyweight' ||
-      (exercise.equipment === undefined && exercise.usesWeight === false)) &&
+    (effectiveEquipment === 'bodyweight' ||
+      (effectiveEquipment === undefined && exercise.usesWeight === false)) &&
     !isWeightedVariant;
   const tw =
     effectiveTargetWeight ?? exercise.sets[0]?.targetWeight ?? 0;

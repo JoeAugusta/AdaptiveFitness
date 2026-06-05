@@ -155,7 +155,7 @@ serve(async (req) => {
     );
 
     const [planResult, logsResult, profileResult] = await Promise.all([
-      supabase.from('plans').select('plan_json, goal_id').eq('id', planId).single(),
+      supabase.from('plans').select('plan_json, goal_id, start_date').eq('id', planId).single(),
       supabase
         .from('workout_logs')
         .select('*')
@@ -289,7 +289,22 @@ ${adjustmentCopy}`.trim();
 
     // Step 3 — Compute performance metrics
     const sessionsCompleted = new Set(logs.map((l: any) => l.day_number)).size;
-    const sessionsPlanned = daysPerWeek;
+
+    // Late-start W1 detection: if the plan started mid-week, count only the
+    // scheduled training days that fell on or after the plan start_date.
+    // This prevents a Friday starter from being flagged as "Tough Week" for 1/3.
+    let sessionsPlanned = daysPerWeek;
+    if (weekNumber === 1 && planResult.data.start_date && planJson.scheduledDays && Array.isArray(planJson.scheduledDays)) {
+      const startDate = new Date(planResult.data.start_date + 'T12:00:00');
+      const startDayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][startDate.getDay()];
+      const normalized = (planJson.scheduledDays as string[]).map((d: string) => d.trim().slice(0, 3));
+      const startIndex = normalized.indexOf(startDayLabel);
+      if (startIndex > 0) {
+        // User started after the first scheduled day — only count days from startIndex onward
+        sessionsPlanned = normalized.length - startIndex;
+      }
+    }
+
     const completionRate = sessionsPlanned > 0 ? sessionsCompleted / sessionsPlanned : 0;
 
     const fatigueRatings = logs
@@ -526,6 +541,7 @@ Tone rules:
 Goal type: ${goalType}
 Performance metrics:
 ${JSON.stringify(metrics, null, 2)}
+${weekNumber === 1 && planResult.data.start_date && planJson.scheduledDays ? `Late-start context: This user started their plan on ${planResult.data.start_date}. Scheduled training days are ${(planJson.scheduledDays as string[]).join(', ')}. Sessions planned this week reflects only the days available since their start date (${sessionsPlanned} of ${daysPerWeek} total weekly sessions). Do NOT frame this as a missed session week. The user completed every available session. Frame Week 1 as a calibration start, not a tough week.` : ''}
 ${deloadPerformanceOverrideBlock}
 CRITICAL INTERPRETATION RULES — you must follow this exactly:
 

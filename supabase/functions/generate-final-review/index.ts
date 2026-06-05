@@ -98,6 +98,7 @@ serve(async (req) => {
       full_body: 'Full Body',
       bro_split: 'Bro Split',
       strength_focused: 'Strength Focused',
+      strength_2x: 'Strength 2x/week',
       athletic: 'Athletic Performance',
       batman: 'Batman Split',
     };

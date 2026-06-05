@@ -139,7 +139,10 @@ export default function PlanCompleteScreen() {
   const underlineColor = GOAL_COLOR[goalKey] ?? Colors.accent;
 
   const handleStartNewPlan = () => {
-    navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Onboarding', params: { skipPaywall: true } }],
+    });
   };
 
   const handleGoDashboard = () => {

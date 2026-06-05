@@ -9,6 +9,8 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { BETA_BYPASS } from './constants/betaBypass';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setDevDateOverride } from './utils/dateUtils';
 import {
   useFonts,
   DMSans_400Regular,
@@ -34,6 +36,20 @@ Notifications.setNotificationHandler({
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function App() {
+  useEffect(() => {
+    if (__DEV__) {
+      void AsyncStorage.getItem('dev_date_override').then((val) => {
+        if (val) {
+          const d = new Date(`${val}T12:00:00`);
+          if (!isNaN(d.getTime())) {
+            setDevDateOverride(d);
+            console.log('[DEV] Date override active:', val);
+          }
+        }
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
       if (event !== 'SIGNED_OUT') return;

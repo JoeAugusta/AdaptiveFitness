@@ -281,6 +281,8 @@ export default function BuildingPlanScreen() {
   const [todayDateStr, setTodayDateStr] = useState('');
   const [tomorrowDateStr, setTomorrowDateStr] = useState('');
   const [todayIsScheduled, setTodayIsScheduled] = useState(false);
+  const [todayDayNumber, setTodayDayNumber] = useState<number | null>(null);
+  const [todayDayTitle, setTodayDayTitle] = useState<string | null>(null);
 
   const replacePlanId = params.replacePlanId;
   const selectedPlan: SubscriptionPlanId = params.selectedPlan ?? 'annual';
@@ -415,15 +417,32 @@ export default function BuildingPlanScreen() {
 
   const attemptPurchaseAndFinish = useCallback(async () => {
     const startDateToSave = selectedStartDate ?? firstSessionDateISO;
-    if (startDateToSave && planId) {
-      try {
-        const { error } = await supabase
-          .from('plans')
-          .update({ start_date: startDateToSave })
-          .eq('id', planId);
-        if (error) console.error('[StartDate] UPDATE failed:', error);
-      } catch (e) {
-        console.error('[StartDate] auto-set threw:', e);
+
+    console.log('[StartDate] saving:', {
+      selectedStartDate,
+      firstSessionDateISO,
+      startDateToSave,
+      planId,
+    });
+
+    if (startDateToSave) {
+      const resolvedId = planId ?? (await resolveActivePlanId());
+      if (resolvedId) {
+        try {
+          const { error } = await supabase
+            .from('plans')
+            .update({ start_date: startDateToSave })
+            .eq('id', resolvedId);
+          if (error) {
+            console.error('[StartDate] UPDATE failed:', error);
+          } else {
+            console.log('[StartDate] saved successfully:', startDateToSave);
+          }
+        } catch (e) {
+          console.error('[StartDate] save threw:', e);
+        }
+      } else {
+        console.error('[StartDate] No planId resolved — start_date not saved');
       }
     }
 
@@ -489,7 +508,36 @@ export default function BuildingPlanScreen() {
     setTodayDateStr(todayStr);
     setTomorrowDateStr(tomorrowStr);
     setTodayIsScheduled(todayScheduled);
-    setSelectedStartDate(todayScheduled ? todayStr : tomorrowStr);
+
+    // Compute which day of the split today maps to
+    if (todayScheduled) {
+      const scheduledNormalized = normalizeScheduledDays(scheduledDays);
+      const todayLabel = (() => {
+        const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return names[new Date().getDay()];
+      })();
+      const idx = scheduledNormalized.indexOf(todayLabel);
+      if (idx >= 0) {
+        setTodayDayNumber(idx + 1);
+        const ordinals = ['first','second','third','fourth','fifth','sixth','seventh'];
+        setTodayDayTitle(ordinals[idx] ?? `Day ${idx + 1}`);
+      }
+    }
+
+    const scheduledNormalized = normalizeScheduledDays(scheduledDays);
+    const todayLabel = (() => {
+      const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return names[new Date().getDay()];
+    })();
+    const isFirstScheduledDay =
+      scheduledNormalized.length > 0 &&
+      scheduledNormalized[0] === todayLabel;
+
+    // Default selection: first scheduled day of the week unless today
+    // IS the first scheduled day
+    setSelectedStartDate(
+      todayScheduled && isFirstScheduledDay ? todayStr : tomorrowStr,
+    );
     stopLoadingSequence();
     setShowSuccess(true);
   }, [planReady, errorState, replacePlanId, params.trainingDays]);
@@ -974,6 +1022,11 @@ export default function BuildingPlanScreen() {
                   <Text style={styles.startDateValue}>
                     {formatDisplayDate(todayDateStr)}
                   </Text>
+                  {todayDayNumber !== null && todayDayNumber > 1 ? (
+                    <Text style={styles.startDateHint}>
+                      {`Picks up at Day ${todayDayNumber} of your split`}
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
@@ -984,9 +1037,25 @@ export default function BuildingPlanScreen() {
                   onPress={() => setSelectedStartDate(tomorrowDateStr)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.startDateLabel}>Start Tomorrow</Text>
+                  <Text style={styles.startDateLabel}>
+                    {(() => {
+                      if (!tomorrowDateStr) return 'Start Tomorrow';
+                      const d = new Date(`${tomorrowDateStr}T12:00:00`);
+                      const days = ['Sunday','Monday','Tuesday','Wednesday',
+                                    'Thursday','Friday','Saturday'];
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      const tomorrowKey = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+                      return tomorrowDateStr === tomorrowKey
+                        ? 'Start Tomorrow'
+                        : `Start ${days[d.getDay()]}`;
+                    })()}
+                  </Text>
                   <Text style={styles.startDateValue}>
                     {formatDisplayDate(tomorrowDateStr)}
+                  </Text>
+                  <Text style={styles.startDateHint}>
+                    Start fresh at Day 1 of your split
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1229,6 +1298,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     textAlign: 'center',
+  },
+  startDateHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 2,
   },
   successCTA: {
     width: '100%',

@@ -1,5 +1,17 @@
 // BUG-8: Day-of-week helpers for dashboard training vs rest (local calendar, matches onboarding day labels).
 
+// DEV-only date override — persisted in AsyncStorage across
+// Metro reloads. Never active in production builds.
+let _devDateOverride: Date | null = null;
+
+export function setDevDateOverride(date: Date | null): void {
+  if (__DEV__) _devDateOverride = date;
+}
+
+export function getDevDateOverride(): Date | null {
+  return __DEV__ ? _devDateOverride : null;
+}
+
 const CALENDAR_DAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 const DAY_LABEL_ALIASES: Record<string, (typeof CALENDAR_DAY_ORDER)[number]> = {
@@ -23,10 +35,13 @@ const DAY_LABEL_ALIASES: Record<string, (typeof CALENDAR_DAY_ORDER)[number]> = {
 };
 
 /** Local calendar date as YYYY-MM-DD (no UTC conversion). */
-export function getLocalDateString(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+export function getLocalDateString(date?: Date): string {
+  const d = date ?? (__DEV__ && _devDateOverride
+    ? new Date(_devDateOverride)
+    : new Date());
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -36,6 +51,7 @@ export function localDateISO(d: Date = new Date()): string {
 }
 
 export function getLocalDate(): Date {
+  if (__DEV__ && _devDateOverride) return new Date(_devDateOverride);
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
@@ -71,6 +87,49 @@ export function getNextScheduledDay(
   return getLocalDateString(tomorrow);
 }
 
+/**
+ * Returns the date string (YYYY-MM-DD) of the first scheduled training
+ * day in the current calendar week (Mon–Sun). Used as start_date anchor
+ * so the plan's day sequence maps correctly to calendar days even when
+ * the user starts mid-week.
+ *
+ * If the first scheduled day already passed this week, returns that
+ * past date. If no scheduled days, returns today.
+ */
+export function getWeekAnchorDate(scheduledDays: string[]): string {
+  const normalized = normalizeScheduledDays(scheduledDays);
+  if (normalized.length === 0) return getLocalDateString();
+
+  const today = new Date();
+  const todayDow = today.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+
+  const DOW_MAP: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+
+  // Find the earliest scheduled day in the current Mon–Sun week
+  // We define "this week" as the Mon that contains today.
+  const mondayOffset = todayDow === 0 ? -6 : 1 - todayDow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  monday.setHours(12, 0, 0, 0);
+
+  let earliestDate: Date | null = null;
+  for (const day of normalized) {
+    const dow = DOW_MAP[day];
+    if (dow === undefined) continue;
+    // Days offset from Monday (Mon=0 ... Sun=6 in ISO week)
+    const isoDow = dow === 0 ? 6 : dow - 1;
+    const candidate = new Date(monday);
+    candidate.setDate(monday.getDate() + isoDow);
+    if (!earliestDate || candidate < earliestDate) {
+      earliestDate = candidate;
+    }
+  }
+
+  return earliestDate ? getLocalDateString(earliestDate) : getLocalDateString();
+}
+
 export function isTodayScheduled(scheduledDays: string[]): boolean {
   const normalized = normalizeScheduledDays(scheduledDays);
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -100,7 +159,10 @@ export function normalizeScheduledDays(scheduledDays: string[]): string[] {
  * Returns: 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
  */
 export function getTodayDayLabel(): string {
-  return CALENDAR_DAY_ORDER[new Date().getDay()];
+  const d = __DEV__ && _devDateOverride
+    ? new Date(_devDateOverride)
+    : new Date();
+  return CALENDAR_DAY_ORDER[d.getDay()];
 }
 
 export type FirstSessionDateResult = {

@@ -222,7 +222,7 @@ export default function WeeklyCoachSummaryScreen() {
       if (fetchErr) throw new Error(fetchErr.message);
       existing = (rows ?? []) as WeeklySummaryRow[];
 
-      if (weekNumber >= currentWeek) {
+      if (weekNumber >= currentWeek && currentWeek > 1) {
         setWeekInProgress(true);
         setLoading(false);
         return;

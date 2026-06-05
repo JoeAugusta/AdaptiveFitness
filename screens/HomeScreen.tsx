@@ -344,6 +344,22 @@ function resolveTodayWorkout(args: {
     workoutDaysOrdered.find((d) => !completedDayNumbers.has(d.dayNumber)) ?? null;
 
   if (devBypassDayGate) {
+    // Cold-start: map today's calendar position to the correct
+    // plan day even in bypass/week1 mode
+    const noSessionsLogged = completedDayNumbers.size === 0;
+    if (noSessionsLogged && scheduledDays.length > 0 && todayLabel) {
+      const normalizedScheduled = scheduledDays.map((d) =>
+        d.trim().slice(0, 3),
+      );
+      const todayIndex = normalizedScheduled.indexOf(todayLabel);
+      if (todayIndex >= 0) {
+        const workoutDaysOrdered = weekDays
+          .filter((d) => d.type === 'workout')
+          .sort((a, b) => a.dayNumber - b.dayNumber);
+        const targetWorkout = workoutDaysOrdered[todayIndex] ?? null;
+        if (targetWorkout) return targetWorkout;
+      }
+    }
     let w = firstUnloggedInSequence();
     if (!w && nextWeekReady && nextWeekFirstWorkout) {
       w = { ...nextWeekFirstWorkout, isNextWeek: true };
@@ -369,9 +385,27 @@ function resolveTodayWorkout(args: {
     return null;
   }
 
-  // Calendar day confirms it's a training day; the session to show is always the
-  // first unlogged in plan order (completion-count anchored, not weekday-index anchored).
-  // This ensures mid-week starters see Day 1 on their first session, not Day N.
+  // If no sessions logged yet (cold start), map today's calendar
+  // position in scheduledDays to the correct plan day number.
+  // This prevents a Friday starter from seeing Day 1 when their
+  // plan has Day 1 on Monday and Day 5 on Friday.
+  const noSessionsLogged = completedDayNumbers.size === 0;
+  if (noSessionsLogged && scheduledDays.length > 0 && todayLabel) {
+    const normalizedScheduled = scheduledDays.map((d) =>
+      d.trim().slice(0, 3),
+    );
+    const todayIndex = normalizedScheduled.indexOf(todayLabel);
+    if (todayIndex >= 0) {
+      // Find the workout day that corresponds to this position
+      // in the scheduled days array
+      const workoutDaysOrdered = weekDays
+        .filter((d) => d.type === 'workout')
+        .sort((a, b) => a.dayNumber - b.dayNumber);
+      const targetWorkout = workoutDaysOrdered[todayIndex] ?? workoutDaysOrdered[0];
+      if (targetWorkout) return targetWorkout;
+    }
+  }
+
   const w = firstUnloggedInSequence();
   if (w) return w;
 
@@ -969,7 +1003,26 @@ export default function HomeScreen() {
       const completedDayNumbers = new Set(
         logsWeek?.map((l: { day_number: number }) => l.day_number) ?? [],
       );
-      const completedSessions = completedDayNumbers.size;
+      const rawCompletedSessions = completedDayNumbers.size;
+
+      const completedSessions = rawCompletedSessions;
+
+      // For week-complete CTA: a late-start W1 user is "complete" when they've
+      // logged all sessions available from their start date forward.
+      // implicitSessionsForCount is used ONLY for the showGenerateNextWeekCTA check below.
+      const daysPerWeekForCount: number = plan.plan_json.daysPerWeek ?? 4;
+      const dayNamesForCount = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const todayLabelForCount = dayNamesForCount[new Date().getDay()];
+      const normalizedForCount = scheduledDays.map((d: string) => d.trim().slice(0, 3));
+      const todayScheduledIndexForCount = normalizedForCount.indexOf(todayLabelForCount);
+
+      const implicitSessionsForCount =
+        (plan.current_week ?? 1) === 1 &&
+        todayScheduledIndexForCount > 0 &&
+        rawCompletedSessions > 0 &&
+        rawCompletedSessions <= todayScheduledIndexForCount
+          ? todayScheduledIndexForCount - (rawCompletedSessions - 1)
+          : 0;
       const isWeek1NoSessionsYet =
         (plan.current_week ?? 1) === 1 && completedDayNumbers.size === 0;
       setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
@@ -985,11 +1038,15 @@ export default function HomeScreen() {
         .limit(1)
         .maybeSingle();
 
-      const loggedWorkoutToday = !!todayLogs;
-      setHasLoggedWorkoutToday(loggedWorkoutToday);
-
       const calendarTrainingToday =
         !hasDayLabels || isTodayTrainingDay(scheduledDays, todayLabel);
+
+      // Only show "workout complete" if today was actually a training
+      // day in the current week. If current_week advanced to W2 and
+      // today is not a W2 training day, don't show the complete card.
+      const loggedWorkoutToday = !!todayLogs && calendarTrainingToday;
+      setHasLoggedWorkoutToday(loggedWorkoutToday);
+
       const trainingEligibleToday =
         devBypassRead ||
         calendarTrainingToday ||
@@ -1081,8 +1138,8 @@ export default function HomeScreen() {
       setTodayActivityLog((sportLogRow as ActivityLogRow | null) ?? null);
 
       const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
-      const distinctDays = completedSessions;
-      const isWeekComplete = distinctDays >= daysPerWeek && daysPerWeek > 0;
+      const effectiveCompletedForCTA = Math.min(daysPerWeekForCount, rawCompletedSessions + implicitSessionsForCount);
+      const isWeekComplete = effectiveCompletedForCTA >= daysPerWeek && daysPerWeek > 0;
 
       const pj = planJson as {
         totalWeeks?: number;
@@ -1101,8 +1158,7 @@ export default function HomeScreen() {
       const showGenerateNextWeekCTA =
         isWeekComplete &&
         !nextWeekExists &&
-        dbCurrentWeek < totalWeeks &&
-        postWeekHeroAllowed;
+        dbCurrentWeek < totalWeeks;
 
       if (__DEV__) {
         console.log('[CTA check]', {
@@ -1151,6 +1207,40 @@ export default function HomeScreen() {
         },
         planStartsOn: null,
       });
+      // Monday auto-advance: if today is the first scheduled training
+      // day, W2 exists in plan_json, and current_week is still 1,
+      // silently advance current_week to 2.
+      if (
+        (plan.current_week ?? 1) === 1 &&
+        hasDayLabels &&
+        scheduledDays.length > 0
+      ) {
+        const firstScheduledDay = scheduledDays[0];
+        const todayLabelForAdvance = getTodayDayLabel();
+        const normalizedFirst = firstScheduledDay.trim().slice(0, 3);
+        const normalizedToday = todayLabelForAdvance.trim().slice(0, 3);
+
+        if (normalizedFirst === normalizedToday) {
+          const w2Exists = (planJson.weeks ?? []).some(
+            (w: unknown) => getPlanWeekNumber(w) === 2,
+          );
+          const allW1Done =
+            completedSessions >= daysPerWeek ||
+            (rawCompletedSessions > 0 &&
+              rawCompletedSessions + implicitSessionsForCount >= daysPerWeek);
+
+          if (w2Exists && allW1Done) {
+            console.log('[HomeScreen] Monday auto-advance: W1→W2');
+            await supabase
+              .from('plans')
+              .update({ current_week: 2 })
+              .eq('id', plan.id);
+            void loadDashboardData();
+            return;
+          }
+        }
+      }
+
       setPlanSnapshotForMissed({
         planId: plan.id,
         currentWeek: plan.current_week ?? 1,
@@ -1329,21 +1419,6 @@ export default function HomeScreen() {
         body: { userId, planId: planData.planId, completedWeekNumber: planData.currentWeek },
       });
       if (error) throw error;
-      const nextWeekNumber = planData.currentWeek + 1;
-      const { data: planBeforeAdvance } = await supabase
-        .from('plans')
-        .select('current_week')
-        .eq('id', planData.planId)
-        .maybeSingle();
-      if (Number(planBeforeAdvance?.current_week ?? 0) < nextWeekNumber) {
-        const { error: weekAdvanceErr } = await supabase
-          .from('plans')
-          .update({ current_week: nextWeekNumber })
-          .eq('id', planData.planId);
-        if (weekAdvanceErr) {
-          console.warn('[Home] current_week update failed:', weekAdvanceErr.message);
-        }
-      }
       await loadDashboardData();
     } catch {
       Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
@@ -1640,9 +1715,8 @@ export default function HomeScreen() {
     planData != null &&
     planStatus !== 'completed';
 
-  const completedWeek = (planData?.currentWeek ?? 1) - 1;
+  const completedWeek = latestSummary?.week_number ?? (planData?.currentWeek ?? 1) - 1;
   const hasViewableSummary =
-    completedWeek >= 1 &&
     latestSummary != null &&
     planStatus === 'active';
 
@@ -1684,6 +1758,9 @@ export default function HomeScreen() {
               <Text style={styles.greetingName}>{displayName}</Text>
             ) : null}
           </View>
+          <Text style={styles.headerDate}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
         </View>
 
         {showTrialBanner ? (
@@ -1866,7 +1943,7 @@ export default function HomeScreen() {
 
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
-        {hasLoggedWorkoutToday && !showGenerateNextWeekCTA ? (
+        {hasLoggedWorkoutToday ? (
           <View style={styles.workoutDoneCard}>
             <Text style={styles.workoutDonePill}>WORKOUT COMPLETE</Text>
             <Text style={styles.workoutDoneTitle}>Great work today.</Text>
@@ -1894,63 +1971,9 @@ export default function HomeScreen() {
                 )}
               </Text>
             </View>
-          ) : allSessionsComplete && postWeekHeroAllowed ? (
-            <View style={styles.generateCTACard}>
-              <View style={styles.generateCTATitleRow}>
-                <Ionicons name="checkmark-circle-outline" size={20} color={Colors.success} />
-                <Text style={styles.generateCTATitle}>
-                  Week {planData?.currentWeek} Complete!
-                </Text>
-              </View>
-              <Text style={styles.generateCTASubtitle}>
-                All sessions done. Jordan is preparing your Week{' '}
-                {(planData?.currentWeek ?? 0) + 1} plan.
-              </Text>
-              <TouchableOpacity
-                style={styles.generateCTAButton}
-                activeOpacity={0.8}
-                onPress={handleGenerateNextWeek}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator color={Colors.textPrimary} />
-                ) : (
-                  <Text style={styles.generateCTAButtonText}>
-                    Generate Week {(planData?.currentWeek ?? 0) + 1}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
           ) : (
             <RecoveryDayCard planGoal={planData?.planGoal} dayNumber={recoveryDayNumber} />
           )
-        ) : showGenerateNextWeekCTA ? (
-          <View style={styles.generateCTACard}>
-            <View style={styles.generateCTATitleRow}>
-              <Ionicons name="checkmark-circle-outline" size={20} color={Colors.success} />
-              <Text style={styles.generateCTATitle}>
-                Week {planData?.currentWeek} Complete!
-              </Text>
-            </View>
-            <Text style={styles.generateCTASubtitle}>
-              All sessions done. Jordan is preparing your Week{' '}
-              {(planData?.currentWeek ?? 0) + 1} plan.
-            </Text>
-            <TouchableOpacity
-              style={styles.generateCTAButton}
-              activeOpacity={0.8}
-              onPress={handleGenerateNextWeek}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <ActivityIndicator color={Colors.textPrimary} />
-              ) : (
-                <Text style={styles.generateCTAButtonText}>
-                  Generate Week {(planData?.currentWeek ?? 0) + 1}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
         ) : today ? (
           <View style={styles.workoutCard}>
             <View style={styles.workoutTopRow}>
@@ -2124,36 +2147,37 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── 3b. Next Week Ready Banner ── */}
         {planStatus !== 'completed' &&
-          planData?.nextWeekReady &&
-          planData.completedSessions >= planData.daysPerWeek &&
-          postWeekHeroAllowed && (
-          <View style={styles.nextWeekBanner}>
-            <Text style={styles.nextWeekBannerTitle}>
-              Week {planData.currentWeek + 1} is Ready <Ionicons name="flash-outline" size={16} color={Colors.accent} />
-            </Text>
-            <Text style={styles.nextWeekBannerSubtitle}>
-              Your adapted plan is waiting. Keep the momentum going.
+          showGenerateNextWeekCTA &&
+          !planData?.nextWeekReady && (
+          <View style={styles.generateCTACard}>
+            <View style={styles.generateCTATitleRow}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={20}
+                color={Colors.success}
+              />
+              <Text style={styles.generateCTATitle}>
+                Week {planData?.currentWeek} Complete!
+              </Text>
+            </View>
+            <Text style={styles.generateCTASubtitle}>
+              All sessions done. Generate your Week{' '}
+              {(planData?.currentWeek ?? 0) + 1} plan when you're ready.
             </Text>
             <TouchableOpacity
-              style={styles.nextWeekBannerButton}
+              style={styles.generateCTAButton}
               activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('ActiveWorkout', {
-                  planId: planData.planId,
-                  weekNumber: planData.currentWeek + 1,
-                  dayNumber: planData.nextWeekFirstWorkout?.dayNumber ?? 1,
-                  workoutTitle: planData.nextWeekFirstWorkout?.title ?? 'Workout',
-                  preSessionMessage: preSessionCopy
-                    ? (cleanJordanMessage(stripEmDash(preSessionCopy)) ?? null)
-                    : null,
-                })
-              }
+              onPress={handleGenerateNextWeek}
+              disabled={isGenerating}
             >
-              <Text style={styles.nextWeekBannerButtonText}>
-                Start Week {planData.currentWeek + 1}
-              </Text>
+              {isGenerating ? (
+                <ActivityIndicator color={Colors.textPrimary} />
+              ) : (
+                <Text style={styles.generateCTAButtonText}>
+                  Generate Week {(planData?.currentWeek ?? 0) + 1}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -2619,6 +2643,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: 56,
     paddingBottom: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  headerDate: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    paddingBottom: 4,
   },
   greetingTime: {
     fontFamily: Fonts.regular,
@@ -2914,12 +2947,12 @@ const styles = StyleSheet.create({
   workoutLabel: {
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
-    color: Colors.accent,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
   dayBadge: {
-    backgroundColor: Colors.accentMuted,
+    backgroundColor: Colors.bgElevated,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Radius.full,
@@ -2927,7 +2960,7 @@ const styles = StyleSheet.create({
   dayBadgeText: {
     fontSize: FontSizes.caption,
     fontFamily: Fonts.bold,
-    color: Colors.accent,
+    color: Colors.textSecondary,
   },
   workoutName: {
     fontSize: FontSizes.heading1,
@@ -2953,10 +2986,10 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   sessionFocusCard: {
-    backgroundColor: Colors.accentMuted,
+    backgroundColor: Colors.bgElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.accentBorder,
+    borderColor: Colors.divider,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     marginTop: Spacing.sm,
@@ -2966,7 +2999,7 @@ const styles = StyleSheet.create({
   sessionFocusText: {
     fontFamily: Fonts.medium,
     fontSize: FontSizes.caption,
-    color: Colors.accent,
+    color: Colors.textSecondary,
     lineHeight: 18,
   },
   workoutDivider: {
@@ -3145,8 +3178,10 @@ const styles = StyleSheet.create({
   weekCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.lg,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.bgPrimary,
     borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
     padding: Spacing.lg,
   },
   weekTopRow: {
@@ -3179,7 +3214,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayDotComplete: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.success,
   },
   dayDotCurrent: {
     backgroundColor: Colors.bgPrimary,
@@ -3210,7 +3247,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.success,
   },
 
   /** Quick stats strip (streak / sessions / lbs) — grouped for conditional render */
@@ -3415,40 +3452,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-  },
-
-  nextWeekBanner: {
-    backgroundColor: Colors.bgCard,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.success,
-    borderRadius: Radius.md,
-    padding: Spacing.lg,
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.lg,
-  },
-  nextWeekBannerTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
-  },
-  nextWeekBannerSubtitle: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginTop: 4,
-  },
-  nextWeekBannerButton: {
-    backgroundColor: Colors.success,
-    borderRadius: Radius.sm,
-    paddingVertical: 10,
-    paddingHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    alignSelf: 'flex-start',
-  },
-  nextWeekBannerButtonText: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold,
   },
 
   weightLogCard: {

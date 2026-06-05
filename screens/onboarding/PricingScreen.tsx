@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import type { RootStackParamList, SubscriptionPlanId } from '../../navigation/ty
 import { BETA_BYPASS } from '../../constants/betaBypass';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { JordanAvatar } from '../../components/JordanAvatar';
+import { useEntitlement } from '../../hooks/useEntitlement';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Pricing'>;
 type RouteType = RouteProp<RootStackParamList, 'Pricing'>;
@@ -84,6 +85,28 @@ export default function PricingScreen() {
   const route = useRoute<RouteType>();
   const params = route.params;
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanId>('annual');
+  const { isPro, loading: entitlementLoading } = useEntitlement();
+  const skipPaywall = (params as { skipPaywall?: boolean })?.skipPaywall === true;
+
+  useEffect(() => {
+    // skipPaywall: returning subscriber starting a new plan — always skip
+    if (skipPaywall) {
+      navigation.navigate('BuildingPlan', {
+        ...params,
+        selectedPlan: 'annual',
+      });
+      return;
+    }
+    // isPro: only skip if entitlement is confirmed loaded and not
+    // a BETA_BYPASS false-positive. New users are never isPro on
+    // first load so this only fires for genuine existing subscribers.
+    if (!entitlementLoading && isPro && !__DEV__) {
+      navigation.navigate('BuildingPlan', {
+        ...params,
+        selectedPlan: 'annual',
+      });
+    }
+  }, [skipPaywall, isPro, entitlementLoading]);
 
   const handleContinue = () => {
     const buildingPlanParams = {

@@ -106,9 +106,6 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
           <Text style={styles.downloadTagline}>Train smarter.</Text>
           <Text style={styles.downloadUrl}>hone.app</Text>
         </View>
-        <View style={styles.qrPlaceholder}>
-          <Text style={styles.qrPlaceholderText}>↓ hone.app</Text>
-        </View>
       </View>
     </View>
   );
@@ -131,7 +128,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOP_BG,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
   wordmark: {
     fontFamily: Fonts.bold,
@@ -219,7 +216,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
-    marginTop: 'auto',
+    marginTop: Spacing.md,
   },
   statPill: {
     flexDirection: 'row',
@@ -238,7 +235,6 @@ const styles = StyleSheet.create({
   downloadFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: FOOTER_BG,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
@@ -258,21 +254,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-  },
-  qrPlaceholder: {
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrPlaceholderText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.micro,
-    color: Colors.bgPrimary,
-    textAlign: 'center',
   },
 });

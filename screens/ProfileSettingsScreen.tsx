@@ -33,7 +33,7 @@ import {
 import { useMetric, cmToFtIn, ftInToCm } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
-import { getLocalDateString } from '../utils/dateUtils';
+import { getLocalDateString, setDevDateOverride, getDevDateOverride } from '../utils/dateUtils';
 import BetaFeedbackModal from '../components/BetaFeedbackModal';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -366,6 +366,7 @@ export default function ProfileSettingsScreen() {
 
   /** BUG-8: DEV-only — dashboard always shows workout card when true */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
+  const [devDateInput, setDevDateInput] = useState('');
   /** DEV-only — next WorkoutComplete save treats session as plan-final */
   const [devForcePlanComplete, setDevForcePlanComplete] = useState(false);
 
@@ -1290,6 +1291,47 @@ export default function ProfileSettingsScreen() {
             >
               <Text style={styles.devButtonText}>DEV: Reset Beta Welcome Screen</Text>
             </TouchableOpacity>
+
+            <Text style={styles.devSectionLabel}>DEV: Date Override</Text>
+            <Text style={styles.devSectionHint}>
+              Format: YYYY-MM-DD. Leave blank and submit to reset.
+            </Text>
+            <TextInput
+              style={styles.devInput}
+              placeholder="e.g. 2026-06-09"
+              placeholderTextColor={Colors.textTertiary}
+              value={devDateInput}
+              onChangeText={setDevDateInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                const val = devDateInput.trim();
+                if (!val) {
+                  setDevDateOverride(null);
+                  void AsyncStorage.removeItem('dev_date_override');
+                  console.log('[DEV] Date override cleared');
+                } else {
+                  const d = new Date(`${val}T12:00:00`);
+                  if (!isNaN(d.getTime())) {
+                    setDevDateOverride(d);
+                    void AsyncStorage.setItem('dev_date_override', val);
+                    console.log('[DEV] Date override set to:', val);
+                  } else {
+                    console.warn('[DEV] Invalid date format:', val);
+                  }
+                }
+                setDevDateInput('');
+              }}
+            />
+            <Text style={styles.devSectionActive}>
+              {(() => {
+                const override = getDevDateOverride();
+                return override
+                  ? `Active: ${override.toLocaleDateString()}`
+                  : 'No override active — using system date';
+              })()}
+            </Text>
           </View>
         ) : null}
 
@@ -1947,6 +1989,38 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.warning,
+  },
+  devSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.warning,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.lg,
+  },
+  devSectionHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  devInput: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  devSectionActive: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
   },
 
   versionText: {

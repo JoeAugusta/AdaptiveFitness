@@ -4646,7 +4646,6 @@ Return ONLY this exact JSON structure:
 
     const updatedWeeks = [...existingWeeks, nextWeekData];
     updatedPlanJson.weeks = updatedWeeks;
-    updatedPlanJson.currentWeek = nextWeekNumber;
 
     const lastMergedWeek = updatedWeeks[updatedWeeks.length - 1];
     const sampleWorkoutDay = lastMergedWeek?.days?.find(
@@ -4674,7 +4673,7 @@ Return ONLY this exact JSON structure:
 
     const { error: writeError } = await supabase
       .from('plans')
-      .update({ plan_json: updatedPlanJson, current_week: nextWeekNumber })
+      .update({ plan_json: updatedPlanJson })
       .eq('id', planId);
 
     console.log('[DB WRITE RESULT]', {

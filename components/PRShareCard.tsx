@@ -8,6 +8,7 @@ export const PR_SHARE_CARD_SIZE = 375;
 export type PRShareCardProps = {
   exerciseName: string;
   weightLbs: number;
+  reps: number;
   isMetric: boolean;
   isEstimated?: boolean;
   rank?: number;
@@ -24,12 +25,16 @@ function formatPrWeight(weightLbs: number, isMetric: boolean): string {
 export default function PRShareCard({
   exerciseName,
   weightLbs,
+  reps,
   isMetric,
   isEstimated = true,
   rank,
   cardRef,
 }: PRShareCardProps) {
   const subLabel = isEstimated ? 'Estimated 1RM' : 'Top Set';
+  const displayWeight = isEstimated && reps > 1
+    ? Math.round(weightLbs * (1 + reps / 30))
+    : Math.round(weightLbs);
 
   return (
     <View ref={cardRef} style={styles.card} collapsable={false}>
@@ -45,8 +50,11 @@ export default function PRShareCard({
         <Text style={styles.exerciseName} numberOfLines={2} adjustsFontSizeToFit>
           {exerciseName}
         </Text>
-        <Text style={styles.weightValue}>{formatPrWeight(weightLbs, isMetric)}</Text>
+        <Text style={styles.weightValue}>{formatPrWeight(displayWeight, isMetric)}</Text>
         <Text style={styles.subLabel}>{subLabel}</Text>
+        <Text style={styles.sourceLabel}>
+          {`${Math.round(weightLbs)} lbs × ${reps} reps`}
+        </Text>
         {typeof rank === 'number' && rank > 0 ? (
           <View style={styles.rankBadge}>
             <Text style={styles.rankBadgeText}>#{rank} All-Time</Text>
@@ -122,6 +130,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  sourceLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 4,
     textAlign: 'center',
   },
   rankBadge: {

@@ -26,7 +26,9 @@ import type { ProgressStackParamList, RootStackParamList } from '../navigation/t
 
 type PRData = {
   exerciseName: string;
-  weightLbs: number;
+  estimated1RM: number;
+  bestWeightLbs: number;
+  bestReps: number;
   isEstimated?: boolean;
   rank?: number;
 };
@@ -47,7 +49,9 @@ export default function PersonalRecordsScreen() {
   const handleShareSinglePR = useCallback(async (pr: PersonalRecord, rank: number) => {
     setSelectedPR({
       exerciseName: pr.exerciseName,
-      weightLbs: pr.bestWeightLbs,
+      estimated1RM: pr.estimated1RM,
+      bestWeightLbs: pr.bestWeightLbs,
+      bestReps: pr.bestReps,
       isEstimated: pr.bestReps > 1,
       rank: rank + 1,
     });
@@ -95,7 +99,9 @@ export default function PersonalRecordsScreen() {
           <PRShareCard
             cardRef={prCardRef}
             exerciseName={selectedPR.exerciseName}
-            weightLbs={selectedPR.weightLbs}
+            estimated1RM={selectedPR.estimated1RM}
+            bestWeightLbs={selectedPR.bestWeightLbs}
+            bestReps={selectedPR.bestReps}
             isMetric={isMetric}
             isEstimated={selectedPR.isEstimated ?? true}
             rank={selectedPR.rank}

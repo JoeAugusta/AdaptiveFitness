@@ -906,12 +906,40 @@ export default function HomeScreen() {
           : (currentWeekData as { adaptationChanges?: unknown }).adaptationChanges) ??
           []
       ) as Array<{ changeType?: string; direction?: string }>;
-      const progressedExerciseCount = adaptationChanges.filter(
+      let progressedExerciseCount = adaptationChanges.filter(
         (c) =>
           c.changeType === 'increase' ||
           c.direction === 'up' ||
           c.changeType === 'weight_increase',
       ).length;
+
+      // If current week has no adaptations (W1 never has any), check W2
+      // so the adaptation card shows immediately after generate completes
+      // on the weekend before Monday auto-advance.
+      if (progressedExerciseCount === 0) {
+        const nextWeekIndex = (planJson.weeks ?? []).findIndex(
+          (w: unknown) => getPlanWeekNumber(w) === (plan.current_week ?? 1) + 1,
+        );
+        const nextWeekAdaptations = (
+          nextWeekIndex >= 0
+            ? (
+                planJson.weeks?.[nextWeekIndex] as {
+                  adaptationChanges?: Array<{
+                    changeType?: string;
+                    direction?: string;
+                  }>;
+                }
+              )?.adaptationChanges
+            : []
+        ) ?? [];
+        progressedExerciseCount = nextWeekAdaptations.filter(
+          (c) =>
+            c.changeType === 'increase' ||
+            c.direction === 'up' ||
+            c.changeType === 'weight_increase',
+        ).length;
+      }
+
       setProgressedCount(progressedExerciseCount);
       setIsWeek1((plan.current_week ?? 1) === 1);
       setIsDeload(
@@ -2308,21 +2336,21 @@ export default function HomeScreen() {
                   style={[styles.statCard, styles.statCardTappable]}
                   onPress={() => {
                     if (
-                      !isWeek1 &&
                       progressedCount !== null &&
                       progressedCount > 0
                     ) {
                       navigation.navigate('AdaptationFeed', {
-                        weekNumber: dashboardCurrentWeek,
+                        weekNumber: progressedCount > 0 && planData?.nextWeekReady
+                          ? dashboardCurrentWeek + 1
+                          : dashboardCurrentWeek,
                       });
                     }
                   }}
                   activeOpacity={
-                    isWeek1 || !progressedCount ? 1 : 0.7
+                    !progressedCount ? 1 : 0.7
                   }
                 >
-                  {!isWeek1 &&
-                  progressedCount !== null &&
+                  {progressedCount !== null &&
                   progressedCount > 0 ? (
                     <View style={styles.statCardChevron}>
                       <Ionicons
@@ -2333,7 +2361,7 @@ export default function HomeScreen() {
                     </View>
                   ) : null}
 
-                  {isWeek1 ? (
+                  {(progressedCount === null || progressedCount === 0) && !isDeload ? (
                     <Ionicons
                       name="flag-outline"
                       size={24}
@@ -2360,20 +2388,18 @@ export default function HomeScreen() {
                   )}
 
                   <Text style={styles.statValue}>
-                    {isWeek1
+                    {isDeload
                       ? '—'
-                      : isDeload
+                      : progressedCount === null || progressedCount === 0
                         ? '—'
-                        : progressedCount === null
-                          ? '—'
-                          : String(progressedCount)}
+                        : String(progressedCount)}
                   </Text>
 
                   <Text style={styles.statLabel}>
-                    {isWeek1
-                      ? 'baseline'
-                      : isDeload
-                        ? 'deload'
+                    {isDeload
+                      ? 'deload'
+                      : (progressedCount === null || progressedCount === 0)
+                        ? 'baseline'
                         : progressedCount === 1
                           ? 'exercise'
                           : 'exercises'}

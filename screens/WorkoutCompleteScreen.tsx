@@ -232,6 +232,7 @@ export default function WorkoutCompleteScreen() {
   const [generationError, setGenerationError] = useState(false);
   const [isWeekComplete, setIsWeekComplete] = useState(false);
   const [weekCompletionChecked, setWeekCompletionChecked] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const autoGenStartedRef = useRef(false);
   const workoutCompleteSuccessHapticRef = useRef(false);
 
@@ -616,6 +617,7 @@ export default function WorkoutCompleteScreen() {
           if (effectiveCompleted >= daysPerWeek) {
             setIsWeekComplete(true);
             setWeekCompletionChecked(true);
+            setSummaryLoading(true);
             // Fire weekly summary immediately — independent of next week generation
             void (async () => {
               try {
@@ -635,6 +637,8 @@ export default function WorkoutCompleteScreen() {
                 }
               } catch (err) {
                 console.warn('[WorkoutComplete] weekly summary fire failed:', err);
+              } finally {
+                setSummaryLoading(false);
               }
             })();
           } else {
@@ -1133,7 +1137,14 @@ export default function WorkoutCompleteScreen() {
           </View>
         ) : isWeekComplete ? (
           <View style={{ gap: Spacing.sm }}>
-            {!showSummaryBanner ? (
+            {summaryLoading ? (
+              <View style={styles.summaryLoadingRow}>
+                <ActivityIndicator size="small" color={Colors.accent} />
+                <Text style={styles.summaryLoadingText}>
+                  Jordan is reviewing your week…
+                </Text>
+              </View>
+            ) : !showSummaryBanner ? (
               <View style={styles.weekCompleteNotice}>
                 <Ionicons
                   name="checkmark-circle-outline"
@@ -1141,8 +1152,8 @@ export default function WorkoutCompleteScreen() {
                   color={Colors.success}
                 />
                 <Text style={styles.weekCompleteNoticeText}>
-                  Week {weekNumber} complete. Generate Week{' '}
-                  {weekNumber + 1} from your dashboard when you're ready.
+                  Week {weekNumber} complete. Generate Week {weekNumber + 1} from
+                  your dashboard when you're ready.
                 </Text>
               </View>
             ) : null}
@@ -1156,9 +1167,7 @@ export default function WorkoutCompleteScreen() {
                 })
               }
             >
-              <Text style={styles.primaryButtonText}>
-                Back to Dashboard
-              </Text>
+              <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.secondaryButton}
@@ -1173,9 +1182,7 @@ export default function WorkoutCompleteScreen() {
                 })
               }
             >
-              <Text style={styles.secondaryButtonText}>
-                View Full Plan
-              </Text>
+              <Text style={styles.secondaryButtonText}>View Full Plan</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -1417,6 +1424,20 @@ const styles = StyleSheet.create({
   },
   primaryButtonDisabled: {
     opacity: 0.45,
+  },
+  summaryLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  summaryLoadingText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    flex: 1,
   },
   weekCompleteNotice: {
     flexDirection: 'row',

@@ -231,6 +231,7 @@ function WorkoutDayCard({
   planSplit,
   onStartWorkout,
   isNextWorkout,
+  isTodayCalendarDay,
   onViewResults,
   loadingResults,
   onPreviewDay,
@@ -240,6 +241,7 @@ function WorkoutDayCard({
   planSplit: string | undefined;
   onStartWorkout: (day: PlanDay) => void;
   isNextWorkout: boolean;
+  isTodayCalendarDay?: boolean;
   onViewResults: (day: PlanDay) => void;
   loadingResults: boolean;
   onPreviewDay?: (day: PlanDay) => void;
@@ -253,6 +255,7 @@ function WorkoutDayCard({
       style={[
         styles.workoutDayCard,
         isNextWorkout && !day.completed && styles.workoutDayCardNext,
+        isTodayCalendarDay && styles.workoutDayCardToday,
       ]}
       activeOpacity={
         day.completed || (!isNextWorkout && onPreviewDay)
@@ -347,9 +350,9 @@ function WorkoutDayCard({
   );
 }
 
-function RestDayCard({ day }: { day: PlanDay }) {
+function RestDayCard({ day, isTodayCalendarDay }: { day: PlanDay; isTodayCalendarDay?: boolean }) {
   return (
-    <View style={styles.restCard}>
+    <View style={[styles.restCard, isTodayCalendarDay && styles.restCardToday]}>
       <View style={styles.restHeaderRow}>
         <View style={styles.dayBadgeRest}>
           <Text style={styles.dayBadgeRestText}>Day {day.dayNumber}</Text>
@@ -793,6 +796,10 @@ export default function PlanViewScreen() {
   const nextWorkoutDayNumber = (() => {
     if (!weekData) return null;
 
+    // W2+ not yet started — browseable but no Start Workout until
+    // current_week advances to that week on Monday.
+    if (selectedWeek > planData.currentWeek) return null;
+
     const workoutDays = weekData.days.filter((d) => d.type === 'workout');
     const completedWorkoutDays = workoutDays.filter((d) => d.completed);
     const daysPerWeek = planData.daysPerWeek;
@@ -833,6 +840,26 @@ export default function PlanViewScreen() {
 
     // Normal path: first unlogged workout in sequence
     return workoutDays.find((d) => !d.completed)?.dayNumber ?? null;
+  })();
+
+  const todayCalendarDayNumber = (() => {
+    if (!weekData || !rawPlanJson?.scheduledDays || !Array.isArray(rawPlanJson.scheduledDays)) {
+      return null;
+    }
+    const allDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayLabel = allDays[new Date().getDay()];
+    const scheduledDays = rawPlanJson.scheduledDays as string[];
+    if (scheduledDays.length === 0) return null;
+    const firstScheduledIdx = allDays.indexOf(scheduledDays[0].trim().slice(0, 3));
+    if (firstScheduledIdx < 0) return null;
+    const ordered = [...weekData.days].sort((a, b) => a.dayNumber - b.dayNumber);
+    const dayNumberToLabel: Record<number, string> = {};
+    ordered.forEach((day, idx) => {
+      const calendarIdx = (firstScheduledIdx + idx) % 7;
+      dayNumberToLabel[day.dayNumber] = allDays[calendarIdx];
+    });
+    const match = ordered.find((d) => dayNumberToLabel[d.dayNumber] === todayLabel);
+    return match?.dayNumber ?? null;
   })();
 
   const handleApplyDeload = async () => {
@@ -1036,6 +1063,7 @@ export default function PlanViewScreen() {
                 weekPhase={weekData.phase}
                 planSplit={rawPlanJson?.split}
                 isNextWorkout={day.dayNumber === nextWorkoutDayNumber}
+                isTodayCalendarDay={day.dayNumber === todayCalendarDayNumber && day.dayNumber !== nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
                 onViewResults={handleViewResults}
                 loadingResults={resultsLoadingDayKey === `${selectedWeek}-${day.dayNumber}`}
@@ -1084,7 +1112,7 @@ export default function PlanViewScreen() {
                 );
               })()
             ) : (
-              <RestDayCard key={day.dayNumber} day={day} />
+              <RestDayCard key={day.dayNumber} day={day} isTodayCalendarDay={day.dayNumber === todayCalendarDayNumber} />
             ),
           )
         ) : (
@@ -1398,6 +1426,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.accentBorder,
     borderWidth: 1.5,
   },
+  workoutDayCardToday: {
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
   workoutHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1524,6 +1556,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     opacity: 0.6,
+  },
+  restCardToday: {
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+    opacity: 1,
   },
   restHeaderRow: {
     flexDirection: 'row',

@@ -21,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as StoreReview from 'expo-store-review';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
@@ -564,6 +565,26 @@ export default function WorkoutCompleteScreen() {
             setIsWeekComplete(true);
             setWeekCompletionChecked(true);
             setSummaryLoading(true);
+
+            // Rate App gate — only after week is complete, only on device, non-blocking
+            void (async () => {
+              try {
+                if (
+                  Platform.OS !== 'web' &&
+                  weekNumber >= 1 &&
+                  await StoreReview.hasAction()
+                ) {
+                  const RATE_APP_KEY = 'hone_rate_app_prompted';
+                  const alreadyPrompted = await AsyncStorage.getItem(RATE_APP_KEY);
+                  if (!alreadyPrompted) {
+                    await StoreReview.requestReview();
+                    await AsyncStorage.setItem(RATE_APP_KEY, '1');
+                  }
+                }
+              } catch {
+                // Never block on review prompt failure
+              }
+            })();
             // Fire weekly summary immediately — independent of next week generation
             void (async () => {
               try {

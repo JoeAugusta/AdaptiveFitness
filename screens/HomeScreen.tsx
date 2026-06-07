@@ -64,6 +64,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import { prepareShareCardData, captureAndShareCard } from '../utils/workoutShareAction';
+import DailyCheckInSheet from '../components/DailyCheckInSheet';
 
 function formatActivityIntensityShort(intensity: string): string {
   if (intensity === 'low') return 'Low';
@@ -637,11 +638,8 @@ export default function HomeScreen() {
   const [todayWeight, setTodayWeight] = useState<number | null>(null);
   const [todaySleepHours, setTodaySleepHours] = useState<number | null>(null);
   const [weightLoggedToday, setWeightLoggedToday] = useState(false);
-  const [showWeightModal, setShowWeightModal] = useState(false);
-  const [weightInput, setWeightInput] = useState('');
-  const [selectedSleepHours, setSelectedSleepHours] = useState<number | null>(null);
-  const [weightSaving, setWeightSaving] = useState(false);
-  const [weightSaveSuccess, setWeightSaveSuccess] = useState(false);
+  const [todayReadiness, setTodayReadiness] = useState<number | null>(null);
+  const [showDailyCheckIn, setShowDailyCheckIn] = useState(false);
   const uidRef = useRef<string | null>(null);
   const { displayToLbs, lbsToDisplay, formatBodyWeight, unitLabel, isMetric } = useMetric();
 
@@ -690,7 +688,6 @@ export default function HomeScreen() {
   } | null>(null);
   const [cardioCompleted, setCardioCompleted] = useState(false);
   const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
-  const [showActivityLogSheet, setShowActivityLogSheet] = useState(false);
   const [activityDashboardUserId, setActivityDashboardUserId] = useState<string | null>(null);
   const [dashboardWeightLbs, setDashboardWeightLbs] = useState(170);
   const [goalProgress, setGoalProgress] = useState<{
@@ -719,7 +716,7 @@ export default function HomeScreen() {
     const todayDate = getLocalDateString();
     const { data: todayLog } = await supabase
       .from('weight_logs')
-      .select('weight_lbs, sleep_hours')
+      .select('weight_lbs, sleep_hours, readiness_score')
       .eq('user_id', uid)
       .eq('log_date', todayDate)
       .maybeSingle();
@@ -796,7 +793,7 @@ export default function HomeScreen() {
       const todayDate = getLocalDateString();
       const { data: todayLog } = await supabase
         .from('weight_logs')
-        .select('weight_lbs, sleep_hours')
+        .select('weight_lbs, sleep_hours, readiness_score')
         .eq('user_id', userId)
         .eq('log_date', todayDate)
         .maybeSingle();
@@ -806,9 +803,11 @@ export default function HomeScreen() {
         setTodayWeight(w);
         if (w > 0) setDashboardWeightLbs(w);
         setTodaySleepHours(mapDbSleepHoursToPill(todayLog.sleep_hours));
+        setTodayReadiness(todayLog.readiness_score ?? null);
         setWeightLoggedToday(true);
       } else {
         setTodaySleepHours(null);
+        setTodayReadiness(null);
         setWeightLoggedToday(false);
       }
 
@@ -1640,73 +1639,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleSaveWeight = async () => {
-    const displayVal = parseFloat(weightInput);
-    const valLbs = displayToLbs(displayVal);
-    if (isNaN(displayVal) || isNaN(valLbs) || valLbs < 50 || valLbs > 500) {
-      Alert.alert('Invalid weight', 'Please enter a weight between 50 and 500 lbs.');
-      return;
-    }
-    setWeightSaving(true);
-    setWeightSaveSuccess(false);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const uid = user?.id;
-      if (!uid) throw new Error('No authenticated user');
-      uidRef.current = uid;
-      const todayDate = getLocalDateString();
-      const { error } = await supabase
-        .from('weight_logs')
-        .upsert(
-          {
-            user_id: uid,
-            log_date: todayDate,
-            weight_lbs: valLbs,
-            sleep_hours: selectedSleepHours != null ? selectedSleepHours : null,
-          },
-          { onConflict: 'user_id,log_date' },
-        );
-      if (error) {
-        Alert.alert('Error', 'Could not save weight. Please try again.');
-        return;
-      }
-
-      setTodayWeight(valLbs);
-      setTodaySleepHours(selectedSleepHours);
-      setWeightLoggedToday(true);
-
-      // Cancel today's weigh-in notification — action already completed
-      try {
-        const weighInId = await AsyncStorage.getItem('weighInNotifId');
-        if (weighInId) {
-          await Notifications.cancelScheduledNotificationAsync(weighInId);
-          // Don't remove from storage — rescheduleWeighInNotification will overwrite it
-          // when the next daily trigger fires. Removing it would break tomorrow's notification.
-        }
-      } catch {
-        // Non-blocking — weight was saved successfully regardless
-      }
-
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const synced = await refetchTodayWeightLog();
-        if (synced) break;
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
-        }
-      }
-
-      setWeightSaveSuccess(true);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      setShowWeightModal(false);
-      setWeightInput('');
-    } catch {
-      Alert.alert('Error', 'Could not save weight. Please try again.');
-    } finally {
-      setWeightSaving(false);
-      setWeightSaveSuccess(false);
-    }
-  };
-
   const handleStartWorkout = useCallback(async () => {
     const todayWorkout = planData?.todayWorkout ?? null;
     if (!todayWorkout) return;
@@ -2311,39 +2243,30 @@ export default function HomeScreen() {
           )
         ) : today ? (
           <View style={styles.workoutCard}>
-            <View style={styles.workoutTopRow}>
-              <View style={styles.workoutLabelRow}>
-                <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
-                {planData ? (() => {
-                    const ph = getPhaseDisplay(
-                      currentPhase,
-                      planData.currentWeek,
-                      planData.totalWeeks,
-                    );
-                    return (
-                      <View
-                        style={[
-                          styles.workoutPhaseBadge,
-                          { backgroundColor: ph.bg },
-                          ph.borderColor != null
-                            ? { borderWidth: 1, borderColor: ph.borderColor }
-                            : null,
-                        ]}
-                      >
-                        <Text style={[styles.workoutPhaseText, { color: ph.color }]}>
-                          {ph.label}
-                        </Text>
-                      </View>
-                    );
-                  })() : null}
-              </View>
-              <View style={styles.dayBadge}>
-                <Text style={styles.dayBadgeText}>
-                  {today.isNextWeek
-                    ? `Week ${(planData?.currentWeek ?? 1) + 1} · Day ${today.dayNumber}`
-                    : `Day ${today.dayNumber}`}
-                </Text>
-              </View>
+            <View style={styles.workoutLabelRow}>
+              <Text style={styles.workoutLabel}>TODAY'S WORKOUT</Text>
+              {planData ? (() => {
+                  const ph = getPhaseDisplay(
+                    currentPhase,
+                    planData.currentWeek,
+                    planData.totalWeeks,
+                  );
+                  return (
+                    <View
+                      style={[
+                        styles.workoutPhaseBadge,
+                        { backgroundColor: ph.bg },
+                        ph.borderColor != null
+                          ? { borderWidth: 1, borderColor: ph.borderColor }
+                          : null,
+                      ]}
+                    >
+                      <Text style={[styles.workoutPhaseText, { color: ph.color }]}>
+                        {ph.label}
+                      </Text>
+                    </View>
+                  );
+                })() : null}
             </View>
 
             <Text style={styles.workoutName}>{today.title}</Text>
@@ -2517,91 +2440,51 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── 6. Daily Weight Log Card ── */}
-        <View style={styles.weightLogCard}>
-          {weightLoggedToday ? (
-            <>
-              <View style={styles.weightLogLeft}>
-                <View style={styles.weightLoggedRow}>
-                  <Ionicons name="checkmark" size={16} color={Colors.success} />
-                  <Text style={styles.weightLogTitleLogged}>Weighed In</Text>
-                </View>
-                <Text style={styles.weightLogSub}>
-                  {todayWeight != null ? formatBodyWeight(todayWeight) : '-'} today
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  setWeightInput(
-                    todayWeight != null ? String(lbsToDisplay(todayWeight)) : '',
-                  );
-                  setSelectedSleepHours(todaySleepHours);
-                  setShowWeightModal(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.weightEditBtn}>Edit</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View style={styles.weightLogLeft}>
-                <View style={styles.weightLogTitleRow}>
-                  <Ionicons name="scale-outline" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.weightLogTitlePrompt}>Daily Weigh-In</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.weightLogBtn}
-                onPress={() => {
-                  setWeightInput('');
-                  setSelectedSleepHours(null);
-                  setShowWeightModal(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.weightLogBtnText}>Log Weight</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {planData != null && planStatus !== 'completed' ? (
-          todayActivityLog != null ? (
-            <View style={[styles.weightLogCard, styles.activityLogCardBelowWeight]}>
-              <View style={styles.weightLogLeft}>
-                <View style={styles.weightLoggedRow}>
-                  <Ionicons name="checkmark" size={16} color={Colors.success} />
-                  <Text style={styles.weightLogTitleLogged}>
-                    {`${todayActivityLog.sport_type} · ${todayActivityLog.duration_min} min · ${formatActivityIntensityShort(todayActivityLog.intensity)}`}
+        {/* ── 6. Daily Check-in Card ── */}
+        <TouchableOpacity
+          style={styles.checkInCard}
+          onPress={() => setShowDailyCheckIn(true)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.checkInLeft}>
+            <Text style={styles.checkInTitle}>Daily Check-in</Text>
+            <View style={styles.checkInStatusRow}>
+              {weightLoggedToday ? (
+                <View style={styles.checkInBadge}>
+                  <Ionicons name="checkmark" size={11} color={Colors.success} />
+                  <Text style={styles.checkInBadgeText}>
+                    {todayWeight != null ? formatBodyWeight(todayWeight) : 'Weight'}
                   </Text>
                 </View>
-                <Text style={styles.weightLogSub}>
-                  {`+ ${resolveActivityCaloriesBurned(todayActivityLog, dashboardWeightLbs)} kcal added to today's target`}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowActivityLogSheet(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.weightEditBtn}>Edit</Text>
-              </TouchableOpacity>
+              ) : (
+                <View style={[styles.checkInBadge, styles.checkInBadgePending]}>
+                  <Text style={styles.checkInBadgePendingText}>Weight</Text>
+                </View>
+              )}
+              {todaySleepHours != null ? (
+                <View style={styles.checkInBadge}>
+                  <Ionicons name="checkmark" size={11} color={Colors.success} />
+                  <Text style={styles.checkInBadgeText}>{todaySleepHours}h sleep</Text>
+                </View>
+              ) : (
+                <View style={[styles.checkInBadge, styles.checkInBadgePending]}>
+                  <Text style={styles.checkInBadgePendingText}>Sleep</Text>
+                </View>
+              )}
+              {todayActivityLog != null ? (
+                <View style={styles.checkInBadge}>
+                  <Ionicons name="checkmark" size={11} color={Colors.success} />
+                  <Text style={styles.checkInBadgeText}>Activity</Text>
+                </View>
+              ) : (
+                <View style={[styles.checkInBadge, styles.checkInBadgePending]}>
+                  <Text style={styles.checkInBadgePendingText}>Activity</Text>
+                </View>
+              )}
             </View>
-          ) : (
-            <Pressable
-              style={styles.activityLogCard}
-              onPress={() => setShowActivityLogSheet(true)}
-            >
-              <View style={styles.activityLogLeft}>
-                <Text style={styles.activityLogHeader}>Additional Activity</Text>
-                <Text style={styles.activityLogSub}>
-                  Log sport or exercise to adjust today's calorie target
-                </Text>
-              </View>
-              <Ionicons name="add-circle-outline" size={24} color={Colors.accent} />
-            </Pressable>
-          )
-        ) : null}
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
+        </TouchableOpacity>
 
         {/* ── 7. Quick Stats Row ── */}
         {planStatus !== 'completed' && (
@@ -2840,113 +2723,21 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* ── Weight Log Modal ── */}
-      <Modal
-        visible={showWeightModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowWeightModal(false)}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <Pressable
-            style={styles.weightModalOverlay}
-            onPress={() => Keyboard.dismiss()}
-          >
-            <Pressable onPress={() => {}}>
-              <View style={styles.weightModalSheet}>
-                <Text style={styles.weightModalTitle}>Log Today's Weight</Text>
-                <Text style={styles.weightModalSubtitle}>
-                  <Ionicons name="sunny-outline" size={16} color={Colors.textSecondary} />{' '}For best accuracy, weigh yourself first thing in the morning
-                </Text>
-                <TextInput
-                  style={styles.weightModalInput}
-                  keyboardType="numeric"
-                  value={weightInput}
-                  onChangeText={setWeightInput}
-                  placeholderTextColor={Colors.textSecondary}
-                  returnKeyType="done"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-                <Text style={styles.weightModalUnit}>{unitLabel}</Text>
-                <View style={styles.sleepRow}>
-                  <View style={styles.sleepRowLeft}>
-                    <Ionicons name="moon-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.sleepLabel}>Sleep</Text>
-                  </View>
-                  <View style={styles.sleepPillsRow}>
-                    {SLEEP_PILL_OPTIONS.map(({ value, label }) => {
-                      const selected = selectedSleepHours === value;
-                      return (
-                        <TouchableOpacity
-                          key={value}
-                          style={[styles.sleepPill, selected ? styles.sleepPillSelected : null]}
-                          onPress={() =>
-                            setSelectedSleepHours((prev) => (prev === value ? null : value))
-                          }
-                          activeOpacity={0.75}
-                        >
-                          <Text
-                            style={[
-                              styles.sleepPillText,
-                              selected ? styles.sleepPillTextSelected : null,
-                            ]}
-                          >
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-                <View style={styles.weightModalBtns}>
-                  <TouchableOpacity
-                    style={styles.weightModalCancelBtn}
-                    onPress={() => setShowWeightModal(false)}
-                    disabled={weightSaving}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.weightModalCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.weightModalSaveBtn,
-                      weightSaveSuccess && styles.weightModalSaveBtnSuccess,
-                    ]}
-                    onPress={handleSaveWeight}
-                    disabled={weightSaving}
-                    activeOpacity={0.8}
-                  >
-                    {weightSaving ? (
-                      weightSaveSuccess ? (
-                        <Text style={styles.weightModalSaveText}>Saved</Text>
-                      ) : (
-                        <ActivityIndicator color={Colors.textPrimary} />
-                      )
-                    ) : (
-                      <Text style={styles.weightModalSaveText}>Save</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Modal>
-
       {planData != null && activityDashboardUserId != null ? (
-        <ActivityLogSheet
-          visible={showActivityLogSheet}
-          onClose={() => setShowActivityLogSheet(false)}
-          onSaved={() => {
-            void loadDashboardData();
-          }}
+        <DailyCheckInSheet
+          visible={showDailyCheckIn}
+          onClose={() => setShowDailyCheckIn(false)}
+          onSaved={() => void loadDashboardData()}
           userId={activityDashboardUserId}
           planId={planData.planId}
           weightLbs={todayWeight ?? dashboardWeightLbs}
-          existingLog={todayActivityLog}
+          existingWeightLog={
+            weightLoggedToday
+              ? { weight_lbs: todayWeight, sleep_hours: todaySleepHours, readiness_score: todayReadiness }
+              : null
+          }
+          existingActivityLog={todayActivityLog}
+          isMetric={isMetric}
         />
       ) : null}
 
@@ -3382,29 +3173,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     textAlign: 'center',
   },
-  workoutTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
   workoutLabel: {
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
     color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-  },
-  dayBadge: {
-    backgroundColor: Colors.bgElevated,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: Radius.full,
-  },
-  dayBadgeText: {
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold,
-    color: Colors.textSecondary,
   },
   workoutName: {
     fontSize: FontSizes.heading1,
@@ -3898,7 +3672,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  weightLogCard: {
+  checkInCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.md,
     marginBottom: Spacing.sm,
@@ -3912,219 +3686,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  activityLogCardBelowWeight: {
-    marginTop: 0,
-  },
-  activityLogCard: {
-    marginHorizontal: Spacing.xl,
-    marginTop: 0,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  activityLogLeft: {
+  checkInLeft: {
     flex: 1,
-    marginRight: Spacing.md,
+    marginRight: Spacing.sm,
   },
-  activityLogHeader: {
+  checkInTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
-  },
-  activityLogSub: {
-    marginTop: 4,
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-  },
-  weightLogLeft: {
-    flex: 1,
-  },
-  weightLogTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weightScaleEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 20,
-  },
-  weightLogTitlePrompt: {
-    marginLeft: 10,
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-  },
-  weightLoggedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  weightLogCheck: {
-    color: Colors.accent,
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-  },
-  weightLogTitleLogged: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.semiBold,
-  },
-  weightLogSub: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginTop: 2,
-  },
-  weightLogBtn: {
-    backgroundColor: Colors.accentMuted,
-    borderRadius: Radius.sm,
-    paddingHorizontal: 14,
-    paddingVertical: Spacing.sm,
-  },
-  weightLogBtnText: {
-    color: Colors.accent,
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold,
-  },
-  weightEditBtn: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-  },
-
-  weightModalOverlay: {
-    flex: 1,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  weightModalSheet: {
-    backgroundColor: Colors.bgElevated,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: Spacing.xxl,
-  },
-  weightModalTitle: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold,
     marginBottom: Spacing.sm,
   },
-  weightModalSubtitle: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.caption,
-    marginBottom: Spacing.xl,
-  },
-  weightModalInput: {
-    backgroundColor: Colors.bgCard,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    padding: 14,
-    fontSize: FontSizes.display,
-    fontFamily: Fonts.bold,
-    textAlign: 'center',
-    color: Colors.textPrimary,
-  },
-  weightModalUnit: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSizes.title,
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 4,
-  },
-  sleepRow: {
-    marginTop: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-    flexWrap: 'wrap',
-  },
-  sleepRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  sleepMoon: {
-    fontSize: FontSizes.body,
-    marginRight: Spacing.xs,
-  },
-  sleepLabel: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
-    color: Colors.textSecondary,
-  },
-  sleepPillsRow: {
+  checkInStatusRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    flexGrow: 1,
     gap: Spacing.xs,
   },
-  sleepPill: {
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  sleepPillSelected: {
-    backgroundColor: Colors.accentMuted,
-    borderColor: Colors.accentBorder,
-  },
-  sleepPillText: {
-    fontSize: FontSizes.caption,
-    fontFamily: Fonts.semiBold,
-    color: Colors.textSecondary,
-  },
-  sleepPillTextSelected: {
-    color: Colors.accent,
-  },
-  weightModalBtns: {
+  checkInBadge: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
-  },
-  weightModalCancelBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.divider,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 3,
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
   },
-  weightModalCancelText: {
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary,
-    fontSize: FontSizes.body,
+  checkInBadgePending: {
+    backgroundColor: Colors.bgElevated,
   },
-  weightModalSaveBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  checkInBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.success,
   },
-  weightModalSaveBtnSuccess: {
-    backgroundColor: Colors.success,
-  },
-  weightModalSaveText: {
-    color: Colors.textPrimary,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
+  checkInBadgePendingText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
   workoutLabelRow: {
     flexDirection: 'row',

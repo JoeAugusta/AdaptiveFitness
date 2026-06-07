@@ -275,8 +275,8 @@ export default function NotificationsSettingsScreen() {
             }
             const id = await Notifications.scheduleNotificationAsync({
               content: {
-                title: 'Morning check-in',
-                body: 'Your weight today shapes next week\'s targets. Hop on the scale.',
+                title: 'Daily check-in',
+                body: '30 seconds — give Jordan your numbers for today.',
                 sound: true,
               },
               trigger: {
@@ -311,8 +311,8 @@ export default function NotificationsSettingsScreen() {
       }
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Morning check-in',
-          body: 'Your weight today shapes next week\'s targets. Hop on the scale.',
+          title: 'Daily check-in',
+          body: '30 seconds — give Jordan your numbers for today.',
           sound: true,
         },
         trigger: {
@@ -529,8 +529,8 @@ export default function NotificationsSettingsScreen() {
         <Divider />
         <View style={styles.prefRow}>
           <View style={styles.prefLabelGroup}>
-            <Text style={styles.prefLabel}>Daily Weigh-In</Text>
-            <Text style={styles.prefSubLabel}>Morning reminder to log your weight</Text>
+            <Text style={styles.prefLabel}>Daily Check-in</Text>
+            <Text style={styles.prefSubLabel}>Morning reminder to log weight, sleep, and readiness</Text>
           </View>
           <Switch
             value={weighInReminderEnabled}

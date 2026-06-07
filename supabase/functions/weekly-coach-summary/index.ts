@@ -171,6 +171,12 @@ serve(async (req) => {
     const planJson = planResult.data.plan_json;
     const logs = logsResult.data ?? [];
 
+    // Session notes typed by athlete in post-workout fatigue modal
+    // These are passed to Jordan so injuries, soreness, or context can inform the summary
+    const sessionNotesThisWeek: string[] = (logsResult.data ?? [])
+      .map((l: any) => String(l.notes ?? '').trim())
+      .filter((n: string) => n.length > 0);
+
     // Fetch goal type
     let goalType = planJson.goal ?? 'general';
     if (planResult.data.goal_id) {
@@ -186,6 +192,25 @@ serve(async (req) => {
     const profileRow = profileResult.error ? null : profileResult.data;
     const weightLbsNum = Number(profileRow?.weight_lbs ?? 0);
     const weightKgForSport = (weightLbsNum > 0 ? weightLbsNum : 175) / 2.20462;
+
+    const readinessLogs = await supabase
+      .from('weight_logs')
+      .select('readiness_score, log_date')
+      .eq('user_id', userId)
+      .gte('log_date', weekStartDate)
+      .lte('log_date', weekEndDate)
+      .not('readiness_score', 'is', null);
+
+    const readinessScores = (readinessLogs.data ?? [])
+      .map((r: any) => Number(r.readiness_score))
+      .filter((n: number) => n >= 1 && n <= 5);
+
+    const avgReadinessScore =
+      readinessScores.length > 0
+        ? Math.round((readinessScores.reduce((a: number, b: number) => a + b, 0) / readinessScores.length) * 10) / 10
+        : null;
+
+    const readinessDaysLogged = readinessScores.length;
 
     const { data: sportLogsRaw, error: sportLogsError } = await supabase
       .from('sport_logs')
@@ -257,6 +282,11 @@ serve(async (req) => {
 Total estimated burn: ${totalSportCalsBurned} calories.
 Intensity breakdown: ${intensitySummary}.
 ${adjustmentCopy}`.trim();
+
+    const sessionNotesContext =
+      sessionNotesThisWeek.length > 0
+        ? `ATHLETE SESSION NOTES THIS WEEK:\n${sessionNotesThisWeek.map((n, i) => `Session ${i + 1}: "${n}"`).join('\n')}\nJordan must reference relevant notes in the summary — especially any mention of pain, injury, discomfort, or unusual fatigue. If a note mentions an injury or physical issue, it must appear in nextWeekChanges with a specific adjustment.`
+        : '';
 
     // Build exercise id → name map from all weeks in plan_json
     const exerciseMap: Record<string, string> = {};
@@ -447,6 +477,8 @@ ${adjustmentCopy}`.trim();
       isDeloadWeek,
       avgLoggedRpe: Math.round(avgLoggedRpe * 10) / 10,
       derivedRating, // pre-calculated — Claude should use this as the basis
+      avgReadinessScore,        // null if not logged, 1.0–5.0 if logged
+      readinessDaysLogged,      // how many days this week the user checked in
     };
 
     const completedWeeks =
@@ -613,6 +645,14 @@ WHAT'S CHANGING section on a tough week (nextWeekChanges):
   logging RPE each set will improve the accuracy of next week's plan.
   Base the rating on completion rate and fatigue only.
 
+- avgReadinessScore: average daily readiness rating (1=Rough, 2=Tired, 3=OK, 4=Good, 5=Great) from daily check-ins this week. null means the user did not log readiness.
+  - If null: do not reference readiness at all
+  - If readinessDaysLogged < 3: treat as insufficient data — do not draw conclusions from a partial picture
+  - If 1.0–2.5: low readiness week. Reference in performanceSummary if RPE also ran high — it explains overexertion. Example: "Your readiness scores averaged 2.1 this week — the body was running on empty before sessions started."
+  - If 2.6–3.5: moderate readiness. Only reference if it contextualises an underperformance.
+  - If 3.6–5.0: good readiness. Only reference if it makes a strong week even more notable. Example: "High readiness scores and strong RPE data — this was a clean, well-executed week."
+  - Never mention readiness unless it adds meaning to the performance narrative. If the week was unremarkable and readiness was average, omit it entirely.
+
 - isDeloadWeek: if true, this was a planned deload week (see plan phase).
   Follow DELOAD WEEK PERFORMANCE OVERRIDE above when present — it takes
   precedence over this bullet and over derivedRating for how to judge the week.
@@ -627,9 +667,16 @@ WHAT'S CHANGING section on a tough week (nextWeekChanges):
 
 Sport / recovery context:
 ${sportContext}
-
+${sessionNotesContext ? `\n${sessionNotesContext}\n` : ''}
 SPORT CONTEXT RULE FOR SUMMARY:
 If sport sessions were logged this week (see sportContext above — i.e. not the single line "No sport sessions logged this week"), include ONE sentence in the weekly summary body acknowledging the sport volume and the calorie recommendation. Keep it brief and actionable. Do not mention MET values or formulas. Write in Jordan's voice. If no sport sessions were logged, omit this entirely.
+
+SESSION NOTES RULE:
+If sessionNotesThisWeek contains notes, Jordan must acknowledge at least one relevant note in the summary.
+- Pain, injury, or discomfort mentions: reference in nextWeekChanges with a specific programming adjustment. Example: "You noted knee discomfort on squats — I've reduced squat volume next week and substituted leg press for the second lower session."
+- General fatigue or life context: acknowledge briefly in performanceSummary. One sentence only.
+- Positive notes ("felt strong", "energy was great"): can reinforce a strong rating if metrics support it.
+- Never ignore a note that mentions physical symptoms. This is the primary way the athlete communicates injury risk.
 
 Return ONLY this exact JSON structure with no other text:
 {

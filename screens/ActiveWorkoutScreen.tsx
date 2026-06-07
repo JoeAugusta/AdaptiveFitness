@@ -1708,7 +1708,7 @@ export default function ActiveWorkoutScreen() {
 
           <TextInput
             style={styles.notesInput}
-            placeholder="Any notes for your coach? (optional)"
+            placeholder="Notes for Jordan — injuries, how you felt, anything that affected today (optional)"
             placeholderTextColor={Colors.textTertiary}
             value={sessionNotes}
             onChangeText={setSessionNotes}

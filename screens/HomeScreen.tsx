@@ -14,6 +14,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Keyboard,
+  Share,
   type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -54,6 +55,10 @@ import CardioDayCard from '../components/CardioDayCard';
 import CardioDoneCard from '../components/CardioDoneCard';
 import ActivityLogSheet, { type ActivityLogRow } from '../components/ActivityLogSheet';
 import { resolveActivityCaloriesBurned } from '../utils/activityCalories';
+import WorkoutResultsModal, {
+  type WorkoutLog,
+  type ExerciseObject,
+} from '../components/WorkoutResultsModal';
 
 function formatActivityIntensityShort(intensity: string): string {
   if (intensity === 'low') return 'Low';
@@ -647,6 +652,14 @@ export default function HomeScreen() {
   const [isWeek1NoSessionsYet, setIsWeek1NoSessionsYet] = useState(false);
   /** Logged a workout for this calendar day — show recovery hero until tomorrow */
   const [hasLoggedWorkoutToday, setHasLoggedWorkoutToday] = useState(false);
+  const [showWorkoutResultsModal, setShowWorkoutResultsModal] = useState(false);
+  const [todayWorkoutLog, setTodayWorkoutLog] = useState<{
+    sets_json: unknown;
+    session_fatigue_rating: number | null;
+  } | null>(null);
+  const [todayPlanExercises, setTodayPlanExercises] = useState<ExerciseObject[]>([]);
+  const [todayExerciseMap, setTodayExerciseMap] = useState<Record<string, string>>({});
+  const [todaySportLog, setTodaySportLog] = useState<unknown>(null);
 
   const [missedSessionResult, setMissedSessionResult] =
     useState<MissedSessionResult | null>(null);
@@ -1044,11 +1057,15 @@ export default function HomeScreen() {
       const normalizedForCount = scheduledDays.map((d: string) => d.trim().slice(0, 3));
       const todayScheduledIndexForCount = normalizedForCount.indexOf(todayLabelForCount);
 
+      // Implicit session inflation: only applies on W1 when the user started
+      // mid-week and has NOT yet logged today's session.
+      // Guard: rawCompletedSessions must be STRICTLY LESS THAN todayScheduledIndex
+      // (not <=) — if they equal, today's slot is already logged, no inflation needed.
       const implicitSessionsForCount =
         (plan.current_week ?? 1) === 1 &&
         todayScheduledIndexForCount > 0 &&
         rawCompletedSessions > 0 &&
-        rawCompletedSessions <= todayScheduledIndexForCount
+        rawCompletedSessions < todayScheduledIndexForCount
           ? todayScheduledIndexForCount - (rawCompletedSessions - 1)
           : 0;
       const isWeek1NoSessionsYet =
@@ -1058,7 +1075,7 @@ export default function HomeScreen() {
       const todayDateStr = getLocalDateString();
       const { data: todayLogs } = await supabase
         .from('workout_logs')
-        .select('id, logged_at')
+        .select('id, logged_at, day_number')
         .eq('user_id', userId)
         .eq('plan_id', plan.id)
         .gte('logged_at', `${todayDateStr}T00:00:00.000Z`)
@@ -1074,6 +1091,39 @@ export default function HomeScreen() {
       // today is not a W2 training day, don't show the complete card.
       const loggedWorkoutToday = !!todayLogs && calendarTrainingToday;
       setHasLoggedWorkoutToday(loggedWorkoutToday);
+
+      if (loggedWorkoutToday) {
+        const { data: fullLog } = await supabase
+          .from('workout_logs')
+          .select('sets_json, session_fatigue_rating')
+          .eq('user_id', userId)
+          .eq('plan_id', plan.id)
+          .gte('logged_at', `${todayDateStr}T00:00:00.000Z`)
+          .lte('logged_at', `${todayDateStr}T23:59:59.999Z`)
+          .order('logged_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setTodayWorkoutLog(fullLog ?? null);
+
+        const todayDay = currentWeekData?.days?.find(
+          (d: WorkoutDay) => d.dayNumber === (todayLogs as { day_number?: number } | null)?.day_number,
+        );
+        const exercises: ExerciseObject[] = (todayDay?.exercises ?? []).map((e: Exercise) => ({
+          id: e.id,
+          name: e.name,
+          sets: e.sets,
+          reps: String(e.reps),
+          targetRpe: e.targetRpe,
+        }));
+        setTodayPlanExercises(exercises);
+        const exMap: Record<string, string> = {};
+        exercises.forEach((e) => { if (e.id) exMap[e.id] = e.name; });
+        setTodayExerciseMap(exMap);
+      } else {
+        setTodayWorkoutLog(null);
+        setTodayPlanExercises([]);
+        setTodayExerciseMap({});
+      }
 
       const trainingEligibleToday =
         devBypassRead ||
@@ -1436,6 +1486,18 @@ export default function HomeScreen() {
     }
   };
 
+  const handleShareWorkout = async () => {
+    const title = planData?.todayWorkout?.title ?? 'Today\'s Session';
+    const week = planData?.currentWeek ?? 1;
+    try {
+      await Share.share({
+        message: `Just crushed ${title} — Week ${week} on Hone. 💪`,
+      });
+    } catch {
+      // User dismissed share sheet — no-op
+    }
+  };
+
   const handleGenerateNextWeek = async () => {
     if (!planData) return;
     setIsGenerating(true);
@@ -1623,6 +1685,36 @@ export default function HomeScreen() {
   const estMins = today?.exercises && today.exercises.length > 0
     ? calculateSessionDuration(today.exercises)
     : 45;
+
+  const todayLogSets = Array.isArray(
+    (todayWorkoutLog?.sets_json as unknown[]),
+  ) ? (todayWorkoutLog!.sets_json as unknown[]) : [];
+  const todayTotalSets = todayLogSets.length > 0
+    ? new Set(todayLogSets.map((s) => (s as { setNumber?: number }).setNumber)).size
+    : totalSets;
+  const durationMinutes = estMins;
+  const prsHit: number = 0;
+
+  const nextDayInfo = (() => {
+    if (!planData?.scheduledDays?.length || !planData.weekDays?.length) return null;
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const tomorrowLabel = dayNames[(new Date().getDay() + 1) % 7];
+    const allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const scheduledDays = planData.scheduledDays;
+    const firstIdx = allDays.indexOf(scheduledDays[0].trim().slice(0, 3));
+    if (firstIdx < 0) return null;
+    const ordered = [...planData.weekDays].sort((a, b) => a.dayNumber - b.dayNumber);
+    const dayNumberToLabel: Record<number, string> = {};
+    ordered.forEach((day, idx) => {
+      dayNumberToLabel[day.dayNumber] = allDays[(firstIdx + idx) % 7];
+    });
+    const tomorrowDay = ordered.find((d) => dayNumberToLabel[d.dayNumber] === tomorrowLabel);
+    if (!tomorrowDay) return null;
+    if (tomorrowDay.type === 'rest') return { type: 'rest' as const, label: 'Rest day tomorrow' };
+    return { type: 'workout' as const, label: tomorrowDay.title, day: tomorrowLabel };
+  })();
+
+  const isWeekDoneForCard = completedSessions >= daysPerWeek && daysPerWeek > 0;
   const sessionWeekForGate = today
     ? today.isNextWeek
       ? (planData?.currentWeek ?? 1) + 1
@@ -1972,17 +2064,83 @@ export default function HomeScreen() {
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
         {hasLoggedWorkoutToday ? (
-          <View style={styles.workoutDoneCard}>
-            <Text style={styles.workoutDonePill}>WORKOUT COMPLETE</Text>
-            <Text style={styles.workoutDoneTitle}>Great work today.</Text>
-            <View style={styles.jordanSuggestionCard}>
-              <Text style={styles.jordanSuggestionBrand}>JORDAN</Text>
-              <Text style={styles.jordanSuggestionBody}>
-                Session logged. Rest up, hit your protein, and{'\n'}
-                come back tomorrow ready to work.
-              </Text>
+          <TouchableOpacity
+            style={styles.workoutDoneCard}
+            activeOpacity={0.8}
+            onPress={() => setShowWorkoutResultsModal(true)}
+          >
+            <View style={styles.workoutDoneTopRow}>
+              <View style={styles.workoutDoneLabelRow}>
+                <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
+                <Text style={styles.workoutDonePill}>WORKOUT COMPLETE</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.workoutDoneShareBtn}
+                activeOpacity={0.7}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  void handleShareWorkout();
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="share-outline" size={13} color={Colors.accent} />
+                <Text style={styles.workoutDoneShareText}>Share</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+
+            <Text style={styles.workoutDoneTitle}>
+              {planData?.todayWorkout?.title ?? 'Today\'s Session'}
+            </Text>
+            <Text style={styles.workoutDoneSubtitle}>
+              Day {planData?.todayWorkout?.dayNumber ?? '—'} · Week {planData?.currentWeek ?? 1} of {planData?.totalWeeks ?? 8}
+              {'  '}
+              <Text style={styles.workoutDoneTapHint}>tap to view results</Text>
+            </Text>
+
+            <View style={styles.workoutDoneStatsRow}>
+              <View style={[styles.workoutDoneStat, styles.workoutDoneStatBorder]}>
+                <Text style={styles.workoutDoneStatValue}>{todayTotalSets}</Text>
+                <Text style={styles.workoutDoneStatLabel}>sets</Text>
+              </View>
+              <View style={[styles.workoutDoneStat, styles.workoutDoneStatBorder]}>
+                <Text style={styles.workoutDoneStatValue}>{durationMinutes > 0 ? durationMinutes : estMins}</Text>
+                <Text style={styles.workoutDoneStatLabel}>min</Text>
+              </View>
+              <View style={styles.workoutDoneStat}>
+                <Text style={[styles.workoutDoneStatValue, prsHit > 0 && styles.workoutDoneStatValuePr]}>
+                  {prsHit > 0 ? prsHit : '—'}
+                </Text>
+                <Text style={styles.workoutDoneStatLabel}>{prsHit === 1 ? 'PR' : 'PRs'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.workoutDoneNextRow}>
+              {isWeekDoneForCard ? (
+                <>
+                  <Ionicons name="trophy-outline" size={13} color={Colors.accent} />
+                  <Text style={styles.workoutDoneNextText}>
+                    Week {planData?.currentWeek} done.{' '}
+                    <Text style={styles.workoutDoneNextMuted}>Rest up this weekend.</Text>
+                  </Text>
+                </>
+              ) : nextDayInfo?.type === 'rest' ? (
+                <>
+                  <Ionicons name="calendar-outline" size={13} color={Colors.textTertiary} />
+                  <Text style={styles.workoutDoneNextText}>
+                    <Text style={styles.workoutDoneNextMuted}>Next: Rest day tomorrow</Text>
+                  </Text>
+                </>
+              ) : nextDayInfo?.type === 'workout' ? (
+                <>
+                  <Ionicons name="barbell-outline" size={13} color={Colors.accent} />
+                  <Text style={styles.workoutDoneNextText}>
+                    Next: {nextDayInfo.label}{' '}
+                    <Text style={styles.workoutDoneNextMuted}>· {nextDayInfo.day}</Text>
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </TouchableOpacity>
         ) : (
           <>
             {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
@@ -2642,6 +2800,21 @@ export default function HomeScreen() {
           existingLog={todayActivityLog}
         />
       ) : null}
+
+      {showWorkoutResultsModal && planData ? (
+        <WorkoutResultsModal
+          visible={showWorkoutResultsModal}
+          onClose={() => setShowWorkoutResultsModal(false)}
+          dayTitle={planData.todayWorkout?.title ?? 'Today\'s Session'}
+          completedDate={new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          workoutLog={todayWorkoutLog as WorkoutLog | null}
+          exerciseMap={todayExerciseMap}
+          planExercises={todayPlanExercises}
+          summaryPlanGoal={planData.planGoal}
+          summaryWeek={planData.currentWeek}
+          summaryPlanPhase={currentPhase ?? null}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -2892,21 +3065,105 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     borderLeftWidth: 3,
-    borderLeftColor: Colors.success,
+    borderLeftColor: Colors.accent,
     padding: Spacing.md,
+  },
+  workoutDoneTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  workoutDoneLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   workoutDonePill: {
     fontSize: FontSizes.label,
     fontFamily: Fonts.bold,
-    color: Colors.success,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
-    textTransform: 'uppercase',
+  },
+  workoutDoneShareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  workoutDoneShareText: {
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    color: Colors.accent,
   },
   workoutDoneTitle: {
     fontSize: FontSizes.heading2,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
-    marginTop: Spacing.sm,
+    marginBottom: 3,
+  },
+  workoutDoneSubtitle: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.md,
+  },
+  workoutDoneTapHint: {
+    fontSize: 11,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+    opacity: 0.6,
+  },
+  workoutDoneStatsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  workoutDoneStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  workoutDoneStatBorder: {
+    borderRightWidth: 1,
+    borderRightColor: Colors.divider,
+  },
+  workoutDoneStatValue: {
+    fontSize: FontSizes.heading2,
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  workoutDoneStatValuePr: {
+    color: Colors.accent,
+  },
+  workoutDoneStatLabel: {
+    fontSize: 10,
+    fontFamily: Fonts.regular,
+    color: Colors.textTertiary,
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  workoutDoneNextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingTop: Spacing.sm,
+  },
+  workoutDoneNextText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  workoutDoneNextMuted: {
+    color: Colors.textTertiary,
   },
   jordanSuggestionCard: {
     backgroundColor: Colors.bgElevated,
@@ -3273,7 +3530,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.accent,
   },
 
   /** Quick stats strip (streak / sessions / lbs) — grouped for conditional render */

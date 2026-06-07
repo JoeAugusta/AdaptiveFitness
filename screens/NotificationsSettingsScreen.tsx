@@ -27,6 +27,8 @@ import { Ionicons } from '@expo/vector-icons';
 const STORAGE_KEY = 'notification_preferences';
 const ASYNC_KEY_WORKOUT_TIME = 'workoutReminderTime';
 const ASYNC_KEY_WEIGH_IN_TIME = 'weighInReminderTime';
+const ASYNC_KEY_WORKOUT_NOTIF_ID = 'workoutNotifId';
+const ASYNC_KEY_WEIGH_IN_NOTIF_ID = 'weighInNotifId';
 
 // ── Types ──
 
@@ -164,6 +166,12 @@ export default function NotificationsSettingsScreen() {
 
         setWorkoutReminderTime(workoutT);
         setWeighInReminderTime(weighT);
+
+        const storedWorkoutNotifId = await AsyncStorage.getItem(ASYNC_KEY_WORKOUT_NOTIF_ID);
+        if (storedWorkoutNotifId) workoutNotifId.current = storedWorkoutNotifId;
+
+        const storedWeighInNotifId = await AsyncStorage.getItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID);
+        if (storedWeighInNotifId) weighInNotifId.current = storedWeighInNotifId;
       } catch (e) {
         console.error('NotificationsSettings init error:', e);
       } finally {
@@ -218,6 +226,7 @@ export default function NotificationsSettingsScreen() {
             workoutNotifId.current,
           );
           workoutNotifId.current = null;
+          await AsyncStorage.removeItem(ASYNC_KEY_WORKOUT_NOTIF_ID);
         }
         if (enabled) {
           const id = await Notifications.scheduleNotificationAsync({
@@ -233,6 +242,7 @@ export default function NotificationsSettingsScreen() {
             },
           });
           workoutNotifId.current = id;
+          await AsyncStorage.setItem(ASYNC_KEY_WORKOUT_NOTIF_ID, id);
         }
       } catch (e) {
         console.error('Notification scheduling error:', e);
@@ -256,6 +266,13 @@ export default function NotificationsSettingsScreen() {
       if (Platform.OS !== 'web') {
         try {
           if (value) {
+            // Always cancel existing before scheduling — prevents duplicate notifications
+            // when component remounts with lost ref state
+            if (weighInNotifId.current) {
+              await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
+              weighInNotifId.current = null;
+              await AsyncStorage.removeItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID);
+            }
             const id = await Notifications.scheduleNotificationAsync({
               content: {
                 title: 'Morning check-in',
@@ -269,9 +286,11 @@ export default function NotificationsSettingsScreen() {
               },
             });
             weighInNotifId.current = id;
+            await AsyncStorage.setItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID, id);
           } else if (weighInNotifId.current) {
             await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
             weighInNotifId.current = null;
+            await AsyncStorage.removeItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID);
           }
         } catch (e) {
           console.error('Weigh-in notification error:', e);
@@ -287,6 +306,8 @@ export default function NotificationsSettingsScreen() {
     try {
       if (weighInNotifId.current) {
         await Notifications.cancelScheduledNotificationAsync(weighInNotifId.current);
+        weighInNotifId.current = null;
+        await AsyncStorage.removeItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID);
       }
       const id = await Notifications.scheduleNotificationAsync({
         content: {
@@ -301,6 +322,7 @@ export default function NotificationsSettingsScreen() {
         },
       });
       weighInNotifId.current = id;
+      await AsyncStorage.setItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID, id);
     } catch (e) {
       console.error('Weigh-in reschedule error:', e);
     }

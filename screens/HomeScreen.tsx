@@ -32,6 +32,7 @@ import {
 } from '../constants/design';
 import { getSessionIntent } from '../utils/getSessionIntent';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import {
   getLocalDateString,
   getNextTrainingDay,
@@ -59,6 +60,10 @@ import WorkoutResultsModal, {
   type WorkoutLog,
   type ExerciseObject,
 } from '../components/WorkoutResultsModal';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
+import { prepareShareCardData, captureAndShareCard } from '../utils/workoutShareAction';
 
 function formatActivityIntensityShort(intensity: string): string {
   if (intensity === 'low') return 'Low';
@@ -422,6 +427,7 @@ function resolveTodayWorkout(args: {
 }
 
 const ALL_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const SUMMARY_FALLBACK_ATTEMPTED_KEY = 'hone_summary_fallback_attempted_week';
 
 /**
  * Map plan dayNumber → calendar label: week days are ordered in plan_json;
@@ -660,6 +666,19 @@ export default function HomeScreen() {
   const [todayPlanExercises, setTodayPlanExercises] = useState<ExerciseObject[]>([]);
   const [todayExerciseMap, setTodayExerciseMap] = useState<Record<string, string>>({});
   const [todaySportLog, setTodaySportLog] = useState<unknown>(null);
+  const [lastSessionMeta, setLastSessionMeta] = useState<{
+    durationMinutes?: number;
+    prsHit?: number;
+    totalSets?: number;
+    dayNumber?: number;
+    weekNumber?: number;
+    savedAt?: string;
+  } | null>(null);
+  const [homeShareCardData, setHomeShareCardData] = useState<ShareCardProps | null>(null);
+  const [homeShareCardVisible, setHomeShareCardVisible] = useState(false);
+  const [homeShareLoading, setHomeShareLoading] = useState(false);
+  const homeShareCardRef = useRef<View>(null);
+  const homeShareCapturePendingRef = useRef(false);
 
   const [missedSessionResult, setMissedSessionResult] =
     useState<MissedSessionResult | null>(null);
@@ -810,6 +829,7 @@ export default function HomeScreen() {
         setLatestSummary(null);
         setCardioCompleted(false);
         setUnviewedSummaryWeekNumber(null);
+        setLastSessionMeta(null);
         setStatsLoading(false);
         setIsTrainingDay(true);
         setNextTrainingDay(null);
@@ -856,6 +876,7 @@ export default function HomeScreen() {
         setCardioCompleted(false);
         setPlanSnapshotForMissed(null);
         setMissedSessionResult(null);
+        setLastSessionMeta(null);
         setLatestSummary(null);
         setCoachSummary(null);
         setJordanWelcome(null);
@@ -1285,6 +1306,19 @@ export default function HomeScreen() {
         },
         planStartsOn: null,
       });
+
+      const lastSessionMeta = (planJson as {
+        lastSessionMeta?: {
+          durationMinutes?: number;
+          prsHit?: number;
+          totalSets?: number;
+          dayNumber?: number;
+          weekNumber?: number;
+          savedAt?: string;
+        };
+      }).lastSessionMeta ?? null;
+      setLastSessionMeta(lastSessionMeta);
+
       // Monday auto-advance: if today is the first scheduled training
       // day, W2 exists in plan_json, and current_week is still 1,
       // silently advance current_week to 2.
@@ -1376,6 +1410,62 @@ export default function HomeScreen() {
       } else {
         setLatestSummary(null);
         setCoachSummary(null);
+      }
+
+      // Fallback: fire weekly summary if the week advanced but no summary exists
+      // for the prior week and at least one session was logged.
+      // Guards against re-firing on every dashboard focus via AsyncStorage flag.
+      const dbCurrentWeekForFallback = plan.current_week ?? 1;
+      const priorWeekForFallback = dbCurrentWeekForFallback - 1;
+
+      if (
+        priorWeekForFallback >= 1 &&
+        (!weeklySummaryLatestRow ||
+          weeklySummaryLatestRow.week_number < priorWeekForFallback)
+      ) {
+        const attemptedKey = await AsyncStorage.getItem(SUMMARY_FALLBACK_ATTEMPTED_KEY);
+        const alreadyAttempted = attemptedKey === String(priorWeekForFallback);
+
+        if (!alreadyAttempted) {
+          const { count: priorWeekSessionCount } = await supabase
+            .from('workout_logs')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('plan_id', plan.id)
+            .eq('week_number', priorWeekForFallback)
+            .eq('skipped', false);
+
+          if ((priorWeekSessionCount ?? 0) > 0) {
+            // Mark as attempted before firing — prevents duplicate calls
+            // if the function takes a long time and user re-focuses
+            await AsyncStorage.setItem(
+              SUMMARY_FALLBACK_ATTEMPTED_KEY,
+              String(priorWeekForFallback),
+            );
+
+            // Fire-and-forget — non-blocking, dashboard renders immediately
+            void (async () => {
+              try {
+                const { data: summaryData } = await supabase.functions.invoke(
+                  'weekly-coach-summary',
+                  { body: { userId, planId: plan.id, weekNumber: priorWeekForFallback } },
+                );
+                if (summaryData?.summary) {
+                  await AsyncStorage.setItem(
+                    'hone_unviewed_summary_week',
+                    String(priorWeekForFallback),
+                  );
+                  // Reload to pick up new summary in Jordan card + unread banner
+                  void loadDashboardData();
+                }
+              } catch (err) {
+                if (__DEV__) console.warn('[summary fallback] invoke failed:', err);
+                // Remove the attempted flag on failure so it retries next focus
+                await AsyncStorage.removeItem(SUMMARY_FALLBACK_ATTEMPTED_KEY);
+              }
+            })();
+          }
+        }
       }
 
       // One-time key migration: afc_ → hone_ (Hone rebrand, May 2026)
@@ -1486,17 +1576,50 @@ export default function HomeScreen() {
     }
   };
 
-  const handleShareWorkout = async () => {
-    const title = planData?.todayWorkout?.title ?? 'Today\'s Session';
-    const week = planData?.currentWeek ?? 1;
+  const handleShareFromDashboard = useCallback(async () => {
+    if (!planData || homeShareLoading) return;
+    setHomeShareLoading(true);
     try {
-      await Share.share({
-        message: `Just crushed ${title} — Week ${week} on Hone. 💪`,
+      const meta = lastSessionMeta;
+      const payload = await prepareShareCardData({
+        planId: planData.planId,
+        weekNumber: planData.currentWeek,
+        dayNumber: meta?.dayNumber ?? planData.todayWorkout?.dayNumber ?? 1,
+        totalSets: meta?.totalSets ?? 0,
+        durationMinutes: meta?.durationMinutes ?? 0,
+        prsHit: meta?.prsHit ?? 0,
+        latestJordanNote: null,
       });
+      if (!payload) {
+        setHomeShareLoading(false);
+        return;
+      }
+      homeShareCapturePendingRef.current = true;
+      setHomeShareCardData(payload);
+      setHomeShareCardVisible(true);
     } catch {
-      // User dismissed share sheet — no-op
+      setHomeShareLoading(false);
     }
-  };
+  }, [planData, lastSessionMeta, homeShareLoading]);
+
+  useEffect(() => {
+    if (!homeShareCardVisible || !homeShareCardData || !homeShareCapturePendingRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (cancelled) return;
+      await captureAndShareCard(homeShareCardRef);
+      if (!cancelled) {
+        setHomeShareLoading(false);
+        setHomeShareCardVisible(false);
+        setHomeShareCardData(null);
+        homeShareCapturePendingRef.current = false;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [homeShareCardVisible, homeShareCardData]);
 
   const handleGenerateNextWeek = async () => {
     if (!planData) return;
@@ -1551,6 +1674,18 @@ export default function HomeScreen() {
       setTodayWeight(valLbs);
       setTodaySleepHours(selectedSleepHours);
       setWeightLoggedToday(true);
+
+      // Cancel today's weigh-in notification — action already completed
+      try {
+        const weighInId = await AsyncStorage.getItem('weighInNotifId');
+        if (weighInId) {
+          await Notifications.cancelScheduledNotificationAsync(weighInId);
+          // Don't remove from storage — rescheduleWeighInNotification will overwrite it
+          // when the next daily trigger fires. Removing it would break tomorrow's notification.
+        }
+      } catch {
+        // Non-blocking — weight was saved successfully regardless
+      }
 
       for (let attempt = 0; attempt < 4; attempt++) {
         const synced = await refetchTodayWeightLog();
@@ -1689,11 +1824,15 @@ export default function HomeScreen() {
   const todayLogSets = Array.isArray(
     (todayWorkoutLog?.sets_json as unknown[]),
   ) ? (todayWorkoutLog!.sets_json as unknown[]) : [];
-  const todayTotalSets = todayLogSets.length > 0
-    ? new Set(todayLogSets.map((s) => (s as { setNumber?: number }).setNumber)).size
-    : totalSets;
-  const durationMinutes = estMins;
-  const prsHit: number = 0;
+  const isMetaFresh = lastSessionMeta?.weekNumber === planData?.currentWeek
+    && lastSessionMeta?.dayNumber != null;
+  const todayTotalSets = isMetaFresh && lastSessionMeta?.totalSets != null
+    ? lastSessionMeta.totalSets
+    : (todayLogSets.length > 0
+      ? new Set(todayLogSets.map((s) => (s as { setNumber?: number }).setNumber)).size
+      : 0);
+  const durationMinutes = isMetaFresh ? (lastSessionMeta?.durationMinutes ?? estMins) : estMins;
+  const prsHit: number = isMetaFresh ? (lastSessionMeta?.prsHit ?? 0) : 0;
 
   const nextDayInfo = (() => {
     if (!planData?.scheduledDays?.length || !planData.weekDays?.length) return null;
@@ -2079,12 +2218,19 @@ export default function HomeScreen() {
                 activeOpacity={0.7}
                 onPress={(e) => {
                   e.stopPropagation();
-                  void handleShareWorkout();
+                  void handleShareFromDashboard();
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                disabled={homeShareLoading}
               >
-                <Ionicons name="share-outline" size={13} color={Colors.accent} />
-                <Text style={styles.workoutDoneShareText}>Share</Text>
+                {homeShareLoading ? (
+                  <ActivityIndicator size="small" color={Colors.accent} />
+                ) : (
+                  <>
+                    <Ionicons name="share-outline" size={13} color={Colors.accent} />
+                    <Text style={styles.workoutDoneShareText}>Share</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -2108,7 +2254,10 @@ export default function HomeScreen() {
               </View>
               <View style={styles.workoutDoneStat}>
                 <Text style={[styles.workoutDoneStatValue, prsHit > 0 && styles.workoutDoneStatValuePr]}>
-                  {prsHit > 0 ? prsHit : '—'}
+                  {(() => {
+                    const count = prsHit;
+                    return count > 0 ? count : '—';
+                  })()}
                 </Text>
                 <Text style={styles.workoutDoneStatLabel}>{prsHit === 1 ? 'PR' : 'PRs'}</Text>
               </View>
@@ -2801,6 +2950,12 @@ export default function HomeScreen() {
         />
       ) : null}
 
+      {homeShareCardVisible && homeShareCardData ? (
+        <View style={styles.offScreenCapture} pointerEvents="none">
+          <ShareCard ref={homeShareCardRef} {...homeShareCardData} />
+        </View>
+      ) : null}
+
       {showWorkoutResultsModal && planData ? (
         <WorkoutResultsModal
           visible={showWorkoutResultsModal}
@@ -2823,6 +2978,12 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
+  },
+  offScreenCapture: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    opacity: 0,
   },
   scroll: {
     flex: 1,

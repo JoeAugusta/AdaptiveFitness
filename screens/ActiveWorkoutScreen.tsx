@@ -1366,6 +1366,38 @@ export default function ActiveWorkoutScreen() {
 
       // Clear crash-recovery draft on successful save
       await AsyncStorage.removeItem(WORKOUT_DRAFT_KEY);
+
+      // Write session meta to plan_json so HomeScreen can display accurate stats
+      // on the workout complete card without relying on stale route params
+      try {
+        const { data: currentPlan } = await supabase
+          .from('plans')
+          .select('plan_json')
+          .eq('id', planIdForLog)
+          .maybeSingle();
+
+        if (currentPlan?.plan_json && typeof currentPlan.plan_json === 'object') {
+          await supabase
+            .from('plans')
+            .update({
+              plan_json: {
+                ...(currentPlan.plan_json as Record<string, unknown>),
+                lastSessionMeta: {
+                  durationMinutes: Math.floor(elapsedSeconds / 60),
+                  prsHit,
+                  totalSets: sets.length,
+                  dayNumber: dayNumberForLog,
+                  weekNumber: sessionWeekForLogs,
+                  savedAt: new Date().toISOString(),
+                },
+              },
+            })
+            .eq('id', planIdForLog);
+        }
+      } catch (metaErr) {
+        // Non-blocking — session was already saved successfully
+        if (__DEV__) console.warn('[lastSessionMeta] write failed:', metaErr);
+      }
     } catch (err) {
       console.error('[SAVE workout_log] failed:', err);
       Alert.alert(

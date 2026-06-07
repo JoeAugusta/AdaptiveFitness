@@ -29,6 +29,7 @@ import { hapticMedium, hapticPR, hapticSuccess } from '../utils/haptics';
 import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
 import { useMetric } from '../utils/units';
+import { prepareShareCardData } from '../utils/workoutShareAction';
 import {
   computeSessionShareStats,
   computeSessionPrsFromLog,
@@ -262,63 +263,16 @@ export default function WorkoutCompleteScreen() {
   const prepareAndShareWorkoutCard = useCallback(async () => {
     setShareLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      if (!userId) return;
-
-      const [{ data: log }, { data: planRow }] = await Promise.all([
-        supabase
-          .from('workout_logs')
-          .select('sets_json')
-          .eq('user_id', userId)
-          .eq('plan_id', planId)
-          .eq('week_number', weekNumber)
-          .eq('day_number', dayNumber)
-          .order('logged_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from('plans').select('plan_json').eq('id', planId).maybeSingle(),
-      ]);
-
-      const sets = (log?.sets_json ?? []) as Array<{
-        exerciseName?: string;
-        weightLbs?: number;
-        weight?: number;
-        reps?: number;
-        rpe?: number;
-      }>;
-      const { totalSets: setsFromLog, avgRpe } = computeSessionShareStats(sets);
-      const totalSetsCount = setsFromLog > 0 ? setsFromLog : totalSets;
-      const topLifts = computeTopLiftsFromSets(sets);
-
-      const planJson = planRow?.plan_json;
-      const latestJordanNote =
-        planJson &&
-        typeof planJson === 'object' &&
-        planJson !== null &&
-        'latestJordanNote' in planJson
-          ? String((planJson as { latestJordanNote?: string }).latestJordanNote ?? '').trim()
-          : '';
-
-      const jordanNoteRaw =
-        latestJordanNote ||
-        (coachNoteDisplay?.trim() ? coachNoteDisplay.trim() : '') ||
-        fallbackJordanNoteFromRpe(avgRpe);
-
-      const payload: ShareCardProps = {
-        sessionTitle: resolveSessionTitleFromPlan(planJson, weekNumber, dayNumber),
+      const payload = await prepareShareCardData({
+        planId,
         weekNumber,
         dayNumber,
-        totalSets: totalSetsCount,
-        avgRpe,
+        totalSets,
         durationMinutes,
         prsHit,
-        topLifts,
-        jordanNote: truncateJordanNoteForShare(jordanNoteRaw),
-      };
-
+        latestJordanNote: null,
+      });
+      if (!payload) return;
       shareCapturePendingRef.current = true;
       setShareCardData(payload);
       setShareCardVisible(true);
@@ -329,15 +283,7 @@ export default function WorkoutCompleteScreen() {
       setShareCardData(null);
       shareCapturePendingRef.current = false;
     }
-  }, [
-    planId,
-    weekNumber,
-    dayNumber,
-    totalSets,
-    coachNoteDisplay,
-    durationMinutes,
-    prsHit,
-  ]);
+  }, [planId, weekNumber, dayNumber, totalSets, durationMinutes, prsHit]);
 
   const handleSharePR = useCallback(async () => {
     if (!topPr || !prCardRef.current) return;
@@ -597,7 +543,7 @@ export default function WorkoutCompleteScreen() {
         const scheduledDays: string[] = Array.isArray(
           (planRow?.plan_json as { scheduledDays?: string[] } | undefined)?.scheduledDays,
         )
-          ? (planRow.plan_json as { scheduledDays: string[] }).scheduledDays
+          ? (planRow?.plan_json as { scheduledDays: string[] }).scheduledDays
           : [];
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const todayLabel = dayNames[new Date().getDay()];
@@ -980,8 +926,9 @@ export default function WorkoutCompleteScreen() {
           <PRShareCard
             cardRef={prCardRef}
             exerciseName={topPr.exerciseName}
-            weightLbs={topPr.weightLbs}
-            reps={topPr.reps}
+            estimated1RM={topPr.estimated1RM}
+            bestWeightLbs={topPr.weightLbs}
+            bestReps={topPr.reps}
             isMetric={isMetric}
             isEstimated={topPr.isEstimated}
             rank={1}

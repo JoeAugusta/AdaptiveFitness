@@ -978,6 +978,27 @@ function enforceSetStructure(
   });
 }
 
+/** Sub-muscle (muscleEmphasis) → display muscleGroup. Single source of truth so the two fields cannot contradict. */
+const EMPHASIS_TO_MUSCLE_GROUP: Record<string, string> = {
+  upper_chest: 'Chest', mid_chest: 'Chest', lower_chest: 'Chest',
+  upper_back: 'Back', mid_back: 'Back', lats: 'Back',
+  front_delt: 'Shoulders', lateral_delt: 'Shoulders', rear_delt: 'Shoulders',
+  long_head_tricep: 'Triceps', lateral_head_tricep: 'Triceps',
+  short_head_bicep: 'Biceps', long_head_bicep: 'Biceps',
+  quads: 'Quads', hamstrings: 'Hamstrings', glutes: 'Glutes', adductors: 'Glutes',
+  gastrocnemius: 'Calves', soleus: 'Calves',
+  rectus_abdominis: 'Core', obliques: 'Core', transverse_abs: 'Core', spinal_erectors: 'Core',
+};
+
+// deno-lint-ignore no-explicit-any
+function stampMuscleGroup(exercises: any[]): any[] {
+  return exercises.map((ex) => {
+    const emphasis = String(ex.muscleEmphasis ?? '').trim();
+    const derived = EMPHASIS_TO_MUSCLE_GROUP[emphasis];
+    return derived ? { ...ex, muscleGroup: derived } : ex;
+  });
+}
+
 // deno-lint-ignore no-explicit-any
 function stampMuscleEmphasisOnPlan(
   planJson: any,
@@ -996,6 +1017,7 @@ function stampMuscleEmphasisOnPlan(
           return day;
         }
         let exercises = stampMuscleEmphasis(day.exercises);
+        exercises = stampMuscleGroup(exercises);
         exercises = stampEquipment(exercises);
         if (week.weekNumber === 1) {
           exercises = enforceWeek1Rpe(exercises);

@@ -31,6 +31,11 @@ interface WeeklySummaryData {
   nextWeekChanges: string;
   nutritionCheckin: string;
   motivationalNote: string;
+  // Structured fields — present on new summaries, absent on old (graceful fallback)
+  prCount?: number;
+  sessionsCompleted?: number;
+  sessionsPlanned?: number;
+  avgRpe?: number;
 }
 
 interface WeeklySummaryRow {
@@ -49,28 +54,6 @@ const RATING_LABELS: Record<PerformanceRating, string> = {
   'tough-week': 'Tough Week',
 };
 
-function RatingBadge({ rating }: { rating: PerformanceRating }) {
-  const label = RATING_LABELS[rating] ?? RATING_LABELS['on-track'];
-  const pillExtra =
-    rating === 'strong'
-      ? styles.ratingPillStrong
-      : rating === 'tough-week'
-        ? styles.ratingPillTough
-        : styles.ratingPillOnTrack;
-  const textExtra =
-    rating === 'strong'
-      ? styles.ratingPillTextStrong
-      : rating === 'tough-week'
-        ? styles.ratingPillTextTough
-        : styles.ratingPillTextOnTrack;
-
-  return (
-    <View style={[styles.ratingPill, pillExtra]}>
-      <Text style={[styles.ratingPillText, textExtra]}>{label}</Text>
-    </View>
-  );
-}
-
 function SummaryCards({
   summary,
   adaptationWeekNumber,
@@ -80,56 +63,215 @@ function SummaryCards({
   adaptationWeekNumber: number;
   onSeeDetailedChanges: () => void;
 }) {
-  const headlineBorder =
+  const [expandedSection, setExpandedSection] = useState<
+    'wins' | 'nutrition' | 'analysis' | null
+  >(null);
+
+  const toggleSection = (section: 'wins' | 'nutrition' | 'analysis') => {
+    setExpandedSection((prev) => (prev === section ? null : section));
+  };
+
+  // Structured stats — only show if new fields present
+  const hasStructuredStats =
+    summary.sessionsCompleted != null ||
+    summary.prCount != null ||
+    summary.avgRpe != null;
+
+  const ratingColor =
     summary.performanceRating === 'strong'
-      ? styles.headlineCardBorderStrong
+      ? Colors.success
       : summary.performanceRating === 'tough-week'
-        ? styles.headlineCardBorderTough
-        : styles.headlineCardBorderOnTrack;
+        ? Colors.warning
+        : Colors.accent;
+
+  const ratingBg =
+    summary.performanceRating === 'strong'
+      ? Colors.successMuted
+      : summary.performanceRating === 'tough-week'
+        ? Colors.warningMuted
+        : Colors.accentMuted;
+
+  const ratingLabel = RATING_LABELS[summary.performanceRating] ?? 'On Track';
 
   return (
     <View style={styles.summaryContent}>
-      <View style={[styles.headlineCard, headlineBorder]}>
-        <Text style={styles.headline}>{stripEmDash(summary.headline)}</Text>
-        <RatingBadge rating={summary.performanceRating} />
-        <Text style={styles.performanceSummary}>{stripEmDash(summary.performanceSummary)}</Text>
-      </View>
 
-      <Text style={styles.sectionHeadingWins}>{"THIS WEEK'S WINS"}</Text>
-      <View style={styles.contentCard}>
-        <View style={styles.highlightsList}>
-          {summary.highlights.map((item, i) => (
-            <View
-              key={i}
-              style={[
-                styles.highlightRow,
-                i === summary.highlights.length - 1 && styles.highlightRowLast,
-              ]}
-            >
-              <Ionicons name="checkmark" size={16} color={Colors.success} />
-              <Text style={styles.highlightText}>{stripEmDash(item)}</Text>
-            </View>
-          ))}
+      {/* ── Hero block ── */}
+      <View style={[styles.heroCard, { borderLeftColor: ratingColor }]}>
+        {/* Rating badge */}
+        <View style={[styles.ratingPill, { backgroundColor: ratingBg }]}>
+          <Text style={[styles.ratingPillText, { color: ratingColor }]}>
+            {ratingLabel.toUpperCase()}
+          </Text>
         </View>
-      </View>
 
-      <Text style={styles.sectionHeadingNext}>{"WHAT'S CHANGING NEXT WEEK"}</Text>
-      <View style={styles.contentCard}>
-        <Text style={styles.sectionBody}>{stripEmDash(summary.nextWeekChanges)}</Text>
-      </View>
-
-      <Text style={styles.sectionHeadingNutrition}>NUTRITION CHECK-IN</Text>
-      <View style={styles.contentCard}>
-        <Text style={styles.sectionBody}>{stripEmDash(summary.nutritionCheckin)}</Text>
-      </View>
-
-      <View style={styles.jordanNoteCard}>
-        <View style={styles.jordanLabelRow}>
-          <Text style={styles.jordanLabel}>JORDAN</Text>
-        </View>
-        <Text style={styles.jordanNoteText}>
-          {stripEmDash(cleanJordanMessage(summary.motivationalNote) ?? '')}
+        {/* Headline */}
+        <Text style={styles.heroHeadline}>
+          {stripEmDash(summary.headline)}
         </Text>
+
+        {/* Stat strip — hidden on old summaries lacking structured fields */}
+        {hasStructuredStats ? (
+          <View style={styles.statStrip}>
+            {summary.prCount != null && summary.prCount > 0 ? (
+              <View style={styles.statChip}>
+                <Text style={styles.statChipValue}>{summary.prCount}</Text>
+                <Text style={styles.statChipLabel}>
+                  {summary.prCount === 1 ? 'PR' : 'PRs'}
+                </Text>
+              </View>
+            ) : null}
+            {summary.sessionsCompleted != null &&
+            summary.sessionsPlanned != null ? (
+              <View style={styles.statChip}>
+                <Text style={styles.statChipValue}>
+                  {summary.sessionsCompleted}/{summary.sessionsPlanned}
+                </Text>
+                <Text style={styles.statChipLabel}>Sessions</Text>
+              </View>
+            ) : null}
+            {summary.avgRpe != null && summary.avgRpe > 0 ? (
+              <View style={styles.statChip}>
+                <Text style={styles.statChipValue}>
+                  {summary.avgRpe.toFixed(1)}
+                </Text>
+                <Text style={styles.statChipLabel}>Avg RPE</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── Jordan one-liner ── */}
+      <View style={styles.jordanNoteCard}>
+        <Text style={styles.jordanLabel}>JORDAN</Text>
+        <Text style={styles.jordanNoteText}>
+          {(cleanJordanMessage(stripEmDash(summary.motivationalNote)) ?? '')
+            .replace(/\.\.+/g, '.')
+            .replace(/[.,]?\s*—?\s*Jordan\.?$/i, '')
+            .trim()}
+        </Text>
+      </View>
+
+      {/* ── Collapsible: This Week's Wins ── */}
+      {summary.highlights.length > 0 ? (
+        <View style={styles.collapsibleCard}>
+          <TouchableOpacity
+            style={styles.collapsibleHeader}
+            onPress={() => toggleSection('wins')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.collapsibleTitle}>THIS WEEK</Text>
+            <View style={styles.collapsibleRight}>
+              {expandedSection !== 'wins' ? (
+                <Text style={styles.tapHint}>tap to expand</Text>
+              ) : null}
+              <Ionicons
+                name={expandedSection === 'wins' ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={Colors.textTertiary}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSection === 'wins' ? (
+            <View style={styles.collapsibleBody}>
+              {summary.highlights.map((item, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.highlightRow,
+                    i < summary.highlights.length - 1 &&
+                      styles.highlightRowBorder,
+                  ]}
+                >
+                  <Ionicons
+                    name="checkmark"
+                    size={14}
+                    color={Colors.success}
+                  />
+                  <Text style={styles.highlightText}>
+                    {stripEmDash(item)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* ── Collapsible: Nutrition ── */}
+      {summary.nutritionCheckin ? (
+        <View style={styles.collapsibleCard}>
+          <TouchableOpacity
+            style={styles.collapsibleHeader}
+            onPress={() => toggleSection('nutrition')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.collapsibleTitle}>NUTRITION</Text>
+            <View style={styles.collapsibleRight}>
+              {expandedSection !== 'nutrition' ? (
+                <Text style={styles.tapHint}>tap to expand</Text>
+              ) : null}
+              <Ionicons
+                name={
+                  expandedSection === 'nutrition'
+                    ? 'chevron-up'
+                    : 'chevron-down'
+                }
+                size={16}
+                color={Colors.textTertiary}
+              />
+            </View>
+          </TouchableOpacity>
+          {expandedSection === 'nutrition' ? (
+            <View style={styles.collapsibleBody}>
+              <Text style={styles.collapsibleBodyText}>
+                {stripEmDash(summary.nutritionCheckin)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* ── Collapsible: Full Analysis ── */}
+      <View style={styles.collapsibleCard}>
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => toggleSection('analysis')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.collapsibleTitle}>FULL ANALYSIS</Text>
+          <View style={styles.collapsibleRight}>
+            {expandedSection !== 'analysis' ? (
+              <Text style={styles.tapHint}>tap to expand</Text>
+            ) : null}
+            <Ionicons
+              name={
+                expandedSection === 'analysis' ? 'chevron-up' : 'chevron-down'
+              }
+              size={16}
+              color={Colors.textTertiary}
+            />
+          </View>
+        </TouchableOpacity>
+        {expandedSection === 'analysis' ? (
+          <View style={styles.collapsibleBody}>
+            <Text style={styles.collapsibleBodyText}>
+              {stripEmDash(summary.performanceSummary)}
+            </Text>
+            {summary.nextWeekChanges ? (
+              <>
+                <View style={styles.collapsibleDivider} />
+                <Text style={styles.collapsibleSectionLabel}>
+                  WHAT&apos;S CHANGING
+                </Text>
+                <Text style={styles.collapsibleBodyText}>
+                  {stripEmDash(summary.nextWeekChanges)}
+                </Text>
+              </>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -380,10 +522,12 @@ export default function WeeklyCoachSummaryScreen() {
         )}
 
         {!loading && (() => {
-          const previousWeekNumbers = Array.from(
-            { length: currentWeekNum - 1 },
-            (_, i) => i + 1,
-          ).reverse();
+        const previousWeekNumbers = Array.from(
+          { length: currentWeekNum - 1 },
+          (_, i) => i + 1,
+        )
+          .filter((n) => n !== weekNumber)
+          .reverse();
 
           return (
             <>
@@ -438,7 +582,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 48,
   },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -468,7 +611,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
-
   loadingCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.xxl,
@@ -494,7 +636,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-
   inProgressCard: {
     marginHorizontal: Spacing.xl,
     marginTop: Spacing.xxl,
@@ -504,11 +645,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.divider,
-  },
-  inProgressEmoji: {
-    fontFamily: Fonts.regular,
-    fontSize: 40,
-    marginBottom: Spacing.md,
   },
   inProgressTitle: {
     fontSize: FontSizes.heading2,
@@ -540,7 +676,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
-
   errorCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
@@ -569,147 +704,71 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
 
+  // ── Summary layout ──
   summaryContent: {
     marginHorizontal: Spacing.xl,
-    marginTop: Spacing.xxl,
+    marginTop: Spacing.xl,
+    gap: Spacing.md,
   },
-  headlineCard: {
+
+  // ── Hero ──
+  heroCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
+    borderLeftWidth: 4,
     padding: Spacing.xl,
-    borderLeftWidth: 3,
-  },
-  headlineCardBorderStrong: {
-    borderLeftColor: Colors.success,
-  },
-  headlineCardBorderOnTrack: {
-    borderLeftColor: Colors.accent,
-  },
-  headlineCardBorderTough: {
-    borderLeftColor: Colors.warning,
-  },
-  headline: {
-    fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold,
-    color: Colors.textPrimary,
-    lineHeight: 28,
-    marginBottom: Spacing.md,
+    gap: Spacing.md,
   },
   ratingPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: Radius.full,
     alignSelf: 'flex-start',
-  },
-  ratingPillStrong: {
-    backgroundColor: Colors.successMuted,
-  },
-  ratingPillOnTrack: {
-    backgroundColor: Colors.accentMuted,
-  },
-  ratingPillTough: {
-    backgroundColor: Colors.warningMuted,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
   },
   ratingPillText: {
-    fontSize: FontSizes.caption,
     fontFamily: Fonts.bold,
-  },
-  ratingPillTextStrong: {
-    color: Colors.success,
-  },
-  ratingPillTextOnTrack: {
-    color: Colors.accent,
-  },
-  ratingPillTextTough: {
-    color: Colors.warning,
-  },
-  performanceSummary: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    lineHeight: 22,
-    marginTop: Spacing.md,
-  },
-
-  sectionHeadingWins: {
-    marginTop: Spacing.xxl,
-    marginBottom: Spacing.md,
     fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.textSecondary,
     letterSpacing: 1.5,
-    textTransform: 'uppercase',
   },
-  sectionHeadingNext: {
-    marginTop: Spacing.xxl,
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.label,
+  heroHeadline: {
     fontFamily: Fonts.bold,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  sectionHeadingNutrition: {
-    marginTop: Spacing.xxl,
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.textSecondary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  contentCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    padding: Spacing.xl,
-  },
-  highlightsList: {
-    gap: 0,
-  },
-  highlightRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: Spacing.md,
-  },
-  highlightRowLast: {
-    marginBottom: 0,
-  },
-  checkIcon: {
-    width: 20,
-    color: Colors.accent,
-    fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
-  },
-  highlightText: {
-    flex: 1,
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.regular,
+    fontSize: 28,
     color: Colors.textPrimary,
-    lineHeight: 22,
+    lineHeight: 34,
   },
-  sectionBody: {
-    fontSize: FontSizes.body,
+  statStrip: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  statChip: {
+    flex: 1,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    gap: 2,
+  },
+  statChipValue: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.accent,
+  },
+  statChipLabel: {
     fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    lineHeight: 22,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    letterSpacing: 0.5,
   },
 
+  // ── Jordan one-liner ──
   jordanNoteCard: {
-    marginTop: Spacing.xxl,
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.divider,
     borderLeftWidth: 3,
     borderLeftColor: Colors.accent,
-  },
-  jordanLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
+    padding: Spacing.xl,
+    gap: Spacing.xs,
   },
   jordanLabel: {
     fontSize: FontSizes.label,
@@ -723,16 +782,78 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     lineHeight: 24,
   },
-  detailedChangesLink: {
-    marginTop: Spacing.xl,
-    alignSelf: 'flex-start',
+
+  // ── Collapsible sections ──
+  collapsibleCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
   },
-  detailedChangesText: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
+  collapsibleTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  collapsibleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  tapHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+  },
+  collapsibleBody: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  collapsibleBodyText: {
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  collapsibleDivider: {
+    height: 1,
+    backgroundColor: Colors.divider,
+    marginVertical: Spacing.sm,
+  },
+  collapsibleSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  highlightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  highlightRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  highlightText: {
+    flex: 1,
+    fontSize: FontSizes.body,
+    fontFamily: Fonts.regular,
+    color: Colors.textPrimary,
+    lineHeight: 22,
   },
 
+  // ── Previous weeks ──
   previousSectionHeading: {
     marginTop: Spacing.xxxl,
     marginHorizontal: Spacing.xl,

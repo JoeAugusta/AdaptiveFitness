@@ -1,4 +1,5 @@
 import type { SessionDay } from '../utils/splitRecommendation';
+import type { ActivityLogRow } from '../components/ActivityLogSheet';
 
 export type SubscriptionPlanId = 'monthly' | 'quarterly' | 'annual';
 
@@ -186,6 +187,13 @@ export type RootStackParamList = {
   ProfileSettings: undefined;
   SubscriptionManagement: undefined;
   NotificationsSettings: undefined;
+  DailyCheckIn: {
+    userId: string;
+    planId: string;
+    weightLbs: number;
+    existingWeightLog: { weight_lbs: number | null; sleep_hours: number | null; readiness_score: number | null } | null;
+    existingActivityLog: ActivityLogRow | null;
+  };
 };
 
 /** Progress tab stack */

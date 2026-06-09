@@ -64,7 +64,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import { prepareShareCardData, captureAndShareCard } from '../utils/workoutShareAction';
-import DailyCheckInSheet from '../components/DailyCheckInSheet';
+
 
 function formatActivityIntensityShort(intensity: string): string {
   if (intensity === 'low') return 'Low';
@@ -608,6 +608,17 @@ export default function HomeScreen() {
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showCheckInSheet, setShowCheckInSheet] = useState(false);
+  const [checkInWeight, setCheckInWeight] = useState('');
+  const [checkInSleep, setCheckInSleep] = useState<number | null>(null);
+  const [checkInReadiness, setCheckInReadiness] = useState<number | null>(null);
+  const [checkInSaving, setCheckInSaving] = useState(false);
+  const [showActivitySubSheet, setShowActivitySubSheet] = useState(false);
+  const [lowCompletionPrompt, setLowCompletionPrompt] = useState<{
+    weekNumber: number;
+    completed: number;
+    total: number;
+  } | null>(null);
   const [coachSummary, setCoachSummary] = useState<{
     headline: string;
     week_number: number;
@@ -639,8 +650,8 @@ export default function HomeScreen() {
   const [todaySleepHours, setTodaySleepHours] = useState<number | null>(null);
   const [weightLoggedToday, setWeightLoggedToday] = useState(false);
   const [todayReadiness, setTodayReadiness] = useState<number | null>(null);
-  const [showDailyCheckIn, setShowDailyCheckIn] = useState(false);
   const uidRef = useRef<string | null>(null);
+  const advanceInFlightRef = useRef(false);
   const { displayToLbs, lbsToDisplay, formatBodyWeight, unitLabel, isMetric } = useMetric();
 
   /** BUG-8: false only when we have real scheduled day labels and today is off-cycle */
@@ -1052,6 +1063,7 @@ export default function HomeScreen() {
         planJson as Record<string, unknown>,
         profileTrainingDays,
       );
+      console.log('[today check]', { scheduledDays, todayLabel, isTodayTraining: isTodayTrainingDay(scheduledDays, todayLabel), hasDayLabels });
 
       const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
 
@@ -1093,15 +1105,33 @@ export default function HomeScreen() {
       setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
 
       const todayDateStr = getLocalDateString();
+      // Query by week_number instead of UTC timestamp window.
+      // Timestamp-based queries fail for users in US timezones whose evening
+      // logs land on the next UTC calendar day.
       const { data: todayLogs } = await supabase
         .from('workout_logs')
         .select('id, logged_at, day_number')
         .eq('user_id', userId)
         .eq('plan_id', plan.id)
-        .gte('logged_at', `${todayDateStr}T00:00:00.000Z`)
-        .lte('logged_at', `${todayDateStr}T23:59:59.999Z`)
-        .limit(1)
-        .maybeSingle();
+        .eq('week_number', plan.current_week)
+        .order('logged_at', { ascending: false })
+        .limit(10);
+
+      // Find a log whose local calendar date matches today
+      const todayLogRow = (todayLogs ?? []).find((row: { logged_at?: string; day_number?: number }) => {
+        if (!row.logged_at) return false;
+        const logLocal = getLocalDateString(new Date(row.logged_at));
+        return logLocal === todayDateStr;
+      }) ?? null;
+      console.log('[todayLogRow debug]', {
+        todayDateStr,
+        todayLogRow,
+        allLogs: (todayLogs ?? []).map((r: { logged_at?: string; day_number?: number }) => ({
+          day_number: r.day_number,
+          logged_at: r.logged_at,
+          localDate: r.logged_at ? getLocalDateString(new Date(r.logged_at)) : null,
+        })),
+      });
 
       const calendarTrainingToday =
         !hasDayLabels || isTodayTrainingDay(scheduledDays, todayLabel);
@@ -1109,7 +1139,7 @@ export default function HomeScreen() {
       // Only show "workout complete" if today was actually a training
       // day in the current week. If current_week advanced to W2 and
       // today is not a W2 training day, don't show the complete card.
-      const loggedWorkoutToday = !!todayLogs && calendarTrainingToday;
+      const loggedWorkoutToday = !!todayLogRow && calendarTrainingToday;
       setHasLoggedWorkoutToday(loggedWorkoutToday);
 
       if (loggedWorkoutToday) {
@@ -1118,15 +1148,17 @@ export default function HomeScreen() {
           .select('sets_json, session_fatigue_rating')
           .eq('user_id', userId)
           .eq('plan_id', plan.id)
-          .gte('logged_at', `${todayDateStr}T00:00:00.000Z`)
-          .lte('logged_at', `${todayDateStr}T23:59:59.999Z`)
+          .eq('week_number', plan.current_week)
           .order('logged_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        setTodayWorkoutLog(fullLog ?? null);
+          .limit(10);
+        const fullLogRow = (fullLog ?? []).find((row: { sets_json?: unknown; session_fatigue_rating?: unknown; logged_at?: string }) => {
+          if (!row.logged_at) return false;
+          return getLocalDateString(new Date(row.logged_at)) === todayDateStr;
+        }) ?? null;
+        setTodayWorkoutLog(fullLogRow ?? null);
 
         const todayDay = currentWeekData?.days?.find(
-          (d: WorkoutDay) => d.dayNumber === (todayLogs as { day_number?: number } | null)?.day_number,
+          (d: WorkoutDay) => d.dayNumber === (todayLogRow as { day_number?: number } | null)?.day_number,
         );
         const exercises: ExerciseObject[] = (todayDay?.exercises ?? []).map((e: Exercise) => ({
           id: e.id,
@@ -1318,13 +1350,13 @@ export default function HomeScreen() {
       }).lastSessionMeta ?? null;
       setLastSessionMeta(lastSessionMeta);
 
-      // Monday auto-advance: if today is the first scheduled training
-      // day, W2 exists in plan_json, and current_week is still 1,
-      // silently advance current_week to 2.
+      // Calendar-elapsed auto-advance: if today is the first scheduled training day
+      // of the cycle, we've completed enough sessions (≥60% floor), or it's a deload,
+      // silently generate the next week (if needed) and advance current_week.
       if (
-        (plan.current_week ?? 1) === 1 &&
         hasDayLabels &&
-        scheduledDays.length > 0
+        scheduledDays.length > 0 &&
+        dbCurrentWeek < totalWeeks
       ) {
         const firstScheduledDay = scheduledDays[0];
         const todayLabelForAdvance = getTodayDayLabel();
@@ -1332,23 +1364,76 @@ export default function HomeScreen() {
         const normalizedToday = todayLabelForAdvance.trim().slice(0, 3);
 
         if (normalizedFirst === normalizedToday) {
-          const w2Exists = (planJson.weeks ?? []).some(
-            (w: unknown) => getPlanWeekNumber(w) === 2,
-          );
-          const allW1Done =
-            completedSessions >= daysPerWeek ||
-            (rawCompletedSessions > 0 &&
-              rawCompletedSessions + implicitSessionsForCount >= daysPerWeek);
+          // For W1: anchor is plan start_date (guards against Day-1 false advance).
+          // For W2+: if today matches the first scheduled day, the week has
+          // cycled — always allow the advance check.
+          const firstWeekElapsed = (() => {
+            if (dbCurrentWeek === 1) {
+              const advanceAnchorRaw: string | null =
+                planStartRaw ??
+                (typeof (plan as { created_at?: string }).created_at === 'string'
+                  ? (plan as { created_at: string }).created_at
+                  : null);
+              if (!advanceAnchorRaw) return true;
+              const anchor = new Date(`${advanceAnchorRaw.split('T')[0]}T12:00:00`);
+              return Date.now() >= anchor.getTime() + 7 * 24 * 60 * 60 * 1000;
+            }
+            return true;
+          })();
 
-          if (w2Exists && allW1Done) {
-            console.log('[HomeScreen] Monday auto-advance: W1→W2');
-            await supabase
-              .from('plans')
-              .update({ current_week: 2 })
-              .eq('id', plan.id);
-            void loadDashboardData();
-            return;
-          }
+          if (firstWeekElapsed) {
+            const nextWeekNumber = dbCurrentWeek + 1;
+            const nextWeekExists = (planJson.weeks ?? []).some(
+              (w: unknown) => getPlanWeekNumber(w) === nextWeekNumber,
+            );
+            const floorMet = daysPerWeek > 0 && (rawCompletedSessions / daysPerWeek) >= 0.6;
+            const isDeloadWeek = (currentWeekData as { phase?: string } | undefined)?.phase === 'deload';
+            const shouldAdvance = floorMet || isDeloadWeek;
+
+            if (shouldAdvance) {
+              if (advanceInFlightRef.current) return;
+              advanceInFlightRef.current = true;
+              try {
+                if (!nextWeekExists) {
+                  const { error: genError } = await supabase.functions.invoke('generate-next-week', {
+                    body: { userId, planId: plan.id, completedWeekNumber: plan.current_week ?? 1 },
+                  });
+                  if (genError) {
+                    console.error('[HomeScreen] auto-advance generate-next-week failed:', genError);
+                    Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
+                    return;
+                  }
+                  // Fire-and-forget weekly summary
+                  void supabase.functions.invoke('weekly-coach-summary', {
+                    body: { userId, planId: plan.id, weekNumber: plan.current_week ?? 1 },
+                  });
+                }
+                console.log(`[HomeScreen] calendar-elapsed auto-advance: W${dbCurrentWeek}→W${nextWeekNumber}`);
+                await supabase
+                  .from('plans')
+                  .update({ current_week: nextWeekNumber })
+                  .eq('id', plan.id);
+                void loadDashboardData();
+                return;
+              } finally {
+                advanceInFlightRef.current = false;
+              }
+            }
+
+            // Below floor and not deload — show the low-completion prompt unless
+            // already dismissed for THIS elapse (date-stamped, so a later cycle re-prompts).
+            const dismissedRaw = await AsyncStorage.getItem('hone_low_completion_dismissed_week');
+            const todayStamp = getLocalDateString();
+            const alreadyDismissedThisElapse =
+              dismissedRaw === `${plan.current_week ?? 1}:${todayStamp}`;
+            if (!alreadyDismissedThisElapse) {
+              setLowCompletionPrompt({
+                weekNumber: plan.current_week ?? 1,
+                completed: rawCompletedSessions,
+                total: daysPerWeek,
+              });
+            }
+          } // closes if (firstWeekElapsed)
         }
       }
 
@@ -1409,6 +1494,10 @@ export default function HomeScreen() {
       } else {
         setLatestSummary(null);
         setCoachSummary(null);
+        // No summary exists for this plan — clear any stale AsyncStorage
+        // key left over from a previous plan or deleted test account.
+        await AsyncStorage.removeItem('hone_unviewed_summary_week');
+        setUnviewedSummaryWeekNumber(null);
       }
 
       // Fallback: fire weekly summary if the week advanced but no summary exists
@@ -1635,6 +1724,104 @@ export default function HomeScreen() {
     } catch {
       Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
     } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const openCheckInSheet = () => {
+    setCheckInWeight(
+      todayWeight != null
+        ? String(Math.round(lbsToDisplay(todayWeight) * 10) / 10)
+        : '',
+    );
+    setCheckInSleep(todaySleepHours);
+    setCheckInReadiness(todayReadiness ?? null);
+    setShowCheckInSheet(true);
+  };
+
+  const handleCheckInSave = async () => {
+    if (!checkInWeight && !checkInSleep && !checkInReadiness) {
+      setShowCheckInSheet(false);
+      return;
+    }
+    setCheckInSaving(true);
+    try {
+      const uid = uidRef.current;
+      if (!uid) throw new Error('No user');
+      const displayVal = checkInWeight ? parseFloat(checkInWeight) : NaN;
+      const valLbs = !isNaN(displayVal) ? displayToLbs(displayVal) : null;
+      const validLbs =
+        valLbs != null && valLbs > 50 && valLbs < 500 ? valLbs : null;
+      const todayDate = getLocalDateString();
+      await supabase.from('weight_logs').upsert(
+        {
+          user_id: uid,
+          log_date: todayDate,
+          ...(validLbs != null ? { weight_lbs: validLbs } : {}),
+          ...(checkInSleep != null ? { sleep_hours: checkInSleep } : {}),
+          ...(checkInReadiness != null ? { readiness_score: checkInReadiness } : {}),
+        },
+        { onConflict: 'user_id,log_date' },
+      );
+      try {
+        const weighInId = await AsyncStorage.getItem('weighInNotifId');
+        if (weighInId) {
+          await Notifications.cancelScheduledNotificationAsync(weighInId);
+        }
+      } catch { /* non-blocking */ }
+      setShowCheckInSheet(false);
+      void loadDashboardData();
+    } catch {
+      Alert.alert('Error', 'Could not save. Please try again.');
+    } finally {
+      setCheckInSaving(false);
+    }
+  };
+
+  /** Used by the low-completion prompt "Push Forward" action and the auto-advance error-retry path. */
+  const handlePushForwardWeek = async () => {
+    if (!planData) return;
+    if (advanceInFlightRef.current) return;
+    advanceInFlightRef.current = true;
+    setIsGenerating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) throw new Error('No session');
+
+      // Check whether W2 already exists to avoid a redundant generate call
+      const { data: planRow } = await supabase
+        .from('plans')
+        .select('plan_json')
+        .eq('id', planData.planId)
+        .maybeSingle();
+      const existingWeeks = ((planRow?.plan_json as { weeks?: unknown[] } | null)?.weeks ?? []);
+      const nextWeekNum = (planData.currentWeek ?? 1) + 1;
+      const nextWeekAlreadyExists = existingWeeks.some(
+        (w: unknown) => getPlanWeekNumber(w) === nextWeekNum,
+      );
+
+      if (!nextWeekAlreadyExists) {
+        const { error: genError } = await supabase.functions.invoke('generate-next-week', {
+          body: { userId, planId: planData.planId, completedWeekNumber: planData.currentWeek },
+        });
+        if (genError) throw genError;
+        void supabase.functions.invoke('weekly-coach-summary', {
+          body: { userId, planId: planData.planId, weekNumber: planData.currentWeek },
+        });
+      }
+
+      await supabase
+        .from('plans')
+        .update({ current_week: nextWeekNum })
+        .eq('id', planData.planId);
+
+      setLowCompletionPrompt(null);
+      await loadDashboardData();
+    } catch {
+      Alert.alert('Generation failed', "Couldn't advance to next week. Please try again.");
+    } finally {
+      advanceInFlightRef.current = false;
       setIsGenerating(false);
     }
   };
@@ -2102,6 +2289,50 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {/* ── Low-completion prompt — shown when week elapsed but <60% sessions done ── */}
+        {lowCompletionPrompt != null && planStatus === 'active' ? (
+          <View style={styles.lowCompCard}>
+            <Text style={styles.lowCompWeekLabel}>WEEK {lowCompletionPrompt.weekNumber}</Text>
+            <View style={styles.lowCompJordanRow}>
+              <JordanAvatar size={32} />
+              <Text style={styles.lowCompJordanText}>
+                {stripEmDash(`You got ${lowCompletionPrompt.completed} of ${lowCompletionPrompt.total} sessions in last week. Want to repeat it to build a fuller base, or push forward to Week ${lowCompletionPrompt.weekNumber + 1}?`)}
+              </Text>
+            </View>
+            <View style={styles.lowCompActions}>
+              <TouchableOpacity
+                style={styles.lowCompPrimary}
+                activeOpacity={0.8}
+                onPress={async () => {
+                  const todayStamp = getLocalDateString();
+                  await AsyncStorage.setItem(
+                    'hone_low_completion_dismissed_week',
+                    `${lowCompletionPrompt.weekNumber}:${todayStamp}`,
+                  );
+                  setLowCompletionPrompt(null);
+                  void loadDashboardData();
+                }}
+              >
+                <Text style={styles.lowCompPrimaryText}>
+                  {`Repeat Week ${lowCompletionPrompt.weekNumber}`}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.lowCompSecondary}
+                activeOpacity={0.8}
+                disabled={isGenerating}
+                onPress={() => void handlePushForwardWeek()}
+              >
+                {isGenerating ? (
+                  <ActivityIndicator color={Colors.textSecondary} />
+                ) : (
+                  <Text style={styles.lowCompSecondaryText}>Push Forward →</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {planData?.todayCardioDay &&
         planData.todayCardioDay.type === 'cardio' &&
         (planData.planGoal === 'fat_loss' || planData.planGoal === 'recomp') &&
@@ -2443,7 +2674,7 @@ export default function HomeScreen() {
         {/* ── 6. Daily Check-in Card ── */}
         <TouchableOpacity
           style={styles.checkInCard}
-          onPress={() => setShowDailyCheckIn(true)}
+          onPress={openCheckInSheet}
           activeOpacity={0.8}
         >
           <View style={styles.checkInLeft}>
@@ -2723,24 +2954,6 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {planData != null && activityDashboardUserId != null ? (
-        <DailyCheckInSheet
-          visible={showDailyCheckIn}
-          onClose={() => setShowDailyCheckIn(false)}
-          onSaved={() => void loadDashboardData()}
-          userId={activityDashboardUserId}
-          planId={planData.planId}
-          weightLbs={todayWeight ?? dashboardWeightLbs}
-          existingWeightLog={
-            weightLoggedToday
-              ? { weight_lbs: todayWeight, sleep_hours: todaySleepHours, readiness_score: todayReadiness }
-              : null
-          }
-          existingActivityLog={todayActivityLog}
-          isMetric={isMetric}
-        />
-      ) : null}
-
       {homeShareCardVisible && homeShareCardData ? (
         <View style={styles.offScreenCapture} pointerEvents="none">
           <ShareCard ref={homeShareCardRef} {...homeShareCardData} />
@@ -2759,6 +2972,170 @@ export default function HomeScreen() {
           summaryPlanGoal={planData.planGoal}
           summaryWeek={planData.currentWeek}
           summaryPlanPhase={currentPhase ?? null}
+        />
+      ) : null}
+
+      {/* ── Daily Check-in Bottom Sheet ── */}
+      <Modal
+        visible={showCheckInSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCheckInSheet(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.checkInModalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={styles.checkInOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              Keyboard.dismiss();
+              setShowCheckInSheet(false);
+            }}
+          />
+          <View style={styles.checkInSheet}>
+            <View style={styles.checkInHandle} />
+
+            {/* Header */}
+            <View style={styles.checkInHeaderRow}>
+              <View>
+                <Text style={styles.checkInSheetTitle}>Daily Check-in</Text>
+                <Text style={styles.checkInSheetSubtitle}>Give Jordan your numbers</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowCheckInSheet(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.checkInScrollContent}
+            >
+              {/* Weight */}
+              <Text style={styles.checkInSectionLabel}>WEIGHT</Text>
+              <View style={styles.checkInWeightRow}>
+                <TextInput
+                  style={styles.checkInWeightInput}
+                  keyboardType="numeric"
+                  value={checkInWeight}
+                  onChangeText={setCheckInWeight}
+                  placeholder="—"
+                  placeholderTextColor={Colors.textTertiary}
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+                <Text style={styles.checkInUnitLabel}>{unitLabel}</Text>
+              </View>
+
+              {/* Sleep */}
+              <Text style={styles.checkInSectionLabel}>SLEEP LAST NIGHT</Text>
+              <View style={styles.checkInPillRow}>
+                {([
+                  { value: 5, label: '5h' }, { value: 6, label: '6h' },
+                  { value: 7, label: '7h' }, { value: 8, label: '8h' },
+                  { value: 9, label: '9h' }, { value: 10, label: '10h+' },
+                ] as const).map(({ value, label }) => {
+                  const sel = checkInSleep === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.checkInPill, sel && styles.checkInPillSelected]}
+                      onPress={() => setCheckInSleep((p) => (p === value ? null : value))}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.checkInPillText, sel && styles.checkInPillTextSelected]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Readiness */}
+              <Text style={styles.checkInSectionLabel}>HOW'S YOUR BODY TODAY</Text>
+              <View style={styles.checkInPillRow}>
+                {([
+                  { value: 1, label: 'Rough' }, { value: 2, label: 'Tired' },
+                  { value: 3, label: 'OK' }, { value: 4, label: 'Good' },
+                  { value: 5, label: 'Great' },
+                ] as const).map(({ value, label }) => {
+                  const sel = checkInReadiness === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.checkInPill, sel && styles.checkInPillSelected]}
+                      onPress={() => setCheckInReadiness((p) => (p === value ? null : value))}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.checkInPillText, sel && styles.checkInPillTextSelected]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Activity */}
+              <Text style={styles.checkInSectionLabel}>ADDITIONAL ACTIVITY</Text>
+              {todayActivityLog != null ? (
+                <TouchableOpacity
+                  style={styles.checkInActivityRow}
+                  onPress={() => setShowActivitySubSheet(true)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.checkInActivityRowLeft}>
+                    <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                    <Text style={styles.checkInActivityLogged}>
+                      {`${(todayActivityLog as ActivityLogRow).sport_type} · ${(todayActivityLog as ActivityLogRow).duration_min} min · ${(todayActivityLog as ActivityLogRow).intensity}`}
+                    </Text>
+                  </View>
+                  <Text style={styles.checkInActivityEdit}>Edit</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.checkInActivityRow}
+                  onPress={() => setShowActivitySubSheet(true)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.checkInActivityPrompt}>Log sport or exercise →</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+
+            {/* Save button */}
+            <View style={styles.checkInFooter}>
+              <TouchableOpacity
+                style={styles.checkInSaveBtn}
+                onPress={() => void handleCheckInSave()}
+                disabled={checkInSaving}
+                activeOpacity={0.85}
+              >
+                {checkInSaving
+                  ? <ActivityIndicator color={Colors.textPrimary} />
+                  : <Text style={styles.checkInSaveBtnText}>Save Check-in</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {showActivitySubSheet && planData && activityDashboardUserId ? (
+        <ActivityLogSheet
+          visible={showActivitySubSheet}
+          onClose={() => setShowActivitySubSheet(false)}
+          onSaved={() => {
+            setShowActivitySubSheet(false);
+            void loadDashboardData();
+          }}
+          userId={activityDashboardUserId}
+          planId={planData.planId}
+          weightLbs={todayWeight ?? dashboardWeightLbs}
+          existingLog={todayActivityLog as ActivityLogRow | null}
         />
       ) : null}
     </SafeAreaView>
@@ -3738,5 +4115,221 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.micro,
     fontFamily: Fonts.bold,
     letterSpacing: 0.8,
+  },
+
+  lowCompCard: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+  },
+  lowCompWeekLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.sm,
+  },
+  lowCompJordanRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  lowCompJordanText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  lowCompActions: {
+    gap: Spacing.sm,
+  },
+  lowCompPrimary: {
+    height: 48,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lowCompPrimaryText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  lowCompSecondary: {
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lowCompSecondaryText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+
+  checkInModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  checkInOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  checkInSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    maxHeight: '90%',
+  },
+  checkInHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  checkInHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.md,
+  },
+  checkInSheetTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading1,
+    color: Colors.textPrimary,
+  },
+  checkInSheetSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  checkInScrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+  },
+  checkInSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  checkInWeightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  checkInWeightInput: {
+    flex: 1,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: 14,
+    fontSize: FontSizes.heading1,
+    fontFamily: Fonts.bold,
+    textAlign: 'center',
+    color: Colors.textPrimary,
+  },
+  checkInUnitLabel: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.title,
+    color: Colors.textSecondary,
+    minWidth: 32,
+  },
+  checkInPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  checkInPill: {
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  checkInPillSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+  },
+  checkInPillText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  checkInPillTextSelected: {
+    color: Colors.accent,
+  },
+  checkInActivityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  checkInActivityRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  checkInActivityLogged: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  checkInActivityEdit: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  checkInActivityPrompt: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  checkInFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    backgroundColor: Colors.bgElevated,
+  },
+  checkInSaveBtn: {
+    height: 56,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkInSaveBtnText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 });

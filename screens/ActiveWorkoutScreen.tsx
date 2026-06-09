@@ -410,6 +410,8 @@ export default function ActiveWorkoutScreen() {
   const [showRpeReference, setShowRpeReference] = useState(false);
   const [rpeReferenceFromNudge, setRpeReferenceFromNudge] = useState(false);
   const [fatigueRating, setFatigueRating] = useState<number | null>(null);
+  const isSavingRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
   const fatigueEmojiScales = useRef(
     FATIGUE_OPTIONS.map(() => new Animated.Value(1)),
   ).current;
@@ -1103,6 +1105,7 @@ export default function ActiveWorkoutScreen() {
       exerciseId,
       exerciseName:
         exercise != null ? exerciseSwaps[exerciseId] || exercise.name : undefined,
+      muscleGroup: exercise?.muscleGroup ?? undefined,
       setNumber,
       weightLbs: weight,
       reps,
@@ -1247,6 +1250,9 @@ export default function ActiveWorkoutScreen() {
 
   const handleSaveAndFinish = async () => {
     if (fatigueRating === null) return;
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSaving(true);
 
     const planIdForLog =
       sessionPlanIdForLogs &&
@@ -1341,16 +1347,21 @@ export default function ActiveWorkoutScreen() {
 
       // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.
       // Do NOT double the value before storing — store exactly what the user entered.
-      const { error: insertError } = await supabase.from('workout_logs').insert({
-        user_id: userId,
-        plan_id: planIdForLog,
-        week_number: sessionWeekForLogs,
-        day_number: dayNumberForLog,
-        logged_at: new Date().toISOString(),
-        session_fatigue_rating: fatigueRating,
-        notes: sessionNotes || null,
-        sets_json: sets,
-      });
+      const { error: insertError } = await supabase
+        .from('workout_logs')
+        .upsert(
+          {
+            user_id: userId,
+            plan_id: planIdForLog,
+            week_number: sessionWeekForLogs,
+            day_number: dayNumberForLog,
+            logged_at: new Date().toISOString(),
+            session_fatigue_rating: fatigueRating,
+            notes: sessionNotes || null,
+            sets_json: sets,
+          },
+          { onConflict: 'plan_id,week_number,day_number' },
+        );
 
       if (insertError) throw insertError;
 
@@ -1400,6 +1411,8 @@ export default function ActiveWorkoutScreen() {
       }
     } catch (err) {
       console.error('[SAVE workout_log] failed:', err);
+      isSavingRef.current = false;
+      setIsSaving(false);
       Alert.alert(
         'Save Failed',
         'Your workout could not be saved. Try again?',
@@ -1723,19 +1736,23 @@ export default function ActiveWorkoutScreen() {
             activeOpacity={0.8}
             style={[
               styles.saveButton,
-              fatigueRating === null && styles.saveButtonDisabled,
+              (fatigueRating === null || isSaving) && styles.saveButtonDisabled,
             ]}
             onPress={handleSaveAndFinish}
-            disabled={fatigueRating === null}
+            disabled={fatigueRating === null || isSaving}
           >
-            <Text
-              style={[
-                styles.saveButtonText,
-                fatigueRating === null && styles.saveButtonTextDisabled,
-              ]}
-            >
-              Save & Finish
-            </Text>
+            {isSaving ? (
+              <ActivityIndicator color={Colors.textPrimary} />
+            ) : (
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  fatigueRating === null && styles.saveButtonTextDisabled,
+                ]}
+              >
+                Save & Finish
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
         </TouchableWithoutFeedback>

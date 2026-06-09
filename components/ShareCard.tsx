@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Polygon, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { Colors, Fonts, FontSizes, Radius, Spacing } from '../constants/design';
 import { formatShareLiftLine, type ShareTopLift } from '../utils/workoutShare';
 
@@ -13,6 +13,7 @@ export type ShareCardProps = {
   weekNumber: number;
   dayNumber: number;
   totalSets: number;
+  totalWeeks: number;
   avgRpe: number;
   durationMinutes: number;
   prsHit: number;
@@ -31,6 +32,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
     weekNumber,
     dayNumber,
     totalSets,
+    totalWeeks,
     avgRpe,
     durationMinutes,
     prsHit,
@@ -50,42 +52,19 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
         </Svg>
       </View>
 
-      {/* Hex watermark — bottom left */}
-      <View style={styles.hexContainer} pointerEvents="none">
-        <Svg width={260} height={260} viewBox="0 0 100 100" style={StyleSheet.absoluteFillObject}>
-          <Polygon
-            points="50,2 93,26 93,74 50,98 7,74 7,26"
-            fill="none"
-            stroke={Colors.accent}
-            strokeWidth="3"
-            opacity="0.06"
-          />
-          <Polygon
-            points="50,14 83,31 83,69 50,86 17,69 17,31"
-            fill="none"
-            stroke={Colors.accent}
-            strokeWidth="1.5"
-            opacity="0.06"
-          />
-          <SvgText
-            x="50"
-            y="62"
-            textAnchor="middle"
-            fontSize="36"
-            fontWeight="700"
-            fill={Colors.accent}
-            opacity="0.06"
-            fontFamily="System"
-          >
-            H
-          </SvgText>
-        </Svg>
+      {/* Logo watermark — center */}
+      <View style={styles.logoWatermarkContainer} pointerEvents="none">
+        <Image
+          source={require('../assets/icon.png')}
+          style={styles.logoWatermark}
+          resizeMode="contain"
+        />
       </View>
 
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.wordmark}>Hone</Text>
-        <Text style={styles.weekLabel}>WEEK {weekNumber} OF 16</Text>
+        <Text style={styles.weekLabel}>WEEK {weekNumber} OF {totalWeeks}</Text>
       </View>
 
       {/* Session label */}
@@ -142,10 +121,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
           <Text style={styles.tagline}>Train smarter.</Text>
           <Text style={styles.subTagline}>Your plan adapts every week.</Text>
         </View>
-        <View style={styles.qrPlaceholder}>
-          <Ionicons name="qr-code-outline" size={28} color={Colors.accent} />
-          <Text style={styles.scanLabel}>SCAN</Text>
-        </View>
+        <Text style={styles.appUrl}>hone.app</Text>
       </View>
     </View>
   );
@@ -165,12 +141,18 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
   },
-  hexContainer: {
+  logoWatermarkContainer: {
     position: 'absolute',
-    bottom: -20,
-    left: -20,
-    width: 260,
-    height: 260,
+    bottom: 60,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoWatermark: {
+    width: 220,
+    height: 220,
+    opacity: 0.045,
   },
   header: {
     flexDirection: 'row',
@@ -234,7 +216,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 52,
     color: Colors.accent,
-    lineHeight: 52,
+    lineHeight: 62,
+    includeFontPadding: false,
   },
   divider: {
     height: 1,
@@ -313,18 +296,9 @@ const styles = StyleSheet.create({
     color: '#3a3a3a',
     marginTop: 1,
   },
-  qrPlaceholder: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#151515',
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  scanLabel: {
+  appUrl: {
     fontFamily: Fonts.bold,
-    fontSize: 6,
+    fontSize: 10,
     color: Colors.textTertiary,
     letterSpacing: 0.5,
   },

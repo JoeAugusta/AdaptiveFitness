@@ -244,6 +244,7 @@ export interface LoggedSet {
   exerciseId: string;
   /** Present when logs were saved with display name (legacy id mismatch fallback) */
   exerciseName?: string;
+  muscleGroup?: string;
   setNumber: number;
   weightLbs: number;
   reps: number;

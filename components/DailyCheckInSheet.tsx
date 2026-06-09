@@ -142,11 +142,13 @@ export default function DailyCheckInSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <Pressable style={styles.overlay} onPress={() => Keyboard.dismiss()}>
-            <Pressable onPress={() => {}}>
+            <Pressable style={styles.sheetWrapper} onPress={() => {}}>
               <SafeAreaView edges={['bottom']} style={styles.sheet}>
                 <ScrollView
+                  style={styles.scrollArea}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.scrollContent}
                 >
                   {/* Header */}
                   <View style={styles.handleRow}>
@@ -248,21 +250,23 @@ export default function DailyCheckInSheet({
                     </TouchableOpacity>
                   )}
 
-                  <View style={styles.saveBtnWrapper}>
-                    <TouchableOpacity
-                      style={styles.saveBtn}
-                      onPress={() => void handleSave()}
-                      disabled={saving}
-                      activeOpacity={0.85}
-                    >
-                      {saving ? (
-                        <ActivityIndicator color={Colors.textPrimary} />
-                      ) : (
-                        <Text style={styles.saveBtnText}>Save Check-in</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
                 </ScrollView>
+
+                {/* Absolutely-positioned footer */}
+                <View style={styles.footer}>
+                  <TouchableOpacity
+                    style={styles.saveBtn}
+                    onPress={() => void handleSave()}
+                    disabled={saving}
+                    activeOpacity={0.85}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color={Colors.textPrimary} />
+                    ) : (
+                      <Text style={styles.saveBtnText}>Save Check-in</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </SafeAreaView>
             </Pressable>
           </Pressable>
@@ -293,13 +297,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
+  sheetWrapper: {
+    width: '100%',
+  },
   sheet: {
     backgroundColor: Colors.bgElevated,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xl,
     maxHeight: '90%',
+    height: '90%',
   },
   handleRow: {
     alignItems: 'center',
@@ -316,7 +322,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.md,
   },
   title: {
     fontFamily: Fonts.bold,
@@ -335,8 +341,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: Spacing.sm,
-    marginTop: Spacing.lg,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.md,
   },
   weightRow: {
     flexDirection: 'row',
@@ -349,8 +355,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.md,
-    padding: 14,
-    fontSize: FontSizes.heading1,
+    padding: 10,
+    fontSize: FontSizes.title,
     fontFamily: Fonts.bold,
     textAlign: 'center',
     color: Colors.textPrimary,
@@ -419,8 +425,24 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
   },
-  saveBtnWrapper: {
-    marginTop: Spacing.xl,
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 96,
+  },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    backgroundColor: Colors.bgElevated,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   saveBtn: {
     height: 56,

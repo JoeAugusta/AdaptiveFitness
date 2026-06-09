@@ -28,6 +28,12 @@ function unitLabel(isMetric: boolean): string {
   return isMetric ? 'kg' : 'lbs';
 }
 
+function currentMonthYearLabel(): string {
+  return new Date()
+    .toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    .toUpperCase();
+}
+
 export default function PRShareCard({
   exerciseName,
   estimated1RM,
@@ -65,7 +71,7 @@ export default function PRShareCard({
       <View style={styles.header}>
         <Text style={styles.wordmark}>Hone</Text>
         <Text style={styles.weekLabel}>
-          {`WEEK ${rank ?? 1} OF 16`}
+          {currentMonthYearLabel()}
         </Text>
       </View>
 
@@ -173,12 +179,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 10,
     marginBottom: 12,
+    paddingTop: 8,
   },
   weightNumber: {
     fontFamily: Fonts.bold,
     fontSize: 118,
     color: Colors.accent,
-    lineHeight: 100,
+    lineHeight: 124,
     letterSpacing: -4,
   },
   weightUnit: {

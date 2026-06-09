@@ -9,21 +9,9 @@ import {
   truncateJordanNoteForShare,
   type ShareTopLift,
 } from './workoutShare';
-import { SHARE_CARD_WIDTH } from '../components/ShareCard';
+import { SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import type { RefObject } from 'react';
 import { View } from 'react-native';
-
-export type ShareCardProps = {
-  sessionTitle: string;
-  weekNumber: number;
-  dayNumber: number;
-  totalSets: number;
-  avgRpe: number;
-  durationMinutes: number;
-  prsHit: number;
-  topLifts: ShareTopLift[];
-  jordanNote: string;
-};
 
 export type ShareWorkoutParams = {
   planId: string;
@@ -89,6 +77,14 @@ export async function prepareShareCardData(
     const jordanNoteRaw =
       latestJordanNote || fallbackJordanNoteFromRpe(avgRpe);
 
+    const totalWeeks =
+      planJson &&
+      typeof planJson === 'object' &&
+      'totalWeeks' in planJson &&
+      typeof (planJson as { totalWeeks?: number }).totalWeeks === 'number'
+        ? (planJson as { totalWeeks: number }).totalWeeks
+        : (planRow as { total_weeks?: number } | null)?.total_weeks ?? 12;
+
     return {
       sessionTitle: resolveSessionTitleFromPlan(
         planJson,
@@ -98,6 +94,7 @@ export async function prepareShareCardData(
       weekNumber: params.weekNumber,
       dayNumber: params.dayNumber,
       totalSets: totalSetsCount,
+      totalWeeks,
       avgRpe,
       durationMinutes: params.durationMinutes,
       prsHit: params.prsHit,

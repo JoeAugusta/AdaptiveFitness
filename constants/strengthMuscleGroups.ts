@@ -92,6 +92,8 @@ export const MUSCLE_GROUP_MAP: Record<string, string> = {
   'Ab Wheel': 'Core',
   'Russian Twist': 'Core',
   'Hanging Leg Raise': 'Core',
+
+  'Cable Front Raise': 'Shoulders',
 };
 
 const LIBRARY_MUSCLE_TO_VOLUME: Record<string, string> = {
@@ -119,6 +121,14 @@ function titleCaseCategory(raw: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
+/** Collapse a plan's granular muscleGroup (e.g. "Triceps", "Quads") to a display bucket. */
+export function collapseToVolumeBucket(muscle: string): string {
+  const key = String(muscle ?? '').trim().toLowerCase();
+  if (LIBRARY_MUSCLE_TO_VOLUME[key]) return LIBRARY_MUSCLE_TO_VOLUME[key];
+  const title = titleCaseCategory(muscle);
+  return title || 'Shoulders';
+}
+
 /** Keyword fallback when exercise name is not in MUSCLE_GROUP_MAP. */
 export function keywordFallbackMuscleGroup(name: string): string {
   const n = name.toLowerCase();
@@ -133,6 +143,13 @@ export function keywordFallbackMuscleGroup(name: string): string {
     n.includes('rdl')
   ) {
     return 'Legs';
+  }
+  if (
+    n.includes('shoulder') || n.includes('delt') || n.includes('lateral raise') ||
+    n.includes('front raise') || n.includes('rear delt') || n.includes('shrug') ||
+    n.includes('overhead') || n.includes('face pull')
+  ) {
+    return 'Shoulders';
   }
   if (
     n.includes('press') ||
@@ -152,16 +169,6 @@ export function keywordFallbackMuscleGroup(name: string): string {
     n.includes('back')
   ) {
     return 'Back';
-  }
-  if (
-    n.includes('shoulder') ||
-    n.includes('delt') ||
-    n.includes('lateral') ||
-    n.includes('shrug') ||
-    n.includes('overhead') ||
-    n.includes('face pull')
-  ) {
-    return 'Shoulders';
   }
   if (
     n.includes('curl') ||

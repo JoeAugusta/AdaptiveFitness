@@ -36,6 +36,7 @@ import {
   STRENGTH_CATEGORY_CHIPS,
   getMuscleCategoryForExercise,
   resolveWeeklyVolumeMuscleGroup,
+  collapseToVolumeBucket,
 } from '../constants/strengthMuscleGroups';
 import { getStrengthProjection } from '../utils/projections';
 import { getLocalDateString } from '../utils/dateUtils';
@@ -1091,9 +1092,10 @@ export default function ProgressChartsScreen() {
       for (const s of sets) {
         const name: string =
           s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
-        const nameLower = normalizeExerciseName(name);
-        const fromLibrary = exerciseNameToMuscle[nameLower];
-        const muscleGroup = resolveWeeklyVolumeMuscleGroup(name, fromLibrary);
+        const planMuscle = s.muscleGroup ?? exerciseMap[s.exerciseId]?.muscleGroup ?? '';
+        const muscleGroup = planMuscle
+          ? collapseToVolumeBucket(planMuscle)
+          : resolveWeeklyVolumeMuscleGroup(name, exerciseNameToMuscle[normalizeExerciseName(name)]);
 
         if (!volMap.has(wk)) volMap.set(wk, new Map());
         const wkMap = volMap.get(wk)!;
@@ -2496,13 +2498,13 @@ const styles = StyleSheet.create({
   heatmapWeekColumn: {
     width: 32,
     alignItems: 'center',
-    gap: HEATMAP_CELL_GAP,
-    minHeight: HEATMAP_GRID_HEIGHT,
+    height: HEATMAP_GRID_HEIGHT,
   },
   heatmapWeekColumnFlex: {
     flex: 1,
     width: undefined,
     minWidth: 24,
+    height: HEATMAP_GRID_HEIGHT,
   },
   heatmapWeekColumnCurrent: {
     borderWidth: 1,
@@ -2516,6 +2518,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.divider,
+    marginBottom: HEATMAP_CELL_GAP,
   },
   heatmapCellActive: {
     backgroundColor: Colors.accent,

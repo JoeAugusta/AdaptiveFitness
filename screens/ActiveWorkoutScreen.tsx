@@ -44,6 +44,7 @@ import {
 } from '../utils/restTimerAlerts';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { JordanAvatar } from '../components/JordanAvatar';
 import { RPEReferenceSheet } from '../components/RPEReferenceSheet';
 import { stripEmDash } from '../utils/jordanText';
@@ -354,6 +355,98 @@ function resolveRestDurationSeconds(exercise: WorkoutExercise): number {
   return 120;
 }
 
+// ── Warmup card data ──────────────────────────────
+
+const WARMUP_DURATION_SECONDS = 300; // 5 minutes
+
+type WarmupCategory =
+  | 'pushPull'
+  | 'push'
+  | 'shouldersArms'
+  | 'pull'
+  | 'legs'
+  | 'cardio'
+  | 'fullBody'
+  | 'fallback';
+
+type WarmupMove = { name: string; detail: string };
+
+const WARMUP_MOVES: Record<WarmupCategory, WarmupMove[]> = {
+  pushPull: [
+    { name: 'Arm circles', detail: '10 forward, 10 backward' },
+    { name: 'Band pull-aparts', detail: '15 reps' },
+    { name: 'Cat-cow', detail: '10 reps' },
+    { name: 'Scapular push-up', detail: '8 reps' },
+  ],
+  push: [
+    { name: 'Arm circles', detail: '10 forward, 10 backward' },
+    { name: 'Band pull-aparts', detail: '15 reps — shoulder health' },
+    { name: 'Light push-up', detail: '10 reps, focus on scapular control' },
+    { name: 'Wrist circles', detail: '10 each direction' },
+  ],
+  shouldersArms: [
+    { name: 'Arm circles', detail: '10 forward, 10 backward' },
+    { name: 'Wrist circles', detail: '10 each direction' },
+    { name: 'Band pull-aparts', detail: '15 reps' },
+    { name: 'Overhead tricep stretch', detail: '20 seconds each side' },
+  ],
+  pull: [
+    { name: 'Cat-cow', detail: '10 reps' },
+    { name: 'Band pull-aparts', detail: '15 reps' },
+    { name: 'Dead hang', detail: '20–30 seconds' },
+    { name: 'Scapular pull-ups', detail: '8 reps' },
+  ],
+  legs: [
+    { name: 'Leg swings', detail: '10 forward/back each leg' },
+    { name: 'Hip circles', detail: '10 each direction' },
+    { name: 'Bodyweight squat', detail: '10 reps, controlled descent' },
+    { name: 'Walking lunge', detail: '5 each leg' },
+  ],
+  cardio: [
+    { name: 'March in place', detail: '60 seconds' },
+    { name: 'Leg swings', detail: '10 each leg' },
+    { name: 'Arm circles', detail: '10 each direction' },
+    { name: 'Hip circles', detail: '10 each direction' },
+  ],
+  fullBody: [
+    { name: 'Jumping jacks', detail: '30 seconds' },
+    { name: 'Leg swings', detail: '10 each leg' },
+    { name: 'Arm circles', detail: '10 each direction' },
+    { name: 'Bodyweight squat', detail: '10 reps' },
+  ],
+  fallback: [
+    { name: 'Jumping jacks', detail: '30 seconds' },
+    { name: 'Arm circles', detail: '10 each direction' },
+    { name: 'Hip circles', detail: '10 each direction' },
+    { name: 'Bodyweight squat', detail: '10 reps' },
+  ],
+};
+
+const WARMUP_JORDAN_LINES: Record<WarmupCategory, string> = {
+  pushPull: 'Prime both push and pull patterns — this session taxes the whole upper body.',
+  push: 'Take 5 minutes to prime your shoulders and chest before loading them.',
+  shouldersArms: 'Warm up the shoulder joint thoroughly before any overhead or curl work.',
+  pull: 'Loosen the posterior chain before you pull — your lats will thank you.',
+  legs: 'Hip and ankle mobility first — heavy squat and hinge patterns need it.',
+  cardio: 'Light movement to raise your heart rate before you push the pace.',
+  fullBody: 'Full body sessions demand full body prep — do not skip this one.',
+  fallback: 'Five minutes of movement before you lift protects the session.',
+};
+
+function classifyWarmupCategory(muscleGroups: string[]): WarmupCategory {
+  const mg = muscleGroups.map((m) => m.toLowerCase());
+  const has = (term: string) => mg.some((m) => m.includes(term));
+
+  if (has('chest') && has('back')) return 'pushPull';
+  if (has('chest')) return 'push';
+  if (has('shoulder') && (has('bicep') || has('tricep'))) return 'shouldersArms';
+  if (has('back') || has('lat')) return 'pull';
+  if (has('quad') || has('hamstring') || has('glute') || has('calf') || has('leg')) return 'legs';
+  return 'fallback';
+}
+
+const WARMUP_SKIP_KEY_PREFIX = 'hone_warmup_skip_plan_';
+
 export default function ActiveWorkoutScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -431,6 +524,11 @@ export default function ActiveWorkoutScreen() {
   const [showPreSessionModal, setShowPreSessionModal] = useState(
     () => !!preSessionMessage,
   );
+
+  const [showWarmupModal, setShowWarmupModal] = useState(false);
+  const [warmupSecondsRemaining, setWarmupSecondsRemaining] = useState(WARMUP_DURATION_SECONDS);
+  const warmupEndTimeRef = useRef<number | null>(null);
+  const [warmupCategory, setWarmupCategory] = useState<WarmupCategory>('fallback');
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -895,6 +993,20 @@ export default function ActiveWorkoutScreen() {
       );
       setWorkout({ title: dayData.title, goal: planGoal, goalLift: planGoalLift, exercises });
       void checkDraft(idForQueries, dayData.dayNumber);
+
+      // Show warmup modal unless user has opted out for this plan
+      const planIdForWarmup = idForQueries;
+      if (planIdForWarmup) {
+        const skipKey = `${WARMUP_SKIP_KEY_PREFIX}${planIdForWarmup}`;
+        const skipped = await AsyncStorage.getItem(skipKey);
+        if (!skipped) {
+          const dayMuscleGroups: string[] = (dayData.muscleGroups ?? []) as string[];
+          const category = classifyWarmupCategory(dayMuscleGroups);
+          setWarmupCategory(category);
+          setWarmupSecondsRemaining(WARMUP_DURATION_SECONDS);
+          setShowWarmupModal(true);
+        }
+      }
     } catch (e) {
       console.error('Failed to load workout:', e);
       setSessionPlanIdForLogs(null);
@@ -986,6 +1098,47 @@ export default function ActiveWorkoutScreen() {
       subscription.remove();
     };
   }, []);
+
+  // Warmup countdown timer
+  useEffect(() => {
+    if (!showWarmupModal) {
+      warmupEndTimeRef.current = null;
+      return;
+    }
+    warmupEndTimeRef.current = Date.now() + WARMUP_DURATION_SECONDS * 1000;
+
+    const warmupInterval = setInterval(() => {
+      if (warmupEndTimeRef.current == null) return;
+      const remaining = Math.max(
+        0,
+        Math.ceil((warmupEndTimeRef.current - Date.now()) / 1000),
+      );
+      setWarmupSecondsRemaining(remaining);
+      if (remaining === 0) {
+        warmupEndTimeRef.current = null;
+        setShowWarmupModal(false);
+      }
+    }, 1000);
+
+    const warmupSub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active' && warmupEndTimeRef.current != null) {
+        const remaining = Math.max(
+          0,
+          Math.ceil((warmupEndTimeRef.current - Date.now()) / 1000),
+        );
+        setWarmupSecondsRemaining(remaining);
+        if (remaining === 0) {
+          warmupEndTimeRef.current = null;
+          setShowWarmupModal(false);
+        }
+      }
+    });
+
+    return () => {
+      clearInterval(warmupInterval);
+      warmupSub.remove();
+    };
+  }, [showWarmupModal]);
 
   useEffect(() => {
     if (!isRestActive) return;
@@ -1732,18 +1885,21 @@ export default function ActiveWorkoutScreen() {
             onSubmitEditing={() => Keyboard.dismiss()}
           />
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[
-              styles.saveButton,
-              (fatigueRating === null || isSaving) && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSaveAndFinish}
-            disabled={fatigueRating === null || isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator color={Colors.textPrimary} />
-            ) : (
+          {isSaving ? (
+            <View style={styles.savingOverlay}>
+              <ActivityIndicator color={Colors.accent} size="small" />
+              <Text style={styles.savingOverlayText}>Saving workout...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.saveButton,
+                fatigueRating === null && styles.saveButtonDisabled,
+              ]}
+              onPress={handleSaveAndFinish}
+              disabled={fatigueRating === null}
+            >
               <Text
                 style={[
                   styles.saveButtonText,
@@ -1752,8 +1908,8 @@ export default function ActiveWorkoutScreen() {
               >
                 Save & Finish
               </Text>
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -1834,6 +1990,122 @@ export default function ActiveWorkoutScreen() {
           }
         }}
       />
+
+      {/* ── Warmup modal ── */}
+      <Modal
+        visible={showWarmupModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWarmupModal(false)}
+      >
+        <View style={styles.warmupRoot}>
+          <View style={styles.warmupSheet}>
+            <View style={styles.warmupHandle} />
+
+            {/* Timer */}
+            <View style={styles.warmupTimerRow}>
+              <View style={styles.warmupTimerRingWrap}>
+                {(() => {
+                  const SIZE = 148;
+                  const STROKE = 5;
+                  const R = (SIZE - STROKE) / 2;
+                  const CIRCUMFERENCE = 2 * Math.PI * R;
+                  const progress = warmupSecondsRemaining / WARMUP_DURATION_SECONDS;
+                  const dashOffset = CIRCUMFERENCE * (1 - progress);
+                  return (
+                    <Svg
+                      width={SIZE}
+                      height={SIZE}
+                      style={styles.warmupTimerRingSvg}
+                    >
+                      <Circle
+                        cx={SIZE / 2}
+                        cy={SIZE / 2}
+                        r={R}
+                        stroke={Colors.divider}
+                        strokeWidth={STROKE}
+                        fill="none"
+                      />
+                      <Circle
+                        cx={SIZE / 2}
+                        cy={SIZE / 2}
+                        r={R}
+                        stroke={Colors.accent}
+                        strokeWidth={STROKE}
+                        fill="none"
+                        strokeDasharray={`${CIRCUMFERENCE}`}
+                        strokeDashoffset={dashOffset}
+                        strokeLinecap="round"
+                        rotation="-90"
+                        origin={`${SIZE / 2}, ${SIZE / 2}`}
+                      />
+                    </Svg>
+                  );
+                })()}
+                <View style={styles.warmupTimerInner}>
+                  <Text style={styles.warmupTimerLabel}>WARM UP</Text>
+                  <Text style={styles.warmupTimer}>
+                    {formatRestCountdown(warmupSecondsRemaining)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Jordan one-liner */}
+            <View style={styles.warmupJordanRow}>
+              <JordanAvatar size={28} />
+              <Text style={styles.warmupJordanText}>
+                {WARMUP_JORDAN_LINES[warmupCategory]}
+              </Text>
+            </View>
+
+            {/* Warmup moves */}
+            <View style={styles.warmupMovesList}>
+              {WARMUP_MOVES[warmupCategory].map((move, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.warmupMoveRow,
+                    i < WARMUP_MOVES[warmupCategory].length - 1 &&
+                      styles.warmupMoveRowBorder,
+                  ]}
+                >
+                  <View style={styles.warmupMoveDot} />
+                  <View style={styles.warmupMoveText}>
+                    <Text style={styles.warmupMoveName}>{move.name}</Text>
+                    <Text style={styles.warmupMoveDetail}>{move.detail}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Start workout button */}
+            <TouchableOpacity
+              style={styles.warmupStartBtn}
+              activeOpacity={0.85}
+              onPress={() => setShowWarmupModal(false)}
+            >
+              <Text style={styles.warmupStartBtnText}>Start Workout →</Text>
+            </TouchableOpacity>
+
+            {/* Don't show again */}
+            <TouchableOpacity
+              style={styles.warmupSkipBtn}
+              activeOpacity={0.7}
+              onPress={async () => {
+                const planIdForSkip = sessionPlanIdForLogs;
+                if (planIdForSkip) {
+                  const skipKey = `${WARMUP_SKIP_KEY_PREFIX}${planIdForSkip}`;
+                  await AsyncStorage.setItem(skipKey, '1');
+                }
+                setShowWarmupModal(false);
+              }}
+            >
+              <Text style={styles.warmupSkipText}>Don&apos;t show again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showPreSessionModal}
@@ -2226,6 +2498,22 @@ const styles = StyleSheet.create({
   saveButtonTextDisabled: {
     color: Colors.textTertiary,
   },
+  savingOverlay: {
+    height: 56,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  savingOverlayText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
 
   preSessionModalRoot: {
     flex: 1,
@@ -2357,5 +2645,139 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.accent,
+  },
+  warmupRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: Colors.overlay,
+  },
+  warmupSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxl,
+    paddingBottom: 48,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  warmupHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
+  },
+  warmupTimerRow: {
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  warmupTimerRingWrap: {
+    width: 148,
+    height: 148,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupTimerRingSvg: {
+    position: 'absolute',
+  },
+  warmupTimerInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupTimerLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    letterSpacing: 2,
+    marginBottom: 2,
+  },
+  warmupTimer: {
+    fontFamily: Fonts.bold,
+    fontSize: 40,
+    color: Colors.accent,
+    fontVariant: ['tabular-nums'],
+    lineHeight: 46,
+  },
+  warmupJordanRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.xs,
+    paddingBottom: Spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  warmupJordanText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  warmupMovesList: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    marginBottom: Spacing.xl,
+    overflow: 'hidden',
+  },
+  warmupMoveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  warmupMoveRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  warmupMoveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent,
+    flexShrink: 0,
+  },
+  warmupMoveText: {
+    flex: 1,
+  },
+  warmupMoveName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  warmupMoveDetail: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  warmupStartBtn: {
+    height: 56,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  warmupStartBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  warmupSkipBtn: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  warmupSkipText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
 });

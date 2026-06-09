@@ -749,6 +749,34 @@ Return ONLY this exact JSON structure with no other text:
       // Non-critical — still return the summary to the client
     }
 
+    // Write in-app notification — non-blocking, never throws
+    try {
+      const summaryTyped = summary as {
+        headline?: string;
+        performanceRating?: string;
+      };
+      const headline = summaryTyped?.headline ?? `Week ${weekNumber} review ready`;
+      const rating = summaryTyped?.performanceRating ?? 'on-track';
+      const ratingLabel =
+        rating === 'strong' ? 'Strong week.' :
+        rating === 'tough-week' ? 'Tough week.' :
+        'On track.';
+
+      await supabase.from('notifications').insert({
+        user_id: userId,
+        type: 'weekly_review_ready',
+        title: `Week ${weekNumber} review`,
+        body: `${ratingLabel} ${headline}`,
+        metadata: {
+          plan_id: planId,
+          week_number: weekNumber,
+          performance_rating: rating,
+        },
+      });
+    } catch (notifErr) {
+      console.error('[notifications] weekly_review_ready write failed:', notifErr);
+    }
+
     return new Response(JSON.stringify({ summary }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

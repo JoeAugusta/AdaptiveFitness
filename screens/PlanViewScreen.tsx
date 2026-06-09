@@ -18,6 +18,7 @@ import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionIntent } from '../utils/getSessionIntent';
+import { useMetric } from '../utils/units';
 import { getTodayDayLabel, isTodayTrainingDay } from '../utils/dateUtils';
 import WorkoutResultsModal, {
   type WorkoutLog,
@@ -38,6 +39,7 @@ interface ExerciseSummary {
   sets: number;
   reps: string;
   weight: number;
+  targetRpe?: number;
 }
 
 interface PlanDay {
@@ -199,7 +201,7 @@ function getPhaseDisplay(
   }
   if (effectivePhase === 'intensification') {
     return {
-      label: 'INTENSIFICATION',
+      label: 'INTENSITY',
       color: Colors.warning,
       bg: Colors.warningMuted,
     };
@@ -213,13 +215,13 @@ function getPhaseDisplay(
   }
   if (weekNumber > totalWeeks / 2) {
     return {
-      label: 'INTENSIFICATION',
+      label: 'INTENSITY',
       color: Colors.warning,
       bg: Colors.warningMuted,
     };
   }
   return {
-    label: 'ACCUMULATION',
+      label: 'ACCUM',
     color: Colors.accent,
     bg: Colors.accentMuted,
   };
@@ -299,7 +301,16 @@ function WorkoutDayCard({
       ) : null}
 
       <Text style={styles.sessionIntent}>
-        {getSessionIntent(weekPhase, day.sessionFocus, planSplit)}
+        {(() => {
+          const firstEx = day.exercises[0];
+          if (firstEx && firstEx.weight > 0) {
+            return `${firstEx.name} ${firstEx.sets}×${firstEx.reps} @ ${firstEx.weight} lbs`;
+          }
+          if (firstEx && firstEx.sets && firstEx.reps) {
+            return `${firstEx.name} ${firstEx.sets}×${firstEx.reps}`;
+          }
+          return getSessionIntent(weekPhase, day.sessionFocus, planSplit);
+        })()}
       </Text>
 
       <View style={styles.exerciseList}>
@@ -369,6 +380,7 @@ function RestDayCard({ day, isTodayCalendarDay }: { day: PlanDay; isTodayCalenda
 export default function PlanViewScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const { formatWorkoutWeight } = useMetric();
   const planId = route.params?.planId ?? '';
   const [resolvedPlanId, setResolvedPlanId] = useState('');
 
@@ -1044,7 +1056,7 @@ export default function PlanViewScreen() {
                         ? 'TRV'
                         : wPhase.label === 'BASELINE'
                           ? 'BL'
-                          : wPhase.label === 'INTENSIFICATION'
+                          : wPhase.label === 'INTENSITY'
                             ? 'INT'
                             : 'ACC'}
                   </Text>
@@ -1223,11 +1235,9 @@ export default function PlanViewScreen() {
                   <Text style={styles.previewExerciseMeta}>
                     {ex.sets}×{ex.reps}
                     {ex.weight > 0
-                      ? ` @ ${ex.weight} lbs`
-                      : ex.targetWeight > 0
-                        ? ` @ ${ex.targetWeight} lbs`
-                        : ' — self-select weight'}
-                    {ex.targetRpe > 0 ? ` · RPE ${ex.targetRpe}` : ''}
+                      ? ` @ ${formatWorkoutWeight(ex.weight)}`
+                      : ' — self-select weight'}
+                    {(ex.targetRpe ?? 0) > 0 ? ` · RPE ${ex.targetRpe}` : ''}
                   </Text>
                 </View>
               </View>
@@ -1337,14 +1347,16 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   phasePill: {
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
     borderRadius: Radius.full,
+    flexShrink: 1,
   },
   phasePillText: {
     fontSize: FontSizes.micro,
     fontFamily: Fonts.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 0.3,
+    flexShrink: 1,
   },
   weekPhaseLabel: {
     fontSize: 8,

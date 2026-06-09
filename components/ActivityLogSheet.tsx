@@ -9,6 +9,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -150,7 +153,8 @@ export default function ActivityLogSheet({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={[
             styles.sheet,
             { maxHeight: maxSheetH, paddingBottom: Spacing.xl + insets.bottom },
@@ -171,6 +175,7 @@ export default function ActivityLogSheet({
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
             <Text style={styles.fieldLabel}>Activity</Text>
@@ -226,6 +231,8 @@ export default function ActivityLogSheet({
                 placeholderTextColor={Colors.textTertiary}
                 keyboardType="number-pad"
                 maxLength={4}
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
               <Text style={styles.durationUnit}>minutes</Text>
             </View>
@@ -256,7 +263,7 @@ export default function ActivityLogSheet({
               )}
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

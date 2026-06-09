@@ -264,7 +264,7 @@ function getPhaseDisplay(
     };
   }
   return {
-    label: 'ACCUMULATION',
+      label: 'ACCUMULATION',
     color: Colors.accent,
     bg: Colors.accentMuted,
   };
@@ -700,6 +700,18 @@ export default function HomeScreen() {
   const [cardioCompleted, setCardioCompleted] = useState(false);
   const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
   const [activityDashboardUserId, setActivityDashboardUserId] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifSheet, setShowNotifSheet] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    type: string;
+    title: string;
+    body: string;
+    read: boolean;
+    created_at: string;
+    metadata?: Record<string, unknown> | null;
+  }>>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [dashboardWeightLbs, setDashboardWeightLbs] = useState(170);
   const [goalProgress, setGoalProgress] = useState<{
     targetLift: string | null;
@@ -785,6 +797,20 @@ export default function HomeScreen() {
       }
       uidRef.current = userId;
       setActivityDashboardUserId(userId);
+
+      // Load unread notification count — non-blocking
+      void (async () => {
+        try {
+          const { count } = await supabase
+            .from('notifications')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('read', false);
+          setUnreadCount(count ?? 0);
+        } catch {
+          // silent — bell count is non-critical
+        }
+      })();
 
       const { data: profileData } = await supabase
         .from('user_profiles')
@@ -1580,6 +1606,59 @@ export default function HomeScreen() {
     }
   };
 
+  const loadNotifications = useCallback(async () => {
+    const uid = uidRef.current;
+    if (!uid) return;
+    setNotifLoading(true);
+    try {
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, type, title, body, read, created_at, metadata')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      setNotifications(
+        (data ?? []) as Array<{
+          id: string;
+          type: string;
+          title: string;
+          body: string;
+          read: boolean;
+          created_at: string;
+          metadata?: Record<string, unknown> | null;
+        }>,
+      );
+    } catch {
+      // silent
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  const markAllRead = useCallback(async () => {
+    const uid = uidRef.current;
+    if (!uid) return;
+    try {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', uid)
+        .eq('read', false);
+      setUnreadCount(0);
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, read: true })),
+      );
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleOpenNotifications = useCallback(async () => {
+    setShowNotifSheet(true);
+    await loadNotifications();
+    await markAllRead();
+  }, [loadNotifications, markAllRead]);
+
   useFocusEffect(
     useCallback(() => {
       void loadDashboardData();
@@ -2136,9 +2215,30 @@ export default function HomeScreen() {
               <Text style={styles.greetingName}>{displayName}</Text>
             ) : null}
           </View>
-          <Text style={styles.headerDate}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.headerDate}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+            <TouchableOpacity
+              style={styles.bellBtn}
+              onPress={() => void handleOpenNotifications()}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
+                size={22}
+                color={unreadCount > 0 ? Colors.accent : Colors.textSecondary}
+              />
+              {unreadCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>
+                    {unreadCount > 9 ? '9+' : String(unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {showTrialBanner ? (
@@ -3138,6 +3238,139 @@ export default function HomeScreen() {
           existingLog={todayActivityLog as ActivityLogRow | null}
         />
       ) : null}
+
+      {/* ── Notification Sheet ── */}
+      <Modal
+        visible={showNotifSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotifSheet(false)}
+      >
+        <View style={styles.notifModalRoot}>
+          <TouchableOpacity
+            style={styles.notifOverlay}
+            activeOpacity={1}
+            onPress={() => setShowNotifSheet(false)}
+          />
+          <View style={styles.notifSheet}>
+            <View style={styles.notifHandle} />
+
+            <View style={styles.notifHeaderRow}>
+              <Text style={styles.notifSheetTitle}>Notifications</Text>
+              <TouchableOpacity
+                onPress={() => setShowNotifSheet(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {notifLoading ? (
+              <View style={styles.notifLoading}>
+                <ActivityIndicator color={Colors.accent} />
+              </View>
+            ) : notifications.length === 0 ? (
+              <View style={styles.notifEmpty}>
+                <Ionicons
+                  name="notifications-off-outline"
+                  size={32}
+                  color={Colors.textTertiary}
+                />
+                <Text style={styles.notifEmptyTitle}>No notifications yet</Text>
+                <Text style={styles.notifEmptyBody}>
+                  Jordan will update you here after each week and when your plan adapts.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.notifScroll}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.notifScrollContent}
+              >
+                {notifications.map((notif) => {
+                  const iconName =
+                    notif.type === 'weekly_review_ready'
+                      ? 'star-outline'
+                      : notif.type === 'plan_adapted'
+                        ? 'trending-up-outline'
+                        : notif.type === 'pr_hit'
+                          ? 'trophy-outline'
+                          : 'notifications-outline';
+
+                  const timeAgo = (() => {
+                    const diff =
+                      Date.now() - new Date(notif.created_at).getTime();
+                    const mins = Math.floor(diff / 60000);
+                    if (mins < 60) return `${mins}m ago`;
+                    const hrs = Math.floor(mins / 60);
+                    if (hrs < 24) return `${hrs}h ago`;
+                    return `${Math.floor(hrs / 24)}d ago`;
+                  })();
+
+                  return (
+                    <TouchableOpacity
+                      key={notif.id}
+                      style={[
+                        styles.notifRow,
+                        !notif.read && styles.notifRowUnread,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        setShowNotifSheet(false);
+                        const meta = notif.metadata ?? {};
+                        if (
+                          notif.type === 'weekly_review_ready' &&
+                          planData &&
+                          typeof meta.week_number === 'number'
+                        ) {
+                          navigation.navigate('WeeklyCoachSummary', {
+                            planId: planData.planId,
+                            weekNumber: meta.week_number,
+                          });
+                        } else if (
+                          notif.type === 'plan_adapted' &&
+                          planData &&
+                          typeof meta.week_number === 'number'
+                        ) {
+                          navigation.navigate('PlanView', {
+                            planId: planData.planId,
+                            weekNumber: meta.week_number,
+                          });
+                        }
+                      }}
+                    >
+                      <View style={styles.notifIconWrap}>
+                        <Ionicons
+                          name={iconName}
+                          size={20}
+                          color={Colors.accent}
+                        />
+                      </View>
+                      <View style={styles.notifRowContent}>
+                        <View style={styles.notifRowTop}>
+                          <Text style={styles.notifTitle} numberOfLines={1}>
+                            {notif.title}
+                          </Text>
+                          <Text style={styles.notifTime}>{timeAgo}</Text>
+                        </View>
+                        <Text
+                          style={styles.notifBody}
+                          numberOfLines={2}
+                        >
+                          {notif.body}
+                        </Text>
+                      </View>
+                      {!notif.read ? (
+                        <View style={styles.notifUnreadDot} />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -3179,7 +3412,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
-    paddingBottom: 4,
   },
   greetingTime: {
     fontFamily: Fonts.regular,
@@ -4243,17 +4475,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.md,
-    padding: 14,
-    fontSize: FontSizes.heading1,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    fontSize: FontSizes.title,
     fontFamily: Fonts.bold,
     textAlign: 'center',
     color: Colors.textPrimary,
   },
   checkInUnitLabel: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.title,
+    fontSize: FontSizes.body,
     color: Colors.textSecondary,
-    minWidth: 32,
+    minWidth: 36,
   },
   checkInPillRow: {
     flexDirection: 'row',
@@ -4331,5 +4564,161 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  bellBtn: {
+    position: 'relative',
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: 9,
+    color: Colors.textPrimary,
+    lineHeight: 11,
+  },
+  notifModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  notifOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  notifSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    maxHeight: '75%',
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  notifHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.textTertiary,
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.divider,
+  },
+  notifSheetTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  notifLoading: {
+    paddingVertical: 48,
+    alignItems: 'center',
+  },
+  notifEmpty: {
+    paddingVertical: 48,
+    paddingHorizontal: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  notifEmptyTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.title,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  notifEmptyBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  notifScroll: {
+    flex: 1,
+  },
+  notifScrollContent: {
+    paddingVertical: Spacing.sm,
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.divider,
+  },
+  notifRowUnread: {
+    backgroundColor: Colors.accentMuted,
+  },
+  notifIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  notifRowContent: {
+    flex: 1,
+    gap: 3,
+  },
+  notifRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  notifTitle: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  notifTime: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    flexShrink: 0,
+  },
+  notifBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  notifUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.accent,
+    marginTop: 4,
+    flexShrink: 0,
   },
 });

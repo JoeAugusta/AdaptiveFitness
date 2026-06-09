@@ -4683,6 +4683,34 @@ Return ONLY this exact JSON structure:
 
     if (writeError) throw new Error(`Failed to update plan: ${writeError.message}`);
 
+    // Write in-app notification — non-blocking, never throws
+    try {
+      const changeCount = nextWeekData.adaptationChanges?.length ?? 0;
+      const phaseLabel =
+        phase === 'deload' ? 'Deload week' :
+        phase === 'intensification' ? 'Intensification phase' :
+        'Accumulation phase';
+      const body = changeCount > 0
+        ? `${phaseLabel}. ${changeCount} exercise${changeCount === 1 ? '' : 's'} adjusted.`
+        : `${phaseLabel}. Your plan is ready.`;
+
+      await supabase.from('notifications').insert({
+        user_id: userId,
+        type: 'plan_adapted',
+        title: `Week ${nextWeekNumber} is ready`,
+        body,
+        metadata: {
+          plan_id: planId,
+          week_number: nextWeekNumber,
+          phase,
+          completion_tier: completionTier,
+          adaptation_change_count: changeCount,
+        },
+      });
+    } catch (notifErr) {
+      console.error('[notifications] plan_adapted write failed:', notifErr);
+    }
+
     // Step 9 — Return success
     return new Response(
       JSON.stringify({

@@ -454,7 +454,36 @@ export default function WorkoutCompleteScreen() {
         );
         const historicalBests = buildExerciseBestsFromLogs(historicalLogs);
         const sessionPrs = computeSessionPrsFromLog(sets, historicalBests);
-        setTopPr(pickTopSessionPr(sessionPrs));
+        const topPrResult = pickTopSessionPr(sessionPrs);
+        setTopPr(topPrResult);
+
+        // Write in-app notification for PRs — non-blocking
+        if (topPrResult && prsHit > 0) {
+          void (async () => {
+            try {
+              const prBody = prsHit === 1
+                ? `New PR on ${topPrResult.exerciseName} — ${topPrResult.weightLbs} lbs × ${topPrResult.reps}`
+                : `${prsHit} PRs this session. Top: ${topPrResult.exerciseName} at ${topPrResult.weightLbs} lbs`;
+              await supabase.from('notifications').insert({
+                user_id: userId,
+                type: 'pr_hit',
+                title: prsHit === 1 ? 'Personal record!' : `${prsHit} personal records!`,
+                body: prBody,
+                metadata: {
+                  plan_id: planId,
+                  week_number: weekNumber,
+                  day_number: dayNumber,
+                  prs_hit: prsHit,
+                  top_exercise: topPrResult.exerciseName,
+                  top_weight_lbs: topPrResult.weightLbs,
+                  top_reps: topPrResult.reps,
+                },
+              });
+            } catch (notifErr) {
+              if (__DEV__) console.warn('[notifications] pr_hit write failed:', notifErr);
+            }
+          })();
+        }
       } catch (err) {
         if (__DEV__) console.warn('[WorkoutComplete] session PR load failed:', err);
         if (!cancelled) setTopPr(null);

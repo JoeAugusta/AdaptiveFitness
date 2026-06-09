@@ -44,7 +44,7 @@ export function getStrengthProjection(
   const weeklyRates: Record<string, number> = {
     beginner: 3,
     intermediate: 1.5,
-    advanced: 0.75,
+    advanced: 1.0,
   };
   const rate = weeklyRates[exp] ?? 1.5;
   return Array.from({ length: weeks + 1 }, (_, i) => {
@@ -75,7 +75,7 @@ export function getStrengthProjectionRange(
   weeks: number,
 ): { low: number; high: number; weeksToTarget: number } {
   const low = Math.round(0.75 * weeks);
-  const high = Math.round(2.0 * weeks);
+  const high = Math.round(1.5 * weeks);
   const gap = target1RM - current1RM;
   const weeksToTarget = Math.ceil(gap / 1.5);
   return { low, high, weeksToTarget };

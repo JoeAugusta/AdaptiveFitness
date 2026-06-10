@@ -2497,14 +2497,32 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.workoutDoneTitle}>
-              {planData?.todayWorkout?.title ?? 'Today\'s Session'}
-            </Text>
-            <Text style={styles.workoutDoneSubtitle}>
-              Day {planData?.todayWorkout?.dayNumber ?? '—'} · Week {planData?.currentWeek ?? 1} of {planData?.totalWeeks ?? 8}
-              {'  '}
-              <Text style={styles.workoutDoneTapHint}>tap to view results</Text>
-            </Text>
+            {(() => {
+              const completedDayNumber = lastSessionMeta?.dayNumber
+                ?? planData?.todayWorkout?.dayNumber
+                ?? null;
+              const completedTitle = (() => {
+                if (completedDayNumber != null && planData?.weekDays?.length) {
+                  const match = planData.weekDays.find(
+                    (d) => d.dayNumber === completedDayNumber,
+                  );
+                  if (match?.title) return match.title;
+                }
+                return planData?.todayWorkout?.title ?? 'Today\'s Session';
+              })();
+              return (
+                <>
+                  <Text style={styles.workoutDoneTitle}>
+                    {completedTitle}
+                  </Text>
+                  <Text style={styles.workoutDoneSubtitle}>
+                    {completedDayNumber != null ? `Day ${completedDayNumber} · ` : ''}Week {planData?.currentWeek ?? 1} of {planData?.totalWeeks ?? 8}
+                    {'  '}
+                    <Text style={styles.workoutDoneTapHint}>tap to view results</Text>
+                  </Text>
+                </>
+              );
+            })()}
 
             <View style={styles.workoutDoneStatsRow}>
               <View style={[styles.workoutDoneStat, styles.workoutDoneStatBorder]}>

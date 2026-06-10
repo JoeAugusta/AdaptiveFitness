@@ -1254,11 +1254,30 @@ export default function ActiveWorkoutScreen() {
       (ex) => ex.id === exerciseId,
     );
     const isSwapped = exerciseSwaps[exerciseId] !== undefined;
+    const resolvedMuscleGroup = (() => {
+      if (exercise?.muscleGroup && String(exercise.muscleGroup).trim() !== '') {
+        return String(exercise.muscleGroup).trim();
+      }
+      const name = (exerciseSwaps[exerciseId] ?? exercise?.name ?? '').toLowerCase();
+      if (name.includes('chest') || name.includes('bench') || name.includes('fly') || name.includes('pec')) return 'Chest';
+      if (name.includes('back') || name.includes('row') || name.includes('pulldown') || name.includes('pull-up') || name.includes('deadlift')) return 'Back';
+      if (name.includes('squat') || name.includes('leg press') || name.includes('lunge') || name.includes('quad') || name.includes('hack')) return 'Quads';
+      if (name.includes('hamstring') || name.includes('leg curl') || name.includes('rdl') || name.includes('romanian')) return 'Hamstrings';
+      if (name.includes('glute') || name.includes('hip thrust')) return 'Glutes';
+      if (name.includes('calf') || name.includes('calves')) return 'Calves';
+      if (name.includes('shoulder') || name.includes('delt') || name.includes('overhead press') || name.includes('lateral raise') || name.includes('front raise') || name.includes('face pull') || name.includes('rear delt')) return 'Shoulders';
+      if (name.includes('bicep') || name.includes('curl') || name.includes('preacher')) return 'Biceps';
+      if (name.includes('tricep') || name.includes('pushdown') || name.includes('skull') || name.includes('close grip')) return 'Triceps';
+      if (name.includes('trap') || name.includes('shrug')) return 'Traps';
+      if (name.includes('core') || name.includes('ab') || name.includes('plank') || name.includes('crunch')) return 'Core';
+      return undefined;
+    })();
+
     const newSet: LoggedSet = {
       exerciseId,
       exerciseName:
         exercise != null ? exerciseSwaps[exerciseId] || exercise.name : undefined,
-      muscleGroup: exercise?.muscleGroup ?? undefined,
+      muscleGroup: resolvedMuscleGroup,
       setNumber,
       weightLbs: weight,
       reps,

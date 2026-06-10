@@ -89,8 +89,8 @@ function localDateKey(d: Date): string {
 /** Mon–Sun; index aligns with dayIndex = (getDay() + 6) % 7 */
 const HEATMAP_DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const HEATMAP_ROWS = 7;
-const HEATMAP_CELL_SIZE = 28;
-const HEATMAP_CELL_GAP = 4;
+const HEATMAP_CELL_SIZE = 30;
+const HEATMAP_CELL_GAP = 3;
 const HEATMAP_GRID_HEIGHT =
   HEATMAP_CELL_SIZE * HEATMAP_ROWS + HEATMAP_CELL_GAP * (HEATMAP_ROWS - 1);
 
@@ -2496,7 +2496,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   heatmapWeekColumn: {
-    width: 32,
+    width: HEATMAP_CELL_SIZE + 4,
     alignItems: 'center',
     height: HEATMAP_GRID_HEIGHT,
   },
@@ -2519,6 +2519,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     marginBottom: HEATMAP_CELL_GAP,
+    alignSelf: 'center',
   },
   heatmapCellActive: {
     backgroundColor: Colors.accent,

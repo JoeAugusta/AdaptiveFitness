@@ -44,9 +44,9 @@ export default function PRShareCard({
   rank,
   cardRef,
 }: PRShareCardProps) {
-  const displayWeight = formatWeight(estimated1RM, isMetric);
+  const displayWeight = formatWeight(bestWeightLbs, isMetric);
   const unit = unitLabel(isMetric);
-  const sourceLabel = `${Math.round(bestWeightLbs)} lbs × ${bestReps} reps`;
+  const repsLabel = `× ${bestReps} reps`;
 
   return (
     <View ref={cardRef} style={styles.card} collapsable={false}>
@@ -77,19 +77,20 @@ export default function PRShareCard({
 
       {/* Main content — bottom aligned */}
       <View style={styles.body}>
-        <Text style={styles.recordLabel}>PERSONAL RECORD</Text>
+        <Text style={styles.recordLabel}>NEW PR</Text>
 
         {/* Big number inline with unit */}
         <View style={styles.numberRow}>
           <Text style={styles.weightNumber}>{displayWeight}</Text>
-          <Text style={styles.weightUnit}>{unit}</Text>
+          <View style={styles.unitRepsStack}>
+            <Text style={styles.weightUnit}>{unit}</Text>
+            <Text style={styles.repsInline}>{repsLabel}</Text>
+          </View>
         </View>
 
-        {/* Exercise name + source set */}
+        {/* Exercise name */}
         <View style={styles.exerciseRow}>
           <Text style={styles.exerciseName} numberOfLines={1}>{exerciseName}</Text>
-          <View style={styles.dot} />
-          <Text style={styles.sourceLabel}>{sourceLabel}</Text>
         </View>
 
         <View style={styles.divider} />
@@ -193,6 +194,18 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: Colors.accent,
     paddingBottom: 6,
+  },
+  unitRepsStack: {
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    paddingBottom: 8,
+    gap: 4,
+  },
+  repsInline: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    letterSpacing: 0.3,
   },
   exerciseRow: {
     flexDirection: 'row',

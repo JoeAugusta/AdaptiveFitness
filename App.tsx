@@ -25,12 +25,20 @@ import { supabase } from './Lib/supabase';
 import { AuthProvider } from './contexts/AuthContext';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data as
+      | Record<string, unknown>
+      | undefined;
+    const isForegroundOnly =
+      data?.foregroundOnly === true ||
+      data?.type === 'rest_timer';
+    return {
+      shouldShowBanner: !isForegroundOnly,
+      shouldShowList: !isForegroundOnly,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();

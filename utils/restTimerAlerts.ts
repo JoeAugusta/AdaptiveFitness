@@ -23,6 +23,7 @@ export async function scheduleRestCompleteNotification(seconds: number): Promise
         title: 'Rest up',
         body: 'Next set ready. Stay focused.',
         sound: true,
+        data: { type: 'rest_timer' },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -45,6 +46,7 @@ export async function playRestCompleteSound(): Promise<void> {
         title: 'Rest up',
         body: 'Next set ready. Stay focused.',
         sound: true,
+        data: { type: 'rest_timer' },
       },
       trigger: null,
     });

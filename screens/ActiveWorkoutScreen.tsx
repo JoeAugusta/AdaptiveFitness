@@ -479,6 +479,10 @@ export default function ActiveWorkoutScreen() {
   >({});
   const [overlayNote, setOverlayNote] = useState<string | null>(null);
   const [overlayNoteVisible, setOverlayNoteVisible] = useState(false);
+  const [overlayWeightSuggestion, setOverlayWeightSuggestion] = useState<{
+    exerciseId: string;
+    weightLbs: number;
+  } | null>(null);
   const overlayNoteAnim = useRef(new Animated.Value(0)).current;
   const overlayDismissTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -1187,10 +1191,31 @@ export default function ActiveWorkoutScreen() {
     loggedReps: number,
     loggedWeight: number,
     loggedRpe: number | null,
-    isUnilateral = false,
+    opts: {
+      isUnilateral?: boolean;
+      isLastSetOfExercise?: boolean;
+      isLastExercise?: boolean;
+      isPyramid?: boolean;
+      setNumber?: number;
+      totalSets?: number;
+    } = {},
   ) => {
+    const {
+      isUnilateral = false,
+      isLastSetOfExercise = false,
+      isLastExercise = false,
+      isPyramid = false,
+      setNumber = 0,
+      totalSets = 0,
+    } = opts;
     setCoachingLoading((prev) => ({ ...prev, [exerciseId]: true }));
     try {
+      console.log('[coaching invoke body]', {
+        isPyramid,
+        isLastSetOfExercise,
+        isLastExercise,
+        exerciseName,
+      });
       const { data, error } = await supabase.functions.invoke('coaching-feedback', {
         body: {
           exerciseName,
@@ -1202,6 +1227,11 @@ export default function ActiveWorkoutScreen() {
           loggedRpe: loggedRpe ?? 'not rated',
           isUnilateral,
           weekNumber: sessionWeekForLogs,
+          isLastSetOfExercise,
+          isLastExercise,
+          isPyramid,
+          setNumber,
+          totalSets,
         },
       });
       if (error) {
@@ -1214,6 +1244,20 @@ export default function ActiveWorkoutScreen() {
         const text = data?.feedback ?? 'Good work. Keep it up.';
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
         setOverlayNote(text);
+        // Parse suggested weight from Jordan's response
+        // Matches patterns like "try 35 lbs" or "try 35lbs"
+        const weightMatch = text.match(/try\s+(\d+(?:\.\d+)?)\s*lbs?/i);
+        const parsedWeight = weightMatch ? Number(weightMatch[1]) : null;
+        console.log('[suggestion check]', { text, weightMatch, parsedWeight, isLastSetOfExercise, isPyramid });
+        const allowSuggestion =
+          parsedWeight != null &&
+          parsedWeight > 0 &&
+          (!isLastSetOfExercise || isPyramid);
+        if (allowSuggestion) {
+          setOverlayWeightSuggestion({ exerciseId, weightLbs: parsedWeight });
+        } else {
+          setOverlayWeightSuggestion(null);
+        }
         overlayNoteAnim.setValue(0);
         setOverlayNoteVisible(true);
         Animated.timing(overlayNoteAnim, {
@@ -1224,13 +1268,17 @@ export default function ActiveWorkoutScreen() {
         if (overlayDismissTimeout.current) {
           clearTimeout(overlayDismissTimeout.current);
         }
+        const dismissDelay = allowSuggestion ? 8000 : 5000;
         overlayDismissTimeout.current = setTimeout(() => {
           Animated.timing(overlayNoteAnim, {
             toValue: 0,
             duration: 300,
             useNativeDriver: true,
-          }).start(() => setOverlayNoteVisible(false));
-        }, 5000);
+          }).start(() => {
+            setOverlayNoteVisible(false);
+            setOverlayWeightSuggestion(null);
+          });
+        }, dismissDelay);
       }
     } catch {
       setCoachingNotes((prev) => {
@@ -1313,6 +1361,22 @@ export default function ActiveWorkoutScreen() {
         const displayName = exerciseSwaps[exerciseId] || exercise.name;
         const isThisExerciseSwapped =
           exerciseSwaps[exerciseId] !== undefined;
+        const isLastSetOfExercise = setNumber >= exercise.sets.length;
+        const exercises = workout?.exercises ?? [];
+        const exerciseIndex = exercises.findIndex((ex) => ex.id === exerciseId);
+        const isLastExercise =
+          exerciseIndex >= 0 && exerciseIndex === exercises.length - 1;
+        console.log('[coaching debug]', {
+          exerciseId,
+          setStructure: exercise.setStructure,
+          setTargets: exercise.setTargets,
+        });
+        console.log('[handleLogSet]', {
+          setNumber,
+          totalSets: exercise.sets.length,
+          isLastSetOfExercise: setNumber >= exercise.sets.length,
+          isPyramid: exercise.setStructure === 'pyramid',
+        });
         fetchCoachingNote(
           exerciseId,
           displayName,
@@ -1322,7 +1386,14 @@ export default function ActiveWorkoutScreen() {
           reps,
           weight,
           rpe,
-          exercise.isUnilateral,
+          {
+            isUnilateral: exercise.isUnilateral,
+            isLastSetOfExercise,
+            isLastExercise,
+            isPyramid: exercise.setStructure === 'pyramid',
+            setNumber,
+            totalSets: exercise.sets.length,
+          },
         );
       }
     }
@@ -1817,16 +1888,62 @@ export default function ActiveWorkoutScreen() {
             { opacity: overlayNoteAnim },
           ]}
         >
-          <Text style={styles.jordanNoteOverlayLabel}>JORDAN</Text>
-          <Text style={styles.jordanNoteOverlayText}>
-            {stripEmDash(overlayNote ?? '')}
-          </Text>
-          <TouchableOpacity
-            onPress={() => setOverlayNoteVisible(false)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="close" size={20} color={Colors.textTertiary} />
-          </TouchableOpacity>
+          <View style={styles.jordanNoteOverlayContent}>
+            <View style={styles.jordanNoteOverlayHeader}>
+              <Text style={styles.jordanNoteOverlayLabel}>JORDAN</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (overlayDismissTimeout.current) {
+                    clearTimeout(overlayDismissTimeout.current);
+                  }
+                  Animated.timing(overlayNoteAnim, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }).start(() => {
+                    setOverlayNoteVisible(false);
+                    setOverlayWeightSuggestion(null);
+                  });
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={Colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.jordanNoteOverlayText}>
+              {stripEmDash(overlayNote ?? '')}
+            </Text>
+            {overlayWeightSuggestion != null ? (
+              <TouchableOpacity
+                style={styles.jordanWeightSuggestionPill}
+                activeOpacity={0.8}
+                onPress={() => {
+                  void hapticMedium();
+                  setExerciseTargetWeightOverrides((prev) => ({
+                    ...prev,
+                    [overlayWeightSuggestion.exerciseId]:
+                      overlayWeightSuggestion.weightLbs,
+                  }));
+                  if (overlayDismissTimeout.current) {
+                    clearTimeout(overlayDismissTimeout.current);
+                  }
+                  Animated.timing(overlayNoteAnim, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }).start(() => {
+                    setOverlayNoteVisible(false);
+                    setOverlayWeightSuggestion(null);
+                  });
+                  showToast(`Next set: ${overlayWeightSuggestion.weightLbs} lbs`);
+                }}
+              >
+                <Text style={styles.jordanWeightSuggestionText}>
+                  Use {overlayWeightSuggestion.weightLbs} lbs →
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </Animated.View>
       )}
 
@@ -2011,6 +2128,7 @@ export default function ActiveWorkoutScreen() {
       />
 
       {/* ── Warmup modal ── */}
+      {showWarmupModal ? (
       <Modal
         visible={showWarmupModal}
         transparent
@@ -2125,6 +2243,7 @@ export default function ActiveWorkoutScreen() {
           </View>
         </View>
       </Modal>
+      ) : null}
 
       <Modal
         visible={showPreSessionModal}
@@ -2366,9 +2485,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: Colors.accent,
     padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
     zIndex: 200,
   },
   jordanNoteOverlayLabel: {
@@ -2390,6 +2506,31 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textTertiary,
     paddingLeft: 4,
+  },
+  jordanNoteOverlayContent: {
+    flex: 1,
+    flexDirection: 'column',
+    gap: Spacing.xs,
+  },
+  jordanNoteOverlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  jordanWeightSuggestionPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  jordanWeightSuggestionText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    letterSpacing: 0.3,
   },
 
   toast: {

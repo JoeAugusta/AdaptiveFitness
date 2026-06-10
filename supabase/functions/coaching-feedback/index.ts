@@ -38,6 +38,8 @@ serve(async (req) => {
       loggedRpe,
       isUnilateral,
     } = body;
+    const isLastSetOfExercise = body.isLastSetOfExercise === true;
+    const isLastExercise = body.isLastExercise === true;
 
     const planContext =
       body.planContext && typeof body.planContext === 'object'
@@ -98,22 +100,78 @@ Lead with the number, follow with the implication. No hand-holding.`,
       // isAnomalous (1.5x–3x): fall through to Claude for existing feedback
     }
 
+    const loggedWeightNum = Number(loggedWeight);
+    const targetWeightNum = Number(targetWeight);
+    const loggedRpeNum2 = Number(loggedRpe);
+    const targetRpeNum2 = Number(targetRpe);
+    const loggedRepsNum = Number(loggedReps);
+    const targetRepsStr = String(targetReps ?? '');
+    const targetRepsMax = (() => {
+      const m = targetRepsStr.match(/(\d+)\s*[-–]\s*(\d+)/);
+      if (m) return Number(m[2]);
+      const single = targetRepsStr.match(/^(\d+)$/);
+      if (single) return Number(single[1]);
+      return 0;
+    })();
+
+    // Weight suggestion logic — only for non-last sets with clear signal
+    const isPyramidExercise = body.isPyramid === true || body.isPyramid === 'true';
+    const setNumber = Number(body.setNumber ?? 0);
+    console.log('[coaching-feedback] isPyramid:', body.isPyramid, 'isPyramidExercise:', isPyramidExercise, 'isLastSetOfExercise:', isLastSetOfExercise);
+    const totalSets = Number(body.totalSets ?? 0);
+
+    const suggestedWeight = (() => {
+      if (loggedWeightNum <= 0 || targetWeightNum <= 0) return null;
+      if (isPyramidExercise && setNumber !== 1) return null;
+      // Pyramid set 1 only: if too easy, suggest +5 on base
+      // ExerciseCard will shift entire pyramid up by the delta
+      if (isLastSetOfExercise && !isPyramidExercise) return null;
+      const rpeGap = loggedRpeNum2 - targetRpeNum2;
+      const hitTopOfRange = targetRepsMax > 0 && loggedRepsNum >= targetRepsMax;
+      const hitMinOfRange = loggedRepsNum > 0;
+      const tooEasy = loggedRpeNum2 > 0 && loggedRpeNum2 <= 5 && targetRpeNum2 >= 7 && (hitTopOfRange || hitMinOfRange);
+      const tooHard = loggedRpeNum2 > 0 && rpeGap >= 2.0 && loggedRepsNum < targetRepsMax * 0.85;
+      const roundedBase = Math.round(loggedWeightNum / 5) * 5;
+      if (tooEasy) return roundedBase + 5;
+      if (tooHard) return Math.max(5, roundedBase - 5);
+      return null;
+    })();
+
+    const setPositionContext = isLastExercise
+      ? 'This is the LAST SET of the LAST EXERCISE. The session is done after this.'
+      : isLastSetOfExercise
+        ? 'This is the LAST SET of this exercise. Next is a different exercise.'
+        : 'This is a mid-exercise set. More sets of this exercise are coming.';
+
+    const forwardOrientRule = isLastExercise
+      ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
+      : isLastSetOfExercise
+        ? `- This exercise is done. Orient toward the next exercise or the rest of the session. Do NOT say "next set of this exercise".`
+        : isPyramidExercise
+          ? suggestedWeight != null
+            ? `- This is a pyramid set but set 1 was too easy. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. The pyramid shifts up from there.`
+            : `- This is a pyramid set. Each set gets heavier by design so early sets feeling easy is expected. Do NOT mention any weight or number. Tell them the next set is heavier and to stay controlled.`
+          : suggestedWeight != null
+            ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a suggestion, not a command.`
+            : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
+
     const perSetSystemPrompt = `${perSetToneInstruction}
 
-You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set during their workout. Your job is to tell them what to do or think about on their NEXT SET — not to narrate what just happened.
+You are Jordan, a direct and knowledgeable personal coach. The athlete just logged a set.
+
+CRITICAL CONTEXT: ${setPositionContext}
 
 STYLE RULE: Never use em-dashes (—). Use periods or commas instead.
 
 Rules:
 - ONE sentence only. Never two.
 - Never start with 'Great', 'Good', 'Nice', 'Well done', or any praise word.
-- Always orient the athlete FORWARD — toward their next set or the rest of the session.
-- RPE too low (≤6, target was 7+): Tell them to stay controlled. The load adjusts next session, not mid-workout. Do NOT tell them to add weight now.
-- RPE on target (within 1 point of target): Confirm and tell them to repeat the approach.
-- RPE too high (1.5+ above target): Give a specific recovery or execution cue for the next set. Example: "Take the full rest before the next set — that RPE means you need it."
-- Hit or exceeded reps: Acknowledge briefly and orient to next set.
-- Fell short on reps: Be honest, tell them what to focus on.
-- Never suggest a specific pound amount to add or remove — load decisions happen after the session.
+${forwardOrientRule}
+- RPE too low (target was 7+, hit top of rep range): orient toward next set or next exercise. Do NOT suggest a weight number.
+- RPE on target (within 1 point): confirm and orient forward.
+- RPE too high (fell short on reps): give a recovery or execution cue. Do NOT suggest a weight number.
+- Fell short on reps without clear RPE data: be honest, tell them what to focus on.
+- NEVER mention a specific weight in lbs under any circumstances unless you were explicitly told "A weight adjustment is warranted" above. If no weight adjustment was flagged, do not mention any number followed by lbs.
 - Never mention being an AI.
 - No markdown.`;
 
@@ -205,9 +263,16 @@ Give a brief coaching note.`;
       ? (typeof raw === 'string' && raw.trim() ? raw.trim() : null)
       : (raw ?? 'Set logged — stay locked in for the next one.');
 
-    return new Response(JSON.stringify({ feedback: text }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify(
+        isSessionSummary
+          ? { feedback: text }
+          : { feedback: text, suggestedWeight },
+      ),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   } catch {
     return new Response(
       JSON.stringify({

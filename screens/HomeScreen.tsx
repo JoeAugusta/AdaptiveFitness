@@ -1171,7 +1171,7 @@ export default function HomeScreen() {
       if (loggedWorkoutToday) {
         const { data: fullLog } = await supabase
           .from('workout_logs')
-          .select('sets_json, session_fatigue_rating')
+          .select('sets_json, session_fatigue_rating, logged_at')
           .eq('user_id', userId)
           .eq('plan_id', plan.id)
           .eq('week_number', plan.current_week)
@@ -4625,7 +4625,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgElevated,
     borderTopLeftRadius: Radius.xxl,
     borderTopRightRadius: Radius.xxl,
-    maxHeight: '75%',
+    height: '75%',
     paddingBottom: 40,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,

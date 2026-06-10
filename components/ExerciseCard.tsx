@@ -554,12 +554,62 @@ export default function ExerciseCard({
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
   useEffect(() => {
-    if (targetWeightOverride !== undefined) {
-      setInputValues({});
-      setEnteredWeight(0);
-      setSet1EnteredWeight(0);
-      setReactiveWarmupBase(0);
-    }
+    if (targetWeightOverride === undefined || targetWeightOverride <= 0) return;
+    console.log('[weight override]', {
+      targetWeightOverride,
+      setStructure: exercise.setStructure,
+      setTargets: exercise.setTargets,
+      isPyramid: exercise.setStructure === 'pyramid',
+    });
+    const isPyramid = exercise.setStructure === 'pyramid';
+    setInputValues((prev) => {
+      const next = { ...prev };
+      for (const set of exercise.sets) {
+        if (loggedSets.some((s) => s.setNumber === set.setNumber)) continue;
+        const existing = next[set.setNumber];
+        let newWeight: number;
+        if (isPyramid) {
+          const originalTargets = exercise.setTargets;
+          const originalTopWeight =
+            originalTargets && originalTargets.length > 0
+              ? Math.max(...originalTargets.map((t) => t.targetWeight ?? 0))
+              : 0;
+          const originalThisSet = originalTargets?.find(
+            (t) => t.setNumber === set.setNumber,
+          );
+          if (
+            originalTopWeight > 0 &&
+            originalThisSet != null &&
+            originalThisSet.targetWeight > 0
+          ) {
+            // Shift all sets by the same delta as top set change
+            const delta = targetWeightOverride - originalTopWeight;
+            newWeight = Math.round(
+              (originalThisSet.targetWeight + delta) / 5,
+            ) * 5;
+          } else {
+            newWeight = targetWeightOverride;
+          }
+        } else {
+          newWeight = targetWeightOverride;
+        }
+        const defaultForSet = existing ?? {
+          weight: '',
+          reps: String(set.targetReps ?? '').split(/[–\-]/)[0]!.trim(),
+          rpe: null as number | null,
+        };
+        next[set.setNumber] = {
+          ...defaultForSet,
+          weight: String(lbsToDisplay(newWeight)),
+        };
+      }
+      return next;
+    });
+    setEnteredWeight(0);
+    setSet1EnteredWeight(0);
+    setReactiveWarmupBase(0);
+  // loggedSets intentionally excluded — only re-run when override changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWeightOverride]);
 
   const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);

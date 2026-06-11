@@ -49,6 +49,7 @@ interface PlanDay {
   muscleGroups: string[];
   exercises: ExerciseSummary[];
   completed: boolean;
+  skipped?: boolean;
   sessionFocus?: string;
   cardioType?: 'light' | 'medium';
   suggestedDurationMinutes?: number;
@@ -286,7 +287,12 @@ function WorkoutDayCard({
           </Text>
         </View>
         {day.completed ? (
-          <Text style={styles.completedCheck}>✓</Text>
+          <Text style={[
+            styles.completedCheck,
+            day.skipped && styles.skippedCheck,
+          ]}>
+            {day.skipped ? '✗' : '✓'}
+          </Text>
         ) : null}
       </View>
 
@@ -325,9 +331,14 @@ function WorkoutDayCard({
       </View>
 
       {day.completed ? (
-        <View style={styles.donePill}>
+        <View style={[styles.donePill, day.skipped && styles.skippedPill]}>
           {loadingResults ? (
             <Text style={styles.donePillText}>Loading…</Text>
+          ) : day.skipped ? (
+            <View style={styles.donePillInner}>
+              <Text style={styles.skippedPillText}>Skipped</Text>
+              <Ionicons name="close" size={14} color={Colors.textTertiary} />
+            </View>
           ) : (
             <View style={styles.donePillInner}>
               <Text style={styles.donePillText}>Done</Text>
@@ -465,7 +476,7 @@ export default function PlanViewScreen() {
 
       const { data: logRows } = await supabase
         .from('workout_logs')
-        .select('week_number, day_number')
+        .select('week_number, day_number, skipped')
         .eq('plan_id', idForLogs)
         .eq('user_id', userId);
 
@@ -476,6 +487,14 @@ export default function PlanViewScreen() {
           (l: { week_number: number; day_number: number }) =>
             `${l.week_number}-${l.day_number}`,
         ),
+      );
+      const skippedSet = new Set<string>(
+        (logRows ?? [])
+          .filter((l: { skipped?: boolean }) => l.skipped === true)
+          .map(
+            (l: { week_number: number; day_number: number }) =>
+              `${l.week_number}-${l.day_number}`,
+          ),
       );
 
       const rawWeeks: RawWeek[] = planJson.weeks ?? [];
@@ -502,6 +521,7 @@ export default function PlanViewScreen() {
             weight: ex.targetWeight ?? 0,
           })),
           completed: logSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
+          skipped: skippedSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
           sessionFocus: rd.sessionFocus,
           cardioType: rd.cardioType,
           suggestedDurationMinutes: rd.suggestedDurationMinutes,
@@ -1477,6 +1497,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     color: Colors.success,
   },
+  skippedCheck: {
+    color: Colors.textTertiary,
+  },
   muscleRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1538,6 +1561,14 @@ const styles = StyleSheet.create({
   },
   donePillSpinner: {
     marginLeft: Spacing.xs,
+  },
+  skippedPill: {
+    backgroundColor: Colors.bgElevated,
+  },
+  skippedPillText: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.bold,
+    color: Colors.textTertiary,
   },
   viewResultsHint: {
     marginTop: Spacing.sm,

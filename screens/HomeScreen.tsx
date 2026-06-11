@@ -48,7 +48,7 @@ import {
 import {
   checkMissedSession,
   markSessionSkipped,
-  rescheduleSession,
+  missedDayLabelToDate,
   type MissedSessionResult,
 } from '../utils/missedSession';
 import { useMetric, convertSessionFocus } from '../utils/units';
@@ -1095,12 +1095,19 @@ export default function HomeScreen() {
 
       const { data: logsWeek } = await supabase
         .from('workout_logs')
-        .select('day_number')
+        .select('day_number, skipped')
         .eq('plan_id', plan.id)
         .eq('week_number', plan.current_week);
 
+      // completedDayNumbers: excludes skipped — used for progress dot count only
       const completedDayNumbers = new Set(
-        logsWeek?.map((l: { day_number: number }) => l.day_number) ?? [],
+        (logsWeek ?? [])
+          .filter((l: { day_number: number; skipped?: boolean }) => l.skipped !== true)
+          .map((l: { day_number: number }) => l.day_number),
+      );
+      // loggedDayNumbers: includes skipped — used for resolveTodayWorkout routing
+      const loggedDayNumbers = new Set(
+        (logsWeek ?? []).map((l: { day_number: number }) => l.day_number),
       );
       const rawCompletedSessions = completedDayNumbers.size;
 
@@ -1119,13 +1126,7 @@ export default function HomeScreen() {
       // mid-week and has NOT yet logged today's session.
       // Guard: rawCompletedSessions must be STRICTLY LESS THAN todayScheduledIndex
       // (not <=) — if they equal, today's slot is already logged, no inflation needed.
-      const implicitSessionsForCount =
-        (plan.current_week ?? 1) === 1 &&
-        todayScheduledIndexForCount > 0 &&
-        rawCompletedSessions > 0 &&
-        rawCompletedSessions < todayScheduledIndexForCount
-          ? todayScheduledIndexForCount - (rawCompletedSessions - 1)
-          : 0;
+      const implicitSessionsForCount = 0;
       const isWeek1NoSessionsYet =
         (plan.current_week ?? 1) === 1 && completedDayNumbers.size === 0;
       setIsWeek1NoSessionsYet(isWeek1NoSessionsYet);
@@ -1136,7 +1137,7 @@ export default function HomeScreen() {
       // logs land on the next UTC calendar day.
       const { data: todayLogs } = await supabase
         .from('workout_logs')
-        .select('id, logged_at, day_number')
+        .select('id, logged_at, day_number, skipped')
         .eq('user_id', userId)
         .eq('plan_id', plan.id)
         .eq('week_number', plan.current_week)
@@ -1144,8 +1145,9 @@ export default function HomeScreen() {
         .limit(10);
 
       // Find a log whose local calendar date matches today
-      const todayLogRow = (todayLogs ?? []).find((row: { logged_at?: string; day_number?: number }) => {
+      const todayLogRow = (todayLogs ?? []).find((row: { logged_at?: string; day_number?: number; skipped?: boolean }) => {
         if (!row.logged_at) return false;
+        if (row.skipped === true) return false;
         const logLocal = getLocalDateString(new Date(row.logged_at));
         return logLocal === todayDateStr;
       }) ?? null;
@@ -1248,7 +1250,7 @@ export default function HomeScreen() {
       // until the first session is logged, regardless of calendar day.
       const todayWorkout = resolveTodayWorkout({
         weekDays,
-        completedDayNumbers,
+        completedDayNumbers: loggedDayNumbers,
         devBypassDayGate:
           (devBypassRead || isWeek1NoSessionsYet) && !loggedWorkoutToday,
         hasDayLabels,
@@ -1296,6 +1298,14 @@ export default function HomeScreen() {
       const daysPerWeek = plan.plan_json.daysPerWeek ?? 4;
       const effectiveCompletedForCTA = Math.min(daysPerWeekForCount, rawCompletedSessions + implicitSessionsForCount);
       const isWeekComplete = effectiveCompletedForCTA >= daysPerWeek && daysPerWeek > 0;
+      console.log('[completion debug]', {
+        rawCompletedSessions,
+        implicitSessionsForCount,
+        effectiveCompletedForCTA,
+        daysPerWeek,
+        todayScheduledIndexForCount,
+        isWeekComplete,
+      });
 
       const pj = planJson as {
         totalWeeks?: number;
@@ -2304,8 +2314,8 @@ export default function HomeScreen() {
               <JordanAvatar size={32} />
               <Text style={styles.missedJordanText}>
                 {missedSessionResult.canReschedule
-                  ? `You missed today's session, but ${missedSessionResult.tomorrowDayLabel} is free. Want to move it?`
-                  : "You missed today's session. It happens. Next session we push forward and make it count."}
+                  ? `You missed ${missedSessionResult.missedDayLabel ? `${missedSessionResult.missedDayLabel}'s` : 'a'} session. Do it today or skip it.`
+                  : `You missed ${missedSessionResult.missedDayLabel ? `${missedSessionResult.missedDayLabel}'s` : 'a'} session. Next session we get back on track.`}
               </Text>
             </View>
 
@@ -2314,27 +2324,12 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={styles.missedActionPrimary}
                   activeOpacity={0.8}
-                  onPress={async () => {
-                    const uid = uidRef.current;
-                    if (!uid) return;
-                    try {
-                      await rescheduleSession(
-                        planSnapshotForMissed.planId,
-                        planSnapshotForMissed.currentWeek,
-                        missedSessionResult.missedSession!.dayNumber,
-                        missedSessionResult.tomorrowDayLabel,
-                        planSnapshotForMissed.planJson,
-                      );
-                      setMissedCardDismissed(true);
-                      loadDashboardData();
-                    } catch (e) {
-                      console.error('[missed] rescheduleSession', e);
-                      Alert.alert('Error', 'Could not reschedule. Please try again.');
-                    }
+                  onPress={() => {
+                    setMissedCardDismissed(true);
                   }}
                 >
                   <Text style={styles.missedActionPrimaryText}>
-                    {`Move to ${missedSessionResult.tomorrowDayLabel} →`}
+                    Do it today →
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2344,11 +2339,17 @@ export default function HomeScreen() {
                     const uid = uidRef.current;
                     if (!uid) return;
                     try {
+                      console.log('[skip]', {
+                        dayNumber: missedSessionResult.missedSession?.dayNumber,
+                        planId: planSnapshotForMissed?.planId,
+                        weekNumber: planSnapshotForMissed?.currentWeek,
+                      });
                       await markSessionSkipped(
                         planSnapshotForMissed.planId,
                         planSnapshotForMissed.currentWeek,
                         missedSessionResult.missedSession!.dayNumber,
                         uid,
+                        missedDayLabelToDate(missedSessionResult.missedDayLabel),
                       );
                       setMissedCardDismissed(true);
                       loadDashboardData();
@@ -2369,11 +2370,17 @@ export default function HomeScreen() {
                   const uid = uidRef.current;
                   if (!uid) return;
                   try {
+                    console.log('[skip]', {
+                      dayNumber: missedSessionResult.missedSession?.dayNumber,
+                      planId: planSnapshotForMissed?.planId,
+                      weekNumber: planSnapshotForMissed?.currentWeek,
+                    });
                     await markSessionSkipped(
                       planSnapshotForMissed.planId,
                       planSnapshotForMissed.currentWeek,
                       missedSessionResult.missedSession!.dayNumber,
                       uid,
+                      missedDayLabelToDate(missedSessionResult.missedDayLabel),
                     );
                     setMissedCardDismissed(true);
                     loadDashboardData();

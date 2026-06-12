@@ -2560,6 +2560,18 @@ serve(async (req) => {
     const absoluteRuleDayCount = workoutDayCount > 0 ? workoutDayCount : actualDaysPerWeek;
 
     const absoluteRuleBlock = `
+ABSOLUTE RULE — CORE INCLUSION:
+Every training week MUST include at least 2 core exercises
+across the plan. Core exercises must appear on legs days
+when the split includes them (Arnold, Batman, PPL, Upper/Lower).
+For full body splits, include one core exercise per session.
+Core exercises to choose from (pick varied emphasis):
+- Anti-extension: Plank, Ab Wheel Rollout, Dead Bug
+- Flexion: Hanging Leg Raise, Cable Crunch, Leg Raise, Weighted Crunch
+- Anti-rotation: Pallof Press, Cable Woodchop, Side Plank, Russian Twist
+Never place core exercises on rest days.
+Never skip core entirely regardless of split type.
+
 ABSOLUTE RULE — SESSION COUNT:
 The user trains ${absoluteRuleDayCount} days per week.
 You must generate EXACTLY ${absoluteRuleDayCount} workout days in every week of the plan.

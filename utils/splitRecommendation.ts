@@ -630,7 +630,7 @@ function R(day: number): SessionDay {
 function upperLower4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
     W(5, 'lower_volume', ['hamstrings', 'glutes', 'core'], 'volume'),
@@ -643,7 +643,7 @@ function upperLower4(): SessionDay[] {
 function upperUpperFocus4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_moderate', ['chest', 'back', 'shoulders'], 'moderate'),
     W(5, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
@@ -656,7 +656,7 @@ function upperUpperFocus4(): SessionDay[] {
 function legFocusUpperLower4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_heavy', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
     W(5, 'lower_volume', ['hamstrings', 'glutes', 'core'], 'volume'),
@@ -669,10 +669,10 @@ function legFocusUpperLower4(): SessionDay[] {
 function pplLegFocus5(): SessionDay[] {
   return [
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
-    W(2, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(2, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(3, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
     W(4, 'upper_moderate', ['chest', 'back', 'shoulders'], 'moderate'),
-    W(5, 'legs_posterior', ['hamstrings', 'glutes', 'calves'], 'volume'),
+    W(5, 'legs_posterior', ['hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     R(6),
     R(7),
   ];
@@ -682,10 +682,10 @@ function pplLegFocus5(): SessionDay[] {
 function legFocusSplit4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(2, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
-    W(5, 'legs_posterior', ['hamstrings', 'glutes', 'calves'], 'volume'),
+    W(5, 'legs_posterior', ['hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     R(6),
     R(7),
   ];
@@ -695,7 +695,7 @@ function legFocusSplit4(): SessionDay[] {
 function upperFocus4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_full', ['quads', 'hamstrings', 'glutes'], 'moderate'),
+    W(2, 'lower_full', ['quads', 'hamstrings', 'glutes', 'core'], 'moderate'),
     R(3),
     W(4, 'upper_moderate', ['chest', 'back', 'shoulders'], 'moderate'),
     W(5, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
@@ -709,7 +709,7 @@ function pplUpper5Arms(): SessionDay[] {
   return [
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
     W(2, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
-    W(3, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(3, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(4, 'push_volume', ['chest', 'shoulders', 'triceps'], 'volume'),
     W(5, 'arms_upper', ['biceps', 'triceps', 'shoulders'], 'volume'),
     R(6),
@@ -721,7 +721,7 @@ function pplUpper5Arms(): SessionDay[] {
 function upperLower4ArmFocus(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_arms_focus', ['biceps', 'triceps', 'chest', 'shoulders'], 'volume'),
     W(5, 'lower_volume', ['hamstrings', 'glutes', 'core'], 'volume'),
@@ -734,11 +734,11 @@ function upperLower4ArmFocus(): SessionDay[] {
 function batman6LegPriority(): SessionDay[] {
   return [
     W(1, 'chest_back_heavy', ['chest', 'back'], 'heavy'),
-    W(2, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(2, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(3, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
     W(4, 'chest_back_volume', ['chest', 'back', 'shoulders'], 'volume'),
     W(5, 'arms_core', ['biceps', 'triceps', 'shoulders'], 'volume'),
-    W(6, 'legs_posterior', ['hamstrings', 'glutes', 'calves'], 'volume'),
+    W(6, 'legs_posterior', ['hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     R(7),
   ];
 }
@@ -761,10 +761,10 @@ function upperLower5(priorityMuscles: string[], weakPoints: string[]): SessionDa
 /** Strength 5-day lower-body emphasis: heavy + volume squat days, two upper days, mid-week rest. */
 function squatFocusedStrength5(): SessionDay[] {
   return [
-    W(1, 'squat_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(1, 'squat_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     W(2, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
     R(3),
-    W(4, 'squat_volume', ['quads', 'hamstrings', 'glutes', 'calves'], 'volume'),
+    W(4, 'squat_volume', ['quads', 'hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     W(5, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
     R(6),
     R(7),
@@ -774,10 +774,10 @@ function squatFocusedStrength5(): SessionDay[] {
 function phul4(): SessionDay[] {
   return [
     W(1, 'upper_power', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_power', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'lower_power', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_hypertrophy', ['chest', 'back', 'arms', 'shoulders'], 'volume'),
-    W(5, 'lower_hypertrophy', ['quads', 'hamstrings', 'glutes', 'calves'], 'volume'),
+    W(5, 'lower_hypertrophy', ['quads', 'hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     R(6),
     R(7),
   ];
@@ -787,7 +787,7 @@ function ppl5(): SessionDay[] {
   return [
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
     W(2, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
-    W(3, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(3, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(4, 'push_volume', ['chest', 'shoulders', 'triceps'], 'volume'),
     W(5, 'pull_volume', ['back', 'biceps'], 'volume'),
     R(6),
@@ -799,7 +799,7 @@ function ppl6(): SessionDay[] {
   return [
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
     W(2, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
-    W(3, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(3, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(4, 'push_volume', ['chest', 'shoulders', 'triceps'], 'volume'),
     W(5, 'pull_volume', ['back', 'biceps'], 'volume'),
     W(6, 'legs_posterior', ['hamstrings', 'glutes', 'core'], 'volume'),
@@ -812,7 +812,7 @@ function pplUpper5(): SessionDay[] {
   return [
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
     W(2, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
-    W(3, 'legs_quad', ['quads', 'glutes', 'calves'], 'heavy'),
+    W(3, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
     W(4, 'push_volume', ['chest', 'shoulders', 'triceps'], 'volume'),
     W(5, 'upper_volume', ['chest', 'back', 'shoulders'], 'volume'),
     R(6),
@@ -823,10 +823,10 @@ function pplUpper5(): SessionDay[] {
 function batman6(): SessionDay[] {
   return [
     W(1, 'chest_back_heavy', ['chest', 'back'], 'heavy'),
-    W(2, 'legs_shoulders', ['quads', 'hamstrings', 'shoulders'], 'moderate'),
+    W(2, 'legs_shoulders', ['quads', 'hamstrings', 'shoulders', 'core'], 'moderate'),
     W(3, 'arms_core', ['biceps', 'triceps', 'core'], 'moderate'),
     W(4, 'chest_back_volume', ['chest', 'back'], 'volume'),
-    W(5, 'legs_unilateral', ['hamstrings', 'glutes', 'quads'], 'volume'),
+    W(5, 'legs_unilateral', ['hamstrings', 'glutes', 'quads', 'core'], 'volume'),
     W(6, 'arms_core', ['biceps', 'triceps', 'shoulders'], 'volume'),
     R(7),
   ];
@@ -836,10 +836,10 @@ function arnold6(): SessionDay[] {
   return [
     W(1, 'chest_back_heavy', ['chest', 'back'], 'heavy'),
     W(2, 'shoulders_arms', ['shoulders', 'biceps', 'triceps'], 'moderate'),
-    W(3, 'legs_full', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(3, 'legs_full', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     W(4, 'chest_back_volume', ['chest', 'back'], 'volume'),
     W(5, 'shoulders_arms_volume', ['shoulders', 'biceps', 'triceps'], 'volume'),
-    W(6, 'legs_posterior', ['hamstrings', 'glutes', 'calves'], 'volume'),
+    W(6, 'legs_posterior', ['hamstrings', 'glutes', 'calves', 'core'], 'volume'),
     R(7),
   ];
 }
@@ -884,7 +884,7 @@ function fullBodyAdvanced(): SessionDay[] {
 function strengthThreeX4(): SessionDay[] {
   return [
     W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
-    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
     R(3),
     W(4, 'upper_moderate', ['chest', 'back', 'shoulders'], 'moderate'),
     W(5, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),

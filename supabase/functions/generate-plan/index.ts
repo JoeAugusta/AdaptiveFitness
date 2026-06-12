@@ -348,7 +348,7 @@ const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
   'lat pulldown': 'lats',
   'dumbbell row': 'lats',
   'chin-up': 'lats',
-  'face pull': 'upper_back',
+  'face pull': 'rear_delt',
   'reverse dumbbell fly': 'rear_delt',
   // Shoulders
   'overhead press': 'front_delt',
@@ -383,6 +383,7 @@ const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
   'bulgarian split squat': 'glutes',
   'romanian deadlift': 'hamstrings',
   'stiff-leg deadlift': 'hamstrings',
+  'stiff leg deadlift': 'hamstrings',
   'dumbbell romanian deadlift': 'hamstrings',
   'leg curl': 'hamstrings',
   'nordic hamstring curl': 'hamstrings',
@@ -392,7 +393,7 @@ const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
   'cable kickback': 'glutes',
   'banded hip thrust': 'glutes',
   'kettlebell swing': 'glutes',
-  'cable pull-through': 'adductors',
+  'cable pull-through': 'glutes',
   'standing calf raise': 'gastrocnemius',
   'dumbbell calf raise': 'gastrocnemius',
   'leg press calf raise': 'gastrocnemius',
@@ -532,13 +533,16 @@ const MUSCLE_EMPHASIS_ALIASES: Record<string, string> = {
   'cable fly': 'mid_chest',
   'pec deck': 'mid_chest',
   // Back variants
-  'face pulls': 'upper_back',
+  'face pulls': 'rear_delt',
   'bent-over row': 'mid_back',
   'bent over row': 'mid_back',
   'pendlay row': 'mid_back',
   'chest-supported row': 'mid_back',
   'chest supported row': 'mid_back',
-  'single-arm row': 'lats',
+  'seated cable row (close grip)': 'mid_back',
+  'seated cable row (wide grip)': 'upper_back',
+  'seated cable row (reverse grip)': 'lats',
+  'seated cable row (single arm)': 'lats',
   'single arm row': 'lats',
   'straight-arm pulldown': 'lats',
   'straight arm pulldown': 'lats',
@@ -580,8 +584,8 @@ const MUSCLE_EMPHASIS_ALIASES: Record<string, string> = {
   'step-up': 'quads',
   'nordic curl': 'hamstrings',
   'glute ham raise': 'hamstrings',
-  'good morning': 'spinal_erectors',
-  'good mornings': 'spinal_erectors',
+  'good morning': 'hamstrings',
+  'good mornings': 'hamstrings',
   'banded glute bridge': 'glutes',
   'single-leg hip thrust': 'glutes',
   'single leg hip thrust': 'glutes',
@@ -1181,6 +1185,54 @@ const EMPHASIS_TO_MUSCLE_GROUP: Record<string, string> = {
   rectus_abdominis: 'Core', obliques: 'Core', transverse_abs: 'Core', spinal_erectors: 'Core',
 };
 
+const EMPHASIS_ALTERNATIVES: Record<string, { name: string; equipment: string; tier: string }[]> = {
+  // Biceps — long head (arm behind body, neutral grip)
+  long_head_bicep: [
+    { name: 'Hammer Curl', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Incline Dumbbell Curl', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Bayesian Curl', equipment: 'cable', tier: 'isolation' },
+    { name: 'Cable Curl (Rope)', equipment: 'cable', tier: 'isolation' },
+    { name: 'Cross Body Hammer Curl', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'EZ Bar Curl (Wide Grip)', equipment: 'barbell', tier: 'isolation' },
+  ],
+  // Biceps — short head (arm in front, supinated grip)
+  short_head_bicep: [
+    { name: 'Barbell Curl', equipment: 'barbell', tier: 'isolation' },
+    { name: 'Preacher Curl', equipment: 'barbell', tier: 'isolation' },
+    { name: 'Concentration Curl', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Spider Curl', equipment: 'barbell', tier: 'isolation' },
+    { name: 'EZ Bar Curl', equipment: 'barbell', tier: 'isolation' },
+    { name: 'Machine Bicep Curl', equipment: 'machine', tier: 'isolation' },
+  ],
+  // Triceps — long head (overhead, bulk of mass)
+  long_head_tricep: [
+    { name: 'Overhead Tricep Extension', equipment: 'cable', tier: 'isolation' },
+    { name: 'EZ Bar Skull Crusher', equipment: 'barbell', tier: 'isolation' },
+    { name: 'Skull Crusher', equipment: 'barbell', tier: 'isolation' },
+    { name: 'Dumbbell Skull Crusher', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Cable Overhead Tricep Extension', equipment: 'cable', tier: 'isolation' },
+    { name: 'Overhead Tricep Extension (Rope)', equipment: 'cable', tier: 'isolation' },
+  ],
+  // Triceps — lateral head (horseshoe shape)
+  lateral_head_tricep: [
+    { name: 'Tricep Pushdown', equipment: 'cable', tier: 'isolation' },
+    { name: 'Tricep Pushdown (Rope)', equipment: 'cable', tier: 'isolation' },
+    { name: 'Tricep Pushdown (V-Bar)', equipment: 'cable', tier: 'isolation' },
+    { name: 'Machine Tricep Extension', equipment: 'machine', tier: 'isolation' },
+    { name: 'Tricep Press Machine', equipment: 'machine', tier: 'isolation' },
+    { name: 'Dumbbell Tricep Kickback', equipment: 'dumbbell', tier: 'isolation' },
+  ],
+};
+
+// Exercises that must never be swapped by enforcement
+const PROTECTED_EXERCISES = new Set([
+  'back squat', 'front squat', 'deadlift', 'sumo deadlift',
+  'trap bar deadlift', 'overhead press', 'barbell bench press',
+  'incline barbell press', 'incline barbell bench press',
+  'romanian deadlift', 'hip thrust', 'pull-up', 'chin-up',
+  'barbell row', 'barbell row (overhand wide)',
+]);
+
 // deno-lint-ignore no-explicit-any
 function stampMuscleGroup(exercises: any[]): any[] {
   return exercises.map((ex) => {
@@ -1218,6 +1270,183 @@ function stampMuscleEmphasisOnPlan(
       }),
     })),
   };
+}
+
+// deno-lint-ignore no-explicit-any
+function enforceEmphasisVariety(planJson: any): any {
+  const weeks = (planJson.weeks ?? []) as any[];
+
+  const updatedWeeks = weeks.map((week: any) => {
+    const days = (week.days ?? []) as any[];
+    const workoutDays = days.filter(
+      (d: any) => d.type === 'workout' && Array.isArray(d.exercises),
+    );
+
+    // ── PASS 1: Within-day isolation+isolation duplicate emphasis ──
+    const daysAfterPass1 = days.map((day: any) => {
+      if (day.type !== 'workout' || !Array.isArray(day.exercises)) return day;
+
+      const exercises = [...day.exercises] as any[];
+      const seenEmphasis: Record<string, number[]> = {};
+
+      // Index isolation exercises by emphasis
+      exercises.forEach((ex: any, idx: number) => {
+        const emphasis = String(ex.muscleEmphasis ?? '');
+        const tier = String(ex.compoundTier ?? ex.setStructure ?? '');
+        const isIsolation = tier === 'isolation' ||
+          (!tier && !['primary_compound', 'secondary_compound'].includes(tier));
+        if (!emphasis || !isIsolation) return;
+        if (!seenEmphasis[emphasis]) seenEmphasis[emphasis] = [];
+        seenEmphasis[emphasis].push(idx);
+      });
+
+      // For each emphasis with 2+ isolation exercises, swap the second
+      for (const [emphasis, indices] of Object.entries(seenEmphasis)) {
+        if (indices.length < 2) continue;
+
+        // Find the opposite emphasis to swap toward
+        let targetEmphasis: string | null = null;
+        if (emphasis === 'long_head_bicep') targetEmphasis = 'short_head_bicep';
+        else if (emphasis === 'short_head_bicep') targetEmphasis = 'long_head_bicep';
+        else if (emphasis === 'long_head_tricep') targetEmphasis = 'lateral_head_tricep';
+        else if (emphasis === 'lateral_head_tricep') targetEmphasis = 'long_head_tricep';
+        else continue; // only enforce bicep/tricep within-day for now
+
+        if (!targetEmphasis || !EMPHASIS_ALTERNATIVES[targetEmphasis]) continue;
+
+        // Swap the second duplicate (keep the first)
+        const swapIdx = indices[1];
+        const current = exercises[swapIdx];
+        const currentName = String(current.name ?? '').toLowerCase().trim();
+
+        if (PROTECTED_EXERCISES.has(currentName)) continue;
+
+        // Pick best replacement — prefer same equipment
+        const currentEquip = String(current.equipment ?? '');
+        const alternatives = EMPHASIS_ALTERNATIVES[targetEmphasis];
+        const preferred = alternatives.find((a) => a.equipment === currentEquip)
+          ?? alternatives[0];
+
+        if (!preferred) continue;
+
+        exercises[swapIdx] = {
+          ...current,
+          name: preferred.name,
+          muscleEmphasis: targetEmphasis,
+          equipment: preferred.equipment,
+        };
+      }
+
+      return { ...day, exercises };
+    });
+
+    // ── PASS 2: Cross-week bicep/tricep head balance ──
+    // Collect all emphasis values across all workout days after pass 1
+    const weekEmphasisCounts: Record<string, number> = {};
+    daysAfterPass1.forEach((day: any) => {
+      if (day.type !== 'workout' || !Array.isArray(day.exercises)) return;
+      day.exercises.forEach((ex: any) => {
+        const emphasis = String(ex.muscleEmphasis ?? '');
+        if (!emphasis) return;
+        weekEmphasisCounts[emphasis] = (weekEmphasisCounts[emphasis] ?? 0) + 1;
+      });
+    });
+
+    const checkPairs: [string, string][] = [
+      ['long_head_bicep', 'short_head_bicep'],
+      ['long_head_tricep', 'lateral_head_tricep'],
+    ];
+
+    let daysAfterPass2 = [...daysAfterPass1];
+
+    for (const [emphasisA, emphasisB] of checkPairs) {
+      const countA = weekEmphasisCounts[emphasisA] ?? 0;
+      const countB = weekEmphasisCounts[emphasisB] ?? 0;
+
+      // Both present — no fix needed
+      if (countA > 0 && countB > 0) continue;
+      // Neither present — no exercises for this muscle group this week
+      if (countA === 0 && countB === 0) continue;
+
+      // One missing — find a day that has the dominant emphasis
+      // and swap its lowest-priority isolation exercise
+      const dominantEmphasis = countA > 0 ? emphasisA : emphasisB;
+      const missingEmphasis = countA === 0 ? emphasisA : emphasisB;
+      const alternatives = EMPHASIS_ALTERNATIVES[missingEmphasis];
+      if (!alternatives?.length) continue;
+
+      // Find day with most exercises of the dominant emphasis
+      // (most likely dedicated arm/pull day)
+      let bestDayIdx = -1;
+      let bestCount = 0;
+      daysAfterPass2.forEach((day: any, idx: number) => {
+        if (day.type !== 'workout' || !Array.isArray(day.exercises)) return;
+        const count = day.exercises.filter(
+          (ex: any) => String(ex.muscleEmphasis ?? '') === dominantEmphasis,
+        ).length;
+        if (count > bestCount) {
+          bestCount = count;
+          bestDayIdx = idx;
+        }
+      });
+
+      if (bestDayIdx < 0 || bestCount < 1) continue;
+
+      const targetDay = daysAfterPass2[bestDayIdx];
+      const exercises = [...targetDay.exercises] as any[];
+
+      // Find the last isolation exercise with dominant emphasis
+      // (last = lowest priority position in session)
+      let swapIdx = -1;
+      for (let i = exercises.length - 1; i >= 0; i--) {
+        const ex = exercises[i];
+        const exEmphasis = String(ex.muscleEmphasis ?? '');
+        const exName = String(ex.name ?? '').toLowerCase().trim();
+        const tier = String(ex.compoundTier ?? '');
+        const isIsolation = tier === 'isolation' ||
+          !['primary_compound', 'secondary_compound'].includes(tier);
+        if (
+          exEmphasis === dominantEmphasis &&
+          isIsolation &&
+          !PROTECTED_EXERCISES.has(exName)
+        ) {
+          swapIdx = i;
+          break;
+        }
+      }
+
+      if (swapIdx < 0) continue;
+
+      const current = exercises[swapIdx];
+      const currentEquip = String(current.equipment ?? '');
+      const preferred = alternatives.find((a) => a.equipment === currentEquip)
+        ?? alternatives[0];
+
+      if (!preferred) continue;
+
+      exercises[swapIdx] = {
+        ...current,
+        name: preferred.name,
+        muscleEmphasis: missingEmphasis,
+        equipment: preferred.equipment,
+      };
+
+      daysAfterPass2 = daysAfterPass2.map((day: any, idx: number) =>
+        idx === bestDayIdx ? { ...day, exercises } : day,
+      );
+
+      // Update counts for subsequent pair checks
+      weekEmphasisCounts[dominantEmphasis] = Math.max(
+        0, (weekEmphasisCounts[dominantEmphasis] ?? 1) - 1,
+      );
+      weekEmphasisCounts[missingEmphasis] =
+        (weekEmphasisCounts[missingEmphasis] ?? 0) + 1;
+    }
+
+    return { ...week, days: daysAfterPass2 };
+  });
+
+  return { ...planJson, weeks: updatedWeeks };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -3714,10 +3943,12 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
     // GAP-7: Stamp muscleEmphasis from embedded lookup (same pattern as enforceRepRanges)
     const processedPlanJson = finalizeStrengthGoalTargetLift(
       stampWeek1PyramidSetTargets(
-        stampMuscleEmphasisOnPlan(
-          enforceRepRanges(normalized, biologicalSex),
-          goal,
-          strengthProgramLiftId,
+        enforceEmphasisVariety(
+          stampMuscleEmphasisOnPlan(
+            enforceRepRanges(normalized, biologicalSex),
+            goal,
+            strengthProgramLiftId,
+          ),
         ),
       ),
       goal,

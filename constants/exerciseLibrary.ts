@@ -706,7 +706,7 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'hinge', rotationGroup: 'glute_bridge', rotationPriority: 1, secondaryMuscleTags: ['hamstrings'] },
   ),
   E(
-    { id: 'g03', name: 'Cable Pull-Through', primaryMuscle: 'Glutes', secondaryMuscles: ['Hamstrings'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'adductors' },
+    { id: 'g03', name: 'Cable Pull-Through', primaryMuscle: 'Glutes', secondaryMuscles: ['Hamstrings'], equipment: 'cable', category: 'compound', difficulty: 'beginner', muscleEmphasis: 'glutes' },
     { compoundTier: 'secondary_compound', movementPattern: 'hinge', rotationGroup: 'hip_thrust', rotationPriority: 2, secondaryMuscleTags: ['hamstrings'] },
   ),
   E(

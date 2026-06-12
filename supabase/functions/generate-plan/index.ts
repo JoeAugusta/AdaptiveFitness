@@ -407,6 +407,119 @@ const MUSCLE_EMPHASIS_MAP: Record<string, string> = {
   'hanging leg raise': 'rectus_abdominis',
   'cable crunch': 'rectus_abdominis',
   'russian twist': 'obliques',
+  // Chest additions
+  'incline barbell press': 'upper_chest',
+  'incline machine press': 'upper_chest',
+  'smith machine incline press': 'upper_chest',
+  'bench press (wide grip)': 'mid_chest',
+  'bench press (reverse grip)': 'upper_chest',
+  'decline dumbbell press': 'lower_chest',
+  'cable fly (high to low)': 'lower_chest',
+  'cable fly (low to high)': 'upper_chest',
+  'cable fly (mid cable)': 'mid_chest',
+  'low cable fly': 'upper_chest',
+  'incline cable fly': 'upper_chest',
+  'dumbbell fly': 'mid_chest',
+  'machine fly': 'mid_chest',
+  'pec deck': 'mid_chest',
+  'smith machine bench press': 'mid_chest',
+  'dumbbell pullover': 'mid_chest',
+  // Back additions
+  'barbell row (overhand wide)': 'mid_back',
+  'barbell row (overhand narrow)': 'mid_back',
+  'barbell row (underhand)': 'lats',
+  'cable row (close grip)': 'mid_back',
+  'cable row (wide grip)': 'upper_back',
+  'cable row (reverse grip)': 'lats',
+  'cable row (single arm)': 'lats',
+  'dumbbell row (pronated grip)': 'mid_back',
+  'chest supported row': 'mid_back',
+  'assisted pull-up machine': 'lats',
+  'lat pulldown (wide grip)': 'lats',
+  'lat pulldown (close grip)': 'lats',
+  'lat pulldown (reverse grip)': 'lats',
+  'trap bar deadlift': 'lats',
+  'rack pull': 'mid_back',
+  'straight arm pulldown': 'lats',
+  'meadows row': 'mid_back',
+  'seal row': 'mid_back',
+  // Shoulder additions
+  'face pulls': 'rear_delt',
+  'rear delt fly': 'rear_delt',
+  'seated rear delt fly': 'rear_delt',
+  'cable rear delt fly': 'rear_delt',
+  'reverse pec deck': 'rear_delt',
+  'band pull-apart': 'rear_delt',
+  'cable front raise': 'front_delt',
+  'dumbbell front raise': 'front_delt',
+  'barbell front raise': 'front_delt',
+  'plate front raise': 'front_delt',
+  'machine lateral raise': 'lateral_delt',
+  'leaning cable lateral raise': 'lateral_delt',
+  'smith machine press': 'front_delt',
+  // Biceps additions
+  'dumbbell curl (supinated)': 'short_head_bicep',
+  'dumbbell curl (pronated)': 'long_head_bicep',
+  'cross body hammer curl': 'long_head_bicep',
+  'rope hammer curl': 'long_head_bicep',
+  'concentration curl': 'short_head_bicep',
+  'machine bicep curl': 'short_head_bicep',
+  'preacher curl machine': 'short_head_bicep',
+  'bayesian curl': 'long_head_bicep',
+  'ez bar curl': 'short_head_bicep',
+  'ez bar curl (wide grip)': 'long_head_bicep',
+  'cable curl (rope)': 'long_head_bicep',
+  'spider curl': 'short_head_bicep',
+  // Triceps additions
+  'tricep pushdown (rope)': 'lateral_head_tricep',
+  'tricep pushdown (straight bar)': 'lateral_head_tricep',
+  'tricep pushdown (v-bar)': 'lateral_head_tricep',
+  'tricep pushdown (reverse grip)': 'long_head_tricep',
+  'overhead tricep extension (rope)': 'long_head_tricep',
+  'overhead tricep extension (single arm)': 'long_head_tricep',
+  'skull crusher': 'long_head_tricep',
+  'ez bar skull crusher': 'long_head_tricep',
+  'dumbbell skull crusher': 'long_head_tricep',
+  'cable overhead tricep extension': 'long_head_tricep',
+  'machine tricep extension': 'long_head_tricep',
+  'tricep press machine': 'lateral_head_tricep',
+  'close grip bench press': 'lateral_head_tricep',
+  'smith machine close grip': 'lateral_head_tricep',
+  'machine dip': 'lateral_head_tricep',
+  'assisted dip machine': 'lateral_head_tricep',
+  dip: 'lateral_head_tricep',
+  'diamond push-up': 'lateral_head_tricep',
+  // Legs additions
+  'leg press (single leg)': 'quads',
+  'leg extension (single leg)': 'quads',
+  'cable leg extension': 'quads',
+  'smith machine squat': 'quads',
+  'reverse lunge': 'glutes',
+  'step up': 'glutes',
+  'good morning': 'hamstrings',
+  'single leg rdl': 'hamstrings',
+  'lying leg curl': 'hamstrings',
+  'seated leg curl': 'hamstrings',
+  'standing leg curl': 'hamstrings',
+  'nordic curl': 'hamstrings',
+  'swiss ball leg curl': 'hamstrings',
+  'hip thrust machine': 'glutes',
+  'glute drive machine': 'glutes',
+  'donkey kick': 'glutes',
+  'abduction machine': 'glutes',
+  'barbell calf raise': 'gastrocnemius',
+  'single-leg calf raise': 'gastrocnemius',
+  // Core additions
+  'weighted crunch': 'rectus_abdominis',
+  'sit-up': 'rectus_abdominis',
+  'leg raise': 'rectus_abdominis',
+  'bicycle crunch': 'obliques',
+  'side plank': 'obliques',
+  'cable woodchop': 'obliques',
+  // Traps additions
+  shrugs: 'mid_back',
+  'smith machine shrug': 'mid_back',
+  'upright row': 'mid_back',
 };
 
 /** GAP-7: Alias map — catches common Claude name variants that differ from library keys. */
@@ -683,6 +796,84 @@ const EQUIPMENT_MAP: Record<string, string> = {
   'hammer curls': 'dumbbell',
   'incline dumbbell curl': 'dumbbell',
   'preacher curl': 'barbell',
+  // Barbell additions
+  'barbell front raise': 'barbell',
+  'barbell row (overhand wide)': 'barbell',
+  'barbell row (overhand narrow)': 'barbell',
+  'barbell row (underhand)': 'barbell',
+  'ez bar curl (wide grip)': 'barbell',
+  'ez bar skull crusher': 'barbell',
+  'skull crusher': 'barbell',
+  'rack pull': 'barbell',
+  'trap bar deadlift': 'barbell',
+  'bench press (wide grip)': 'barbell',
+  'bench press (reverse grip)': 'barbell',
+  'barbell calf raise': 'barbell',
+  'meadows row': 'barbell',
+  'seal row': 'barbell',
+  'spider curl': 'barbell',
+  // Dumbbell additions
+  'dumbbell front raise': 'dumbbell',
+  'dumbbell skull crusher': 'dumbbell',
+  'dumbbell curl (supinated)': 'dumbbell',
+  'dumbbell curl (pronated)': 'dumbbell',
+  'cross body hammer curl': 'dumbbell',
+  'concentration curl': 'dumbbell',
+  'dumbbell row (pronated grip)': 'dumbbell',
+  'rear delt fly': 'dumbbell',
+  'seated rear delt fly': 'dumbbell',
+  'dumbbell pullover': 'dumbbell',
+  'donkey kick': 'bodyweight',
+  // Cable additions
+  'cable curl (rope)': 'cable',
+  'rope hammer curl': 'cable',
+  'cable row (reverse grip)': 'cable',
+  'cable row (single arm)': 'cable',
+  'tricep pushdown (rope)': 'cable',
+  'tricep pushdown (straight bar)': 'cable',
+  'tricep pushdown (v-bar)': 'cable',
+  'tricep pushdown (reverse grip)': 'cable',
+  'overhead tricep extension (rope)': 'cable',
+  'overhead tricep extension (single arm)': 'cable',
+  'cable overhead tricep extension': 'cable',
+  'bayesian curl': 'cable',
+  'straight arm pulldown': 'cable',
+  'incline cable fly': 'cable',
+  'low cable fly': 'cable',
+  'cable woodchop': 'cable',
+  // Machine additions
+  'machine tricep extension': 'machine',
+  'tricep press machine': 'machine',
+  'machine dip': 'machine',
+  'assisted dip machine': 'machine',
+  'smith machine close grip': 'machine',
+  'machine lateral raise': 'machine',
+  'machine fly': 'machine',
+  'pec deck': 'machine',
+  'incline machine press': 'machine',
+  'smith machine incline press': 'machine',
+  'smith machine bench press': 'machine',
+  'smith machine press': 'machine',
+  'preacher curl machine': 'machine',
+  'machine bicep curl': 'machine',
+  'hip thrust machine': 'machine',
+  'glute drive machine': 'machine',
+  'abduction machine': 'machine',
+  'chest supported row': 'machine',
+  'assisted pull-up machine': 'machine',
+  'leg press (single leg)': 'machine',
+  'leg extension (single leg)': 'machine',
+  'seated leg curl': 'machine',
+  'lying leg curl': 'machine',
+  'standing leg curl': 'machine',
+  // Bodyweight additions
+  'diamond push-up': 'bodyweight',
+  'bicycle crunch': 'bodyweight',
+  'side plank': 'bodyweight',
+  'weighted crunch': 'bodyweight',
+  'swiss ball leg curl': 'bodyweight',
+  'nordic curl': 'bodyweight',
+  'bodyweight calf raise': 'bodyweight',
 };
 
 const EQUIPMENT_ALIASES: Record<string, string> = {};
@@ -3188,6 +3379,133 @@ Good examples:
 
 When in doubt, explain the exercise. Do not search for a connection
 to the goal lift.
+
+EXERCISE SELECTION — ALLOWED NAMES AND SUB-MUSCLE TARGETING:
+You MUST only use exercise names from the lists below.
+Do not invent names, do not abbreviate, do not use
+plural forms unless listed. Copy exact capitalisation.
+
+When selecting exercises, match the sub-muscle emphasis
+to the intended training stimulus. Examples:
+- Bicep peak / long head → Bayesian Curl, Hammer Curl,
+  Incline Dumbbell Curl, EZ Bar Curl (Wide Grip), Cable Curl (Rope)
+- Bicep thickness / short head → Barbell Curl, Preacher Curl,
+  Concentration Curl, Spider Curl, EZ Bar Curl
+- Tricep mass / long head → Skull Crusher, EZ Bar Skull Crusher,
+  Overhead Tricep Extension, Cable Overhead Tricep Extension
+- Tricep shape / lateral head → Tricep Pushdown, Tricep Pushdown (Rope),
+  Machine Dip, Close Grip Bench Press, Dips
+- Front delt → Overhead Press, Cable Front Raise, Dumbbell Front Raise,
+  Plate Front Raise
+- Lateral delt → Lateral Raise, Dumbbell Lateral Raise,
+  Cable Lateral Raise, Machine Lateral Raise
+- Rear delt → Face Pull, Reverse Dumbbell Fly, Cable Rear Delt Fly,
+  Rear Delt Fly, Reverse Pec Deck
+- Upper chest → Incline Barbell Press, Incline Dumbbell Press,
+  Incline Cable Fly, Cable Fly (Low to High)
+- Mid chest → Barbell Bench Press, Dumbbell Bench Press,
+  Cable Chest Fly, Pec Deck, Dumbbell Fly
+- Lower chest → Decline Bench Press, Cable Fly (High to Low)
+- Lats / width → Pull-Up, Lat Pulldown (Wide Grip),
+  Lat Pulldown (Reverse Grip), Straight Arm Pulldown
+- Mid back / thickness → Barbell Row, T-Bar Row, Seated Cable Row,
+  Machine Row, Meadows Row, Seal Row
+- Hamstring hinge → Romanian Deadlift, Stiff Leg Deadlift,
+  Good Morning, Single Leg RDL
+- Hamstring curl → Lying Leg Curl, Seated Leg Curl, Nordic Curl
+- Glute dominant → Hip Thrust, Hip Thrust Machine, Glute Drive Machine,
+  Banded Hip Thrust, Cable Pull-Through
+- Glute isolation → Cable Kickback, Donkey Kick, Abduction Machine
+
+ALLOWED EXERCISE NAMES BY MUSCLE GROUP:
+
+CHEST: Barbell Bench Press, Bench Press (Wide Grip),
+Bench Press (Reverse Grip), Dumbbell Bench Press,
+Incline Barbell Press, Incline Barbell Bench Press,
+Incline Dumbbell Press, Incline Machine Press,
+Smith Machine Incline Press, Decline Bench Press,
+Decline Dumbbell Press, Machine Chest Press,
+Smith Machine Bench Press, Push-Up, Cable Chest Fly,
+Cable Fly (High to Low), Cable Fly (Low to High),
+Cable Fly (Mid Cable), Low Cable Fly, Incline Cable Fly,
+Dumbbell Fly, Dumbbell Chest Fly, Pec Deck, Machine Fly,
+Dumbbell Pullover
+
+BACK: Barbell Row, Barbell Row (Overhand Wide),
+Barbell Row (Overhand Narrow), Barbell Row (Underhand),
+T-Bar Row, Deadlift, Trap Bar Deadlift, Rack Pull,
+Pull-Up, Chin-Up, Assisted Pull-up Machine,
+Lat Pulldown, Lat Pulldown (Wide Grip),
+Lat Pulldown (Close Grip), Lat Pulldown (Reverse Grip),
+Seated Cable Row, Cable Row (Close Grip),
+Cable Row (Wide Grip), Cable Row (Reverse Grip),
+Cable Row (Single Arm), Dumbbell Row,
+Dumbbell Row (Pronated Grip), Machine Row,
+Chest Supported Row, Straight Arm Pulldown,
+Meadows Row, Seal Row
+
+SHOULDERS: Overhead Press, Dumbbell Shoulder Press,
+Arnold Press, Machine Shoulder Press, Smith Machine Press,
+Dumbbell Lateral Raise, Lateral Raise, Cable Lateral Raise,
+Machine Lateral Raise, Leaning Cable Lateral Raise,
+Face Pull, Face Pulls, Reverse Dumbbell Fly,
+Rear Delt Fly, Seated Rear Delt Fly, Cable Rear Delt Fly,
+Band Pull-Apart, Reverse Pec Deck, Cable Front Raise,
+Dumbbell Front Raise, Barbell Front Raise, Plate Front Raise
+
+BICEPS: Barbell Curl, EZ Bar Curl, EZ Bar Curl (Wide Grip),
+Dumbbell Curl, Dumbbell Curl (Supinated),
+Dumbbell Curl (Pronated), Hammer Curl, Preacher Curl,
+Preacher Curl Machine, Cable Curl, Cable Curl (Rope),
+Incline Dumbbell Curl, Machine Bicep Curl,
+Cross Body Hammer Curl, Rope Hammer Curl,
+Concentration Curl, Bayesian Curl, Spider Curl
+
+TRICEPS: Tricep Pushdown, Tricep Pushdown (Rope),
+Tricep Pushdown (Straight Bar), Tricep Pushdown (V-Bar),
+Tricep Pushdown (Reverse Grip), Overhead Tricep Extension,
+Overhead Tricep Extension (Rope),
+Overhead Tricep Extension (Single Arm), Skull Crusher,
+EZ Bar Skull Crusher, Dumbbell Skull Crusher,
+Close Grip Bench Press, Smith Machine Close Grip,
+Machine Tricep Extension, Tricep Press Machine,
+Cable Overhead Tricep Extension, Dumbbell Tricep Kickback,
+Dips, Dip, Machine Dip, Assisted Dip Machine,
+Diamond Push-Up
+
+QUADS: Back Squat, Front Squat, Hack Squat,
+Smith Machine Squat, Leg Press, Leg Press (Single Leg),
+Goblet Squat, Bulgarian Split Squat, Walking Lunge,
+Reverse Lunge, Step Up, Leg Extension,
+Leg Extension (Single Leg), Cable Leg Extension
+
+HAMSTRINGS: Romanian Deadlift, Stiff Leg Deadlift,
+Dumbbell Romanian Deadlift, Single Leg RDL, Good Morning,
+Kettlebell Swing, Lying Leg Curl, Seated Leg Curl,
+Standing Leg Curl, Nordic Curl, Nordic Hamstring Curl,
+Swiss Ball Leg Curl, Leg Curl
+
+GLUTES: Hip Thrust, Hip Thrust Machine, Glute Drive Machine,
+Banded Hip Thrust, Glute Bridge, Sumo Deadlift,
+Cable Pull-Through, Cable Kickback, Donkey Kick,
+Abduction Machine
+
+CALVES: Standing Calf Raise, Seated Calf Raise,
+Dumbbell Calf Raise, Barbell Calf Raise,
+Smith Machine Calf Raise, Leg Press Calf Raise,
+Bodyweight Calf Raise, Single-Leg Calf Raise, Calf Raise
+
+CORE: Plank, Ab Wheel Rollout, Dead Bug, Hanging Leg Raise,
+Leg Raise, Cable Crunch, Weighted Crunch, Sit-Up,
+Bicycle Crunch, Russian Twist, Side Plank,
+Cable Woodchop, Pallof Press
+
+TRAPS: Barbell Shrug, Dumbbell Shrug, Cable Shrug,
+Kettlebell Shrug, Smith Machine Shrug, Shrugs,
+Upright Row, Farmer Carry
+
+FOREARMS: Wrist Curl, Reverse Wrist Curl, Dumbbell Wrist Curl,
+Reverse Curl, Plate Pinch Hold, Band Wrist Extension
 
 GOAL LIFT TRANSFER — APPROVED EXERCISES ONLY:
 When the goal lift is deadlift, only mention deadlift carryover

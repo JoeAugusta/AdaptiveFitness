@@ -137,6 +137,7 @@ type WorkoutDay = {
   sessionFocus?: string;
   /** When present, matches onboarding day chips (Mon–Sun) */
   dayLabel?: string;
+  rescheduledTo?: string;
   cardioType?: 'light' | 'medium';
   suggestedDurationMinutes?: number;
 };
@@ -346,6 +347,13 @@ function resolveTodayWorkout(args: {
   } = args;
 
   const workoutDaysOrdered = weekDays.filter((d) => d.type === 'workout');
+  // Check if any workout was rescheduled to today
+  const todayRescheduled = workoutDaysOrdered.find(
+    (d) =>
+      !completedDayNumbers.has(d.dayNumber) &&
+      d.rescheduledTo?.trim().slice(0, 3) === todayLabel,
+  );
+  if (todayRescheduled) return todayRescheduled;
 
   const allWorkoutsInWeekLogged =
     workoutDaysOrdered.length > 0 &&
@@ -439,6 +447,7 @@ function findTodayPlanDayByCalendar(
   weekDays: WorkoutDay[],
   todayLabel: string,
   scheduledDays: string[],
+  completedDayNumbers: Set<number> = new Set(),
 ): WorkoutDay | null {
   if (!scheduledDays?.length) return null;
 
@@ -454,6 +463,14 @@ function findTodayPlanDayByCalendar(
     dayNumberToLabel[day.dayNumber] = ALL_DAY_LABELS[calendarIdx];
   });
 
+  // First check if any day was explicitly rescheduled to today
+  const rescheduled = ordered.find(
+    (d) =>
+      !completedDayNumbers.has(d.dayNumber) &&
+      d.rescheduledTo?.trim().slice(0, 3) === todayLabel,
+  );
+  if (rescheduled) return rescheduled;
+
   return ordered.find((d) => dayNumberToLabel[d.dayNumber] === todayLabel) ?? null;
 }
 
@@ -461,8 +478,14 @@ function findTodayCardioDayByWeekMap(
   weekDays: WorkoutDay[],
   todayLabel: string,
   scheduledDays: string[],
+  completedDayNumbers: Set<number> = new Set(),
 ): WorkoutDay | null {
-  const d = findTodayPlanDayByCalendar(weekDays, todayLabel, scheduledDays);
+  const d = findTodayPlanDayByCalendar(
+    weekDays,
+    todayLabel,
+    scheduledDays,
+    completedDayNumbers,
+  );
   return d?.type === 'cardio' ? d : null;
 }
 
@@ -1091,7 +1114,12 @@ export default function HomeScreen() {
       );
       console.log('[today check]', { scheduledDays, todayLabel, isTodayTraining: isTodayTrainingDay(scheduledDays, todayLabel), hasDayLabels });
 
-      const weekDays: WorkoutDay[] = currentWeekData.days ?? [];
+      const weekDays: WorkoutDay[] = (currentWeekData.days ?? []).map(
+        (d: WorkoutDay & { rescheduledTo?: string }) => ({
+          ...d,
+          rescheduledTo: d.rescheduledTo ?? undefined,
+        }),
+      );
 
       const { data: logsWeek } = await supabase
         .from('workout_logs')
@@ -1272,6 +1300,7 @@ export default function HomeScreen() {
           weekDays,
           todayLabel,
           scheduledDays,
+          loggedDayNumbers,
         );
         if (todayCardioDay) {
           const { data: cardioLogCheck } = await supabase

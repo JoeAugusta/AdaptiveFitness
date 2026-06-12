@@ -1293,9 +1293,32 @@ function enforceEmphasisVariety(planJson: any): any {
       exercises.forEach((ex: any, idx: number) => {
         const emphasis = String(ex.muscleEmphasis ?? '');
         const tier = String(ex.compoundTier ?? ex.setStructure ?? '');
-        const isIsolation = tier === 'isolation' ||
-          (!tier && !['primary_compound', 'secondary_compound'].includes(tier));
-        if (!emphasis || !isIsolation) return;
+        const exName = String(ex.name ?? '').toLowerCase().trim();
+
+        // For biceps/triceps enforce across ALL tiers except
+        // primary_compound — secondary_compound + isolation
+        // same emphasis is still redundant (e.g. Close Grip
+        // Bench Press + Tricep Pushdown both lateral_head)
+        const isBicepTricep =
+          emphasis === 'long_head_bicep' ||
+          emphasis === 'short_head_bicep' ||
+          emphasis === 'long_head_tricep' ||
+          emphasis === 'lateral_head_tricep';
+
+        const isPrimary = tier === 'primary_compound';
+        const isProtected = PROTECTED_EXERCISES.has(exName);
+
+        // Skip primary compounds and protected exercises
+        if (isPrimary || isProtected) return;
+
+        // For bicep/tricep: flag secondary_compound AND isolation
+        // For other muscles: flag isolation only (avoid chest flag)
+        const shouldTrack = isBicepTricep
+          ? tier !== 'primary_compound'
+          : tier === 'isolation' ||
+            (!tier && !['primary_compound', 'secondary_compound'].includes(tier));
+
+        if (!emphasis || !shouldTrack) return;
         if (!seenEmphasis[emphasis]) seenEmphasis[emphasis] = [];
         seenEmphasis[emphasis].push(idx);
       });
@@ -3657,6 +3680,55 @@ to the intended training stimulus. Examples:
 - Glute dominant → Hip Thrust, Hip Thrust Machine, Glute Drive Machine,
   Banded Hip Thrust, Cable Pull-Through
 - Glute isolation → Cable Kickback, Donkey Kick, Abduction Machine
+
+BACK PROGRAMMING RULES:
+Every back session MUST include both movement planes:
+- At least one vertical pull: Pull-Up, Chin-Up,
+  Lat Pulldown (any grip), Assisted Pull-up Machine,
+  Straight Arm Pulldown
+- At least one horizontal pull: Barbell Row (any grip),
+  T-Bar Row, Seated Cable Row, Cable Row (any grip),
+  Dumbbell Row, Machine Row, Chest Supported Row,
+  Meadows Row, Seal Row
+Do not use the same grip width on two consecutive back
+exercises in the same session. If you use Wide Grip on
+a vertical pull, use Close Grip or Neutral on the
+horizontal pull. Variety within a session is required.
+Exception: if a session has only one back exercise
+(e.g. arms-dominant day), this rule does not apply.
+
+LEGS PROGRAMMING RULES:
+Apply based on session type:
+
+BALANCED LEG SESSIONS (legs_full, lower_heavy,
+lower_power, lower_volume, lower_hypertrophy,
+full_body sessions):
+- Must include at least one squat/knee-dominant pattern:
+  Back Squat, Front Squat, Hack Squat, Leg Press,
+  Goblet Squat, Smith Machine Squat, Bulgarian Split Squat,
+  Walking Lunge, Reverse Lunge
+- Must include at least one hip hinge pattern:
+  Romanian Deadlift, Stiff Leg Deadlift,
+  Dumbbell Romanian Deadlift, Good Morning,
+  Single Leg RDL, Kettlebell Swing
+- Do not use two primary compound squat patterns as
+  the first two exercises (e.g. Back Squat + Front Squat).
+  Pair a squat with a hinge, then add isolation work.
+
+QUAD-FOCUSED SESSIONS (legs_quad, squat_heavy,
+squat_volume):
+- Multiple squat-pattern exercises are allowed and
+  encouraged. Hinge is optional.
+- Still include at least one isolation exercise
+  (Leg Extension, Leg Press Calf Raise, etc.)
+
+POSTERIOR CHAIN SESSIONS (legs_posterior,
+lower_posterior):
+- Multiple hinge-pattern exercises are allowed.
+  Squat is optional.
+- Must include at least one hamstring isolation:
+  Lying Leg Curl, Seated Leg Curl, Nordic Curl,
+  Standing Leg Curl
 
 ALLOWED EXERCISE NAMES BY MUSCLE GROUP:
 

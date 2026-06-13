@@ -352,6 +352,13 @@ interface ExerciseCardProps {
     reps: number,
     rpe: number | null,
   ) => void;
+  onEditSet?: (
+    exerciseId: string,
+    setNumber: number,
+    weight: number,
+    reps: number,
+    rpe: number | null,
+  ) => void;
   onSwapExercise: (
     exerciseId: string,
     newName: string,
@@ -383,6 +390,7 @@ export default function ExerciseCard({
   programGoalLift = null,
   experience: _experience = 'intermediate',
   onLogSet,
+  onEditSet,
   onSwapExercise,
   targetWeightOverride,
   pyramidSetsOverride,
@@ -612,6 +620,7 @@ export default function ExerciseCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWeightOverride]);
 
+  const [editingSet, setEditingSet] = useState<number | null>(null);
   const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);
   const [showRpeReference, setShowRpeReference] = useState(false);
   const [showCoachingSheet, setShowCoachingSheet] = useState(false);
@@ -1274,7 +1283,7 @@ export default function ExerciseCard({
                 <Text style={styles.setBadgeText}>{set.setNumber}</Text>
               </View>
 
-              {logged && loggedData ? (
+              {logged && loggedData && editingSet !== set.setNumber ? (
                 <>
                   <Text style={styles.loggedWeight}>
                     {loggedData.weightLbs > 0 ? formatWorkoutWeight(loggedData.weightLbs) : 'BW'}
@@ -1301,9 +1310,120 @@ export default function ExerciseCard({
                       <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
                     )}
                   </View>
-                  <View style={styles.completionCircleDone}>
+                  {onEditSet ? (
+                    <TouchableOpacity
+                      style={styles.editSetBtn}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() => {
+                        // Pre-fill inputValues with logged data for editing
+                        setInputValues((prev) => ({
+                          ...prev,
+                          [set.setNumber]: {
+                            weight: loggedData.weightLbs > 0
+                              ? String(lbsToDisplay(loggedData.weightLbs))
+                              : '0',
+                            reps: String(loggedData.reps),
+                            rpe: loggedData.rpe,
+                          },
+                        }));
+                        setEditingSet(set.setNumber);
+                      }}
+                    >
+                      <Ionicons name="pencil-outline" size={16} color={Colors.textTertiary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.completionCircleDone}>
+                      <Ionicons name="checkmark" size={16} color={Colors.success} />
+                    </View>
+                  )}
+                </>
+              ) : logged && loggedData && editingSet === set.setNumber ? (
+                // Edit mode — re-open inputs pre-filled with logged values
+                <>
+                  {!isBodyweightExercise ? (
+                    <TextInput
+                      style={[
+                        styles.setInputWeight,
+                        focusedField === `w-${set.setNumber}` && styles.inputFocused,
+                      ]}
+                      keyboardType="numeric"
+                      returnKeyType="done"
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                      value={getInputForSet(set.setNumber).weight}
+                      onChangeText={(v) => updateInput(set.setNumber, 'weight', v)}
+                      placeholder="lbs"
+                      placeholderTextColor={Colors.textTertiary}
+                      selectTextOnFocus
+                      autoFocus
+                      onFocus={() => setFocusedField(`w-${set.setNumber}`)}
+                      onBlur={() => setFocusedField(null)}
+                    />
+                  ) : (
+                    <Text style={styles.bodyweightText}>Bodyweight</Text>
+                  )}
+                  {timedSet ? (
+                    <Text style={styles.timedTargetText}>{parseTimedDuration(set.targetReps)} sec</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.timesSep}>×</Text>
+                      <TextInput
+                        style={[
+                          styles.setInputReps,
+                          focusedField === `r-${set.setNumber}` && styles.inputFocused,
+                        ]}
+                        keyboardType="numeric"
+                        returnKeyType="done"
+                        onSubmitEditing={() => Keyboard.dismiss()}
+                        value={getInputForSet(set.setNumber).reps}
+                        onChangeText={(v) => updateInput(set.setNumber, 'reps', v)}
+                        placeholder="reps"
+                        placeholderTextColor={Colors.textTertiary}
+                        selectTextOnFocus
+                        onFocus={() => setFocusedField(`r-${set.setNumber}`)}
+                        onBlur={() => setFocusedField(null)}
+                      />
+                    </>
+                  )}
+                  <TouchableOpacity
+                    style={styles.rpeBadge}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      setRpeExpandedSet((prev) =>
+                        prev === set.setNumber ? null : set.setNumber,
+                      )
+                    }
+                  >
+                    {getInputForSet(set.setNumber).rpe != null ? (
+                      <Text
+                        style={[
+                          styles.rpeBadgeValue,
+                          { color: rpeValueColor(getInputForSet(set.setNumber).rpe!) },
+                        ]}
+                      >
+                        {getInputForSet(set.setNumber).rpe}
+                      </Text>
+                    ) : (
+                      <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.completionCircleDone}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const input = getInputForSet(set.setNumber);
+                      const weightLbs = isBodyweightExercise
+                        ? 0
+                        : displayToLbs(parseFloat(input.weight));
+                      const reps = parseInt(input.reps, 10);
+                      if (isNaN(reps) || reps <= 0) return;
+                      if (!isBodyweightExercise && (isNaN(weightLbs) || weightLbs <= 0)) return;
+                      onEditSet?.(exercise.id, set.setNumber, weightLbs, reps, input.rpe);
+                      setEditingSet(null);
+                    }}
+                  >
                     <Ionicons name="checkmark" size={16} color={Colors.success} />
-                  </View>
+                  </TouchableOpacity>
                 </>
               ) : (
                 <>
@@ -1392,7 +1512,8 @@ export default function ExerciseCard({
                 </>
               )}
             </View>
-            {!logged && rpeExpandedSet === set.setNumber && (
+            {(!logged || editingSet === set.setNumber) &&
+              rpeExpandedSet === set.setNumber && (
               <View style={styles.rpeInlineRow}>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
                   <TouchableOpacity
@@ -2371,6 +2492,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 8,
     alignSelf: 'flex-start',
+  },
+  editSetBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   swapButton: {
     marginTop: Spacing.md,

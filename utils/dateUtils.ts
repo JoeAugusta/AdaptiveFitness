@@ -100,7 +100,7 @@ export function getWeekAnchorDate(scheduledDays: string[]): string {
   const normalized = normalizeScheduledDays(scheduledDays);
   if (normalized.length === 0) return getLocalDateString();
 
-  const today = new Date();
+  const today = __DEV__ && _devDateOverride ? new Date(_devDateOverride) : new Date();
   const todayDow = today.getDay(); // 0=Sun, 1=Mon ... 6=Sat
 
   const DOW_MAP: Record<string, number> = {
@@ -133,7 +133,8 @@ export function getWeekAnchorDate(scheduledDays: string[]): string {
 export function isTodayScheduled(scheduledDays: string[]): boolean {
   const normalized = normalizeScheduledDays(scheduledDays);
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const todayName = dayNames[new Date().getDay()];
+  const d = __DEV__ && _devDateOverride ? new Date(_devDateOverride) : new Date();
+  const todayName = dayNames[d.getDay()];
   return normalized.includes(todayName);
 }
 
@@ -222,7 +223,7 @@ export function computeFirstSessionDate(
 export function isPlanStartDateReached(startDate: string | null | undefined): boolean {
   if (!startDate || String(startDate).trim() === '') return true;
   const dateOnly = String(startDate).split('T')[0];
-  const todayStr = getLocalDateString(new Date());
+  const todayStr = getLocalDateString();
   return dateOnly <= todayStr;
 }
 

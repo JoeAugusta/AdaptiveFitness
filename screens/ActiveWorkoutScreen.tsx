@@ -464,6 +464,15 @@ export default function ActiveWorkoutScreen() {
   // Session state
   const [sets, setSets] = useState<LoggedSet[]>([]);
   const [previousSetsMap, setPreviousSetsMap] = useState<Record<string, LoggedSet[]>>({});
+  // Exercise order — array of exercise IDs in display order
+  const [exerciseOrder, setExerciseOrder] = useState<string[]>([]);
+  const [skippedExercises, setSkippedExercises] = useState<Set<string>>(
+    new Set(),
+  );
+  // Collapsed exercise cards — Set of exercise IDs
+  const [collapsedExercises, setCollapsedExercises] = useState<Set<string>>(
+    new Set(),
+  );
   const [exerciseSwaps, setExerciseSwaps] = useState<Record<string, string>>(
     {},
   );
@@ -996,6 +1005,7 @@ export default function ActiveWorkoutScreen() {
         typeof weekData?.phase === 'string' ? weekData.phase : null,
       );
       setWorkout({ title: dayData.title, goal: planGoal, goalLift: planGoalLift, exercises });
+      setExerciseOrder(exercises.map((e) => e.id));
       void checkDraft(idForQueries, dayData.dayNumber);
 
       // Show warmup modal unless user has opted out for this plan
@@ -1023,15 +1033,32 @@ export default function ActiveWorkoutScreen() {
   };
 
   const totalSetsCount = (workout?.exercises ?? []).reduce(
-    (sum, ex) => sum + ex.sets.length,
+    (sum, ex) =>
+      skippedExercises.has(ex.id) ? sum : sum + ex.sets.length,
     0,
   );
   const allSetsLogged = sets.length >= totalSetsCount;
 
+  const workoutExercises = workout?.exercises ?? [];
+  // Apply user reorder — fall back to original order for any
+  // IDs not yet in exerciseOrder (e.g. after a swap)
+  const orderedExercises =
+    exerciseOrder.length > 0
+      ? [
+          ...exerciseOrder
+            .map((id) => workoutExercises.find((e) => e.id === id))
+            .filter((e): e is (typeof workoutExercises)[0] => e != null),
+          ...workoutExercises.filter((e) => !exerciseOrder.includes(e.id)),
+        ]
+      : workoutExercises;
+
   // BUG-7: Active highlight now derived from first exercise with remaining
   // unlogged sets. Cannot bleed onto next exercise until previous is complete.
-  const activeExerciseIndex = (workout?.exercises ?? []).findIndex(
-    (ex) => sets.filter((s) => s.exerciseId === ex.id).length < ex.sets.length,
+  const activeExerciseIndex = orderedExercises.findIndex(
+    (ex) =>
+      !skippedExercises.has(ex.id) &&
+      !collapsedExercises.has(ex.id) &&
+      sets.filter((s) => s.exerciseId === ex.id).length < ex.sets.length,
   );
 
   useEffect(() => {
@@ -1244,15 +1271,15 @@ export default function ActiveWorkoutScreen() {
         const text = data?.feedback ?? 'Good work. Keep it up.';
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
         setOverlayNote(text);
-        // Parse suggested weight from Jordan's response
-        // Matches patterns like "try 35 lbs" or "try 35lbs"
+        // Parse suggested weight — only show pill for straight sets,
+        // not pyramid (pyramid sets have per-set weights already)
         const weightMatch = text.match(/try\s+(\d+(?:\.\d+)?)\s*lbs?/i);
         const parsedWeight = weightMatch ? Number(weightMatch[1]) : null;
-        console.log('[suggestion check]', { text, weightMatch, parsedWeight, isLastSetOfExercise, isPyramid });
         const allowSuggestion =
           parsedWeight != null &&
           parsedWeight > 0 &&
-          (!isLastSetOfExercise || isPyramid);
+          !isPyramid &&
+          !isLastSetOfExercise;
         if (allowSuggestion) {
           setOverlayWeightSuggestion({ exerciseId, weightLbs: parsedWeight });
         } else {
@@ -1297,6 +1324,7 @@ export default function ActiveWorkoutScreen() {
     weight: number,
     reps: number,
     rpe: number | null,
+    options?: { replaceOnly?: boolean },
   ) => {
     const exercise = (workout?.exercises ?? []).find(
       (ex) => ex.id === exerciseId,
@@ -1333,7 +1361,13 @@ export default function ActiveWorkoutScreen() {
       swapped: isSwapped,
     };
 
-    const newSets = [...sets, newSet];
+    const existingIdx = sets.findIndex(
+      (s) => s.exerciseId === exerciseId && s.setNumber === setNumber,
+    );
+    const newSets =
+      existingIdx >= 0
+        ? sets.map((s, i) => (i === existingIdx ? newSet : s))
+        : [...sets, newSet];
     setSets(newSets);
 
     // Persist draft so a crash can be recovered on next mount
@@ -1345,6 +1379,22 @@ export default function ActiveWorkoutScreen() {
       savedAt: Date.now(),
     };
     void AsyncStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft));
+
+    // Auto-collapse exercise card when all sets are logged
+    if (!options?.replaceOnly && existingIdx < 0 && exercise) {
+      const exerciseLoggedCount = newSets.filter(
+        (s) => s.exerciseId === exerciseId,
+      ).length;
+      if (exerciseLoggedCount >= exercise.sets.length) {
+        setTimeout(() => {
+          setCollapsedExercises((prev) => new Set([...prev, exerciseId]));
+        }, 600);
+      }
+    }
+
+    if (options?.replaceOnly || existingIdx >= 0) {
+      return;
+    }
 
     if (newSets.length < totalSetsCount) {
       const duration = exercise
@@ -1397,6 +1447,53 @@ export default function ActiveWorkoutScreen() {
         );
       }
     }
+  };
+
+  const handleEditSet = (
+    exerciseId: string,
+    setNumber: number,
+    weight: number,
+    reps: number,
+    rpe: number | null,
+  ) => {
+    handleLogSet(exerciseId, setNumber, weight, reps, rpe, { replaceOnly: true });
+  };
+
+  const handleSkipExercise = (exerciseId: string) => {
+    void hapticLight();
+    // Remove any logged sets for this exercise
+    setSets((prev) => prev.filter((s) => s.exerciseId !== exerciseId));
+    setSkippedExercises((prev) => new Set([...prev, exerciseId]));
+    // Also collapse if it was expanded
+    setCollapsedExercises((prev) => {
+      const next = new Set(prev);
+      next.delete(exerciseId);
+      return next;
+    });
+  };
+
+  const handleUnskipExercise = (exerciseId: string) => {
+    void hapticLight();
+    setSkippedExercises((prev) => {
+      const next = new Set(prev);
+      next.delete(exerciseId);
+      return next;
+    });
+  };
+
+  const handleReorder = (exerciseId: string, direction: 'up' | 'down') => {
+    setExerciseOrder((prev) => {
+      const idx = prev.indexOf(exerciseId);
+      if (idx < 0) return prev;
+      const next = [...prev];
+      if (direction === 'up' && idx > 0) {
+        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      } else if (direction === 'down' && idx < next.length - 1) {
+        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      }
+      return next;
+    });
+    void hapticLight();
   };
 
   const handleSwapExercise = (
@@ -1721,7 +1818,6 @@ export default function ActiveWorkoutScreen() {
     return map[p] ?? null;
   })();
 
-  const workoutExercises = workout?.exercises ?? [];
   const phase1Exercise = workoutExercises.find((e) => e.phase === 'strength');
   const phase1Reps = phase1Exercise?.reps ?? '3–6';
   const phase2Exercise = workoutExercises.find((e) => e.phase === 'hypertrophy');
@@ -1775,9 +1871,18 @@ export default function ActiveWorkoutScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {(workout?.exercises ?? []).map((exercise, exerciseIdx) => {
-              const exercises = workout?.exercises ?? [];
+            {orderedExercises.map((exercise, exerciseIdx) => {
+              const exercises = orderedExercises;
               const prevExercise = exerciseIdx > 0 ? exercises[exerciseIdx - 1] : null;
+              const isFirst = exerciseIdx === 0;
+              const isLast = exerciseIdx === exercises.length - 1;
+              const isCollapsed = collapsedExercises.has(exercise.id);
+              const isSkipped = skippedExercises.has(exercise.id);
+              const exerciseSets = sets.filter(
+                (s) => s.exerciseId === exercise.id,
+              );
+              const allSetsComplete =
+                exerciseSets.length >= exercise.sets.length;
               return (
                 <View key={exercise.id}>
                   {exercise.phase === 'strength' && exerciseIdx === 0 && (
@@ -1796,6 +1901,157 @@ export default function ActiveWorkoutScreen() {
                       </Text>
                     </View>
                   )}
+                  {isSkipped ? (
+                    // Skipped: unified single row — arrows + name + undo
+                    <View style={styles.unifiedRow}>
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        activeOpacity={0.6}
+                        disabled={isFirst}
+                        onPress={() => handleReorder(exercise.id, 'up')}
+                      >
+                        <Ionicons
+                          name="chevron-up"
+                          size={18}
+                          color={isFirst ? Colors.textTertiary : Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        activeOpacity={0.6}
+                        disabled={isLast}
+                        onPress={() => handleReorder(exercise.id, 'down')}
+                      >
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color={isLast ? Colors.textTertiary : Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                      <View style={styles.unifiedRowContent}>
+                        <Text style={styles.unifiedRowName} numberOfLines={1}>
+                          {exerciseSwaps[exercise.id] ?? exercise.name}
+                        </Text>
+                        <Text style={styles.unifiedRowMeta}>Skipped</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.unskipBtn}
+                        activeOpacity={0.7}
+                        onPress={() => handleUnskipExercise(exercise.id)}
+                      >
+                        <Text style={styles.unskipBtnText}>Undo</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : isCollapsed ? (
+                    // Collapsed: unified single row — arrows + name + sets count
+                    // Tap anywhere on the content area to expand
+                    <TouchableOpacity
+                      style={styles.unifiedRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setCollapsedExercises((prev) => {
+                          const next = new Set(prev);
+                          next.delete(exercise.id);
+                          return next;
+                        });
+                      }}
+                    >
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        activeOpacity={0.6}
+                        disabled={isFirst}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleReorder(exercise.id, 'up');
+                        }}
+                      >
+                        <Ionicons
+                          name="chevron-up"
+                          size={18}
+                          color={isFirst ? Colors.textTertiary : Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        activeOpacity={0.6}
+                        disabled={isLast}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleReorder(exercise.id, 'down');
+                        }}
+                      >
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color={isLast ? Colors.textTertiary : Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                      <View style={styles.unifiedRowContent}>
+                        <Text style={styles.unifiedRowName} numberOfLines={1}>
+                          {exerciseSwaps[exercise.id] ?? exercise.name}
+                        </Text>
+                        <Text style={styles.unifiedRowMeta}>
+                          {exerciseSets.length} sets ✓
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name="chevron-down"
+                        size={16}
+                        color={Colors.textTertiary}
+                      />
+                    </TouchableOpacity>
+                  ) : (
+                    // Expanded: control row above card as before
+                    <>
+                      <View style={styles.exerciseControlRow}>
+                        <TouchableOpacity
+                          style={styles.reorderBtn}
+                          activeOpacity={0.6}
+                          disabled={isFirst}
+                          onPress={() => handleReorder(exercise.id, 'up')}
+                        >
+                          <Ionicons
+                            name="chevron-up"
+                            size={18}
+                            color={isFirst ? Colors.textTertiary : Colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.reorderBtn}
+                          activeOpacity={0.6}
+                          disabled={isLast}
+                          onPress={() => handleReorder(exercise.id, 'down')}
+                        >
+                          <Ionicons
+                            name="chevron-down"
+                            size={18}
+                            color={isLast ? Colors.textTertiary : Colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                        {!allSetsComplete ? (
+                          <TouchableOpacity
+                            style={styles.skipExerciseBtn}
+                            activeOpacity={0.7}
+                            onPress={() => handleSkipExercise(exercise.id)}
+                          >
+                            <Text style={styles.skipExerciseBtnText}>Skip</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.collapseBtn}
+                            activeOpacity={0.7}
+                            onPress={() => {
+                              setCollapsedExercises((prev) => {
+                                const next = new Set(prev);
+                                next.add(exercise.id);
+                                return next;
+                              });
+                            }}
+                          >
+                            <Text style={styles.collapseBtnText}>Collapse ↑</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                   <ExerciseCard
                     exercise={exercise}
                     loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
@@ -1812,6 +2068,7 @@ export default function ActiveWorkoutScreen() {
                     goal={workout?.goal ?? 'strength'}
                     programGoalLift={workout?.goalLift ?? null}
                     onLogSet={handleLogSet}
+                    onEditSet={handleEditSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}
                     planId={
@@ -1827,10 +2084,12 @@ export default function ActiveWorkoutScreen() {
                     pyramidSetsOverride={
                       exercisePyramidSetsOverrides[exercise.id] ?? undefined
                     }
-                    currentWorkoutExerciseNames={(workout?.exercises ?? []).map(
+                    currentWorkoutExerciseNames={orderedExercises.map(
                       (e) => exerciseSwaps[e.id] ?? e.name,
                     )}
                   />
+                    </>
+                  )}
                 </View>
               );
             })}
@@ -2364,6 +2623,92 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
+  exerciseControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xs,
+    paddingBottom: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  reorderBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  collapseBtn: {
+    flex: 1,
+    height: 32,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  collapseBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  unifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  unifiedRowContent: {
+    flex: 1,
+    marginHorizontal: Spacing.xs,
+  },
+  unifiedRowName: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  unifiedRowMeta: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  unskipBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  unskipBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  skipExerciseBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    marginLeft: 'auto',
+  },
+  skipExerciseBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
   phaseHeader: {
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.lg,
@@ -2518,6 +2863,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 2,
   },
+
   jordanWeightSuggestionPill: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.accent,
@@ -2532,7 +2878,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: 0.3,
   },
-
   toast: {
     position: 'absolute',
     bottom: 100,

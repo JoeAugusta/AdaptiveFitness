@@ -502,7 +502,34 @@ export default function BuildingPlanScreen() {
     const todayStr = getLocalDateString();
     const tomorrow = getLocalDate();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = getNextScheduledDay(scheduledDays, tomorrow);
+    // "Start fresh" always anchors to Day 1 of the split
+    // (scheduledDays[0]), not just the next scheduled day.
+    // e.g. Mon-Sat schedule created Friday → next Monday,
+    // not Saturday (which would be Day 6 of the split).
+    const normalizedForTomorrow = normalizeScheduledDays(
+      scheduledDays,
+    );
+    const day1Label =
+      normalizedForTomorrow.length > 0
+        ? normalizedForTomorrow[0]
+        : null;
+    const tomorrowStr = (() => {
+      if (!day1Label) {
+        return getNextScheduledDay(scheduledDays, tomorrow);
+      }
+      // Find next occurrence of Day 1 label from tomorrow
+      const dayNames = [
+        'Sun','Mon','Tue','Wed','Thu','Fri','Sat',
+      ];
+      for (let i = 0; i < 7; i++) {
+        const candidate = getLocalDate();
+        candidate.setDate(candidate.getDate() + 1 + i);
+        if (dayNames[candidate.getDay()] === day1Label) {
+          return getLocalDateString(candidate);
+        }
+      }
+      return getNextScheduledDay(scheduledDays, tomorrow);
+    })();
     const todayScheduled = isTodayScheduled(scheduledDays);
 
     setTodayDateStr(todayStr);

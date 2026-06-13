@@ -719,6 +719,7 @@ export default function HomeScreen() {
     planId: string;
     currentWeek: number;
     planJson: Record<string, unknown>;
+    startDate?: string | null;
   } | null>(null);
   const [cardioCompleted, setCardioCompleted] = useState(false);
   const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
@@ -791,6 +792,7 @@ export default function HomeScreen() {
       planSnapshotForMissed.planId,
       planSnapshotForMissed.currentWeek,
       planSnapshotForMissed.planJson,
+      planSnapshotForMissed.startDate,
     ).then(setMissedSessionResult);
   }, [planSnapshotForMissed, missedCardDismissed]);
 
@@ -1506,6 +1508,7 @@ export default function HomeScreen() {
         planId: plan.id,
         currentWeek: plan.current_week ?? 1,
         planJson: planJson as Record<string, unknown>,
+        startDate: planStartRaw ?? null,
       });
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);

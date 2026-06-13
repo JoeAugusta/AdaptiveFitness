@@ -49,6 +49,7 @@ export async function checkMissedSession(
   planId: string,
   weekNumber: number,
   planJson: Record<string, unknown>,
+  startDate?: string | null,
 ): Promise<MissedSessionResult> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -105,12 +106,26 @@ export async function checkMissedSession(
     const todayIdx = ALL_LABELS.indexOf(todayLabel as (typeof ALL_LABELS)[number]);
 
     // Find workout days that have passed (calendar day < today) and aren't logged
+    // Parse start_date once for comparison
+    const planStartMidnight = startDate
+      ? new Date(`${startDate.split('T')[0]}T00:00:00`)
+      : null;
+
     const missedWorkoutDays = workoutDays.filter((d) => {
       if (loggedDayNumbers.has(d.dayNumber)) return false;
       const label = dayNumberToLabel[d.dayNumber];
       if (!label) return false;
       const labelIdx = ALL_LABELS.indexOf(label as (typeof ALL_LABELS)[number]);
-      return labelIdx >= 0 && labelIdx < todayIdx;
+      if (labelIdx < 0 || labelIdx >= todayIdx) return false;
+      // Exclude days that fall before the plan's start_date —
+      // user never had a chance to train those sessions.
+      if (planStartMidnight) {
+        const d2 = new Date();
+        d2.setDate(d2.getDate() - (todayIdx - labelIdx));
+        d2.setHours(0, 0, 0, 0);
+        if (d2 < planStartMidnight) return false;
+      }
+      return true;
     });
 
     if (missedWorkoutDays.length === 0) {

@@ -684,7 +684,7 @@ export default function ExerciseCard({
         ? String(lbsToDisplay(lastLogged.weightLbs))
         : isBodyweightExercise
           ? '0'
-          : (isSelfSelectMode || isLoggingAscending || isWeek1SelfSelect)
+          : (isSelfSelectMode || isWeek1SelfSelect)
             ? ''
             : pyramidPrefill > 0
               ? String(lbsToDisplay(pyramidPrefill))

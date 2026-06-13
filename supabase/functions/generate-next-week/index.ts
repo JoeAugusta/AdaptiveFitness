@@ -505,13 +505,17 @@ function getWeek1Baseline(setsJson: LogSetLike[]): {
     return { baselineWeight: peakWeight, baselineRpe, isRampPattern: true };
   }
 
-  const avgWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
-  const rpeValues = setsJson.map(normalizeLogSetRpe).filter((r) => r > 0);
-  const avgRpe =
-    rpeValues.length > 0
-      ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length
-      : 0;
-  return { baselineWeight: avgWeight, baselineRpe: avgRpe, isRampPattern: false };
+    // Use max logged weight as baseline for flat/straight sets.
+    // Average punishes users who are still finding working weight
+    // (e.g. 40/50/70 → avg=53 would regress them; max=70 is correct).
+    // For true straight sets (90/90/90), max === avg so no difference.
+    const maxWeight = Math.max(...weights);
+    const rpeValues = setsJson.map(normalizeLogSetRpe).filter((r) => r > 0);
+    const avgRpe =
+      rpeValues.length > 0
+        ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length
+        : 0;
+    return { baselineWeight: maxWeight, baselineRpe: avgRpe, isRampPattern: false };
 }
 
 /** Pyramid = top set is the working set; straight = average across working sets. */
@@ -551,13 +555,18 @@ function getLoggedBaselineFromSets(
     return { baselineWeight: topWeight, baselineRpe };
   }
 
-  const baselineWeight =
-    sets.reduce((sum, s) => sum + normalizeLogSetWeightLbs(s), 0) /
-    sets.length;
-  const baselineRpe =
-    sets.reduce((sum, s) => sum + Number((s as LogSetLike).rpe ?? 0), 0) /
-    sets.length;
-  return { baselineWeight, baselineRpe };
+  const weights = sets.map(normalizeLogSetWeightLbs).filter((w) => w > 0);
+  if (weights.length === 0) {
+    return { baselineWeight: 0, baselineRpe: 0 };
+  }
+  // Use max logged weight — same rationale as getWeek1Baseline flat-set path.
+  const maxWeight = Math.max(...weights);
+  const rpeValues = sets.map(normalizeLogSetRpe).filter((r) => r > 0);
+  const avgRpe =
+    rpeValues.length > 0
+      ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length
+      : 0;
+  return { baselineWeight: maxWeight, baselineRpe: avgRpe };
 }
 
 /** Per workout log, then take strongest session baseline (avoids breaking ramp across days). */
@@ -641,15 +650,24 @@ function resolveProgressionBaseline(
     };
   }
 
-  const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
+    const priorTargetWeight = Number(priorPlanExercise?.targetWeight ?? 0);
 
-  /** priorTargetWeight 0 = self-select prescription, not calibration — use logged working weight as baseline. */
-  if (priorTargetWeight > 0 || !isSelfSelectWeightGoal(planGoal)) {
-    const fromPlan = getPlanBaselineWeight(priorPlanExercise);
-    if (fromPlan > 0) {
-      return { baseline: fromPlan, source: 'plan' };
+    /** priorTargetWeight 0 = self-select prescription, not calibration — use logged working weight as baseline. */
+    if (priorTargetWeight > 0 || !isSelfSelectWeightGoal(planGoal)) {
+      const fromPlan = getPlanBaselineWeight(priorPlanExercise);
+      if (fromPlan > 0) {
+        // If user logged more than plan prescribed (exceeded target),
+        // progress from what they actually did — not from the plan.
+        // This fixes "Same load" on pyramids and prevents regression
+        // on straight sets where user ramped above planned weight.
+        const loggedW = Number(opts?.loggedBaselineWeight ?? 0);
+        const effectiveBaseline = loggedW > fromPlan ? loggedW : fromPlan;
+        return {
+          baseline: effectiveBaseline,
+          source: effectiveBaseline === loggedW ? 'logged' : 'plan',
+        };
+      }
     }
-  }
 
   if (!isSelfSelectWeightGoal(planGoal)) {
     return { baseline: 0, source: 'none' };

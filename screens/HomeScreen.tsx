@@ -51,6 +51,7 @@ import {
   missedDayLabelToDate,
   type MissedSessionResult,
 } from '../utils/missedSession';
+import { consumePendingJordanNote } from '../utils/sessionNoteStore';
 import { useMetric, convertSessionFocus } from '../utils/units';
 import CardioDayCard from '../components/CardioDayCard';
 import CardioDoneCard from '../components/CardioDoneCard';
@@ -653,6 +654,7 @@ export default function HomeScreen() {
   /** Latest weekly_summaries row — drives Review Summary CTA even after unviewed flag cleared. */
   const [latestSummary, setLatestSummary] = useState<{ week_number: number } | null>(null);
   const [jordanWelcome, setJordanWelcome] = useState<string | null>(null);
+  const [freshSessionNote, setFreshSessionNote] = useState<string | null>(null);
   /** Prior week (currentWeek - 1) has a DB summary but user has not opened WeeklyCoachSummary for that week. */
   const [unviewedSummaryWeekNumber, setUnviewedSummaryWeekNumber] = useState<
     number | null
@@ -1519,6 +1521,13 @@ export default function HomeScreen() {
       });
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
+      // Clear fresh note once DB has caught up — latestJordanNote in plan_json
+      // is written async by WorkoutCompleteScreen; once loaded it takes over.
+      if (
+        (planJson as { latestJordanNote?: string | null }).latestJordanNote
+      ) {
+        setFreshSessionNote(null);
+      }
 
       // Latest weekly_summaries row for Jordan card — do not gate on current_week so body stays fresh
       const { data: weeklySummaryLatestRow } = await supabase
@@ -1710,6 +1719,8 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      const pending = consumePendingJordanNote();
+      if (pending) setFreshSessionNote(pending);
       void loadDashboardData();
     }, []),
   );
@@ -2148,6 +2159,9 @@ export default function HomeScreen() {
     planStatus === 'completed'
       ? null
       : (() => {
+          if (freshSessionNote && freshSessionNote.trim() !== '') {
+            return cleanJordanMessage(freshSessionNote.trim()) ?? freshSessionNote.trim();
+          }
           if (
             coachSummary?.coach_note &&
             String(coachSummary.coach_note).trim() !== ''

@@ -435,6 +435,9 @@ export default function ExerciseCard({
     (effectiveEquipment === 'bodyweight' ||
       (effectiveEquipment === undefined && exercise.usesWeight === false)) &&
     !isWeightedVariant;
+  const isDumbbellExercise =
+    effectiveEquipment === 'dumbbell' ||
+    (!effectiveEquipment && exerciseNameLower.includes('dumbbell'));
   const tw =
     effectiveTargetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
   const isSelfSelectMode =
@@ -882,6 +885,7 @@ export default function ExerciseCard({
     }
     return effectiveTargetWeight ?? firstTarget?.targetWeight ?? 0;
   })();
+  const weightSuffix = isDumbbellExercise ? ' per dumbbell' : '';
   const targetSummary =
     firstTarget != null
       ? isSelfSelectMode
@@ -889,7 +893,9 @@ export default function ExerciseCard({
         : isBodyweightExercise
           ? `${exercise.sets.length} sets × ${repsSubtitlePart} @ Bodyweight`
           : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${
-              displayWeight > 0 ? formatWorkoutWeight(displayWeight) : 'Add weight'
+              displayWeight > 0
+                ? `${formatWorkoutWeight(displayWeight)}${weightSuffix}`
+                : 'Add weight'
             }`
       : '';
 

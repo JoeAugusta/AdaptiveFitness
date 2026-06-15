@@ -26,6 +26,7 @@ import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { getSessionSignal } from '../utils/sessionSignal';
 import { stripEmDash } from '../utils/jordanText';
+import { setPendingJordanNote } from '../utils/sessionNoteStore';
 import { hapticMedium, hapticPR, hapticSuccess } from '../utils/haptics';
 import { ShareCard, SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
@@ -902,6 +903,9 @@ export default function WorkoutCompleteScreen() {
         setCoachLoading(false);
         setCoachNoteDisplay(coachingNoteTrimmed ?? null);
 
+        if (coachingNoteTrimmed) {
+          setPendingJordanNote(coachingNoteTrimmed);
+        }
         if (coachingNoteTrimmed && planId) {
           const { data: currentPlan } = await supabase
             .from('plans')

@@ -3907,7 +3907,7 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: maxTokens,
           system: systemPrompt,
           messages: [{ role: 'user', content: prompt }],

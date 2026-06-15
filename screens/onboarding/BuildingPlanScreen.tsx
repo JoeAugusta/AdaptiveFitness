@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Purchases, { PURCHASES_ERROR_CODE } from 'react-native-purchases';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -330,6 +331,14 @@ export default function BuildingPlanScreen() {
     stopSequenceRef.current = true;
     clearStepTimers();
   };
+
+  // Keep screen awake during generation — deactivated on success or error
+  useEffect(() => {
+    void activateKeepAwakeAsync();
+    return () => {
+      deactivateKeepAwake();
+    };
+  }, []);
 
   useEffect(() => {
     stopSequenceRef.current = false;
@@ -1109,6 +1118,7 @@ export default function BuildingPlanScreen() {
             </Animated.View>
 
             <Text style={styles.buildTitle}>Building your plan</Text>
+            <Text style={styles.buildTimeHint}>This takes about 2 minutes</Text>
 
             <Animated.Text
               style={[styles.buildSubtitle, { opacity: subtitleOpacity }]}
@@ -1124,7 +1134,7 @@ export default function BuildingPlanScreen() {
                   style={styles.waitingSpinner}
                 />
                 <Text style={styles.waitingText}>
-                  Jordan is finalizing your plan...
+                  Jordan is writing your coaching notes — almost done.
                 </Text>
               </View>
             )}
@@ -1203,7 +1213,7 @@ export default function BuildingPlanScreen() {
 
           <View style={styles.bottomQuote}>
             <Text style={styles.quoteText}>
-              Your numbers are in. Let's get to work.{'\n'}
+              Every number you entered is going into this plan.{'\n'}
               Jordan
             </Text>
           </View>
@@ -1369,6 +1379,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     paddingHorizontal: Spacing.xl,
+  },
+  buildTimeHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
   },
   waitingRow: {
     flexDirection: 'row',

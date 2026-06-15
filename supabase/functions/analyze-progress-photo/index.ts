@@ -192,6 +192,65 @@ function calcMacrosFromCalories(
   return { proteinG, carbsG, fatsG };
 }
 
+function recalibrateCaloriesPreservingDirection(opts: {
+  leanMassLbs: number;
+  daysPerWeek: number;
+  caloriePace: string;
+  currentCalories: number;
+  currentWeightLbs: number;
+  goalTargetWeightLbs: number | null;
+}): number {
+  const {
+    leanMassLbs,
+    daysPerWeek,
+    caloriePace,
+    currentCalories,
+    currentWeightLbs,
+    goalTargetWeightLbs,
+  } = opts;
+
+  const leanMassKg = leanMassLbs * 0.453592;
+  const bmr = 370 + 21.6 * leanMassKg;
+  const newTdee = bmr * getActivityMultiplier(daysPerWeek);
+
+  // Determine intended direction from weight goal when available
+  const weightDelta =
+    goalTargetWeightLbs != null && currentWeightLbs > 0
+      ? goalTargetWeightLbs - currentWeightLbs
+      : null;
+
+  const intendedDeficit =
+    weightDelta != null
+      ? weightDelta < -2
+      : currentCalories < newTdee - 50;
+
+  const intendedSurplus =
+    weightDelta != null
+      ? weightDelta > 2
+      : currentCalories > newTdee + 50;
+
+  let adjustment: number;
+  if (intendedDeficit) {
+    const deficitMap: Record<string, number> = {
+      conservative: -200,
+      balanced: -300,
+      aggressive: -500,
+    };
+    adjustment = deficitMap[caloriePace] ?? -300;
+  } else if (intendedSurplus) {
+    const surplusMap: Record<string, number> = {
+      conservative: 150,
+      balanced: 250,
+      aggressive: 400,
+    };
+    adjustment = surplusMap[caloriePace] ?? 250;
+  } else {
+    adjustment = 0;
+  }
+
+  return Math.max(MIN_CALORIES, Math.min(MAX_CALORIES, roundTo50(newTdee + adjustment)));
+}
+
 function caloriesFromLeanMass(
   leanMassLbs: number,
   daysPerWeek: number,
@@ -267,7 +326,7 @@ serve(async (req) => {
         .maybeSingle(),
       supabase
         .from('goals')
-        .select('goal_type')
+        .select('goal_type, target_weight_lbs')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
@@ -289,6 +348,11 @@ serve(async (req) => {
 
     const profile = profileRes.data;
     const goalType = (goalRes.data?.goal_type as string) ?? 'general';
+    const goalTargetWeightLbs = goalRes.data?.target_weight_lbs != null
+      ? Number(goalRes.data.target_weight_lbs)
+      : null;
+    // currentWeightLbs for direction check comes from profile (already loaded above)
+    // weightLbs = Number(profile?.weight_lbs ?? 0) — already declared below
     const macroPlan = macroRes.data;
     const hasBaseline = (baselineRes.data?.length ?? 0) > 0;
 
@@ -542,15 +606,29 @@ Return ONLY the JSON object.`,
     const caloriePace = String(macroPlan?.calorie_pace ?? 'balanced');
 
     if (macroRec?.adjust === true && leanMassLbs > 0 && macroPlan?.id) {
-      const katchCalories = caloriesFromLeanMass(
+      const targetCalories = recalibrateCaloriesPreservingDirection({
         leanMassLbs,
         daysPerWeek,
-        goalType,
         caloriePace,
-      );
-      const targetCalories = katchCalories;
+        currentCalories,
+        currentWeightLbs: weightLbs,
+        goalTargetWeightLbs,
+      });
 
-      if (Math.abs(targetCalories - currentCalories) > 100) {
+      // Hard direction guard — backstop against any drift in the
+      // recalibration math or unexpected Claude recommendations.
+      const weightDelta =
+        goalTargetWeightLbs != null && weightLbs > 0
+          ? goalTargetWeightLbs - weightLbs
+          : null;
+      const wantsToLose = weightDelta != null && weightDelta < -2;
+      const wantsToGain = weightDelta != null && weightDelta > 2;
+      const caloricDelta = targetCalories - currentCalories;
+      const directionViolation =
+        (wantsToLose && caloricDelta > 0) ||
+        (wantsToGain && caloricDelta < 0);
+
+      if (Math.abs(targetCalories - currentCalories) > 100 && !directionViolation) {
         const macros = calcMacrosFromCalories(
           targetCalories,
           weightForLeanMass > 0 ? weightForLeanMass : weightLbs,

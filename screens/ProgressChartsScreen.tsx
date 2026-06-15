@@ -2475,7 +2475,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   heatmapWeekLabelCell: {
-    width: 32,
+    width: HEATMAP_CELL_SIZE + HEATMAP_CELL_GAP,
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2483,7 +2483,7 @@ const styles = StyleSheet.create({
   heatmapWeekLabelCellFlex: {
     flex: 1,
     width: undefined,
-    minWidth: 24,
+    minWidth: HEATMAP_CELL_SIZE + HEATMAP_CELL_GAP,
   },
   heatmapWeekLabel: {
     fontFamily: Fonts.regular,
@@ -2496,14 +2496,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   heatmapWeekColumn: {
-    width: HEATMAP_CELL_SIZE + 4,
+    width: HEATMAP_CELL_SIZE + HEATMAP_CELL_GAP,
     alignItems: 'center',
     height: HEATMAP_GRID_HEIGHT,
   },
   heatmapWeekColumnFlex: {
     flex: 1,
     width: undefined,
-    minWidth: 24,
+    minWidth: HEATMAP_CELL_SIZE + HEATMAP_CELL_GAP,
     height: HEATMAP_GRID_HEIGHT,
   },
   heatmapWeekColumnCurrent: {
@@ -2519,7 +2519,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.divider,
     marginBottom: HEATMAP_CELL_GAP,
-    alignSelf: 'center',
   },
   heatmapCellActive: {
     backgroundColor: Colors.accent,

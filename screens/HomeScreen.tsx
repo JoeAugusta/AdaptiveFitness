@@ -1470,8 +1470,12 @@ export default function HomeScreen() {
                     Alert.alert('Generation failed', "Couldn't generate next week. Please try again.");
                     return;
                   }
-                  // Fire-and-forget weekly summary
+                  // Fire-and-forget weekly summary + macro adjustment
+                  // Both are non-blocking — dashboard advances regardless of outcome
                   void supabase.functions.invoke('weekly-coach-summary', {
+                    body: { userId, planId: plan.id, weekNumber: plan.current_week ?? 1 },
+                  });
+                  void supabase.functions.invoke('adjust-macros', {
                     body: { userId, planId: plan.id, weekNumber: plan.current_week ?? 1 },
                   });
                 }
@@ -1489,13 +1493,16 @@ export default function HomeScreen() {
 
             // Below floor and not deload — show the low-completion prompt unless
             // already dismissed for THIS elapse (date-stamped, so a later cycle re-prompts).
+            // IMPORTANT: capture dbCurrentWeek here (before any advance) — not
+            // plan.current_week which may have advanced by the time this renders.
+            const completedWeekForPrompt = dbCurrentWeek;
             const dismissedRaw = await AsyncStorage.getItem('hone_low_completion_dismissed_week');
             const todayStamp = getLocalDateString();
             const alreadyDismissedThisElapse =
-              dismissedRaw === `${plan.current_week ?? 1}:${todayStamp}`;
+              dismissedRaw === `${completedWeekForPrompt}:${todayStamp}`;
             if (!alreadyDismissedThisElapse) {
               setLowCompletionPrompt({
-                weekNumber: plan.current_week ?? 1,
+                weekNumber: completedWeekForPrompt,
                 completed: rawCompletedSessions,
                 total: daysPerWeek,
               });
@@ -3281,7 +3288,7 @@ export default function HomeScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {showActivitySubSheet && planData && activityDashboardUserId ? (
+      {planData && activityDashboardUserId ? (
         <ActivityLogSheet
           visible={showActivitySubSheet}
           onClose={() => setShowActivitySubSheet(false)}

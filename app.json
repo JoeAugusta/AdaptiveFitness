@@ -15,19 +15,43 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.gethone.app",
       "buildNumber": "1",
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.background-delivery": true
+      },
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "Hone reads your sleep and heart rate data so Jordan can adapt your training plan to your recovery.",
+        "NSHealthUpdateUsageDescription": "Hone writes completed workout sessions to Apple Health."
       }
     },
     "android": {
       "package": "com.gethone.app",
       "versionCode": 1,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_HEART_RATE_VARIABILITY"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@kingstinct/react-native-healthkit",
+      "expo-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 26
+          }
+        }
+      ],
       [
         "expo-notifications",
         {

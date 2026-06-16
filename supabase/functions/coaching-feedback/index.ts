@@ -38,6 +38,37 @@ serve(async (req) => {
       loggedRpe,
       isUnilateral,
     } = body;
+    const heartRateAvgBpm =
+      typeof body.heartRateAvgBpm === 'number' ? body.heartRateAvgBpm : null;
+    const heartRatePeakBpm =
+      typeof body.heartRatePeakBpm === 'number' ? body.heartRatePeakBpm : null;
+    const hasHeartRateData = heartRateAvgBpm !== null || heartRatePeakBpm !== null;
+
+    const sleepHours =
+      typeof body.sleepHours === 'number' ? body.sleepHours : null;
+    const readinessScore =
+      typeof body.readinessScore === 'number' ? body.readinessScore : null;
+    const hrvMs =
+      typeof body.hrvMs === 'number' ? body.hrvMs : null;
+    const restingHeartRate =
+      typeof body.restingHeartRate === 'number' ? body.restingHeartRate : null;
+
+    const hasRecoveryData =
+      sleepHours !== null ||
+      readinessScore !== null ||
+      hrvMs !== null ||
+      restingHeartRate !== null;
+
+    const buildRecoveryContext = (): string => {
+      if (!hasRecoveryData) return '';
+      const parts: string[] = [];
+      if (sleepHours !== null) parts.push(`Sleep: ${sleepHours}h`);
+      if (readinessScore !== null) parts.push(`Readiness: ${readinessScore}/5`);
+      if (hrvMs !== null) parts.push(`HRV: ${hrvMs}ms`);
+      if (restingHeartRate !== null) parts.push(`Resting HR: ${restingHeartRate}bpm`);
+      return `Recovery context: ${parts.join(' | ')}`;
+    };
+
     const isLastSetOfExercise = body.isLastSetOfExercise === true;
     const isLastExercise = body.isLastExercise === true;
 
@@ -76,6 +107,55 @@ Lead with the number, follow with the implication. No hand-holding.`,
       perSetToneInstructionMap[toneTier] ?? perSetToneInstructionMap.newcomer;
 
     isSessionSummary = exerciseName === 'session_summary';
+    const isPreSession = body.mode === 'pre_session';
+
+    if (isPreSession) {
+      const lastSessionSignal =
+        typeof body.lastSessionSignal === 'string' ? body.lastSessionSignal : null;
+      const recoveryLine = hasRecoveryData ? buildRecoveryContext() : null;
+
+      const preSessionSystemPrompt = `You are Jordan, a direct personal coach giving a pre-session briefing.
+Write exactly ONE sentence — maximum 20 words.
+Never start with "Great", "Good", "Nice", or any praise.
+Never use em-dashes. No markdown.
+Reference the athlete's actual data — last session signal and recovery metrics.
+Be specific, not generic. Sound like a coach who has reviewed their numbers.`;
+
+      const signalContext = (() => {
+        if (lastSessionSignal === 'high_fatigue') return 'Last session ran hot — high RPE, high fatigue.';
+        if (lastSessionSignal === 'low_fatigue') return 'Last session had plenty left — low RPE, good energy.';
+        if (lastSessionSignal === 'on_target') return 'Last session was well calibrated.';
+        return 'No signal from last session.';
+      })();
+
+      const preSessionUserContent = `${signalContext}${recoveryLine ? `\n${recoveryLine}` : ''}
+Write one pre-session coaching sentence for the athlete.`;
+
+      const preSessionResponse = await fetchAnthropicMessagesWithRetry(() =>
+        fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 80,
+            system: preSessionSystemPrompt,
+            messages: [{ role: 'user', content: preSessionUserContent }],
+          }),
+        })
+      );
+
+      const preSessionData = await preSessionResponse.json();
+      const preSessionText = preSessionData.content?.[0]?.text?.trim() ?? null;
+
+      return new Response(
+        JSON.stringify({ feedback: preSessionText }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     if (!isSessionSummary) {
       const loggedW = Number(loggedWeight);
@@ -171,6 +251,8 @@ ${forwardOrientRule}
 - RPE on target (within 1 point): confirm and orient forward.
 - RPE too high (fell short on reps): give a recovery or execution cue. Do NOT suggest a weight number.
 - Fell short on reps without clear RPE data: be honest, tell them what to focus on.
+- If Apple Health HR data is provided, you MAY reference it when it contradicts the logged RPE (e.g. HR was 175 bpm but RPE logged as 6 — flag the mismatch briefly). If HR aligns with RPE, do not mention it. Never mention HR when no HR data is provided.
+- Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it is directly relevant to the set just logged — e.g. low sleep + high RPE on a normally easy exercise warrants a brief mention. Do not mention recovery metrics on every set. When you do reference them, be specific: "7h sleep but RPE running high — back off next set" not generic wellness advice. Never mention metrics that weren't provided.
 - NEVER mention a specific weight in lbs under any circumstances unless you were explicitly told "A weight adjustment is warranted" above. If no weight adjustment was flagged, do not mention any number followed by lbs.
 - Never mention being an AI.
 - No markdown.`;
@@ -196,6 +278,7 @@ Rules:
 - Never say "Great job", "Well done", "Nice work", "Keep it up"
 - Never say "weights were too light" or "weights were too heavy" — use "load steps up" or "ran above target"
 - Never suggest a specific pound increase
+- Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it directly explains session performance patterns — e.g. low sleep and high session RPE. Do not mention recovery metrics unless they clarify what happened. Never mention metrics that weren't provided.
 - Do not mention being an AI`
       : perSetSystemPrompt;
 
@@ -209,11 +292,19 @@ Rules:
 
     const userContent = isSessionSummary
       ? `Session complete: ${loggedReps} sets across ${targetReps} exercises.
-${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.${planContextLine}
+${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.${planContextLine}${hasRecoveryData ? `\n${buildRecoveryContext()}` : ''}
 Give a 2-sentence session debrief.`
       : `Exercise: ${exerciseName}
 Target: ${targetReps} reps at ${targetWeight} lbs, RPE ${targetRpe}
-Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}
+Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}${
+  hasHeartRateData
+    ? `\nApple Health HR this set: avg ${heartRateAvgBpm ?? '—'} bpm, peak ${heartRatePeakBpm ?? '—'} bpm`
+    : ''
+}${
+  hasRecoveryData
+    ? `\n${buildRecoveryContext()}`
+    : ''
+}
 Give a brief coaching note.`;
 
     const response = await fetchAnthropicMessagesWithRetry(() =>

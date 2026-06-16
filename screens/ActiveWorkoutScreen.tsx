@@ -25,8 +25,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { hapticHeavy, hapticLight, hapticMedium } from '../utils/haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useHealthData, type HealthData } from '../hooks/useHealthData';
+import { HEALTH_PERMISSION_GRANTED_KEY } from '../components/HealthConnectCard';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
+import { getLocalDateString } from '../utils/dateUtils';
 import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier } from '../components/ExerciseCard';
 import {
@@ -559,6 +562,12 @@ export default function ActiveWorkoutScreen() {
   const [resolvedPlanWeekNumber, setResolvedPlanWeekNumber] = useState<
     number | null
   >(null);
+  const [recoveryContext, setRecoveryContext] = useState<{
+    sleepHours: number | null;
+    readinessScore: number | null;
+    hrvMs: number | null;
+    restingHeartRate: number | null;
+  } | null>(null);
 
   // Draft crash-recovery: called after loadWorkoutData resolves so planId/dayNumber are known
   const checkDraft = async (planId: string, dayNumber: number) => {
@@ -631,6 +640,52 @@ export default function ActiveWorkoutScreen() {
     params.dayNumber,
     params.lockToRouteWeek,
   ]);
+
+  const { queryPostSetHeartRate, fetchHealthData, isAvailable: healthAvailable } =
+    useHealthData();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) return;
+
+        // Fetch today's weight log for sleep + readiness
+        const todayDate = getLocalDateString();
+        const { data: weightLog } = await supabase
+          .from('weight_logs')
+          .select('sleep_hours, readiness_score')
+          .eq('user_id', userId)
+          .eq('log_date', todayDate)
+          .maybeSingle();
+
+        // Fetch Health data if permission granted
+        const isHealthGranted =
+          healthAvailable &&
+          (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
+
+        const healthData: HealthData | null = isHealthGranted
+          ? await fetchHealthData()
+          : null;
+
+        if (!cancelled) {
+          const recoveryContext = {
+            sleepHours: (weightLog?.sleep_hours as number | null) ?? healthData?.sleepHours ?? null,
+            readinessScore: (weightLog?.readiness_score as number | null) ?? null,
+            hrvMs: healthData?.hrvMs ?? null,
+            restingHeartRate: healthData?.restingHeartRate ?? null,
+          };
+          setRecoveryContext(recoveryContext);
+          console.log('[Recovery] context fetched:', JSON.stringify(recoveryContext));
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[ActiveWorkout] recovery context fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [healthAvailable, fetchHealthData]);
 
   const getAlternatives = (muscleGroup: string): string[] => {
     const map: Record<string, string[]> = {
@@ -1226,6 +1281,8 @@ export default function ActiveWorkoutScreen() {
       setNumber?: number;
       totalSets?: number;
     } = {},
+    heartRate?: { avgBpm: number | null; peakBpm: number | null } | null,
+    recoveryCtx?: typeof recoveryContext,
   ) => {
     const {
       isUnilateral = false,
@@ -1259,6 +1316,12 @@ export default function ActiveWorkoutScreen() {
           isPyramid,
           setNumber,
           totalSets,
+          heartRateAvgBpm: heartRate?.avgBpm ?? null,
+          heartRatePeakBpm: heartRate?.peakBpm ?? null,
+          sleepHours: recoveryCtx?.sleepHours ?? null,
+          readinessScore: recoveryCtx?.readinessScore ?? null,
+          hrvMs: recoveryCtx?.hrvMs ?? null,
+          restingHeartRate: recoveryCtx?.restingHeartRate ?? null,
         },
       });
       if (error) {
@@ -1427,24 +1490,41 @@ export default function ActiveWorkoutScreen() {
           isLastSetOfExercise: setNumber >= exercise.sets.length,
           isPyramid: exercise.setStructure === 'pyramid',
         });
-        fetchCoachingNote(
-          exerciseId,
-          displayName,
-          target.targetReps,
-          isThisExerciseSwapped ? weight : target.targetWeight,
-          target.targetRpe,
-          reps,
-          weight,
-          rpe,
-          {
-            isUnilateral: exercise.isUnilateral,
-            isLastSetOfExercise,
-            isLastExercise,
-            isPyramid: exercise.setStructure === 'pyramid',
-            setNumber,
-            totalSets: exercise.sets.length,
-          },
-        );
+        void (async () => {
+          // Query HR from HealthKit post-set — fire alongside coaching note
+          const isHealthGranted =
+            healthAvailable &&
+            (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
+
+          const heartRate = isHealthGranted
+            ? await queryPostSetHeartRate(90)
+            : null;
+
+          console.log('[HR] post-set heart rate:', JSON.stringify(heartRate));
+
+          console.log('[Recovery] passing to coaching-feedback:', JSON.stringify(recoveryContext));
+
+          fetchCoachingNote(
+            exerciseId,
+            displayName,
+            target.targetReps,
+            isThisExerciseSwapped ? weight : target.targetWeight,
+            target.targetRpe,
+            reps,
+            weight,
+            rpe,
+            {
+              isUnilateral: exercise.isUnilateral,
+              isLastSetOfExercise,
+              isLastExercise,
+              isPyramid: exercise.setStructure === 'pyramid',
+              setNumber,
+              totalSets: exercise.sets.length,
+            },
+            heartRate,
+            recoveryContext,
+          );
+        })();
       }
     }
   };

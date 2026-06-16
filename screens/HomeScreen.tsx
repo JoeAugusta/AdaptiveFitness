@@ -75,6 +75,12 @@ function formatActivityIntensityShort(intensity: string): string {
 }
 import { JordanAvatar } from '../components/JordanAvatar';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { useHealthData } from '../hooks/useHealthData';
+import HealthConnectCard, {
+  HEALTH_PERMISSION_DISMISSED_KEY,
+  HEALTH_PERMISSION_GRANTED_KEY,
+} from '../components/HealthConnectCard';
+import HealthRecoveryCard from '../components/HealthRecoveryCard';
 import { epleyEstimated1RMLbs, matchesTargetLift } from '../utils/strengthGoalLift';
 import { parseSetsJson } from '../utils/workoutHistoryData';
 import { useAuth } from '../contexts/AuthContext';
@@ -617,6 +623,14 @@ export default function HomeScreen() {
     trialEndsAt,
   } = useEntitlement();
 
+  const {
+    isAvailable: healthAvailable,
+    permissionStatus: healthPermissionStatus,
+    requestPermission: requestHealthPermission,
+    fetchHealthData,
+    healthData,
+  } = useHealthData();
+
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
@@ -744,6 +758,8 @@ export default function HomeScreen() {
     current1RM: number;
     target1RM: number;
   } | null>(null);
+  const [showHealthCard, setShowHealthCard] = useState(false);
+  const [healthGranted, setHealthGranted] = useState(false);
 
   const displayedGoalProgress = useMemo(() => {
     if (!goalProgress || goalProgress.target1RM <= 0) return null;
@@ -1657,6 +1673,19 @@ export default function HomeScreen() {
 
       // Fire stats in background — dashboard renders immediately
       loadStats(userId, plan.id, plan.current_week);
+
+      // Fetch Health data if permission granted — pre-fills check-in
+      const isHealthGranted =
+        await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY) === '1';
+      if (isHealthGranted && healthAvailable) {
+        void fetchHealthData().then((data) => {
+          if (data.sleepHours !== null) {
+            setTodaySleepHours(
+              Math.min(10, Math.round(data.sleepHours)),
+            );
+          }
+        });
+      }
     } catch (e) {
       console.error('Dashboard load error:', e);
     } finally {
@@ -1722,7 +1751,24 @@ export default function HomeScreen() {
       const pending = consumePendingJordanNote();
       if (pending) setFreshSessionNote(pending);
       void loadDashboardData();
-    }, []),
+
+      void (async () => {
+        // Health permission check — iOS only, non-blocking
+        if (healthAvailable) {
+          const [dismissed, granted] = await Promise.all([
+            AsyncStorage.getItem(HEALTH_PERMISSION_DISMISSED_KEY),
+            AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY),
+          ]);
+          console.log('[Health] dismissed:', dismissed, 'granted:', granted, 'showCard:', !dismissed && granted !== '1');
+          if (granted === '1') {
+            setHealthGranted(true);
+            setShowHealthCard(false);
+          } else if (!dismissed) {
+            setShowHealthCard(true);
+          }
+        }
+      })();
+    }, [healthAvailable]),
   );
 
   const loadStats = async (uid: string, planId: string, currentWeek: number) => {
@@ -1965,6 +2011,61 @@ export default function HomeScreen() {
     }
   };
 
+  const generatePreSessionMessage = useCallback(async (
+    signal: SessionSignal,
+  ): Promise<string | null> => {
+    if (!signal) return null;
+    try {
+      const todayDate = getLocalDateString();
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const userId = authSession?.user?.id;
+
+      // Fetch today's check-in data
+      let sleepHours: number | null = null;
+      let readinessScore: number | null = null;
+      if (userId) {
+        const { data: weightLog } = await supabase
+          .from('weight_logs')
+          .select('sleep_hours, readiness_score')
+          .eq('user_id', userId)
+          .eq('log_date', todayDate)
+          .maybeSingle();
+        sleepHours = (weightLog?.sleep_hours as number | null) ?? null;
+        readinessScore = (weightLog?.readiness_score as number | null) ?? null;
+      }
+
+      // Use Health data if available
+      const isHealthGranted =
+        healthAvailable &&
+        (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
+      const healthResult = isHealthGranted ? healthData : null;
+
+      const { data } = await supabase.functions.invoke('coaching-feedback', {
+        body: {
+          mode: 'pre_session',
+          exerciseName: 'pre_session',
+          lastSessionSignal: signal,
+          sleepHours: sleepHours ?? healthResult?.sleepHours ?? null,
+          readinessScore,
+          hrvMs: healthResult?.hrvMs ?? null,
+          restingHeartRate: healthResult?.restingHeartRate ?? null,
+          targetRpe: 0,
+          loggedRpe: 0,
+          targetReps: '',
+          loggedReps: 0,
+          targetWeight: 0,
+          loggedWeight: 0,
+        },
+      });
+
+      const text = data?.feedback;
+      return typeof text === 'string' && text.trim() ? text.trim() : null;
+    } catch (err) {
+      if (__DEV__) console.warn('[preSession] Edge Function failed:', err);
+      return null;
+    }
+  }, [healthAvailable, healthData]);
+
   const handleStartWorkout = useCallback(async () => {
     const todayWorkout = planData?.todayWorkout ?? null;
     if (!todayWorkout) return;
@@ -2008,7 +2109,7 @@ export default function HomeScreen() {
       lastSignalLocal != null &&
       sessionsThisWeekLocal >= 1 &&
       !isWeekCompleteLocal
-        ? PRE_SESSION_COPY[lastSignalLocal]
+        ? await generatePreSessionMessage(lastSignalLocal)
         : null;
 
     navigation.navigate('ActiveWorkout', {
@@ -2022,7 +2123,7 @@ export default function HomeScreen() {
         ? (cleanJordanMessage(stripEmDash(preSessionCopyLocal)) ?? null)
         : null,
     });
-  }, [navigation, planData, workoutLogs, isPro, entitlementLoading]);
+  }, [navigation, planData, workoutLogs, isPro, entitlementLoading, generatePreSessionMessage]);
 
   if (isLoading) {
     return (
@@ -2523,6 +2624,25 @@ export default function HomeScreen() {
           />
         ) : null}
 
+        {showHealthCard && healthAvailable ? (
+          <HealthConnectCard
+            onRequestPermission={async () => {
+              const granted = await requestHealthPermission();
+              if (granted) {
+                setHealthGranted(true);
+                setShowHealthCard(false);
+                void fetchHealthData().then((data) => {
+                  if (data.sleepHours !== null) {
+                    setTodaySleepHours(Math.min(10, Math.round(data.sleepHours)));
+                  }
+                });
+              }
+              return granted;
+            }}
+            onDismiss={() => setShowHealthCard(false)}
+          />
+        ) : null}
+
         {/* ── 2. Today's Workout Card (or Generate CTA or Rest Day) ──
             Priority: calendar rest / generate on rest → generate when training path → today’s session → fallback */}
         {hasLoggedWorkoutToday ? (
@@ -2849,6 +2969,12 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {healthGranted && (
+          <HealthRecoveryCard
+            healthData={healthData}
+          />
+        )}
+
         {/* ── 6. Daily Check-in Card ── */}
         <TouchableOpacity
           style={styles.checkInCard}
@@ -2870,7 +2996,7 @@ export default function HomeScreen() {
                   <Text style={styles.checkInBadgePendingText}>Weight</Text>
                 </View>
               )}
-              {todaySleepHours != null ? (
+              {healthGranted && healthData.sleepHours !== null ? null : todaySleepHours != null ? (
                 <View style={styles.checkInBadge}>
                   <Ionicons name="checkmark" size={11} color={Colors.success} />
                   <Text style={styles.checkInBadgeText}>{todaySleepHours}h sleep</Text>
@@ -3210,29 +3336,33 @@ export default function HomeScreen() {
                 <Text style={styles.checkInUnitLabel}>{unitLabel}</Text>
               </View>
 
-              {/* Sleep */}
-              <Text style={styles.checkInSectionLabel}>SLEEP LAST NIGHT</Text>
-              <View style={styles.checkInPillRow}>
-                {([
-                  { value: 5, label: '5h' }, { value: 6, label: '6h' },
-                  { value: 7, label: '7h' }, { value: 8, label: '8h' },
-                  { value: 9, label: '9h' }, { value: 10, label: '10h+' },
-                ] as const).map(({ value, label }) => {
-                  const sel = checkInSleep === value;
-                  return (
-                    <TouchableOpacity
-                      key={value}
-                      style={[styles.checkInPill, sel && styles.checkInPillSelected]}
-                      onPress={() => setCheckInSleep((p) => (p === value ? null : value))}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[styles.checkInPillText, sel && styles.checkInPillTextSelected]}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {/* Sleep — hidden when Apple Health has data */}
+              {!(healthGranted && healthData.sleepHours !== null) ? (
+                <>
+                  <Text style={styles.checkInSectionLabel}>SLEEP LAST NIGHT</Text>
+                  <View style={styles.checkInPillRow}>
+                    {([
+                      { value: 5, label: '5h' }, { value: 6, label: '6h' },
+                      { value: 7, label: '7h' }, { value: 8, label: '8h' },
+                      { value: 9, label: '9h' }, { value: 10, label: '10h+' },
+                    ] as const).map(({ value, label }) => {
+                      const sel = checkInSleep === value;
+                      return (
+                        <TouchableOpacity
+                          key={value}
+                          style={[styles.checkInPill, sel && styles.checkInPillSelected]}
+                          onPress={() => setCheckInSleep((p) => (p === value ? null : value))}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[styles.checkInPillText, sel && styles.checkInPillTextSelected]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
 
               {/* Readiness */}
               <Text style={styles.checkInSectionLabel}>HOW'S YOUR BODY TODAY</Text>

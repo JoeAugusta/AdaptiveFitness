@@ -1186,6 +1186,29 @@ const EMPHASIS_TO_MUSCLE_GROUP: Record<string, string> = {
 };
 
 const EMPHASIS_ALTERNATIVES: Record<string, { name: string; equipment: string; tier: string }[]> = {
+  // Shoulders — front delt
+  front_delt: [
+    { name: 'Cable Front Raise', equipment: 'cable', tier: 'isolation' },
+    { name: 'Dumbbell Front Raise', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Plate Front Raise', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Barbell Front Raise', equipment: 'barbell', tier: 'isolation' },
+  ],
+  // Shoulders — lateral delt
+  lateral_delt: [
+    { name: 'Dumbbell Lateral Raise', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Cable Lateral Raise', equipment: 'cable', tier: 'isolation' },
+    { name: 'Machine Lateral Raise', equipment: 'machine', tier: 'isolation' },
+    { name: 'Leaning Cable Lateral Raise', equipment: 'cable', tier: 'isolation' },
+  ],
+  // Shoulders — rear delt
+  rear_delt: [
+    { name: 'Face Pull', equipment: 'cable', tier: 'isolation' },
+    { name: 'Reverse Dumbbell Fly', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Rear Delt Fly', equipment: 'dumbbell', tier: 'isolation' },
+    { name: 'Cable Rear Delt Fly', equipment: 'cable', tier: 'isolation' },
+    { name: 'Reverse Pec Deck', equipment: 'machine', tier: 'isolation' },
+    { name: 'Band Pull-Apart', equipment: 'bodyweight', tier: 'isolation' },
+  ],
   // Biceps — long head (arm behind body, neutral grip)
   long_head_bicep: [
     { name: 'Hammer Curl', equipment: 'dumbbell', tier: 'isolation' },
@@ -1305,6 +1328,11 @@ function enforceEmphasisVariety(planJson: any): any {
           emphasis === 'long_head_tricep' ||
           emphasis === 'lateral_head_tricep';
 
+        const isShoulder =
+          emphasis === 'front_delt' ||
+          emphasis === 'lateral_delt' ||
+          emphasis === 'rear_delt';
+
         const isPrimary = tier === 'primary_compound';
         const isProtected = PROTECTED_EXERCISES.has(exName);
 
@@ -1315,6 +1343,8 @@ function enforceEmphasisVariety(planJson: any): any {
         // For other muscles: flag isolation only (avoid chest flag)
         const shouldTrack = isBicepTricep
           ? tier !== 'primary_compound'
+          : isShoulder
+          ? tier !== 'primary_compound' // track all non-primary shoulder isolations
           : tier === 'isolation' ||
             (!tier && !['primary_compound', 'secondary_compound'].includes(tier));
 
@@ -1333,7 +1363,11 @@ function enforceEmphasisVariety(planJson: any): any {
         else if (emphasis === 'short_head_bicep') targetEmphasis = 'long_head_bicep';
         else if (emphasis === 'long_head_tricep') targetEmphasis = 'lateral_head_tricep';
         else if (emphasis === 'lateral_head_tricep') targetEmphasis = 'long_head_tricep';
-        else continue; // only enforce bicep/tricep within-day for now
+        // Shoulder head duplicates — swap second to a different delt head
+        else if (emphasis === 'lateral_delt') targetEmphasis = 'front_delt';
+        else if (emphasis === 'front_delt') targetEmphasis = 'lateral_delt';
+        else if (emphasis === 'rear_delt') targetEmphasis = 'lateral_delt';
+        else continue;
 
         if (!targetEmphasis || !EMPHASIS_ALTERNATIVES[targetEmphasis]) continue;
 
@@ -1466,7 +1500,59 @@ function enforceEmphasisVariety(planJson: any): any {
         (weekEmphasisCounts[missingEmphasis] ?? 0) + 1;
     }
 
-    return { ...week, days: daysAfterPass2 };
+    // ── PASS 3: Cross-session exact exercise name deduplication ──
+    // Prevents the same exercise variation appearing in multiple
+    // sessions in the same week (e.g. EZ Bar Curl Wide Grip ×2)
+    const usedExerciseNames = new Set<string>();
+    const daysAfterPass3 = daysAfterPass2.map((day: any) => {
+      if (day.type !== 'workout' || !Array.isArray(day.exercises)) return day;
+
+      const exercises = [...day.exercises] as any[];
+      const deduped = exercises.map((ex: any) => {
+        const name = String(ex.name ?? '').trim();
+        const emphasis = String(ex.muscleEmphasis ?? '');
+        const exName = name.toLowerCase().trim();
+
+        // Skip protected exercises — never swap them
+        if (PROTECTED_EXERCISES.has(exName)) {
+          usedExerciseNames.add(exName);
+          return ex;
+        }
+
+        if (!usedExerciseNames.has(exName)) {
+          usedExerciseNames.add(exName);
+          return ex;
+        }
+
+        // Exercise already used this week — find an alternative
+        // with the same emphasis but different name
+        const alternatives = EMPHASIS_ALTERNATIVES[emphasis];
+        if (!alternatives?.length) return ex;
+
+        const currentEquip = String(ex.equipment ?? '');
+        const replacement = alternatives.find(
+          (a) =>
+            a.name.toLowerCase() !== exName &&
+            !usedExerciseNames.has(a.name.toLowerCase()),
+        ) ??
+        alternatives.find(
+          (a) => a.name.toLowerCase() !== exName,
+        );
+
+        if (!replacement) return ex;
+
+        usedExerciseNames.add(replacement.name.toLowerCase());
+        return {
+          ...ex,
+          name: replacement.name,
+          equipment: replacement.equipment,
+        };
+      });
+
+      return { ...day, exercises: deduped };
+    });
+
+    return { ...week, days: daysAfterPass3 };
   });
 
   return { ...planJson, weeks: updatedWeeks };
@@ -2417,7 +2503,11 @@ function resolveTotalWeeks(body: GeneratePlanBody): number {
   return 12;
 }
 
-function getMaxExercises(sessionLength: string, experience: string): number {
+function getMaxExercises(
+  sessionLength: string,
+  experience: string,
+  hasPriorityMuscles: boolean = false,
+): number {
   const base: Record<string, number> = {
     '30-45': 4,
     '45-60': 5,
@@ -2431,7 +2521,9 @@ function getMaxExercises(sessionLength: string, experience: string): number {
   };
   const baseCount = base[sessionLength] ?? 5;
   const bonus = expBonus[experience] ?? 0;
-  return Math.min(Math.max(1, baseCount + bonus), 8);
+  // Priority muscles need room for 1 extra exercise per session
+  const priorityBonus = hasPriorityMuscles ? 1 : 0;
+  return Math.min(Math.max(1, baseCount + bonus + priorityBonus), 8);
 }
 
 serve(async (req) => {
@@ -2552,7 +2644,9 @@ serve(async (req) => {
 
     const sessionRules =
       SESSION_LENGTH_RULES[sessionLength] ?? SESSION_LENGTH_RULES['45-60'];
-    const maxExercises = getMaxExercises(sessionLength, experience);
+    const hasPriorityMuscles =
+      Array.isArray(priorityMuscles) && priorityMuscles.length > 0;
+    const maxExercises = getMaxExercises(sessionLength, experience, hasPriorityMuscles);
 
     const injuries = Array.isArray(injuriesIn) ? injuriesIn : [];
     const excludedExercises = Array.isArray(excludedExercisesIn) ? excludedExercisesIn : [];
@@ -2966,7 +3060,57 @@ Each ExerciseObject must include: "phase": "strength" | "hypertrophy"
 Each DayObject with type "workout" must include: "sessionPhase": "power_hypertrophy"`;
 
     } else if (goal === 'hypertrophy' && priorityMuscles && priorityMuscles.length > 0) {
-      goalContext = `Priority muscle groups: ${priorityMuscles.join(', ')}. Give these groups extra volume (1 additional exercise).`;
+      const priorityList = priorityMuscles.join(', ');
+
+      const lowerBodyMuscles = new Set([
+        'quads', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'legs',
+        'hip flexors', 'adductors',
+      ]);
+      const hasLowerBodyPriority = priorityMuscles.some(
+        (m: string) => lowerBodyMuscles.has(m.toLowerCase()),
+      );
+      const lowerPriorityList = priorityMuscles
+        .filter((m: string) => lowerBodyMuscles.has(m.toLowerCase()))
+        .join(', ');
+
+      goalContext = `Priority muscle groups: ${priorityList}.
+
+PRIORITY VOLUME RULES — apply across ALL sessions:
+
+Step 1: For each priority muscle (${priorityList}), scan every workout day
+in the sessionStructure array above. Each workout day has a primaryMuscles
+array. If the priority muscle (or its muscle group) appears in that day's
+primaryMuscles, add 1 extra exercise for that muscle beyond what you would
+normally program for that session.
+
+Step 2 — Lower body priority override:
+${hasLowerBodyPriority
+  ? `This user has prioritized lower body muscles: ${lowerPriorityList}.
+These muscles must appear in EVERY lower body session, including posterior-chain
+focused sessions (focus: legs_posterior, lower_volume, lower_hypertrophy).
+Even on a posterior-chain day, add 1 quad/priority muscle exercise as a
+secondary movement (e.g. Leg Press or Hack Squat after the primary hinges).
+A priority-quad user doing a hamstring day still gets a leg press finisher.`
+  : `No lower body priority muscles selected — standard posterior-chain session
+structure applies (no quad work required on legs_posterior or lower_volume days).`}
+
+Step 3 — Exercise cap:
+The maximum exercises per session has been raised by 1 specifically to
+accommodate priority volume. You MUST use this extra slot for a priority
+muscle exercise on sessions that train that muscle. Do not use it for
+non-priority muscles.
+
+Step 4 — Distribution:
+Do NOT cluster all priority volume onto one day. If a priority muscle
+appears in 3 sessions this week, add the extra exercise across all 3 sessions
+(1 extra per session), not 3 extra on one day.
+
+Step 5 — Sub-muscle bias:
+${Object.keys(subMusclePreferences).length > 0
+  ? `Sub-muscle preferences are specified below in SUB-MUSCLE FOCUS.
+When adding the priority exercise for a muscle that has a sub-muscle preference,
+the extra exercise MUST target the specified sub-muscle.`
+  : `No sub-muscle preferences — balanced selection for all priority muscles.`}`;
       weightAnchor = `Rep and RPE targets follow PROGRAMMING PARAMETERS and exercise-type rules below. Week 1 prescribed load policy is in WEEK 1 STARTING WEIGHTS — targetWeight must be 0 for every exercise.`;
     } else if (goal === 'hypertrophy') {
       weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for every exercise; coachingNote per system message (selection reasoning).`;
@@ -2977,6 +3121,33 @@ Each DayObject with type "workout" must include: "sessionPhase": "power_hypertro
       weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0; rep schemes, rest, and density as programmed below.`;
     } else {
       weightAnchor = `Week 1 load policy: WEEK 1 STARTING WEIGHTS — targetWeight 0 for all exercises.`;
+    }
+
+    if (Array.isArray(priorityMuscles) && priorityMuscles.length > 0) {
+      const priorityList = priorityMuscles.join(', ');
+      const lowerBodyMusclesSet = new Set([
+        'quads', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'legs',
+      ]);
+      const hasLowerPriority = (priorityMuscles as string[]).some(
+        (m) => lowerBodyMusclesSet.has(m.toLowerCase()),
+      );
+      const lowerPriorityNames = (priorityMuscles as string[])
+        .filter((m) => lowerBodyMusclesSet.has(m.toLowerCase()))
+        .join(', ');
+      weightAnchor += `
+
+PRIORITY MUSCLE VOLUME (${priorityList}):
+For each priority muscle, scan every workout day in sessionStructure.
+If the muscle appears in that day's primaryMuscles array, add 1 extra
+exercise for that muscle. The exercise cap has been raised by 1 for
+sessions containing priority muscles.
+${hasLowerPriority
+  ? `Lower body priority (${lowerPriorityNames}): add 1 exercise for these
+muscles even on posterior-chain sessions (legs_posterior, lower_volume) —
+e.g. Leg Press or Hack Squat as a finisher after the primary hinges.`
+  : ''}
+Distribute priority volume across all relevant sessions — do not cluster
+extra work onto one day.`;
     }
 
     const isNonStrengthGoal =
@@ -3138,7 +3309,7 @@ ${MOVEMENT_PATTERN_BLOCK}`;
               lateral_head_tricep:
                 'lateral head tricep — pushdowns, close-grip bench, dips',
               upper: 'upper chest — incline press and incline fly variations',
-              lower: 'lower chest — decline press, dips, low-to-high cable fly',
+              lower: 'lower chest — decline press, machine dips, cable fly (high to low)',
               front: 'front delt — overhead press variations, front raises',
               lateral: 'lateral delt — lateral raises, upright rows, cable laterals',
               rear: 'rear delt — face pulls, reverse fly, bent-over lateral raises',
@@ -3148,7 +3319,7 @@ ${MOVEMENT_PATTERN_BLOCK}`;
               outer_sweep:
                 'vastus lateralis — hack squats, wide-stance leg press, leg extensions',
               vmo:
-                'VMO/teardrop — close-stance squats, sissy squats, terminal knee extensions, leg press with feet low and close',
+                'VMO/teardrop (inner quad sweep) — close-stance Goblet Squat, Leg Press (feet low and close together), Leg Extension with toes pointed slightly out, Bulgarian Split Squat with upright torso',
             };
             const resolveDesc = (muscle: string, focus: string): string => {
               if (muscle === 'Triceps' && focus === 'long_head') {
@@ -3156,6 +3327,11 @@ ${MOVEMENT_PATTERN_BLOCK}`;
               }
               if (muscle === 'Triceps' && focus === 'lateral_head') {
                 return focusDescriptions.lateral_head_tricep;
+              }
+              // Brachialis uses the same exercises as long head bicep —
+              // map explicitly so Claude doesn't invent non-library exercises
+              if (muscle === 'Biceps' && focus === 'brachialis') {
+                return 'brachialis (thickness) — Hammer Curl, Cross Body Hammer Curl, Rope Hammer Curl, Incline Dumbbell Curl. These target the brachialis under the bicep for overall arm thickness.';
               }
               return focusDescriptions[focus] ?? focus;
             };

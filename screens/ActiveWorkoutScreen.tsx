@@ -2620,6 +2620,7 @@ export default function ActiveWorkoutScreen() {
       </Modal>
       ) : null}
 
+      {showPreSessionModal ? (
       <Modal
         visible={showPreSessionModal}
         transparent
@@ -2649,6 +2650,7 @@ export default function ActiveWorkoutScreen() {
           </View>
         </View>
       </Modal>
+      ) : null}
       </View>
       <BLEDeviceSheet
         visible={showBLESheet}

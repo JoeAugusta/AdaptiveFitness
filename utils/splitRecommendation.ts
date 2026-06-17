@@ -124,7 +124,7 @@ export function getSplitInfoDescription(splitId: string): string {
   switch (splitId) {
     case 'upper_lower':
       return (
-        'Upper/Lower splits train your upper and lower body on alternating days. Each muscle group gets hit twice a week — once heavy, once for volume. The most versatile split for intermediate lifters.'
+        'Upper/Lower training splits your sessions between upper and lower body. At 4+ days each muscle gets hit twice a week. At 3 days, the structure adapts — Upper/Lower/Full Body gives every muscle a second stimulus at moderate intensity, while leg or upper priority variants redistribute frequency toward your stated goals.'
       );
     case 'phul':
       return (
@@ -140,7 +140,7 @@ export function getSplitInfoDescription(splitId: string): string {
       );
     case 'ppl_upper':
       return (
-        'A 5-day extension of Push/Pull/Legs. The fourth session adds an upper body day at moderate intensity — extra frequency for chest and back without maxing out recovery.'
+        'Push/Pull/Legs plus an Upper and Lower volume day. Every muscle gets hit twice a week — push, pull, and legs each have a heavy day and a volume day. The most complete 5-day structure for intermediate and advanced lifters.'
       );
     case 'arnold':
       return (
@@ -446,6 +446,41 @@ export function getRecommendedSplit(
     };
   }
 
+  // 3-day intermediate/advanced — muscle-priority-aware
+  if (d === 3 && goal !== 'strength' && goal !== 'power_hypertrophy') {
+    const flags3 = getMuscleFocusFlags(priorityMuscles ?? [], weakPoints ?? []);
+    if (flags3.isLegDominant) {
+      return {
+        splitId: 'upper_lower',
+        splitName: 'Lower / Upper / Lower',
+        workoutDays: 3,
+        reason: `You've prioritised ${flags3.legPriorityLabel} — legs get two sessions this week, upper body gets one. Lower heavy on Day 1, upper on Day 2, lower volume on Day 3.`,
+      };
+    }
+    if (flags3.isArmDominant) {
+      return {
+        splitId: 'upper_lower',
+        splitName: 'Upper / Lower / Upper',
+        workoutDays: 3,
+        reason: `Arms are a stated priority — upper body gets two sessions this week so biceps and triceps get an extra hit. Upper heavy on Day 1, lower on Day 2, upper with arm emphasis on Day 3.`,
+      };
+    }
+    if (flags3.isUpperDominant) {
+      return {
+        splitId: 'upper_lower',
+        splitName: 'Upper / Lower / Upper',
+        workoutDays: 3,
+        reason: `Upper body is your focus — you get two upper sessions and one lower. Upper heavy on Day 1, lower on Day 2, upper volume on Day 3.`,
+      };
+    }
+    return {
+      splitId: 'upper_lower',
+      splitName: 'Upper / Lower / Full Body',
+      workoutDays: 3,
+      reason: `Three days works best as Upper, Lower, then Full Body — every muscle gets hit at least once, and the full body day gives you a second stimulus on everything at moderate intensity.`,
+    };
+  }
+
   const flags = getMuscleFocusFlags(priorityMuscles ?? [], weakPoints ?? []);
   const { isLegDominant, isArmDominant, isUpperDominant, legPriorityLabel } = flags;
 
@@ -462,7 +497,7 @@ export function getRecommendedSplit(
     } else if (d === 5) {
       splitId = 'ppl_upper';
       reason =
-        `${d} days and advanced — PPL + Upper gives you the volume and frequency your body needs to keep progressing.`;
+        `PPL + Upper + Lower hits every muscle twice a week across 5 days — push, pull, and legs each get a heavy and a volume session. That is the frequency that drives consistent progress.`;
     } else if (d === 4) {
       splitId = 'phul';
       reason =
@@ -479,11 +514,11 @@ export function getRecommendedSplit(
         `PPL at ${d} days hits every muscle twice weekly — the frequency sweet spot for intermediate hypertrophy.`;
     } else if (d === 5) {
       splitId = 'ppl_upper';
-      reason = `PPL + Upper gives high volume and frequency across ${d} days.`;
+      reason = `PPL + Upper + Lower hits every muscle twice across 5 days — push, pull, and legs each get a heavy and a volume session. That is the right frequency for consistent hypertrophy.`;
     } else if (d === 4) {
-      splitId = 'upper_lower';
+      splitId = 'phul';
       reason =
-        `Upper/Lower gives each muscle 2× weekly frequency — the sweet spot for hypertrophy at ${d} days.`;
+        `PHUL combines power and hypertrophy days — heavy compounds first, then volume accessories. The most effective ${d}-day structure for your level.`;
     } else {
       splitId = 'full_body_advanced';
       reason = `Full body training at ${d} days maximises frequency per session.`;
@@ -813,8 +848,8 @@ function pplUpper5(): SessionDay[] {
     W(1, 'push_heavy', ['chest', 'shoulders', 'triceps'], 'heavy'),
     W(2, 'pull_heavy', ['back', 'biceps', 'rear_delts'], 'heavy'),
     W(3, 'legs_quad', ['quads', 'glutes', 'calves', 'core'], 'heavy'),
-    W(4, 'push_volume', ['chest', 'shoulders', 'triceps'], 'volume'),
-    W(5, 'upper_volume', ['chest', 'back', 'shoulders'], 'volume'),
+    W(4, 'upper_volume', ['chest', 'back', 'arms', 'shoulders'], 'volume'),
+    W(5, 'lower_volume', ['hamstrings', 'glutes', 'core'], 'volume'),
     R(6),
     R(7),
   ];
@@ -853,6 +888,102 @@ function fullBodyBeginner3(): SessionDay[] {
     R(5),
     R(6),
     W(7, 'full_body_a', ['chest', 'back', 'quads', 'core'], 'moderate'),
+  ];
+}
+
+/** Default 3-day intermediate/advanced: Upper / Lower / Full Body */
+function upperLowerFullBody3(): SessionDay[] {
+  return [
+    W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
+    W(3, 'full_body_a', ['chest', 'back', 'quads', 'shoulders', 'core'], 'moderate'),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
+}
+
+/** 3-day leg priority: Lower / Upper / Lower */
+function lowerUpperLower3(): SessionDay[] {
+  return [
+    W(1, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
+    W(2, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
+    W(3, 'lower_volume', ['hamstrings', 'glutes', 'calves', 'core'], 'volume'),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
+}
+
+/** 3-day upper/arm priority: Upper / Lower / Upper */
+function upperLowerUpper3(): SessionDay[] {
+  return [
+    W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
+    W(3, 'upper_volume', ['chest', 'back', 'arms'], 'volume'),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
+}
+
+/** 3-day arm priority: Upper / Lower / Upper (arm emphasis on D3) */
+function upperLowerUpperArms3(): SessionDay[] {
+  return [
+    W(1, 'upper_heavy', ['chest', 'back', 'shoulders'], 'heavy'),
+    W(2, 'lower_heavy', ['quads', 'hamstrings', 'glutes', 'core'], 'heavy'),
+    W(3, 'upper_arms_focus', ['biceps', 'triceps', 'chest', 'shoulders'], 'volume'),
+    R(4),
+    R(5),
+    R(6),
+    R(7),
+  ];
+}
+
+/** 3-day strength: Target lift heavy / Opposite body / Target lift volume */
+function strengthThreeDay3(targetLift: string | null): SessionDay[] {
+  const liftKey = (targetLift ?? '').toLowerCase();
+  const isLower = liftKey.includes('squat') || liftKey.includes('deadlift');
+  const liftMusclesResolved = isLower
+    ? ['quads', 'hamstrings', 'glutes', 'core']
+    : ['chest', 'back', 'shoulders'];
+  const oppositeMuscles = isLower
+    ? ['chest', 'back', 'shoulders', 'arms']
+    : ['quads', 'hamstrings', 'glutes', 'core'];
+
+  return [
+    {
+      day: 1,
+      type: 'workout',
+      focus: isLower ? 'lower_heavy' : 'upper_heavy',
+      primaryMuscles: liftMusclesResolved,
+      sessionIntensity: 'heavy',
+      liftDay: 'heavy',
+      targetLiftDay: true,
+    },
+    {
+      day: 2,
+      type: 'workout',
+      focus: isLower ? 'upper_volume' : 'lower_heavy',
+      primaryMuscles: oppositeMuscles,
+      sessionIntensity: isLower ? 'volume' : 'heavy',
+    },
+    {
+      day: 3,
+      type: 'workout',
+      focus: isLower ? 'lower_volume' : 'upper_volume',
+      primaryMuscles: liftMusclesResolved,
+      sessionIntensity: 'volume',
+      liftDay: 'volume',
+      targetLiftDay: true,
+    },
+    R(4),
+    R(5),
+    R(6),
+    R(7),
   ];
 }
 
@@ -1257,6 +1388,31 @@ export function getSessionStructure(
   // ── END OVERRIDE ─────────────────────────────────────────────
 
   const exp = normExp(experienceLevel ?? 'intermediate');
+
+  // ── 3-DAY MUSCLE-PRIORITY ROUTING ────────────────────────────
+  if (_days === 3 && goal !== 'power_hypertrophy') {
+    if (goal === 'strength') {
+      return finish(strengthThreeDay3(targetLift), splitId);
+    }
+    if (goal !== 'strength') {
+      const flags3 = getMuscleFocusFlags(priorityMuscles, weakPoints);
+      if (flags3.isLegDominant) {
+        return finish(lowerUpperLower3());
+      }
+      if (flags3.isArmDominant) {
+        return finish(upperLowerUpperArms3());
+      }
+      if (flags3.isUpperDominant) {
+        return finish(upperLowerUpper3());
+      }
+      if (exp === 'beginner') {
+        return finish(fullBodyBeginner3());
+      }
+      return finish(upperLowerFullBody3());
+    }
+  }
+  // ── END 3-DAY ROUTING ────────────────────────────────────────
+
   const muscleFocus = getMuscleFocusFlags(priorityMuscles, weakPoints);
 
   if (hint === 'more_upper' && (splitId === 'upper_lower' || splitId === 'strength_3x')) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -492,6 +492,117 @@ function getSplitDayNote(splitId: string, workoutDays: number, selectedDays: num
   return `This split uses ${workoutDays} training days. Your remaining ${restDays} ${restLabel} become rest days.`;
 }
 
+const SPLIT_DAY_PRESETS: Record<string, Array<{ label: string; days: string[] }>> = {
+  upper_lower: [
+    { label: 'Mon / Thu', days: ['Mon', 'Thu'] },
+    { label: 'Tue / Fri', days: ['Tue', 'Fri'] },
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Tue / Wed / Fri / Sun', days: ['Tue', 'Wed', 'Fri', 'Sun'] },
+  ],
+  phul: [
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+  ],
+  leg_focus: [
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+  ],
+  upper_focus: [
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+  ],
+  full_body_beginner: [
+    { label: 'Mon / Thu', days: ['Mon', 'Thu'] },
+    { label: 'Tue / Fri', days: ['Tue', 'Fri'] },
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
+  ],
+  full_body_advanced: [
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
+  ],
+  full_body: [
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
+  ],
+  ppl: [
+    { label: 'Mon / Tue / Wed / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat', 'Sun'] },
+    { label: 'Mon / Tue / Thu / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat', 'Sun'] },
+  ],
+  ppl_upper: [
+    { label: 'Mon / Tue / Wed / Fri / Sat', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
+    { label: 'Tue / Wed / Thu / Sat / Sun', days: ['Tue', 'Wed', 'Thu', 'Sat', 'Sun'] },
+  ],
+  ppl_leg_focus: [
+    { label: 'Mon / Tue / Wed / Fri / Sat', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
+  ],
+  arnold: [
+    { label: 'Mon / Tue / Wed / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat', 'Sun'] },
+  ],
+  batman: [
+    { label: 'Mon / Tue / Wed / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat', 'Sun'] },
+  ],
+  strength_2x: [
+    { label: 'Mon / Thu', days: ['Mon', 'Thu'] },
+    { label: 'Tue / Fri', days: ['Tue', 'Fri'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+  ],
+  strength_3x: [
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+  ],
+  squat_focused_5: [
+    { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
+    { label: 'Mon / Wed / Thu / Sat / Sun', days: ['Mon', 'Wed', 'Thu', 'Sat', 'Sun'] },
+  ],
+};
+
+function getPresetsForSplit(
+  splitId: string,
+  dayCount: number,
+): Array<{ label: string; days: string[] }> {
+  const all = SPLIT_DAY_PRESETS[splitId] ?? [];
+  const filtered = all.filter((p) => p.days.length === dayCount);
+  // If no presets match the day count exactly, fall back to all presets for that split
+  return filtered.length > 0 ? filtered : all;
+}
+
+function getRecoveryWarning(
+  days: string[],
+  splitId: string,
+): string | null {
+  const ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const sorted = [...days].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+
+  const upperLowerSplits = new Set([
+    'upper_lower', 'phul', 'leg_focus', 'upper_focus',
+    'strength_2x', 'strength_3x',
+  ]);
+
+  if (upperLowerSplits.has(splitId)) {
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = ORDER.indexOf(sorted[i]);
+      const b = ORDER.indexOf(sorted[i + 1]);
+      if (b - a === 1) {
+        if (i === 0) {
+          const splitDisplayName = splitId
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+          return `For ${splitDisplayName} splits, back-to-back days don't leave enough recovery time between same-muscle sessions. Jordan recommends at least one rest day between workouts — a pattern like Mon / Wed / Fri / Sat works well.`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export default function ExperienceScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -512,7 +623,11 @@ export default function ExperienceScreen() {
   } = route.params;
 
   const [experience, setExperience] = useState<string | null>(null);
+  const [daysCountSelected, setDaysCountSelected] = useState<number | null>(null);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
+  const [showCustomDayPicker, setShowCustomDayPicker] = useState(false);
+  const [recoveryWarning, setRecoveryWarning] = useState<string | null>(null);
   const [sessionLength, setSessionLength] = useState<string | null>(null);
   const [recommendedSplit, setRecommendedSplit] = useState<SplitRecommendation | null>(
     null,
@@ -531,7 +646,7 @@ export default function ExperienceScreen() {
   const originalStructureRef = useRef<SessionDay[]>([]);
   const originalRecRef = useRef<SplitRecommendation | null>(null);
 
-  const daysPerWeek = selectedDays.length > 0 ? String(selectedDays.length) : null;
+  const daysPerWeek = daysCountSelected != null ? String(daysCountSelected) : null;
 
   useEffect(() => {
     setStructureConfirmed(false);
@@ -545,10 +660,17 @@ export default function ExperienceScreen() {
   }, [experience]);
 
   useEffect(() => {
-    if (selectedDays.length >= 2 && experience) {
+    setSelectedDays([]);
+    setSelectedPresetIndex(null);
+    setShowCustomDayPicker(false);
+    setRecoveryWarning(null);
+  }, [daysCountSelected]);
+
+  useEffect(() => {
+    if ((daysCountSelected ?? 0) >= 2 && experience) {
       const rec = getRecommendedSplit(
         goal,
-        String(selectedDays.length),
+        String(daysCountSelected ?? 0),
         targetLift ?? null,
         experience,
         currentSplit ?? null,
@@ -559,7 +681,7 @@ export default function ExperienceScreen() {
       );
       const structure = getSessionStructure(
         rec.splitId,
-        selectedDays.length,
+        daysCountSelected ?? 0,
         goal,
         targetLift ?? null,
         priorityMuscles ?? [],
@@ -579,6 +701,7 @@ export default function ExperienceScreen() {
       originalRecRef.current = null;
     }
   }, [
+    daysCountSelected,
     selectedDays,
     experience,
     goal,
@@ -591,6 +714,7 @@ export default function ExperienceScreen() {
 
   const baseReady =
     !!experience &&
+    (daysCountSelected ?? 0) >= 2 &&
     selectedDays.length >= 2 &&
     !!sessionLength &&
     !!recommendedSplit &&
@@ -636,6 +760,31 @@ export default function ExperienceScreen() {
       return sortTrainingDays(next);
     });
   };
+
+  const handleSelectPreset = useCallback((index: number, days: string[]) => {
+    setSelectedPresetIndex(index);
+    setSelectedDays(sortTrainingDays(days));
+    setShowCustomDayPicker(false);
+    setRecoveryWarning(null);
+    setStructureConfirmed(false);
+  }, []);
+
+  const handleCustomDayToggle = useCallback((label: string) => {
+    setSelectedDays((prev) => {
+      const next = prev.includes(label)
+        ? prev.filter((d) => d !== label)
+        : [...prev, label];
+      const sorted = sortTrainingDays(next);
+      if (recommendedSplit && sorted.length >= 2) {
+        setRecoveryWarning(getRecoveryWarning(sorted, recommendedSplit.splitId));
+      } else {
+        setRecoveryWarning(null);
+      }
+      return sorted;
+    });
+    setSelectedPresetIndex(null);
+    setStructureConfirmed(false);
+  }, [recommendedSplit]);
 
   const workoutsOrdered = sessionStructure
     .filter((d) => d.type === 'workout')
@@ -851,34 +1000,142 @@ export default function ExperienceScreen() {
 
         <Text style={styles.sectionHeading}>Training days</Text>
         <Text style={styles.trainingDaysSubtext}>
-          Tap the days you train each week
+          How many days per week do you train?
         </Text>
-        <View style={styles.dayPillRow}>
-          {TRAINING_DAY_LABELS.map((label) => {
-            const selected = selectedDays.includes(label);
-            return (
-              <TouchableOpacity
-                key={label}
-                activeOpacity={0.7}
-                style={[styles.dayPill, selected && styles.dayPillSelected]}
-                onPress={() => toggleTrainingDay(label)}
+        <View style={styles.dayCountRow}>
+          {[2, 3, 4, 5, 6].map((count) => (
+            <TouchableOpacity
+              key={count}
+              activeOpacity={0.7}
+              style={[
+                styles.dayCountPill,
+                daysCountSelected === count && styles.dayCountPillSelected,
+              ]}
+              onPress={() => setDaysCountSelected(count)}
+            >
+              <Text
+                style={[
+                  styles.dayCountPillText,
+                  daysCountSelected === count && styles.dayCountPillTextSelected,
+                ]}
               >
-                <Text
-                  style={[styles.dayPillText, selected && styles.dayPillTextSelected]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                {count}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-        {/* Root cause: selectedDays starts as [], so length < 2 was true on mount,
-            rendering red validation text before any interaction. Guard with length > 0
-            so the message only appears after the user has begun selecting days. */}
-        {selectedDays.length > 0 && selectedDays.length < 2 ? (
-          <Text style={styles.trainingDaysValidation}>
-            Select at least 2 training days
-          </Text>
+
+        {recommendedSplit && (daysCountSelected ?? 0) >= 2 ? (
+          <>
+            <Text style={styles.presetSectionLabel}>Choose your training days</Text>
+            <Text style={styles.presetSectionSubtitle}>
+              Jordan recommends these schedules for {recommendedSplit.splitName}
+            </Text>
+            <View style={styles.presetList}>
+              {getPresetsForSplit(recommendedSplit.splitId, daysCountSelected ?? 0).map((preset, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.presetRow,
+                    selectedPresetIndex === idx && styles.presetRowSelected,
+                  ]}
+                  onPress={() => handleSelectPreset(idx, preset.days)}
+                >
+                  <View style={styles.presetRowLeft}>
+                    <View
+                      style={[
+                        styles.presetRadio,
+                        selectedPresetIndex === idx && styles.presetRadioSelected,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.presetRowLabel,
+                        selectedPresetIndex === idx && styles.presetRowLabelSelected,
+                      ]}
+                    >
+                      {preset.label}
+                    </Text>
+                  </View>
+                  {idx === 0 ? (
+                    <View style={styles.presetRecommendedBadge}>
+                      <Text style={styles.presetRecommendedBadgeText}>Recommended</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[
+                  styles.presetRow,
+                  showCustomDayPicker && styles.presetRowSelected,
+                ]}
+                onPress={() => {
+                  setShowCustomDayPicker(true);
+                  setSelectedPresetIndex(null);
+                  setSelectedDays([]);
+                  setRecoveryWarning(null);
+                  setStructureConfirmed(false);
+                }}
+              >
+                <View style={styles.presetRowLeft}>
+                  <View
+                    style={[
+                      styles.presetRadio,
+                      showCustomDayPicker && styles.presetRadioSelected,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.presetRowLabel,
+                      showCustomDayPicker && styles.presetRowLabelSelected,
+                    ]}
+                  >
+                    Custom
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {showCustomDayPicker ? (
+              <View style={styles.customPickerWrap}>
+                <View style={styles.dayPillRow}>
+                  {TRAINING_DAY_LABELS.map((label) => {
+                    const selected = selectedDays.includes(label);
+                    return (
+                      <TouchableOpacity
+                        key={label}
+                        activeOpacity={0.7}
+                        style={[styles.dayPill, selected && styles.dayPillSelected]}
+                        onPress={() => handleCustomDayToggle(label)}
+                      >
+                        <Text
+                          style={[
+                            styles.dayPillText,
+                            selected && styles.dayPillTextSelected,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {selectedDays.length > 0 && selectedDays.length < 2 ? (
+                  <Text style={styles.trainingDaysValidation}>
+                    Select at least 2 training days
+                  </Text>
+                ) : null}
+                {recoveryWarning ? (
+                  <View style={styles.recoveryWarningCard}>
+                    <Text style={styles.recoveryWarningText}>{recoveryWarning}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         <Text style={styles.sectionHeading}>Session length</Text>
@@ -1330,6 +1587,125 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     textAlign: 'center',
     marginTop: Spacing.sm,
+  },
+  dayCountRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  dayCountPill: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayCountPillSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  dayCountPillText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textSecondary,
+  },
+  dayCountPillTextSelected: {
+    color: Colors.accent,
+  },
+  presetSectionLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: Spacing.lg,
+    marginBottom: 4,
+  },
+  presetSectionSubtitle: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.md,
+  },
+  presetList: {
+    gap: Spacing.sm,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  presetRowSelected: {
+    backgroundColor: Colors.accentMuted,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1.5,
+  },
+  presetRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
+  presetRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+  },
+  presetRadioSelected: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accent,
+  },
+  presetRowLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+  },
+  presetRowLabelSelected: {
+    color: Colors.textPrimary,
+    fontFamily: Fonts.semiBold,
+  },
+  presetRecommendedBadge: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+  },
+  presetRecommendedBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+  },
+  customPickerWrap: {
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  recoveryWarningCard: {
+    backgroundColor: Colors.warningMuted,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  recoveryWarningText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.warning,
+    lineHeight: 18,
   },
 
   cardsContainer: {

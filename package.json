@@ -38,6 +38,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "^0.83.6",
+    "react-native-ble-plx": "^3.5.1",
     "react-native-health-connect": "^3.5.3",
     "react-native-purchases": "^9.10.5",
     "react-native-purchases-ui": "^9.10.5",

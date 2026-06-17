@@ -26,6 +26,9 @@ import type { RouteProp } from '@react-navigation/native';
 import { hapticHeavy, hapticLight, hapticMedium } from '../utils/haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHealthData, type HealthData } from '../hooks/useHealthData';
+import { useBLEHeartRate } from '../hooks/useBLEHeartRate';
+import BLEDeviceSheet from '../components/BLEDeviceSheet';
+import { getBLEHeartRateManager } from '../utils/bleHeartRate';
 import { HEALTH_PERMISSION_GRANTED_KEY } from '../components/HealthConnectCard';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
@@ -568,6 +571,7 @@ export default function ActiveWorkoutScreen() {
     hrvMs: number | null;
     restingHeartRate: number | null;
   } | null>(null);
+  const [showBLESheet, setShowBLESheet] = useState(false);
 
   // Draft crash-recovery: called after loadWorkoutData resolves so planId/dayNumber are known
   const checkDraft = async (planId: string, dayNumber: number) => {
@@ -643,6 +647,7 @@ export default function ActiveWorkoutScreen() {
 
   const { queryPostSetHeartRate, fetchHealthData, isAvailable: healthAvailable } =
     useHealthData();
+  const ble = useBLEHeartRate();
 
   useEffect(() => {
     let cancelled = false;
@@ -686,6 +691,12 @@ export default function ActiveWorkoutScreen() {
     })();
     return () => { cancelled = true; };
   }, [healthAvailable, fetchHealthData]);
+
+  useEffect(() => {
+    // Attempt to reconnect to previously paired BLE device on workout start
+    void ble.tryReconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getAlternatives = (muscleGroup: string): string[] => {
     const map: Record<string, string[]> = {
@@ -1491,14 +1502,20 @@ export default function ActiveWorkoutScreen() {
           isPyramid: exercise.setStructure === 'pyramid',
         });
         void (async () => {
-          // Query HR from HealthKit post-set — fire alongside coaching note
-          const isHealthGranted =
-            healthAvailable &&
-            (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
-
-          const heartRate = isHealthGranted
-            ? await queryPostSetHeartRate(90)
-            : null;
+          // Query HR post-set — BLE takes priority over Apple Health
+          let heartRate: { avgBpm: number | null; peakBpm: number | null } | null = null;
+          if (ble.isConnected) {
+            const bleHR = ble.getRecentHRAverage(90);
+            if (bleHR.avgBpm !== null) {
+              heartRate = { avgBpm: bleHR.avgBpm, peakBpm: bleHR.peakBpm };
+            }
+          }
+          if (!heartRate) {
+            const isHealthGranted =
+              healthAvailable &&
+              (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
+            heartRate = isHealthGranted ? await queryPostSetHeartRate(90) : null;
+          }
 
           console.log('[HR] post-set heart rate:', JSON.stringify(heartRate));
 
@@ -1941,6 +1958,25 @@ export default function ActiveWorkoutScreen() {
               </View>
             ) : null}
           </View>
+          {ble.isConnected && ble.currentHR !== null ? (
+            <TouchableOpacity
+              style={styles.bleHRBadge}
+              onPress={() => setShowBLESheet(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="heart" size={12} color={Colors.danger} />
+              <Text style={styles.bleHRBadgeText}>{ble.currentHR} bpm</Text>
+            </TouchableOpacity>
+          ) : !ble.isConnected && !ble.pairedDevice ? (
+            <TouchableOpacity
+              style={styles.bleConnectPrompt}
+              onPress={() => setShowBLESheet(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="bluetooth-outline" size={12} color={Colors.textTertiary} />
+              <Text style={styles.bleConnectPromptText}>HR monitor</Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
         </View>
 
@@ -2614,6 +2650,21 @@ export default function ActiveWorkoutScreen() {
         </View>
       </Modal>
       </View>
+      <BLEDeviceSheet
+        visible={showBLESheet}
+        onClose={() => setShowBLESheet(false)}
+        onConnect={ble.connect}
+        onDisconnect={ble.disconnect}
+        onStartScan={ble.startScan}
+        onStopScan={ble.stopScan}
+        devices={ble.devices}
+        connectionState={ble.connectionState}
+        connectedDeviceName={ble.isConnected
+          ? getBLEHeartRateManager().getConnectedDeviceName()
+          : null}
+        pairedDevice={ble.pairedDevice}
+        error={ble.error}
+      />
     </SafeAreaView>
   );
 }
@@ -2701,6 +2752,34 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     minWidth: 56,
     textAlign: 'right',
+  },
+  bleHRBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+  },
+  bleHRBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.danger,
+  },
+  bleConnectPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  bleConnectPromptText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
   },
 
   exerciseControlRow: {

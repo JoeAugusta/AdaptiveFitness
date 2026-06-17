@@ -121,7 +121,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(function ShareCard(
           <Text style={styles.tagline}>Train smarter.</Text>
           <Text style={styles.subTagline}>Your plan adapts every week.</Text>
         </View>
-        <Text style={styles.appUrl}>hone.app</Text>
+        <Text style={styles.appUrl}>honefitness.app</Text>
       </View>
     </View>
   );

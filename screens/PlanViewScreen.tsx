@@ -828,8 +828,7 @@ export default function PlanViewScreen() {
   const nextWorkoutDayNumber = (() => {
     if (!weekData) return null;
 
-    // W2+ not yet started — browseable but no Start Workout until
-    // current_week advances to that week on Monday.
+    // W2+ not yet started — browseable but no Start Workout
     if (selectedWeek > planData.currentWeek) return null;
 
     const workoutDays = weekData.days.filter((d) => d.type === 'workout');
@@ -839,39 +838,59 @@ export default function PlanViewScreen() {
     // Week is complete — no next workout
     if (completedWorkoutDays.length >= daysPerWeek) return null;
 
-    const isWeek1 = selectedWeek === 1;
-    const completedAny = completedWorkoutDays.length > 0;
+    // Resolve today's label
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayLabel = dayNames[new Date().getDay()];
+    const scheduledDays = Array.isArray(rawPlanJson?.scheduledDays)
+      ? (rawPlanJson!.scheduledDays as string[])
+      : [];
 
-    // Cold-start W1: map today's calendar position to the correct plan day
-    if (isWeek1 && !completedAny && rawPlanJson?.scheduledDays && Array.isArray(rawPlanJson.scheduledDays)) {
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const todayLabel = dayNames[new Date().getDay()];
-      const normalizedScheduled = (rawPlanJson.scheduledDays as string[]).map(
-        (d) => d.trim().slice(0, 3),
-      );
+    // If we have scheduled days, today must be a training day for
+    // "Start Workout" to appear at all. If not a training day, nothing
+    // gets the button — all unlogged days show "Preview" instead.
+    if (scheduledDays.length > 0) {
+      const normalizedScheduled = scheduledDays.map((d) => d.trim().slice(0, 3));
+      const isTrainingToday = normalizedScheduled.includes(todayLabel);
+      if (!isTrainingToday) return null;
+
+      // Find which position today occupies in the schedule
       const todayIndex = normalizedScheduled.indexOf(todayLabel);
-      if (todayIndex >= 0) {
-        const workoutDaysOrdered = workoutDays
-          .filter((d) => !d.completed)
-          .sort((a, b) => a.dayNumber - b.dayNumber);
-        const target = workoutDaysOrdered[todayIndex];
-        if (target) return target.dayNumber;
+
+      // Map that position to the corresponding plan day
+      const unloggedOrdered = workoutDays
+        .filter((d) => !d.completed)
+        .sort((a, b) => a.dayNumber - b.dayNumber);
+
+      // completedAny: use completed count to determine which slot is next
+      const completedCount = completedWorkoutDays.length;
+
+      // Today's session is the one at position `completedCount` in the
+      // unlogged list — i.e. we've done N sessions, today is session N+1.
+      // Guard: today's schedule index must match completed count
+      // (prevents showing Day 3 button on a Day 2 calendar slot).
+      if (todayIndex !== completedCount) {
+        // Today is a training day but it's not the right session in
+        // sequence (e.g. user skipped a day). Show no Start Workout.
+        return null;
       }
+
+      return unloggedOrdered[0]?.dayNumber ?? null;
     }
 
-    // Mid-week starter W1 with some sessions logged:
-    // Find the next unlogged workout AFTER the last completed day number.
-    if (isWeek1 && completedAny) {
-      const lastCompletedDayNumber = Math.max(...completedWorkoutDays.map((d) => d.dayNumber));
-      const nextAfterLast = workoutDays
+    // No scheduledDays — fall back to sequence (legacy / dev plans)
+    const completedAny = completedWorkoutDays.length > 0;
+    if (!completedAny) {
+      return workoutDays
+        .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null;
+    }
+    const lastCompletedDayNumber = Math.max(
+      ...completedWorkoutDays.map((d) => d.dayNumber),
+    );
+    return (
+      workoutDays
         .filter((d) => !d.completed && d.dayNumber > lastCompletedDayNumber)
-        .sort((a, b) => a.dayNumber - b.dayNumber)[0];
-      if (nextAfterLast) return nextAfterLast.dayNumber;
-      return null;
-    }
-
-    // Normal path: first unlogged workout in sequence
-    return workoutDays.find((d) => !d.completed)?.dayNumber ?? null;
+        .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null
+    );
   })();
 
   const todayCalendarDayNumber = (() => {

@@ -284,6 +284,7 @@ export default function BuildingPlanScreen() {
   const [todayIsScheduled, setTodayIsScheduled] = useState(false);
   const [todayDayNumber, setTodayDayNumber] = useState<number | null>(null);
   const [todayDayTitle, setTodayDayTitle] = useState<string | null>(null);
+  const [todayIsDay1, setTodayIsDay1] = useState(false);
 
   const replacePlanId = params.replacePlanId;
   const selectedPlan: SubscriptionPlanId = params.selectedPlan ?? 'annual';
@@ -569,8 +570,10 @@ export default function BuildingPlanScreen() {
       scheduledNormalized.length > 0 &&
       scheduledNormalized[0] === todayLabel;
 
-    // Default selection: first scheduled day of the week unless today
-    // IS the first scheduled day
+    setTodayIsDay1(todayScheduled && isFirstScheduledDay);
+
+    // If today IS Day 1 of the split, skip the picker and default to today.
+    // Both options would be Day 1 (this week vs next week) — redundant.
     setSelectedStartDate(
       todayScheduled && isFirstScheduledDay ? todayStr : tomorrowStr,
     );
@@ -1039,7 +1042,7 @@ export default function BuildingPlanScreen() {
           />
           <Text style={styles.successTitle}>Your plan is ready.</Text>
 
-          {todayIsScheduled ? (
+          {todayIsScheduled && !todayIsDay1 ? (
             <>
               <Text style={styles.successSubtitle}>
                 When do you want to start?
@@ -1098,7 +1101,7 @@ export default function BuildingPlanScreen() {
             </>
           ) : (
             <Text style={styles.successSubtitle}>
-              First session: {formatDisplayDate(tomorrowDateStr)}
+              First session: {formatDisplayDate(todayIsDay1 ? todayDateStr : tomorrowDateStr)}
             </Text>
           )}
 

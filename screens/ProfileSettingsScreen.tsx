@@ -33,6 +33,14 @@ import {
 import { useMetric, cmToFtIn, ftInToCm } from '../utils/units';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { useBLEHeartRate } from '../hooks/useBLEHeartRate';
+import { useHealthData } from '../hooks/useHealthData';
+import BLEDeviceSheet from '../components/BLEDeviceSheet';
+import { getBLEHeartRateManager } from '../utils/bleHeartRate';
+import {
+  HEALTH_PERMISSION_DISMISSED_KEY,
+  HEALTH_PERMISSION_GRANTED_KEY,
+} from '../components/HealthConnectCard';
 import { getLocalDateString, setDevDateOverride, getDevDateOverride } from '../utils/dateUtils';
 import BetaFeedbackModal from '../components/BetaFeedbackModal';
 import { Ionicons } from '@expo/vector-icons';
@@ -363,6 +371,8 @@ export default function ProfileSettingsScreen() {
   const [bodyMetricsSheetError, setBodyMetricsSheetError] = useState<string | null>(null);
   const [bodyMetricsFlash, setBodyMetricsFlash] = useState<'saved' | null>(null);
   const [bodyMetricsSaving, setBodyMetricsSaving] = useState(false);
+  const [showBLESheet, setShowBLESheet] = useState(false);
+  const [healthConnected, setHealthConnected] = useState(false);
 
   /** BUG-8: DEV-only — dashboard always shows workout card when true */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
@@ -374,6 +384,9 @@ export default function ProfileSettingsScreen() {
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   const { isMetric, setIsMetric, formatBodyWeight, formatHeight } = useMetric();
+  const ble = useBLEHeartRate();
+  const { requestPermission: requestHealthPermission, isAvailable: healthAvailable } =
+    useHealthData();
 
   useEffect(() => {
     if (loading) {
@@ -491,6 +504,9 @@ export default function ProfileSettingsScreen() {
         goal: (goalRes.data as GoalData | null) ?? null,
         plan: (planRes.data as PlanData | null) ?? null,
       });
+
+      const hcGranted = await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY);
+      setHealthConnected(hcGranted === '1');
     } catch (err) {
       console.error('ProfileSettings load error:', err);
       setHasError(true);
@@ -498,6 +514,18 @@ export default function ProfileSettingsScreen() {
       setLoading(false);
     }
   }, []);
+
+  const handleReconnectHealth = useCallback(async () => {
+    if (!healthAvailable) return;
+    try {
+      await requestHealthPermission();
+      await AsyncStorage.setItem(HEALTH_PERMISSION_GRANTED_KEY, '1');
+      await AsyncStorage.removeItem(HEALTH_PERMISSION_DISMISSED_KEY);
+      setHealthConnected(true);
+    } catch (err) {
+      console.warn('[Health] reconnect failed:', err);
+    }
+  }, [healthAvailable, requestHealthPermission]);
 
   useEffect(() => {
     loadData();
@@ -932,6 +960,68 @@ export default function ProfileSettingsScreen() {
           </>
         )}
 
+        {/* ── Connected Devices ── */}
+        <Text style={styles.sectionHeading}>CONNECTED DEVICES</Text>
+        <View style={styles.sectionCard}>
+          {/* Apple Health row */}
+          <View style={styles.row}>
+            <View style={styles.deviceRowLeft}>
+              <Ionicons
+                name="heart-outline"
+                size={18}
+                color={healthConnected ? Colors.success : Colors.textTertiary}
+              />
+              <View>
+                <Text style={styles.rowLabel}>Apple Health</Text>
+                <Text style={styles.deviceStatusText}>
+                  {healthConnected ? 'Connected' : 'Not connected'}
+                </Text>
+              </View>
+            </View>
+            {healthConnected ? (
+              <View style={styles.deviceConnectedBadge}>
+                <Text style={styles.deviceConnectedBadgeText}>Connected</Text>
+              </View>
+            ) : healthAvailable ? (
+              <TouchableOpacity
+                onPress={() => void handleReconnectHealth()}
+                activeOpacity={0.7}
+                style={styles.deviceReconnectBtn}
+              >
+                <Text style={styles.deviceReconnectBtnText}>Reconnect</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.deviceNotConnectedText}>iOS only</Text>
+            )}
+          </View>
+
+          {/* BLE HR Monitor row */}
+          <TouchableOpacity
+            style={[styles.row, styles.rowLast]}
+            onPress={() => setShowBLESheet(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.deviceRowLeft}>
+              <Ionicons
+                name="bluetooth-outline"
+                size={18}
+                color={ble.isConnected ? Colors.success : ble.pairedDevice ? Colors.accent : Colors.textTertiary}
+              />
+              <View>
+                <Text style={styles.rowLabel}>Heart Rate Monitor</Text>
+                <Text style={styles.deviceStatusText}>
+                  {ble.isConnected
+                    ? `${getBLEHeartRateManager().getConnectedDeviceName() ?? ble.pairedDevice?.name ?? 'Device'} · live`
+                    : ble.pairedDevice
+                    ? `${ble.pairedDevice.name} · tap to reconnect`
+                    : 'No device paired'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.rowChevron}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* ── 3b. Preferences — units ── */}
         <Text style={styles.sectionHeading}>PREFERENCES</Text>
         <View style={styles.sectionCard}>
@@ -1061,7 +1151,7 @@ export default function ProfileSettingsScreen() {
             onPress={() => {
               void (async () => {
                 try {
-                  await Linking.openURL('https://hone.app/privacy');
+                  await Linking.openURL('https://honefitness.app/privacy');
                 } catch {
                   /* Placeholder URL may be unreachable */
                 }
@@ -1077,7 +1167,7 @@ export default function ProfileSettingsScreen() {
             onPress={() => {
               void (async () => {
                 try {
-                  await Linking.openURL('https://hone.app/terms');
+                  await Linking.openURL('https://honefitness.app/terms');
                 } catch {
                   /* Placeholder URL may be unreachable */
                 }
@@ -1558,6 +1648,21 @@ export default function ProfileSettingsScreen() {
       </Modal>
 
     </SafeAreaView>
+    <BLEDeviceSheet
+      visible={showBLESheet}
+      onClose={() => setShowBLESheet(false)}
+      onConnect={ble.connect}
+      onDisconnect={ble.disconnect}
+      onStartScan={ble.startScan}
+      onStopScan={ble.stopScan}
+      devices={ble.devices}
+      connectionState={ble.connectionState}
+      connectedDeviceName={ble.isConnected
+        ? getBLEHeartRateManager().getConnectedDeviceName()
+        : null}
+      pairedDevice={ble.pairedDevice}
+      error={ble.error}
+    />
     <BetaFeedbackModal
       visible={showFeedback}
       onClose={() => setShowFeedback(false)}
@@ -1747,6 +1852,49 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 18,
     color: Colors.textTertiary,
+  },
+  deviceRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
+  deviceStatusText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  deviceConnectedBadge: {
+    backgroundColor: Colors.successMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  deviceConnectedBadgeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.micro,
+    color: Colors.success,
+  },
+  deviceNotConnectedText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    maxWidth: 140,
+    textAlign: 'right',
+  },
+  deviceReconnectBtn: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  deviceReconnectBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
   },
   feedbackRowLabel: {
     fontFamily: Fonts.regular,

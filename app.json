@@ -22,7 +22,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "Hone reads your sleep and heart rate data so Jordan can adapt your training plan to your recovery.",
-        "NSHealthUpdateUsageDescription": "Hone writes completed workout sessions to Apple Health."
+        "NSHealthUpdateUsageDescription": "Hone writes completed workout sessions to Apple Health.",
+        "NSBluetoothAlwaysUsageDescription": "Hone uses Bluetooth to connect to your heart rate monitor during workouts so Jordan can track your effort in real time."
       }
     },
     "android": {
@@ -33,7 +34,10 @@
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_RESTING_HEART_RATE",
-        "android.permission.health.READ_HEART_RATE_VARIABILITY"
+        "android.permission.health.READ_HEART_RATE_VARIABILITY",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -42,6 +46,14 @@
     "plugins": [
       "@kingstinct/react-native-healthkit",
       "expo-health-connect",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral"],
+          "bluetoothAlwaysPermission": "Hone uses Bluetooth to connect to your heart rate monitor during workouts."
+        }
+      ],
       [
         "expo-build-properties",
         {

@@ -373,6 +373,7 @@ export default function ProfileSettingsScreen() {
   const [bodyMetricsSaving, setBodyMetricsSaving] = useState(false);
   const [showBLESheet, setShowBLESheet] = useState(false);
   const [healthConnected, setHealthConnected] = useState(false);
+  const [nutritionSyncEnabled, setNutritionSyncEnabled] = useState(false);
 
   /** BUG-8: DEV-only — dashboard always shows workout card when true */
   const [devBypassDayGate, setDevBypassDayGate] = useState(false);
@@ -505,8 +506,12 @@ export default function ProfileSettingsScreen() {
         plan: (planRes.data as PlanData | null) ?? null,
       });
 
-      const hcGranted = await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY);
+      const [hcGranted, nutritionSync] = await Promise.all([
+        AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY),
+        AsyncStorage.getItem('hone_nutrition_sync_enabled'),
+      ]);
       setHealthConnected(hcGranted === '1');
+      setNutritionSyncEnabled(nutritionSync === '1');
     } catch (err) {
       console.error('ProfileSettings load error:', err);
       setHasError(true);
@@ -963,7 +968,7 @@ export default function ProfileSettingsScreen() {
         {/* ── Connected Devices ── */}
         <Text style={styles.sectionHeading}>CONNECTED DEVICES</Text>
         <View style={styles.sectionCard}>
-          {/* Apple Health row */}
+          {/* Apple Health / Health Connect row */}
           <View style={styles.row}>
             <View style={styles.deviceRowLeft}>
               <Ionicons
@@ -972,7 +977,9 @@ export default function ProfileSettingsScreen() {
                 color={healthConnected ? Colors.success : Colors.textTertiary}
               />
               <View>
-                <Text style={styles.rowLabel}>Apple Health</Text>
+                <Text style={styles.rowLabel}>
+                  {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}
+                </Text>
                 <Text style={styles.deviceStatusText}>
                   {healthConnected ? 'Connected' : 'Not connected'}
                 </Text>
@@ -988,12 +995,56 @@ export default function ProfileSettingsScreen() {
                 activeOpacity={0.7}
                 style={styles.deviceReconnectBtn}
               >
-                <Text style={styles.deviceReconnectBtnText}>Reconnect</Text>
+                <Text style={styles.deviceReconnectBtnText}>Connect</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.deviceNotConnectedText}>iOS only</Text>
+              <Text style={styles.deviceNotConnectedText}>
+                {Platform.OS === 'ios' ? 'iOS only' : 'Not available'}
+              </Text>
             )}
           </View>
+
+          {/* Nutrition sync toggle — only shown when health is connected */}
+          {healthConnected && healthAvailable && (
+            <View style={styles.row}>
+              <View style={styles.deviceRowLeft}>
+                <Ionicons
+                  name="restaurant-outline"
+                  size={18}
+                  color={nutritionSyncEnabled ? Colors.accent : Colors.textTertiary}
+                />
+                <View>
+                  <Text style={styles.rowLabel}>Nutrition Sync</Text>
+                  <Text style={styles.deviceStatusText}>
+                    {nutritionSyncEnabled
+                      ? 'Auto-importing from linked apps'
+                      : 'Import macros from MFP and others'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={nutritionSyncEnabled}
+                onValueChange={async (val) => {
+                  setNutritionSyncEnabled(val);
+                  await AsyncStorage.setItem(
+                    'hone_nutrition_sync_enabled',
+                    val ? '1' : '0',
+                  );
+                  if (!val) {
+                    // Also clear the dismissed flag so prompt reappears
+                    // if they re-enable and come back to Nutrition tab
+                    await AsyncStorage.removeItem('hone_health_nutrition_dismissed');
+                  }
+                }}
+                trackColor={{
+                  false: Colors.border,
+                  true: Colors.accentBorder,
+                }}
+                thumbColor={nutritionSyncEnabled ? Colors.accent : Colors.textTertiary}
+                ios_backgroundColor={Colors.border}
+              />
+            </View>
+          )}
 
           {/* BLE HR Monitor row */}
           <TouchableOpacity

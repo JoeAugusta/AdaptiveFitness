@@ -47,6 +47,12 @@ import {
 } from '../utils/dateUtils';
 import ActivityLogSheet, { type ActivityLogRow } from '../components/ActivityLogSheet';
 import { resolveActivityCaloriesBurned } from '../utils/activityCalories';
+import {
+  HEALTH_PERMISSION_DISMISSED_KEY,
+  HEALTH_PERMISSION_GRANTED_KEY,
+} from '../components/HealthConnectCard';
+import { useHealthData, type NutritionData } from '../hooks/useHealthData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface MacroTargets {
   calories: number;
@@ -155,6 +161,9 @@ function parseSuggestionsJson(json: unknown): { meals: MealSuggestion[]; jordanN
 const DEFAULT_TARGETS: MacroTargets = { calories: 2000, protein_g: 150, carbs_g: 200, fats_g: 65 };
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const;
+
+const HEALTH_NUTRITION_DISMISSED_KEY = 'hone_health_nutrition_dismissed';
+const HONE_NUTRITION_SYNC_ENABLED_KEY = 'hone_nutrition_sync_enabled';
 
 const MEAL_SLOT_ORDER: MealSlot[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
@@ -591,6 +600,21 @@ export default function MacroTrackerScreen() {
   const mealLoggedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overshootHapticSentRef = useRef(false);
 
+  const {
+    isAvailable: healthAvailable,
+    permissionStatus,
+    requestPermission,
+    fetchNutritionData,
+  } = useHealthData();
+  const [healthNutrition, setHealthNutrition] = useState<NutritionData | null>(null);
+  const [healthSyncLoading, setHealthSyncLoading] = useState(false);
+  const [healthSyncDismissed, setHealthSyncDismissed] = useState(false);
+  const [nutritionSyncEnabled, setNutritionSyncEnabled] = useState(false);
+  const [healthConnectPromptDismissed, setHealthConnectPromptDismissed] =
+    useState(false);
+  const [healthConnectPromptChecked, setHealthConnectPromptChecked] =
+    useState(false);
+
   const showMealLoggedToast = useCallback(() => {
     void hapticSuccess();
     if (mealLoggedToastTimerRef.current) {
@@ -858,7 +882,42 @@ export default function MacroTrackerScreen() {
     useCallback(() => {
       overshootHapticSentRef.current = false;
       void loadData();
-    }, [loadData]),
+
+      // Check whether nutrition sync is enabled and if prompt was dismissed
+      void (async () => {
+        try {
+          const [syncVal, dismissedVal] = await Promise.all([
+            AsyncStorage.getItem(HONE_NUTRITION_SYNC_ENABLED_KEY),
+            AsyncStorage.getItem(HEALTH_NUTRITION_DISMISSED_KEY),
+          ]);
+          setNutritionSyncEnabled(syncVal === '1');
+          setHealthConnectPromptDismissed(dismissedVal === '1');
+        } catch {
+          // silent
+        } finally {
+          setHealthConnectPromptChecked(true);
+        }
+      })();
+
+      // Auto-fetch health nutrition on tab focus
+      if (healthAvailable) {
+        void (async () => {
+          try {
+            const dismissed = await AsyncStorage.getItem(
+              HEALTH_NUTRITION_DISMISSED_KEY,
+            );
+            if (dismissed === 'today_' + todayStr()) return;
+            setHealthSyncLoading(true);
+            const data = await fetchNutritionData();
+            if (data.hasDataToday) setHealthNutrition(data);
+          } catch {
+            // silent
+          } finally {
+            setHealthSyncLoading(false);
+          }
+        })();
+      }
+    }, [loadData, healthAvailable, fetchNutritionData]),
   );
 
   const baseTargets = targets ?? DEFAULT_TARGETS;
@@ -1050,6 +1109,69 @@ export default function MacroTrackerScreen() {
   const handleDelete = async (id: string) => {
     await supabase.from('macro_logs').delete().eq('id', id);
     loadData();
+  };
+
+  const handleImportHealthNutrition = async () => {
+    if (!healthNutrition || !nutritionUserId) return;
+    try {
+      await supabase.from('macro_logs').upsert(
+        {
+          user_id: nutritionUserId,
+          log_date: todayStr(),
+          meal_name: 'Daily Total',
+          calories: healthNutrition.calories ?? 0,
+          protein_g: healthNutrition.protein_g ?? 0,
+          carbs_g: healthNutrition.carbs_g ?? 0,
+          fats_g: healthNutrition.fats_g ?? 0,
+        },
+        { onConflict: 'user_id,log_date,meal_name' },
+      );
+      showMealLoggedToast();
+      setHealthNutrition(null);
+      void loadData();
+    } catch {
+      Alert.alert('Error', 'Could not import nutrition data. Please try again.');
+    }
+  };
+
+  const handleDismissHealthSync = async () => {
+    setHealthSyncDismissed(true);
+    setHealthNutrition(null);
+    try {
+      await AsyncStorage.setItem(
+        HEALTH_NUTRITION_DISMISSED_KEY,
+        'today_' + todayStr(),
+      );
+    } catch {
+      // silent
+    }
+  };
+
+  const handleConnectHealthNutrition = async () => {
+    try {
+      const granted = await requestPermission();
+      if (granted) {
+        await AsyncStorage.setItem(HONE_NUTRITION_SYNC_ENABLED_KEY, '1');
+        await AsyncStorage.setItem(HEALTH_PERMISSION_GRANTED_KEY, '1');
+        await AsyncStorage.removeItem(HEALTH_NUTRITION_DISMISSED_KEY);
+        setNutritionSyncEnabled(true);
+        setHealthConnectPromptDismissed(false);
+        // Immediately try to fetch and show data
+        const data = await fetchNutritionData();
+        if (data.hasDataToday) setHealthNutrition(data);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not connect. Please try again.');
+    }
+  };
+
+  const handleDismissConnectPrompt = async () => {
+    setHealthConnectPromptDismissed(true);
+    try {
+      await AsyncStorage.setItem(HEALTH_NUTRITION_DISMISSED_KEY, '1');
+    } catch {
+      // silent
+    }
   };
 
   const handleResetRecommendedMacros = () => {
@@ -1283,7 +1405,7 @@ export default function MacroTrackerScreen() {
 
   const resetModal = () => {
     setShowAddModal(false);
-    setSelectedMeal('Breakfast');
+    setSelectedMeal(firstUnloggedSlot);
     setCalories('');
     setProtein('');
     setCarbs('');
@@ -1442,19 +1564,65 @@ export default function MacroTrackerScreen() {
           <Text style={styles.headerSubtitle}>{formatDate(new Date())}</Text>
         </View>
 
-        {!mealPrefsSet && (
-          <View style={styles.mealSetupCard}>
-            <Text style={styles.mealSetupTitle}>🍽️ Set Up Meal Recommendations</Text>
-            <Text style={styles.mealSetupBody}>
-              Tell Jordan about your diet and we’ll suggest meals that hit your exact macro targets.
+        {/* ── Health nutrition sync banner ── */}
+        {healthAvailable && healthNutrition?.hasDataToday && !healthSyncDismissed && (
+          <View style={styles.healthSyncCard}>
+            <View style={styles.healthSyncHeader}>
+              <Ionicons
+                name={Platform.OS === 'ios' ? 'heart-circle-outline' : 'fitness-outline'}
+                size={18}
+                color={Colors.accent}
+              />
+              <Text style={styles.healthSyncTitle}>
+                {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}
+              </Text>
+              <TouchableOpacity
+                onPress={handleDismissHealthSync}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.healthSyncMacroRow}>
+              <Text style={styles.healthSyncCal}>
+                {(healthNutrition.calories ?? 0).toLocaleString()} cal
+              </Text>
+              <Text style={styles.healthSyncMacro}>
+                P: {healthNutrition.protein_g ?? 0}g
+              </Text>
+              <Text style={styles.healthSyncMacro}>
+                C: {healthNutrition.carbs_g ?? 0}g
+              </Text>
+              <Text style={styles.healthSyncMacro}>
+                F: {healthNutrition.fats_g ?? 0}g
+              </Text>
+            </View>
+
+            <Text style={styles.healthSyncHint}>
+              Logged in{' '}
+              {Platform.OS === 'ios' ? 'MyFitnessPal or another linked app' : 'a connected food tracker'}
+              {' '}today
             </Text>
+
             <TouchableOpacity
-              style={styles.mealSetupCta}
-              onPress={() => setShowPrefsModal(true)}
+              style={styles.healthSyncImportBtn}
+              onPress={handleImportHealthNutrition}
               activeOpacity={0.8}
             >
-              <Text style={styles.mealSetupCtaText}>Get Started</Text>
+              <Text style={styles.healthSyncImportText}>Import to Hone →</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {healthAvailable && healthSyncLoading && !healthNutrition && (
+          <View style={styles.healthSyncLoadingRow}>
+            <ActivityIndicator size="small" color={Colors.accent} />
+            <Text style={styles.healthSyncLoadingText}>
+              Checking{' '}
+              {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}
+              …
+            </Text>
           </View>
         )}
 
@@ -1560,21 +1728,65 @@ export default function MacroTrackerScreen() {
           })}
         </View>
 
+        {/* ── Jordan nutrition card — always shown ── */}
+        <View style={styles.jordanCard}>
+          <Text style={styles.jordanAuthor}>JORDAN</Text>
+          {hasLoggedToday ? (
+            jordanMealNote ? (
+              <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote)}</Text>
+            ) : (
+              <Text style={styles.jordanBody}>
+                {`You're at ${todayTotals.calories} cal with ${Math.round(todayTotals.protein_g)}g protein logged. Keep building on it — protein is the priority.`}
+              </Text>
+            )
+          ) : (
+            <Text style={styles.jordanBody}>
+              {`Your target today is ${t.calories.toLocaleString()} cal and ${Math.round(t.protein_g)}g protein. Log each meal as you eat — the data is how I tune your plan.`}
+            </Text>
+          )}
+        </View>
+
+        {/* ── Health nutrition connect prompt ── */}
+        {healthAvailable &&
+          healthConnectPromptChecked &&
+          !nutritionSyncEnabled &&
+          !healthConnectPromptDismissed &&
+          permissionStatus !== 'granted' && (
+          <View style={styles.healthConnectPromptCard}>
+            <View style={styles.healthConnectPromptHeader}>
+              <Ionicons
+                name={Platform.OS === 'ios' ? 'heart-circle-outline' : 'fitness-outline'}
+                size={20}
+                color={Colors.accent}
+              />
+              <Text style={styles.healthConnectPromptTitle}>
+                {Platform.OS === 'ios' ? 'Connect Apple Health' : 'Connect Health Connect'}
+              </Text>
+              <TouchableOpacity
+                onPress={handleDismissConnectPrompt}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.healthConnectPromptBody}>
+              {Platform.OS === 'ios'
+                ? 'Auto-import your macros from MyFitnessPal, Cronometer, or any app that syncs to Apple Health.'
+                : 'Auto-import your macros from MyFitnessPal, Cronometer, or any app that syncs to Health Connect.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.healthConnectPromptBtn}
+              onPress={handleConnectHealthNutrition}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.healthConnectPromptBtnText}>Connect →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {mealPrefsSet && mealSuggestions.length > 0 && (
           <View style={styles.mealPlanSection}>
             <Text style={styles.mealPlanHeading}>{"Today's Meal Plan"}</Text>
-            <View style={styles.jordanCard}>
-              <Text style={styles.jordanAuthor}>JORDAN</Text>
-              {hasLoggedToday ? (
-                jordanMealNote
-                  ? <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote)}</Text>
-                  : null
-              ) : (
-                <Text style={styles.jordanBody}>
-                  Here&apos;s your plan for today. Hit these targets and you&apos;ll be right on track.
-                </Text>
-              )}
-            </View>
             <Text style={styles.jordanTapHint}>Tap any meal to log it</Text>
             {mealSuggestions.map((meal) => (
               <View key={meal.name} style={styles.suggestedMealCard}>
@@ -1627,11 +1839,8 @@ export default function MacroTrackerScreen() {
           <Text style={styles.loggedMealsHeading}>{"Today's Meals"}</Text>
           <TouchableOpacity
             onPress={() => {
-              if (mealPrefsSet) {
-                openBuilderFromAddMeal();
-              } else {
-                setShowAddModal(true);
-              }
+              setSelectedMeal(firstUnloggedSlot);
+              setShowAddModal(true);
             }}
             activeOpacity={0.7}
           >
@@ -1665,6 +1874,29 @@ export default function MacroTrackerScreen() {
             </View>
           ))
         )}
+
+        {/* ── Quick log slots ── */}
+        {MEAL_TYPES.filter((mt) => !todayLogs.some((l) => l.meal_name === mt)).map((mt) => (
+          <TouchableOpacity
+            key={mt}
+            style={styles.quickLogSlot}
+            activeOpacity={0.7}
+            onPress={() => {
+              setSelectedMeal(mt);
+              setCalories('');
+              setProtein('');
+              setCarbs('');
+              setFats('');
+              setShowAddModal(true);
+            }}
+          >
+            <View style={styles.quickLogSlotLeft}>
+              <Text style={styles.quickLogSlotMeal}>{mt}</Text>
+              <Text style={styles.quickLogSlotHint}>Tap to log macros</Text>
+            </View>
+            <Ionicons name="add-circle-outline" size={22} color={Colors.accent} />
+          </TouchableOpacity>
+        ))}
 
         <Text style={styles.weeklySectionHeading}>Weekly Overview</Text>
         <Text style={styles.weeklySectionSub}>Calorie target adherence</Text>
@@ -1723,7 +1955,7 @@ export default function MacroTrackerScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
               <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Log a Meal</Text>
+                <Text style={styles.modalTitle}>Log Macros</Text>
 
                 {/* Meal type selector */}
                 <View style={styles.mealTypeRow}>
@@ -1742,49 +1974,61 @@ export default function MacroTrackerScreen() {
                 </View>
 
                 {/* Manual entry */}
-                <Text style={styles.modalSectionLabel}>ENTER MACROS MANUALLY</Text>
-                <View style={styles.inputGrid}>
-                  {([
-                    { label: 'Calories (kcal)', value: calories, setter: setCalories },
-                    { label: 'Protein (g)', value: protein, setter: setProtein },
-                    { label: 'Carbs (g)', value: carbs, setter: setCarbs },
-                    { label: 'Fats (g)', value: fats, setter: setFats },
-                  ] as const).map((inp) => (
-                    <View key={inp.label} style={styles.inputWrapper}>
-                      <Text style={styles.inputLabel}>{inp.label}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={inp.value}
-                        onChangeText={inp.setter}
-                        keyboardType="numeric"
-                        placeholderTextColor={Colors.textSecondary}
-                        placeholder="0"
-                      />
-                    </View>
-                  ))}
-                </View>
-
-                {/* Quick options — only when meal prefs not set */}
-                {!mealPrefsSet && (
-                  <>
-                    <Text style={styles.modalQuickSectionLabel}>OR CHOOSE A QUICK OPTION</Text>
-                    <View style={styles.quickGrid}>
-                      {QUICK_OPTIONS.map((opt) => (
-                        <TouchableOpacity
-                          key={opt.name}
-                          style={styles.quickCard}
-                          onPress={() => fillPreset(opt)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.quickName}>{opt.name}</Text>
-                          <Text style={styles.quickMacros}>
-                            P:{opt.protein_g}g C:{opt.carbs_g}g F:{opt.fats_g}g
-                          </Text>
-                        </TouchableOpacity>
+                <Text style={styles.modalSectionLabel}>ENTER YOUR MACROS</Text>
+                {(() => {
+                  const mealTarget = {
+                    calories: Math.round(t.calories / 4),
+                    protein: Math.round(t.protein_g / 4),
+                    carbs: Math.round(t.carbs_g / 4),
+                    fats: Math.round(t.fats_g / 4),
+                  };
+                  const fields = [
+                    {
+                      label: 'Calories (kcal)',
+                      value: calories,
+                      setter: setCalories,
+                      hint: `target ~${mealTarget.calories.toLocaleString()}`,
+                    },
+                    {
+                      label: 'Protein (g)',
+                      value: protein,
+                      setter: setProtein,
+                      hint: `target ~${mealTarget.protein}g`,
+                    },
+                    {
+                      label: 'Carbs (g)',
+                      value: carbs,
+                      setter: setCarbs,
+                      hint: `target ~${mealTarget.carbs}g`,
+                    },
+                    {
+                      label: 'Fats (g)',
+                      value: fats,
+                      setter: setFats,
+                      hint: `target ~${mealTarget.fats}g`,
+                    },
+                  ] as const;
+                  return (
+                    <View style={styles.inputGrid}>
+                      {fields.map((inp) => (
+                        <View key={inp.label} style={styles.inputWrapper}>
+                          <View style={styles.inputLabelRow}>
+                            <Text style={styles.inputLabel}>{inp.label}</Text>
+                            <Text style={styles.inputHint}>{inp.hint}</Text>
+                          </View>
+                          <TextInput
+                            style={styles.input}
+                            value={inp.value}
+                            onChangeText={inp.setter}
+                            keyboardType="numeric"
+                            placeholderTextColor={Colors.textSecondary}
+                            placeholder="0"
+                          />
+                        </View>
                       ))}
                     </View>
-                  </>
-                )}
+                  );
+                })()}
 
                 {/* Footer */}
                 <View style={styles.modalFooter}>
@@ -2070,6 +2314,118 @@ const styles = StyleSheet.create({
     borderColor: Colors.divider,
     padding: 20,
     marginBottom: Spacing.lg,
+  },
+
+  healthSyncCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.lg,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  healthSyncHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  healthSyncTitle: {
+    flex: 1,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.accent,
+    letterSpacing: 0.5,
+  },
+  healthSyncMacroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.md,
+    marginBottom: Spacing.xs,
+  },
+  healthSyncCal: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+  },
+  healthSyncMacro: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  healthSyncHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  healthSyncImportBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  healthSyncImportText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+  },
+  healthSyncLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
+  },
+  healthSyncLoadingText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+  },
+  healthConnectPromptCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  healthConnectPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  healthConnectPromptTitle: {
+    flex: 1,
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  healthConnectPromptBody: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
+  healthConnectPromptBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  healthConnectPromptBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
   },
 
   calorieCard: {
@@ -2491,6 +2847,32 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textTertiary,
   },
+  quickLogSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderStyle: 'dashed',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  quickLogSlotLeft: {
+    gap: 2,
+  },
+  quickLogSlotMeal: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  quickLogSlotHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+  },
 
   weeklySectionHeading: {
     fontFamily: Fonts.bold,
@@ -2622,9 +3004,20 @@ const styles = StyleSheet.create({
 
   inputGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   inputWrapper: { width: '47%' },
+  inputLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   inputLabel: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary, fontSize: FontSizes.caption, marginBottom: 4 },
+  inputHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+  },
   input: {
     fontFamily: Fonts.regular,
     backgroundColor: Colors.divider, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, color: Colors.textPrimary, fontSize: FontSizes.body, },

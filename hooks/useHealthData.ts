@@ -69,6 +69,26 @@ export type LiveWorkoutHR = {
   sampleCount: number;
 };
 
+export type NutritionData = {
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fats_g: number | null;
+  fetchedAt: string | null;
+  hasDataToday: boolean;
+  source: 'apple_health' | 'health_connect' | null;
+};
+
+const EMPTY_NUTRITION: NutritionData = {
+  calories: null,
+  protein_g: null,
+  carbs_g: null,
+  fats_g: null,
+  fetchedAt: null,
+  hasDataToday: false,
+  source: null,
+};
+
 const EMPTY_HEALTH_DATA: HealthData = {
   sleepHours: null,
   hrvMs: null,
@@ -111,6 +131,10 @@ async function requestPermissionIOS(): Promise<boolean> {
         'HKQuantityTypeIdentifierRestingHeartRate',
         'HKQuantityTypeIdentifierHeartRate',
         'HKCategoryTypeIdentifierSleepAnalysis',
+        'HKQuantityTypeIdentifierDietaryEnergyConsumed',
+        'HKQuantityTypeIdentifierDietaryProtein',
+        'HKQuantityTypeIdentifierDietaryCarbohydrates',
+        'HKQuantityTypeIdentifierDietaryFatTotal',
       ],
       toShare: [],
     });
@@ -221,6 +245,48 @@ async function fetchHealthDataIOS(): Promise<HealthData> {
   };
 }
 
+async function fetchNutritionDataIOS(): Promise<NutritionData> {
+  if (!QuantityTypes) return EMPTY_NUTRITION;
+  const now = new Date();
+  const startOfToday = getStartOfToday();
+
+  const queryOne = async (typeId: string): Promise<number | null> => {
+    try {
+      const samples = await QuantityTypes!.queryQuantitySamples(typeId, {
+        filter: { date: { startDate: startOfToday, endDate: now } },
+        limit: 0,
+        ascending: true,
+      });
+      if (!samples || samples.length === 0) return null;
+      const total = (samples as any[]).reduce((sum: number, s: any) => {
+        const val = (s as any).quantity ?? (s as any).value ?? 0;
+        return sum + val;
+      }, 0);
+      return total > 0 ? Math.round(total) : null;
+    } catch (err) {
+      console.warn(`[useHealthData] iOS nutrition query failed (${typeId}):`, err);
+      return null;
+    }
+  };
+
+  const [calories, protein_g, carbs_g, fats_g] = await Promise.all([
+    queryOne('HKQuantityTypeIdentifierDietaryEnergyConsumed'),
+    queryOne('HKQuantityTypeIdentifierDietaryProtein'),
+    queryOne('HKQuantityTypeIdentifierDietaryCarbohydrates'),
+    queryOne('HKQuantityTypeIdentifierDietaryFatTotal'),
+  ]);
+
+  return {
+    calories,
+    protein_g,
+    carbs_g,
+    fats_g,
+    fetchedAt: now.toISOString(),
+    hasDataToday: calories !== null || protein_g !== null,
+    source: 'apple_health',
+  };
+}
+
 async function queryPostSetHeartRateIOS(lookbackSeconds: number): Promise<LiveWorkoutHR> {
   if (!QuantityTypes) return EMPTY_HR;
   try {
@@ -259,6 +325,7 @@ async function requestPermissionAndroid(): Promise<boolean> {
       { accessType: 'read', recordType: 'RestingHeartRate' },
       { accessType: 'read', recordType: 'HeartRate' },
       { accessType: 'read', recordType: 'SleepSession' },
+      { accessType: 'read', recordType: 'Nutrition' },
     ]);
     return true;
   } catch (err) {
@@ -380,6 +447,72 @@ async function fetchHealthDataAndroid(): Promise<HealthData> {
   };
 }
 
+async function fetchNutritionDataAndroid(): Promise<NutritionData> {
+  if (!HC) return EMPTY_NUTRITION;
+  try {
+    const initialized = await HC.initialize();
+    if (!initialized) return EMPTY_NUTRITION;
+  } catch {
+    return EMPTY_NUTRITION;
+  }
+
+  const now = new Date();
+  const startOfToday = getStartOfToday();
+
+  let calories: number | null = null;
+  let protein_g: number | null = null;
+  let carbs_g: number | null = null;
+  let fats_g: number | null = null;
+
+  try {
+    const result = await HC.readRecords('Nutrition', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfToday.toISOString(),
+        endTime: now.toISOString(),
+      },
+    });
+
+    const records = result.records as Array<{
+      energy?: { inKilocalories?: number };
+      totalProtein?: { inGrams?: number };
+      totalCarbohydrate?: { inGrams?: number };
+      totalFat?: { inGrams?: number };
+    }>;
+
+    if (records.length > 0) {
+      let calSum = 0;
+      let protSum = 0;
+      let carbSum = 0;
+      let fatSum = 0;
+
+      for (const r of records) {
+        calSum += r.energy?.inKilocalories ?? 0;
+        protSum += r.totalProtein?.inGrams ?? 0;
+        carbSum += r.totalCarbohydrate?.inGrams ?? 0;
+        fatSum += r.totalFat?.inGrams ?? 0;
+      }
+
+      if (calSum > 0) calories = Math.round(calSum);
+      if (protSum > 0) protein_g = Math.round(protSum);
+      if (carbSum > 0) carbs_g = Math.round(carbSum);
+      if (fatSum > 0) fats_g = Math.round(fatSum);
+    }
+  } catch (err) {
+    console.warn('[useHealthData] Android nutrition query failed:', err);
+  }
+
+  return {
+    calories,
+    protein_g,
+    carbs_g,
+    fats_g,
+    fetchedAt: now.toISOString(),
+    hasDataToday: calories !== null || protein_g !== null,
+    source: 'health_connect',
+  };
+}
+
 async function queryPostSetHeartRateAndroid(lookbackSeconds: number): Promise<LiveWorkoutHR> {
   if (!HC) return EMPTY_HR;
   try {
@@ -419,6 +552,7 @@ export function useHealthData() {
     Platform.OS !== 'ios' && Platform.OS !== 'android' ? 'unavailable' : 'not_determined',
   );
   const [healthData, setHealthData] = useState<HealthData>(EMPTY_HEALTH_DATA);
+  const [nutritionData, setNutritionData] = useState<NutritionData>(EMPTY_NUTRITION);
   const [isLoading, setIsLoading] = useState(false);
   const isMountedRef = useRef(true);
 
@@ -475,13 +609,30 @@ export function useHealthData() {
     [isAvailable, permissionStatus],
   );
 
+  const fetchNutritionData = useCallback(async (): Promise<NutritionData> => {
+    if (!isAvailable) return EMPTY_NUTRITION;
+    try {
+      const result =
+        Platform.OS === 'ios'
+          ? await fetchNutritionDataIOS()
+          : await fetchNutritionDataAndroid();
+      if (isMountedRef.current) setNutritionData(result);
+      return result;
+    } catch (err) {
+      console.warn('[useHealthData] fetchNutritionData failed:', err);
+      return EMPTY_NUTRITION;
+    }
+  }, [isAvailable]);
+
   return {
     permissionStatus,
     healthData,
+    nutritionData,
     isLoading,
     isAvailable,
     requestPermission,
     fetchHealthData,
+    fetchNutritionData,
     queryPostSetHeartRate,
   };
 }

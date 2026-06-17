@@ -238,6 +238,7 @@ function WorkoutDayCard({
   onViewResults,
   loadingResults,
   onPreviewDay,
+  onRedoWorkout,
 }: {
   day: PlanDay;
   weekPhase: string | undefined;
@@ -248,6 +249,7 @@ function WorkoutDayCard({
   onViewResults: (day: PlanDay) => void;
   loadingResults: boolean;
   onPreviewDay?: (day: PlanDay) => void;
+  onRedoWorkout?: (day: PlanDay) => void;
 }) {
   const PREVIEW_COUNT = 3;
   const visibleExercises = day.exercises.slice(0, PREVIEW_COUNT);
@@ -354,16 +356,38 @@ function WorkoutDayCard({
           ) : null}
         </View>
       ) : isNextWorkout ? (
-        <TouchableOpacity
-          style={styles.startButton}
-          activeOpacity={0.8}
-          onPress={() => onStartWorkout(day)}
-        >
-          <Text style={styles.startButtonText}>Start Workout →</Text>
-        </TouchableOpacity>
+        <View style={styles.startButtonRow}>
+          <TouchableOpacity
+            style={styles.startButton}
+            activeOpacity={0.8}
+            onPress={() => onStartWorkout(day)}
+          >
+            <Text style={styles.startButtonText}>Start Workout →</Text>
+          </TouchableOpacity>
+          {onPreviewDay ? (
+            <TouchableOpacity
+              onPress={() => onPreviewDay(day)}
+              activeOpacity={0.7}
+              style={styles.previewInlineBtn}
+            >
+              <Text style={styles.previewInlineBtnText}>Preview</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
-      {day.completed ? (
-        <Text style={styles.viewResultsHint}>View results →</Text>
+      {day.completed && !day.skipped ? (
+        <View style={styles.completedActionsRow}>
+          <Text style={styles.viewResultsHint}>View results →</Text>
+          {onRedoWorkout ? (
+            <TouchableOpacity
+              onPress={() => onRedoWorkout(day)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.redoWorkoutHint}>Redo →</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
       {!day.completed && !isNextWorkout ? (
         <Text style={styles.viewResultsHint}>Preview →</Text>
@@ -769,6 +793,29 @@ export default function PlanViewScreen() {
     setPreviewVisible(true);
   }, []);
 
+  const handleRedoWorkout = useCallback((day: PlanDay) => {
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    Alert.alert(
+      'Redo workout?',
+      'This will overwrite your previous log for this session.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Redo',
+          onPress: () => {
+            navigation.navigate('ActiveWorkout', {
+              planId: pid,
+              weekNumber: selectedWeek,
+              dayNumber: day.dayNumber,
+              workoutTitle: day.title,
+              lockToRouteWeek: true,
+            });
+          },
+        },
+      ],
+    );
+  }, [resolvedPlanId, planId, navigation, selectedWeek]);
+
   const headerRow = (
     <View style={styles.header}>
       <TouchableOpacity
@@ -1119,6 +1166,7 @@ export default function PlanViewScreen() {
                 onViewResults={handleViewResults}
                 loadingResults={resultsLoadingDayKey === `${selectedWeek}-${day.dayNumber}`}
                 onPreviewDay={handlePreviewDay}
+                onRedoWorkout={handleRedoWorkout}
               />
             ) : day.type === 'cardio' ? (
               (() => {
@@ -1595,6 +1643,17 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     color: Colors.textTertiary,
   },
+  completedActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  redoWorkoutHint: {
+    fontSize: FontSizes.caption,
+    fontFamily: Fonts.medium,
+    color: Colors.accent,
+  },
   startButton: {
     height: 46,
     borderRadius: Radius.md,
@@ -1608,6 +1667,24 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
+  },
+  startButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: Spacing.xs,
+  },
+  previewInlineBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  previewInlineBtnText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
   },
   restCard: {
     marginHorizontal: Spacing.xl,

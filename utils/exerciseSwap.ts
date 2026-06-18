@@ -983,22 +983,22 @@ export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
   // ── LEGS — quad compound ──
   'back squat': [
     { name: 'Hack Squat', sameWeightOk: false },
-    { name: 'Smith Machine Squat', sameWeightOk: false },
-    { name: 'Front Squat', sameWeightOk: false },
     { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
+    { name: 'Front Squat', sameWeightOk: false },
     { name: 'Goblet Squat', sameWeightOk: false },
   ],
   'front squat': [
     { name: 'Back Squat', sameWeightOk: false },
     { name: 'Hack Squat', sameWeightOk: false },
-    { name: 'Smith Machine Squat', sameWeightOk: false },
-    { name: 'Goblet Squat', sameWeightOk: false },
     { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
   ],
   'hack squat': [
-    { name: 'Back Squat', sameWeightOk: false },
     { name: 'Leg Press', sameWeightOk: false },
-    { name: 'Smith Machine Squat', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
+    { name: 'Back Squat', sameWeightOk: false },
     { name: 'Front Squat', sameWeightOk: false },
     { name: 'Goblet Squat', sameWeightOk: false },
   ],
@@ -1012,9 +1012,9 @@ export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
   // Quad machine / push
   'leg press': [
     { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
     { name: 'Back Squat', sameWeightOk: false },
     { name: 'Leg Press (Single Leg)', sameWeightOk: false },
-    { name: 'Smith Machine Squat', sameWeightOk: false },
     { name: 'Goblet Squat', sameWeightOk: false },
   ],
   'leg press (single leg)': [
@@ -1025,8 +1025,11 @@ export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
     { name: 'Goblet Squat', sameWeightOk: false },
   ],
   'leg extension': [
-    { name: 'Leg Extension (Single Leg)', sameWeightOk: false },
+    { name: 'Leg Press', sameWeightOk: false },
+    { name: 'Hack Squat', sameWeightOk: false },
+    { name: 'Leg Extension (Single Leg)', sameWeightOk: true },
     { name: 'Cable Leg Extension', sameWeightOk: false },
+    { name: 'Goblet Squat', sameWeightOk: false },
   ],
   'leg extension (single leg)': [
     { name: 'Leg Extension', sameWeightOk: false },

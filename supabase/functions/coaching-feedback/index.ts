@@ -43,6 +43,9 @@ serve(async (req) => {
     const heartRatePeakBpm =
       typeof body.heartRatePeakBpm === 'number' ? body.heartRatePeakBpm : null;
     const hasHeartRateData = heartRateAvgBpm !== null || heartRatePeakBpm !== null;
+    const hrTrend = body.hrTrend && typeof body.hrTrend === 'object'
+      ? body.hrTrend as { delta: number; direction: 'up' | 'down'; recentAvg: number }
+      : null;
 
     const sleepHours =
       typeof body.sleepHours === 'number' ? body.sleepHours : null;
@@ -251,7 +254,13 @@ ${forwardOrientRule}
 - RPE on target (within 1 point): confirm and orient forward.
 - RPE too high (fell short on reps): give a recovery or execution cue. Do NOT suggest a weight number.
 - Fell short on reps without clear RPE data: be honest, tell them what to focus on.
-- If Apple Health HR data is provided, you MAY reference it when it contradicts the logged RPE (e.g. HR was 175 bpm but RPE logged as 6 — flag the mismatch briefly). If HR aligns with RPE, do not mention it. Never mention HR when no HR data is provided.
+- HR data may be provided. Only mention HR when there is a STRONG contradiction with logged RPE:
+  * High HR (avg > 150 bpm) AND low RPE (≤ 5): user is underestimating effort — flag briefly
+  * Low HR (avg < 110 bpm) AND high RPE (≥ 8): normal for heavy strength work — do NOT mention it, this is expected
+  * HR between 110-150 bpm: never mention regardless of RPE — this is normal working range
+  * If no strong contradiction exists, do not mention HR at all
+  * Never mention HR on the last set of the last exercise — session is done, forward focus only
+  * Never mention HR when no HR data is provided
 - Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it is directly relevant to the set just logged — e.g. low sleep + high RPE on a normally easy exercise warrants a brief mention. Do not mention recovery metrics on every set. When you do reference them, be specific: "7h sleep but RPE running high — back off next set" not generic wellness advice. Never mention metrics that weren't provided.
 - NEVER mention a specific weight in lbs under any circumstances unless you were explicitly told "A weight adjustment is warranted" above. If no weight adjustment was flagged, do not mention any number followed by lbs.
 - Never mention being an AI.
@@ -279,6 +288,11 @@ Rules:
 - Never say "weights were too light" or "weights were too heavy" — use "load steps up" or "ran above target"
 - Never suggest a specific pound increase
 - Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it directly explains session performance patterns — e.g. low sleep and high session RPE. Do not mention recovery metrics unless they clarify what happened. Never mention metrics that weren't provided.
+- HR trend data may be provided (delta vs recent sessions). Use it ONLY when meaningful:
+  * HR trending DOWN at same/higher load = fitness adaptation — worth calling out specifically ("your HR is running lower at the same load — that's adaptation")
+  * HR trending UP with no load change = accumulated fatigue or poor recovery — mention briefly
+  * No trend data or delta < 5 bpm: do not mention HR trend
+  * Never fabricate trend data. Only use what is explicitly provided.
 - Do not mention being an AI`
       : perSetSystemPrompt;
 
@@ -292,13 +306,25 @@ Rules:
 
     const userContent = isSessionSummary
       ? `Session complete: ${loggedReps} sets across ${targetReps} exercises.
-${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.${planContextLine}${hasRecoveryData ? `\n${buildRecoveryContext()}` : ''}
-Give a 2-sentence session debrief.`
+${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})` : 'RPE not recorded this session'}.${
+  heartRateAvgBpm !== null ? `\nSession HR: avg ${heartRateAvgBpm} bpm${heartRatePeakBpm !== null ? `, peak ${heartRatePeakBpm} bpm` : ''}.` : ''
+}${
+  hrTrend !== null
+    ? `\nHR trend vs last 2 sessions: ${hrTrend.direction === 'down'
+        ? `${Math.abs(hrTrend.delta)} bpm lower (was avg ${hrTrend.recentAvg} bpm) — same or higher load`
+        : `${Math.abs(hrTrend.delta)} bpm higher (was avg ${hrTrend.recentAvg} bpm)`}.`
+    : ''
+}${planContextLine}${hasRecoveryData ? `\n${buildRecoveryContext()}` : ''}
+Give a 2-sentence session debrief.
+- If HR trended DOWN meaningfully: call it out as adaptation in sentence 1
+- If HR trended UP: note accumulated fatigue if RPE also ran high
+- If no trend: ignore HR unless strong RPE contradiction
+- Never mention HR if RPE unrecorded`
       : `Exercise: ${exerciseName}
 Target: ${targetReps} reps at ${targetWeight} lbs, RPE ${targetRpe}
 Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}${
   hasHeartRateData
-    ? `\nApple Health HR this set: avg ${heartRateAvgBpm ?? '—'} bpm, peak ${heartRatePeakBpm ?? '—'} bpm`
+    ? `\nHR this set: avg ${heartRateAvgBpm ?? '—'} bpm, peak ${heartRatePeakBpm ?? '—'} bpm (only mention if strong RPE contradiction per rules above)`
     : ''
 }${
   hasRecoveryData

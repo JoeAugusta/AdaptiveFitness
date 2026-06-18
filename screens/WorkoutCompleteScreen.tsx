@@ -83,11 +83,14 @@ const STAT_CARDS = (
   totalSets: number,
   durationMinutes: number,
   prsHit: number,
+  avgHR: number | null,
 ): Array<{ icon: ReactNode; label: string; value: string; isPr?: boolean }> => [
   { icon: <Ionicons name="barbell-outline" size={24} color={Colors.accent} />, label: 'Exercises', value: String(totalExercises) },
   { icon: <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />, label: 'Sets Logged', value: String(totalSets) },
   { icon: <Ionicons name="time-outline" size={24} color={Colors.accent} />, label: 'Duration', value: `${durationMinutes} min` },
-  { icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: true },
+  ...(avgHR !== null
+    ? [{ icon: <Ionicons name="heart-outline" size={24} color={Colors.danger} />, label: 'Avg HR', value: `${avgHR} bpm` }]
+    : [{ icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: true }]),
 ];
 
 function rawWeekNumber(w: {
@@ -174,6 +177,8 @@ export default function WorkoutCompleteScreen() {
     durationMinutes,
     fatigueRating,
     prsHit,
+    sessionAvgHR = null,
+    sessionPeakHR = null,
   } = route.params;
 
   useEffect(() => {
@@ -207,7 +212,7 @@ export default function WorkoutCompleteScreen() {
   }, [triggerNextSessionAdjustment]);
 
   const fatigue = FATIGUE_MAP[fatigueRating] ?? FATIGUE_MAP[3];
-  const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit);
+  const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit, sessionAvgHR);
 
   // Animations
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -847,6 +852,29 @@ export default function WorkoutCompleteScreen() {
           .eq('id', planId)
           .maybeSingle();
 
+        // Fetch last 4 sessions' HR for trend context
+        const { data: priorHRLogs } = await supabase
+          .from('workout_logs')
+          .select('hr_avg, hr_peak, week_number, day_number')
+          .eq('plan_id', planId)
+          .not('hr_avg', 'is', null)
+          .order('logged_at', { ascending: false })
+          .limit(4);
+
+        const priorHRAvgs = (priorHRLogs ?? [])
+          .map((r: { hr_avg?: number | null }) => r.hr_avg)
+          .filter((v): v is number => v != null);
+
+        const hrTrend = (() => {
+          if (priorHRAvgs.length < 2 || sessionAvgHR === null) return null;
+          const recentAvg = Math.round(
+            priorHRAvgs.slice(0, 2).reduce((a, b) => a + b, 0) / 2,
+          );
+          const delta = sessionAvgHR - recentAvg;
+          if (Math.abs(delta) < 5) return null; // not meaningful
+          return { delta, direction: delta < 0 ? 'down' : 'up', recentAvg };
+        })();
+
         type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
         type PlanDay = { dayNumber?: number; exercises?: Array<{ targetRpe?: number }> };
         const weeks = (planRow?.plan_json as { weeks?: PlanWeek[] } | undefined)?.weeks ?? [];
@@ -871,6 +899,9 @@ export default function WorkoutCompleteScreen() {
             loggedWeight: 0,
             loggedRpe: avgRpe > 0 ? Math.round(avgRpe * 10) / 10 : 0,
             weekNumber,
+            heartRateAvgBpm: sessionAvgHR ?? null,
+            heartRatePeakBpm: sessionPeakHR ?? null,
+            hrTrend: hrTrend ?? null,
             sessionContext: {
               totalSets,
               totalExercises,

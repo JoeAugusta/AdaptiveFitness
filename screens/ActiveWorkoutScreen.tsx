@@ -549,6 +549,10 @@ export default function ActiveWorkoutScreen() {
   const warmupEndTimeRef = useRef<number | null>(null);
   const [warmupCategory, setWarmupCategory] = useState<WarmupCategory>('fallback');
 
+  const [sessionPeakHR, setSessionPeakHR] = useState<number | null>(null);
+  const [sessionAvgHRSamples, setSessionAvgHRSamples] = useState<number[]>([]);
+  const lastSetLoggedAtRef = useRef<number | null>(null);
+
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -1453,6 +1457,12 @@ export default function ActiveWorkoutScreen() {
       savedAt: Date.now(),
     };
     void AsyncStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft));
+    // Mark when this set was logged — used to bound next set's HR window
+    const setLoggedAt = Date.now();
+    const msSinceLastSet = lastSetLoggedAtRef.current !== null
+      ? setLoggedAt - lastSetLoggedAtRef.current
+      : 60_000;
+    lastSetLoggedAtRef.current = setLoggedAt;
 
     // Auto-collapse exercise card when all sets are logged
     if (!options?.replaceOnly && existingIdx < 0 && exercise) {
@@ -1504,8 +1514,13 @@ export default function ActiveWorkoutScreen() {
         void (async () => {
           // Query HR post-set — BLE takes priority over Apple Health
           let heartRate: { avgBpm: number | null; peakBpm: number | null } | null = null;
+          // HR window = time since last set was logged (= duration of this set + any delay)
+          // Capped at 120s to avoid including prior rest period HR
+          // If no prior set this session, use 60s default (covers most set durations)
+          const hrWindowSeconds = Math.min(120, Math.max(30, Math.round(msSinceLastSet / 1000)));
+
           if (ble.isConnected) {
-            const bleHR = ble.getRecentHRAverage(90);
+            const bleHR = ble.getRecentHRAverage(hrWindowSeconds);
             if (bleHR.avgBpm !== null) {
               heartRate = { avgBpm: bleHR.avgBpm, peakBpm: bleHR.peakBpm };
             }
@@ -1514,10 +1529,20 @@ export default function ActiveWorkoutScreen() {
             const isHealthGranted =
               healthAvailable &&
               (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
-            heartRate = isHealthGranted ? await queryPostSetHeartRate(90) : null;
+            heartRate = isHealthGranted ? await queryPostSetHeartRate(hrWindowSeconds) : null;
           }
 
-          console.log('[HR] post-set heart rate:', JSON.stringify(heartRate));
+          console.log('[HR] window:', hrWindowSeconds, 's | result:', JSON.stringify(heartRate));
+
+          // Track session-wide HR
+          if (heartRate?.avgBpm) {
+            setSessionAvgHRSamples((prev) => [...prev, heartRate.avgBpm!]);
+          }
+          if (heartRate?.peakBpm) {
+            setSessionPeakHR((prev) =>
+              prev === null ? heartRate.peakBpm! : Math.max(prev, heartRate.peakBpm!),
+            );
+          }
 
           console.log('[Recovery] passing to coaching-feedback:', JSON.stringify(recoveryContext));
 
@@ -1741,6 +1766,10 @@ export default function ActiveWorkoutScreen() {
 
     let prsHit = 0;
 
+    const sessionAvgHR = sessionAvgHRSamples.length > 0
+      ? Math.round(sessionAvgHRSamples.reduce((a, b) => a + b, 0) / sessionAvgHRSamples.length)
+      : null;
+
     try {
       const {
         data: { session },
@@ -1796,6 +1825,8 @@ export default function ActiveWorkoutScreen() {
             session_fatigue_rating: fatigueRating,
             notes: sessionNotes || null,
             sets_json: sets,
+            hr_avg: sessionAvgHR ?? null,
+            hr_peak: sessionPeakHR ?? null,
           },
           { onConflict: 'plan_id,week_number,day_number' },
         );
@@ -1897,6 +1928,8 @@ export default function ActiveWorkoutScreen() {
       durationMinutes: Math.floor(elapsedSeconds / 60),
       fatigueRating,
       prsHit,
+      sessionAvgHR,
+      sessionPeakHR,
     });
   };
 
@@ -2504,13 +2537,7 @@ export default function ActiveWorkoutScreen() {
 
       {/* ── Warmup modal ── */}
       {showWarmupModal ? (
-      <Modal
-        visible={showWarmupModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowWarmupModal(false)}
-      >
-        <View style={styles.warmupRoot}>
+        <View style={[StyleSheet.absoluteFillObject, styles.warmupRoot]} pointerEvents="box-none">
           <View style={styles.warmupSheet}>
             <View style={styles.warmupHandle} />
 
@@ -2617,7 +2644,6 @@ export default function ActiveWorkoutScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
       ) : null}
 
       {showPreSessionModal ? (
@@ -3313,7 +3339,12 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
   warmupRoot: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 300,
     justifyContent: 'flex-end',
     backgroundColor: Colors.overlay,
   },

@@ -3890,13 +3890,20 @@ full_body sessions):
 - Do not use two primary compound squat patterns as
   the first two exercises (e.g. Back Squat + Front Squat).
   Pair a squat with a hinge, then add isolation work.
+- Include Leg Extension or Leg Extension (Single Leg)
+  as a quad isolation finisher when session length
+  allows (45 min+). It is the most common quad isolation
+  exercise and users expect to see it on leg days.
 
 QUAD-FOCUSED SESSIONS (legs_quad, squat_heavy,
 squat_volume):
 - Multiple squat-pattern exercises are allowed and
   encouraged. Hinge is optional.
-- Still include at least one isolation exercise
-  (Leg Extension, Leg Press Calf Raise, etc.)
+- ALWAYS include Leg Extension or Leg Extension (Single Leg)
+  as the quad isolation finisher. This is a staple quad
+  exercise and should appear on every quad-focused day
+  unless the session length is 30-45 mins and exercise
+  count is already at cap.
 
 POSTERIOR CHAIN SESSIONS (legs_posterior,
 lower_posterior):

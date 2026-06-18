@@ -159,6 +159,8 @@ export type RootStackParamList = {
     durationMinutes: number;
     fatigueRating: number;
     prsHit: number;
+    sessionAvgHR?: number | null;
+    sessionPeakHR?: number | null;
   };
   /** Final plan retrospective (full-screen, same level as WorkoutComplete) */
   PlanComplete: { planId: string };

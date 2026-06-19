@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,18 +11,62 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 export default function AuthScreen() {
   const navigation = useNavigation<NavProp>();
 
+  // One shared driver per element, staggered via delay
+  const logoAnim = useRef(new Animated.Value(0)).current;
+  const wordmarkAnim = useRef(new Animated.Value(0)).current;
+  const taglineAnim = useRef(new Animated.Value(0)).current;
+  const ctaAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const fadeUp = (val: Animated.Value, delay: number) =>
+      Animated.timing(val, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      });
+
+    Animated.stagger(100, [
+      fadeUp(logoAnim, 0),
+      fadeUp(wordmarkAnim, 0),
+      fadeUp(taglineAnim, 0),
+      fadeUp(ctaAnim, 0),
+    ]).start();
+  }, [logoAnim, wordmarkAnim, taglineAnim, ctaAnim]);
+
+  // Helper: maps 0→1 driver to {opacity, translateY}
+  const entrance = (val: Animated.Value) => ({
+    opacity: val,
+    transform: [
+      {
+        translateY: val.interpolate({
+          inputRange: [0, 1],
+          outputRange: [16, 0],
+        }),
+      },
+    ],
+  });
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.logoZone}>
-        <Image
-          source={require('../../assets/icon.png')}
-          style={styles.brandLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.wordmark}>Hone</Text>
-        <Text style={styles.tagline}>Your coach. Built around you.</Text>
+        <Animated.View style={entrance(logoAnim)}>
+          <Image
+            source={require('../../assets/logo-transparent.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
+        </Animated.View>
 
-        <View style={styles.ctaZone}>
+        <Animated.Text style={[styles.wordmark, entrance(wordmarkAnim)]}>
+          Hone
+        </Animated.Text>
+
+        <Animated.Text style={[styles.tagline, entrance(taglineAnim)]}>
+          Your coach. Built around you.
+        </Animated.Text>
+
+        <Animated.View style={[styles.ctaZone, entrance(ctaAnim)]}>
           <TouchableOpacity
             style={styles.primaryButton}
             activeOpacity={0.88}
@@ -36,7 +81,7 @@ export default function AuthScreen() {
               Sign in
             </Text>
           </Text>
-        </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
@@ -55,15 +100,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
   },
   brandLogo: {
-    width: 96,
-    height: 96,
+    width: 150,
+    height: 150,
   },
   wordmark: {
-    marginTop: 24,
+    marginTop: 8,
     fontFamily: Fonts.bold,
     fontSize: 38,
     color: Colors.textPrimary,
     letterSpacing: 3,
+    textAlign: 'center',
   },
   tagline: {
     marginTop: 12,

@@ -15,15 +15,16 @@ import { Platform } from 'react-native';
 let Core: typeof import('@kingstinct/react-native-healthkit')['Core'] | null = null;
 let QuantityTypes: typeof import('@kingstinct/react-native-healthkit')['QuantityTypes'] | null = null;
 let CategoryTypes: typeof import('@kingstinct/react-native-healthkit')['CategoryTypes'] | null = null;
+let healthModuleError: string | null = null;
 
 if (Platform.OS === 'ios') {
   try {
-    const hk = require('@kingstinct/react-native-healthkit');
-    Core = hk.Core;
-    QuantityTypes = hk.QuantityTypes;
-    CategoryTypes = hk.CategoryTypes;
-  } catch {
-    // Not available in Expo Go
+    const mods = require('@kingstinct/react-native-healthkit/modules');
+    Core = mods.Core;
+    QuantityTypes = mods.QuantityTypes;
+    CategoryTypes = mods.CategoryTypes;
+  } catch (e) {
+    healthModuleError = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -557,8 +558,22 @@ export function useHealthData() {
   const isMountedRef = useRef(true);
 
   const isAvailable =
-    (Platform.OS === 'ios' && Core?.isHealthDataAvailable() === true) ||
+    (Platform.OS === 'ios' &&
+      Core != null &&
+      (typeof Core.isHealthDataAvailable !== 'function' ||
+        Core.isHealthDataAvailable() === true)) ||
     (Platform.OS === 'android' && HC !== null);
+
+  const coreLoaded = Platform.OS === 'ios' ? Core != null : HC != null;
+  let hkAvailableRaw: string;
+  try {
+    hkAvailableRaw =
+      Platform.OS === 'ios'
+        ? String(Core?.isHealthDataAvailable?.() ?? 'no-fn')
+        : String(HC != null);
+  } catch (e) {
+    hkAvailableRaw = `threw:${String(e).slice(0, 40)}`;
+  }
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!isAvailable) {
@@ -630,6 +645,9 @@ export function useHealthData() {
     nutritionData,
     isLoading,
     isAvailable,
+    healthModuleError,
+    coreLoaded,
+    hkAvailableRaw,
     requestPermission,
     fetchHealthData,
     fetchNutritionData,

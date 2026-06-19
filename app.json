@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo-transparent.png",
       "resizeMode": "contain",
       "backgroundColor": "#09090B"
     },
@@ -30,6 +30,10 @@
       "package": "com.gethone.app",
       "versionCode": 1,
       "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-foreground.png",
+        "backgroundColor": "#0A0A0C"
+      },
       "permissions": [
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_HEART_RATE",
@@ -67,7 +71,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#F97316",
           "sounds": []
         }

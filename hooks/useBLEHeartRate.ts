@@ -45,6 +45,8 @@ export type UseBLEHeartRateReturn = {
   disconnect: () => Promise<void>;
   /** Try to reconnect to previously paired device */
   tryReconnect: () => Promise<boolean>;
+  /** Re-arm auto-reconnect budget (call when a set is logged) */
+  rearmReconnect: () => void;
   /** Get average HR over the last N seconds (for post-set query) */
   getRecentHRAverage: (lookbackSeconds: number) => { avgBpm: number | null; peakBpm: number | null; sampleCount: number };
 };
@@ -151,6 +153,10 @@ export function useBLEHeartRate(): UseBLEHeartRateReturn {
     return await getBLEHeartRateManager().reconnectPaired();
   }, []);
 
+  const rearmReconnect = useCallback(() => {
+    getBLEHeartRateManager().rearmReconnect();
+  }, []);
+
   const getRecentHRAverage = useCallback((lookbackSeconds: number) => {
     const cutoff = Date.now() - lookbackSeconds * 1000;
     const recent = hrSamplesRef.current.filter((s) => s.timestamp > cutoff);
@@ -173,6 +179,7 @@ export function useBLEHeartRate(): UseBLEHeartRateReturn {
     connect,
     disconnect,
     tryReconnect,
+    rearmReconnect,
     getRecentHRAverage,
   };
 }

@@ -77,6 +77,11 @@ export type BLEConnectionState =
 export class BLEHeartRateManager {
   private hrSubscription: Subscription | null = null;
   private connectedDevice: Device | null = null;
+  private intentionalDisconnect = false;
+  private isReconnecting = false;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly RECONNECT_DELAYS_MS = [2000, 5000, 10000];
 
   onDeviceFound: ((device: BLEDevice) => void) | null = null;
   onHRUpdate: ((bpm: number) => void) | null = null;
@@ -205,6 +210,8 @@ export class BLEHeartRateManager {
       await AsyncStorage.setItem(BLE_PAIRED_DEVICE_ID_KEY, deviceId);
       await AsyncStorage.setItem(BLE_PAIRED_DEVICE_NAME_KEY, deviceName);
 
+      this.intentionalDisconnect = false;
+      this.reconnectAttempt = 0;
       this.setState('connected');
       return true;
     } catch (err) {
@@ -221,10 +228,67 @@ export class BLEHeartRateManager {
     this.hrSubscription = null;
     this.connectedDevice = null;
     this.setState('disconnected');
+
+    // Auto-reconnect only if the drop was unexpected (not a user-initiated disconnect)
+    if (!this.intentionalDisconnect) {
+      this.scheduleReconnect();
+    }
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /** Re-arm the reconnect budget — call when a set is logged so we try again at moments that matter. */
+  rearmReconnect() {
+    if (this.intentionalDisconnect) return;
+    // Only re-arm if we are not currently connected and not mid-attempt
+    if (this.connectedDevice || this.isReconnecting) return;
+    this.reconnectAttempt = 0;
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect() {
+    if (this.isReconnecting) return;
+    if (this.reconnectAttempt >= this.RECONNECT_DELAYS_MS.length) return; // budget exhausted
+    const delay = this.RECONNECT_DELAYS_MS[this.reconnectAttempt] ?? 10000;
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      void this.attemptReconnect();
+    }, delay);
+  }
+
+  private async attemptReconnect() {
+    if (this.intentionalDisconnect) return;
+    if (this.connectedDevice) return; // already back
+    if (this.isReconnecting) return;
+    this.isReconnecting = true;
+    this.reconnectAttempt += 1;
+    try {
+      const ok = await this.reconnectPaired();
+      if (!ok && !this.intentionalDisconnect && !this.connectedDevice) {
+        // Schedule the next attempt if budget remains
+        this.isReconnecting = false;
+        this.scheduleReconnect();
+        return;
+      }
+    } catch {
+      this.isReconnecting = false;
+      if (!this.intentionalDisconnect && !this.connectedDevice) {
+        this.scheduleReconnect();
+      }
+      return;
+    }
+    this.isReconnecting = false;
   }
 
   async disconnect(): Promise<void> {
     try {
+      this.intentionalDisconnect = true;
+      this.clearReconnectTimer();
       this.hrSubscription?.remove();
       this.hrSubscription = null;
       if (this.connectedDevice) {
@@ -241,6 +305,7 @@ export class BLEHeartRateManager {
 
   async reconnectPaired(): Promise<boolean> {
     try {
+      this.intentionalDisconnect = false;
       const deviceId = await AsyncStorage.getItem(BLE_PAIRED_DEVICE_ID_KEY);
       const deviceName = await AsyncStorage.getItem(BLE_PAIRED_DEVICE_NAME_KEY);
       if (!deviceId || !deviceName) return false;
@@ -274,6 +339,7 @@ export class BLEHeartRateManager {
 
   destroy() {
     this.stopScan();
+    this.clearReconnectTimer();
     this.hrSubscription?.remove();
     this.connectedDevice = null;
   }

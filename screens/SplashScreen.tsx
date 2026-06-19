@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import Svg, { Polygon, Rect } from 'react-native-svg';
+import { View, Text, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -48,18 +47,11 @@ export default function SplashScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.centerContent}>
-        <Svg width={96} height={96} viewBox="0 0 100 100">
-          <Polygon
-            points="50,7 89,28 89,72 50,93 11,72 11,28"
-            fill="#09090B"
-            stroke="#F97316"
-            strokeWidth="5"
-          />
-          <Rect x="24" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          <Rect x="58" y="28" width="18" height="44" rx="4" fill="#F97316"/>
-          <Rect x="24" y="42" width="52" height="14" rx="3" fill="#F97316"/>
-        </Svg>
-
+        <Image
+          source={require('../assets/splash-icon.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.wordmark}>Hone</Text>
       </View>
 
@@ -83,8 +75,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: '20%',
   },
+  logo: {
+    width: 280,
+    height: 280,
+  },
   wordmark: {
-    marginTop: 20,
+    marginTop: 4,
     fontFamily: Fonts.bold,
     fontSize: 32,
     color: Colors.textPrimary,

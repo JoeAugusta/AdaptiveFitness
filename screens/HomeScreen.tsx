@@ -646,6 +646,7 @@ export default function HomeScreen() {
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isStartingWorkout, setIsStartingWorkout] = useState(false);
   const [showCheckInSheet, setShowCheckInSheet] = useState(false);
   const [checkInWeight, setCheckInWeight] = useState('');
   const [checkInSleep, setCheckInSleep] = useState<number | null>(null);
@@ -2083,46 +2084,51 @@ export default function HomeScreen() {
       }
     }
 
-    const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
+    setIsStartingWorkout(true);
+    try {
+      const daysPerWeekLocal = planData?.daysPerWeek ?? 4;
 
-    let weeklyLogsLocal = workoutLogs ?? [];
-    if (
-      weeklyLogsLocal.length === 0 &&
-      planData?.planId &&
-      (planData?.currentWeek ?? 1) >= 2
-    ) {
-      const { data: freshLogs } = await supabase
-        .from('workout_logs')
-        .select('id, sets_json, session_fatigue_rating, logged_at')
-        .eq('plan_id', planData.planId)
-        .eq('week_number', planData.currentWeek)
-        .order('logged_at', { ascending: false })
-        .limit(5);
-      weeklyLogsLocal = freshLogs ?? [];
+      let weeklyLogsLocal = workoutLogs ?? [];
+      if (
+        weeklyLogsLocal.length === 0 &&
+        planData?.planId &&
+        (planData?.currentWeek ?? 1) >= 2
+      ) {
+        const { data: freshLogs } = await supabase
+          .from('workout_logs')
+          .select('id, sets_json, session_fatigue_rating, logged_at')
+          .eq('plan_id', planData.planId)
+          .eq('week_number', planData.currentWeek)
+          .order('logged_at', { ascending: false })
+          .limit(5);
+        weeklyLogsLocal = freshLogs ?? [];
+      }
+
+      const sessionsThisWeekLocal = weeklyLogsLocal.length;
+      const isWeekCompleteLocal = sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
+      const lastSessionLocal = weeklyLogsLocal[0] ?? null;
+      const lastSignalLocal = sessionSignalFromLastLog(lastSessionLocal);
+      const preSessionCopyLocal =
+        lastSignalLocal != null &&
+        sessionsThisWeekLocal >= 1 &&
+        !isWeekCompleteLocal
+          ? await generatePreSessionMessage(lastSignalLocal)
+          : null;
+
+      navigation.navigate('ActiveWorkout', {
+        planId: planData?.planId ?? 'mock',
+        weekNumber: todayWorkout.isNextWeek
+          ? (planData?.currentWeek ?? 1) + 1
+          : planData?.currentWeek ?? 1,
+        dayNumber: todayWorkout.dayNumber,
+        workoutTitle: todayWorkout.title,
+        preSessionMessage: preSessionCopyLocal
+          ? (cleanJordanMessage(stripEmDash(preSessionCopyLocal)) ?? null)
+          : null,
+      });
+    } finally {
+      setIsStartingWorkout(false);
     }
-
-    const sessionsThisWeekLocal = weeklyLogsLocal.length;
-    const isWeekCompleteLocal = sessionsThisWeekLocal >= (daysPerWeekLocal ?? 2);
-    const lastSessionLocal = weeklyLogsLocal[0] ?? null;
-    const lastSignalLocal = sessionSignalFromLastLog(lastSessionLocal);
-    const preSessionCopyLocal =
-      lastSignalLocal != null &&
-      sessionsThisWeekLocal >= 1 &&
-      !isWeekCompleteLocal
-        ? await generatePreSessionMessage(lastSignalLocal)
-        : null;
-
-    navigation.navigate('ActiveWorkout', {
-      planId: planData?.planId ?? 'mock',
-      weekNumber: todayWorkout.isNextWeek
-        ? (planData?.currentWeek ?? 1) + 1
-        : planData?.currentWeek ?? 1,
-      dayNumber: todayWorkout.dayNumber,
-      workoutTitle: todayWorkout.title,
-      preSessionMessage: preSessionCopyLocal
-        ? (cleanJordanMessage(stripEmDash(preSessionCopyLocal)) ?? null)
-        : null,
-    });
   }, [navigation, planData, workoutLogs, isPro, entitlementLoading, generatePreSessionMessage]);
 
   if (isLoading) {
@@ -2867,8 +2873,13 @@ export default function HomeScreen() {
                 style={styles.ctaButton}
                 activeOpacity={0.8}
                 onPress={() => void handleStartWorkout()}
+                disabled={isStartingWorkout}
               >
-                <Text style={styles.ctaText}>Start Workout →</Text>
+                {isStartingWorkout ? (
+                  <ActivityIndicator color={Colors.textPrimary} />
+                ) : (
+                  <Text style={styles.ctaText}>Start Workout →</Text>
+                )}
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -3281,7 +3292,7 @@ export default function HomeScreen() {
 
       {/* ── Daily Check-in Bottom Sheet ── */}
       <Modal
-        visible={showCheckInSheet}
+        visible={showCheckInSheet && !showActivitySubSheet}
         transparent
         animationType="slide"
         onRequestClose={() => setShowCheckInSheet(false)}

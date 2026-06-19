@@ -1,5 +1,5 @@
 // Requires: npx expo install expo-haptics
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -65,6 +65,8 @@ type WorkoutDraft = {
   weekNumber: number;
   sets: LoggedSet[];
   savedAt: number;
+  sessionStartedAtMs: number;
+  skippedSetKeys?: string[];
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'ActiveWorkout'>;
@@ -475,6 +477,10 @@ export default function ActiveWorkoutScreen() {
   const [skippedExercises, setSkippedExercises] = useState<Set<string>>(
     new Set(),
   );
+  const [skippedSets, setSkippedSets] = useState<Set<string>>(new Set());
+  const [addedExercises, setAddedExercises] = useState<WorkoutExercise[]>([]);
+  const [showAddExerciseSheet, setShowAddExerciseSheet] = useState(false);
+  const [addPickerMuscleGroup, setAddPickerMuscleGroup] = useState<string | null>(null);
   // Collapsed exercise cards — Set of exercise IDs
   const [collapsedExercises, setCollapsedExercises] = useState<Set<string>>(
     new Set(),
@@ -503,6 +509,7 @@ export default function ActiveWorkoutScreen() {
 
   // Timers
   const sessionStartTimeRef = useRef<number>(Date.now());
+  const restoredStartRef = useRef<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const restEndTimeRef = useRef<number | null>(null);
@@ -614,6 +621,19 @@ export default function ActiveWorkoutScreen() {
             text: 'Resume',
             onPress: () => {
               setSets(parsed.sets);
+              if (Array.isArray(parsed.skippedSetKeys)) {
+                setSkippedSets(new Set(parsed.skippedSetKeys));
+              }
+              const restored = typeof parsed.sessionStartedAtMs === 'number'
+                ? parsed.sessionStartedAtMs
+                : null;
+              const ageMs = restored != null ? Date.now() - restored : Infinity;
+              // Only restore if present and within a sane window (6 hours).
+              if (restored != null && ageMs > 0 && ageMs < 6 * 60 * 60 * 1000) {
+                sessionStartTimeRef.current = restored;
+                restoredStartRef.current = true;
+                setElapsedSeconds(Math.floor(ageMs / 1000));
+              }
             },
           },
           {
@@ -1102,14 +1122,19 @@ export default function ActiveWorkoutScreen() {
     }
   };
 
-  const totalSetsCount = (workout?.exercises ?? []).reduce(
-    (sum, ex) =>
-      skippedExercises.has(ex.id) ? sum : sum + ex.sets.length,
+  const totalSetsCount = [...(workout?.exercises ?? []), ...addedExercises].reduce(
+    (sum, ex) => {
+      if (skippedExercises.has(ex.id)) return sum;
+      const skippedInThisExercise = ex.sets.filter((st) =>
+        skippedSets.has(`${ex.id}:${st.setNumber}`),
+      ).length;
+      return sum + ex.sets.length - skippedInThisExercise;
+    },
     0,
   );
   const allSetsLogged = sets.length >= totalSetsCount;
 
-  const workoutExercises = workout?.exercises ?? [];
+  const workoutExercises = [...(workout?.exercises ?? []), ...addedExercises];
   // Apply user reorder — fall back to original order for any
   // IDs not yet in exerciseOrder (e.g. after a swap)
   const orderedExercises =
@@ -1122,13 +1147,37 @@ export default function ActiveWorkoutScreen() {
         ]
       : workoutExercises;
 
+  const addPickerData = useMemo(() => {
+    const currentNames = new Set(
+      workoutExercises.map((e) => (exerciseSwaps[e.id] ?? e.name).toLowerCase()),
+    );
+    const byGroup: Record<string, Exercise[]> = {};
+    for (const ex of EXERCISES) {
+      if (currentNames.has(ex.name.toLowerCase())) continue;
+      const g = ex.primaryMuscle ?? 'Other';
+      if (!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push(ex);
+    }
+    return byGroup;
+  }, [workoutExercises, exerciseSwaps]);
+
+  const addPickerGroups = useMemo(
+    () => Object.keys(addPickerData).sort(),
+    [addPickerData],
+  );
+
   // BUG-7: Active highlight now derived from first exercise with remaining
   // unlogged sets. Cannot bleed onto next exercise until previous is complete.
   const activeExerciseIndex = orderedExercises.findIndex(
-    (ex) =>
-      !skippedExercises.has(ex.id) &&
-      !collapsedExercises.has(ex.id) &&
-      sets.filter((s) => s.exerciseId === ex.id).length < ex.sets.length,
+    (ex) => {
+      if (skippedExercises.has(ex.id)) return false;
+      if (collapsedExercises.has(ex.id)) return false;
+      const loggedCount = sets.filter((s) => s.exerciseId === ex.id).length;
+      const skippedCount = ex.sets.filter((st) =>
+        skippedSets.has(`${ex.id}:${st.setNumber}`),
+      ).length;
+      return loggedCount + skippedCount < ex.sets.length;
+    },
   );
 
   useEffect(() => {
@@ -1140,7 +1189,9 @@ export default function ActiveWorkoutScreen() {
 
   // Elapsed session timer (timestamp-based — survives background throttling)
   useEffect(() => {
-    sessionStartTimeRef.current = Date.now();
+    if (!restoredStartRef.current) {
+      sessionStartTimeRef.current = Date.now();
+    }
     const interval = setInterval(() => {
       setElapsedSeconds(
         Math.floor((Date.now() - sessionStartTimeRef.current) / 1000),
@@ -1373,7 +1424,7 @@ export default function ActiveWorkoutScreen() {
         if (overlayDismissTimeout.current) {
           clearTimeout(overlayDismissTimeout.current);
         }
-        const dismissDelay = allowSuggestion ? 8000 : 5000;
+        const dismissDelay = allowSuggestion ? 11000 : 8000;
         overlayDismissTimeout.current = setTimeout(() => {
           Animated.timing(overlayNoteAnim, {
             toValue: 0,
@@ -1455,8 +1506,14 @@ export default function ActiveWorkoutScreen() {
       weekNumber: sessionWeekForLogs,
       sets: newSets,
       savedAt: Date.now(),
+      sessionStartedAtMs: sessionStartTimeRef.current,
+      skippedSetKeys: Array.from(skippedSets),
     };
     void AsyncStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft));
+    // If HR monitor dropped, re-arm auto-reconnect now that the user is active again
+    if (!ble.isConnected && ble.pairedDevice) {
+      ble.rearmReconnect();
+    }
     // Mark when this set was logged — used to bound next set's HR window
     const setLoggedAt = Date.now();
     const msSinceLastSet = lastSetLoggedAtRef.current !== null
@@ -1594,6 +1651,38 @@ export default function ActiveWorkoutScreen() {
     });
   };
 
+  const handleAddExercise = useCallback((libraryExercise: Exercise) => {
+    void hapticMedium();
+    const newId = `added_${Date.now()}`;
+    const SET_COUNT = 3;
+    const newExercise: WorkoutExercise = {
+      id: newId,
+      name: libraryExercise.name,
+      muscleGroup: libraryExercise.primaryMuscle,
+      usesWeight: libraryExercise.usesWeight ?? true,
+      isUnilateral: libraryExercise.isUnilateral ?? false,
+      planCategory: libraryExercise.category ?? 'isolation',
+      compoundTier: libraryExercise.compoundTier ?? 'isolation',
+      category: libraryExercise.compoundTier ?? 'isolation',
+      movementPattern: libraryExercise.movementPattern,
+      targetWeight: 0,
+      reps: '8–12',
+      sets: Array.from({ length: SET_COUNT }, (_, i) => ({
+        setNumber: i + 1,
+        targetReps: '8–12',
+        targetWeight: 0,
+        targetRpe: 8,
+      })),
+      alternatives: getAlternatives(libraryExercise.primaryMuscle),
+      cues: [...(libraryExercise.cues ?? [])],
+      setStructure: 'straight',
+    };
+    setAddedExercises((prev) => [...prev, newExercise]);
+    setExerciseOrder((prev) => [...prev, newId]);
+    setShowAddExerciseSheet(false);
+    setAddPickerMuscleGroup(null);
+  }, []);
+
   const handleUnskipExercise = (exerciseId: string) => {
     void hapticLight();
     setSkippedExercises((prev) => {
@@ -1602,6 +1691,38 @@ export default function ActiveWorkoutScreen() {
       return next;
     });
   };
+
+  const skippedSetKey = (exerciseId: string, setNumber: number) =>
+    `${exerciseId}:${setNumber}`;
+
+  const handleSkipRemainingSets = useCallback((exerciseId: string) => {
+    void hapticLight();
+    const exercise = (workout?.exercises ?? []).find((ex) => ex.id === exerciseId);
+    if (!exercise) return;
+    const loggedSetNumbers = new Set(
+      sets.filter((s) => s.exerciseId === exerciseId).map((s) => s.setNumber),
+    );
+    setSkippedSets((prev) => {
+      const next = new Set(prev);
+      for (const st of exercise.sets) {
+        if (!loggedSetNumbers.has(st.setNumber)) {
+          next.add(skippedSetKey(exerciseId, st.setNumber));
+        }
+      }
+      return next;
+    });
+  }, [workout, sets]);
+
+  const handleRestoreSkippedSets = useCallback((exerciseId: string) => {
+    void hapticLight();
+    setSkippedSets((prev) => {
+      const next = new Set<string>();
+      for (const key of prev) {
+        if (!key.startsWith(`${exerciseId}:`)) next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   const handleReorder = (exerciseId: string, direction: 'up' | 'down') => {
     setExerciseOrder((prev) => {
@@ -1991,26 +2112,28 @@ export default function ActiveWorkoutScreen() {
               </View>
             ) : null}
           </View>
-          {ble.isConnected && ble.currentHR !== null ? (
-            <TouchableOpacity
-              style={styles.bleHRBadge}
-              onPress={() => setShowBLESheet(true)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="heart" size={12} color={Colors.danger} />
-              <Text style={styles.bleHRBadgeText}>{ble.currentHR} bpm</Text>
-            </TouchableOpacity>
-          ) : !ble.isConnected && !ble.pairedDevice ? (
-            <TouchableOpacity
-              style={styles.bleConnectPrompt}
-              onPress={() => setShowBLESheet(true)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="bluetooth-outline" size={12} color={Colors.textTertiary} />
-              <Text style={styles.bleConnectPromptText}>HR monitor</Text>
-            </TouchableOpacity>
-          ) : null}
-          <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
+          <View style={styles.headerRightCluster}>
+            {ble.isConnected && ble.currentHR !== null ? (
+              <TouchableOpacity
+                style={styles.bleHRBadge}
+                onPress={() => setShowBLESheet(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="heart" size={12} color={Colors.danger} />
+                <Text style={styles.bleHRBadgeText}>{ble.currentHR} bpm</Text>
+              </TouchableOpacity>
+            ) : !ble.isConnected && !ble.pairedDevice ? (
+              <TouchableOpacity
+                style={styles.bleConnectPrompt}
+                onPress={() => setShowBLESheet(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="bluetooth-outline" size={12} color={Colors.textTertiary} />
+                <Text style={styles.bleConnectPromptText}>HR monitor</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.timerText}>{formatTime(elapsedSeconds)}</Text>
+          </View>
         </View>
 
         <View style={styles.bodyWrap}>
@@ -2236,12 +2359,30 @@ export default function ActiveWorkoutScreen() {
                     currentWorkoutExerciseNames={orderedExercises.map(
                       (e) => exerciseSwaps[e.id] ?? e.name,
                     )}
+                    skippedSetNumbers={exercise.sets
+                      .filter((st) => skippedSets.has(`${exercise.id}:${st.setNumber}`))
+                      .map((st) => st.setNumber)}
+                    onSkipRemainingSets={() => handleSkipRemainingSets(exercise.id)}
+                    onRestoreSkippedSets={() => handleRestoreSkippedSets(exercise.id)}
                   />
                     </>
                   )}
                 </View>
               );
             })}
+
+            <TouchableOpacity
+              style={styles.addExerciseBtn}
+              activeOpacity={0.7}
+              onPress={() => {
+                void hapticLight();
+                setAddPickerMuscleGroup(null);
+                setShowAddExerciseSheet(true);
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={Colors.accent} />
+              <Text style={styles.addExerciseBtnText}>Add Exercise</Text>
+            </TouchableOpacity>
           </ScrollView>
 
           {isRestActive && !allSetsLogged ? (
@@ -2693,6 +2834,70 @@ export default function ActiveWorkoutScreen() {
         pairedDevice={ble.pairedDevice}
         error={ble.error}
       />
+      <Modal
+        visible={showAddExerciseSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddExerciseSheet(false)}
+      >
+        <View style={styles.addSheetRoot}>
+          <Pressable
+            style={styles.addSheetOverlay}
+            onPress={() => setShowAddExerciseSheet(false)}
+          />
+          <View style={styles.addSheet}>
+            <View style={styles.addSheetHandle} />
+            <View style={styles.addSheetHeaderRow}>
+              {addPickerMuscleGroup != null ? (
+                <TouchableOpacity
+                  onPress={() => setAddPickerMuscleGroup(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.addSheetBackBtn}
+                >
+                  <Ionicons name="chevron-back" size={22} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+              <Text style={styles.addSheetTitle}>
+                {addPickerMuscleGroup ?? 'Add Exercise'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowAddExerciseSheet(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.addSheetScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {addPickerMuscleGroup == null
+                ? addPickerGroups.map((group) => (
+                    <TouchableOpacity
+                      key={group}
+                      style={styles.addPickerRow}
+                      activeOpacity={0.7}
+                      onPress={() => setAddPickerMuscleGroup(group)}
+                    >
+                      <Text style={styles.addPickerRowText}>{group}</Text>
+                      <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
+                    </TouchableOpacity>
+                  ))
+                : (addPickerData[addPickerMuscleGroup] ?? []).map((ex) => (
+                    <TouchableOpacity
+                      key={ex.name}
+                      style={styles.addPickerRow}
+                      activeOpacity={0.7}
+                      onPress={() => handleAddExercise(ex)}
+                    >
+                      <Text style={styles.addPickerRowText}>{ex.name}</Text>
+                      <Ionicons name="add" size={20} color={Colors.accent} />
+                    </TouchableOpacity>
+                  ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2739,10 +2944,17 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: Colors.accent,
   },
+  headerRightCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginLeft: 'auto',
+    zIndex: 2,
+  },
   workoutTitleCenter: {
     position: 'absolute',
     left: 48,
-    right: 72,
+    right: 110,
     top: Spacing.sm,
     bottom: 12,
     justifyContent: 'center',
@@ -3476,5 +3688,87 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
+  },
+  addExerciseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    height: 52,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    borderStyle: 'dashed',
+    backgroundColor: Colors.bgCard,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  addExerciseBtnText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.accent,
+  },
+  addSheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  addSheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  addSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    maxHeight: '80%',
+    minHeight: '50%',
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  addSheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  addSheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.divider,
+    gap: Spacing.sm,
+  },
+  addSheetBackBtn: {
+    marginRight: 'auto',
+  },
+  addSheetTitle: {
+    flex: 1,
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.title,
+    color: Colors.textPrimary,
+  },
+  addSheetScroll: {
+    flex: 1,
+    paddingHorizontal: Spacing.xl,
+  },
+  addPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.divider,
+  },
+  addPickerRowText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
   },
 });

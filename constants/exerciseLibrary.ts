@@ -46,6 +46,8 @@ export interface Exercise {
   isUnilateral: boolean;
   /** Three setup / execution bullets for in-workout coaching */
   cues: string[];
+  /** Selection reasoning: why this exercise targets its muscle emphasis */
+  coachingNote?: string;
   /** Grip or attachment variant e.g. 'Rope', 'Wide Grip', 'Reverse Grip' */
   gripVariant?: string;
 }
@@ -462,7 +464,18 @@ export const EXERCISES: Exercise[] = [
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 12, secondaryMuscleTags: ['brachialis'] },
   ),
   E(
-    { id: 'bi11', name: 'Concentration Curl', primaryMuscle: 'Biceps', secondaryMuscles: [], equipment: 'dumbbell', category: 'isolation', difficulty: 'beginner', muscleEmphasis: 'short_head_bicep' },
+    {
+      id: 'bi11',
+      name: 'Concentration Curl',
+      primaryMuscle: 'Biceps',
+      secondaryMuscles: [],
+      equipment: 'dumbbell',
+      category: 'isolation',
+      difficulty: 'beginner',
+      muscleEmphasis: 'short_head_bicep',
+      coachingNote:
+        'Bracing the arm against the inner thigh puts the shoulder in slight flexion, biasing the short head and forcing the bicep to work without momentum. One of the strongest peak-contraction isolation movements for the arm.',
+    },
     { compoundTier: 'isolation', movementPattern: 'isolation_pull', rotationGroup: 'bicep_curl', rotationPriority: 13, secondaryMuscleTags: [] },
   ),
   E(

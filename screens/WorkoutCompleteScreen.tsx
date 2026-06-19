@@ -1051,7 +1051,12 @@ export default function WorkoutCompleteScreen() {
                 ]}
               >
                 {stat.icon}
-                <Text style={[styles.statValue, isPrCard && styles.statValuePr]}>
+                <Text
+                  style={[styles.statValue, isPrCard && styles.statValuePr]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {stat.value}
                 </Text>
                 <Text style={styles.statLabel}>{stat.label}</Text>

@@ -902,6 +902,7 @@ const COMPOUND_TIER_MAP: Record<string, 'primary_compound' | 'secondary_compound
   'chin-ups': 'primary_compound',
   't-bar row': 'primary_compound',
   'incline barbell bench press': 'secondary_compound',
+  'incline barbell press': 'secondary_compound',
   'incline dumbbell press': 'secondary_compound',
   'dumbbell bench press': 'secondary_compound',
   'close grip bench press': 'secondary_compound',
@@ -913,6 +914,7 @@ const COMPOUND_TIER_MAP: Record<string, 'primary_compound' | 'secondary_compound
   'machine shoulder press': 'secondary_compound',
   'machine chest press': 'secondary_compound',
   'machine row': 'secondary_compound',
+  'meadows row': 'secondary_compound',
   'seated cable row': 'secondary_compound',
   'lat pulldown': 'secondary_compound',
   'leg press': 'secondary_compound',
@@ -1703,6 +1705,113 @@ function replaceKneeUnsafeExercises(plan: any, injuries: string[] | undefined): 
 }
 
 // deno-lint-ignore no-explicit-any
+function enforceEquipmentConstraint(plan: any, equipment: string): any {
+  const equipLower = String(equipment ?? '').toLowerCase().trim();
+
+  // Dumbbell-only: has dumbbells but no barbell and no "full gym"
+  const isDumbbellOnly =
+    equipLower.includes('dumbbell') &&
+    !equipLower.includes('barbell') &&
+    !equipLower.includes('full gym') &&
+    !equipLower.includes('full_gym');
+
+  // Also catch explicit "dumbbells only" phrasing
+  const isExplicitDumbbellOnly =
+    equipLower === 'dumbbells only' ||
+    equipLower === 'dumbbell only' ||
+    equipLower === 'dumbbells';
+
+  if (!isDumbbellOnly && !isExplicitDumbbellOnly) {
+    return plan;
+  }
+
+  console.log('[equipment-enforce] Dumbbell-only detected:', equipLower);
+
+  const BARBELL_ONLY_BANNED = new Set([
+    'barbell bench press', 'incline barbell press', 'incline barbell bench press',
+    'decline bench press', 'close grip bench press', 'close-grip bench press',
+    'barbell row', 'barbell row (overhand wide)', 'barbell row (overhand narrow)',
+    'barbell row (underhand)', 'back squat', 'front squat', 'deadlift',
+    'conventional deadlift', 'sumo deadlift', 'trap bar deadlift', 'rack pull',
+    'romanian deadlift', 'stiff leg deadlift', 'stiff-leg deadlift', 'good morning',
+    'overhead press', 'barbell curl', 'ez bar curl', 'ez bar skull crusher',
+    'skull crusher', 'skull crushers', 'barbell shrug', 'upright row',
+    'hip thrust', 'barbell front raise', 'pendlay row', 't-bar row',
+    'seal row', 'meadows row', 'barbell calf raise', 'incline barbell bench press',
+  ]);
+
+  // Only ban cable/machine if equipment is TRULY dumbbells only (no cables/machines listed)
+  const hasCables = equipLower.includes('cable');
+  const hasMachines = equipLower.includes('machine');
+
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+      // deno-lint-ignore no-explicit-any
+      day.exercises = (day.exercises ?? []).map((ex: any) => {
+        const name = String(ex.name ?? '').toLowerCase().trim();
+        const isBarbellBanned = BARBELL_ONLY_BANNED.has(name);
+
+        // If they have cables and machines, only ban barbell exercises
+        if (!isBarbellBanned) return ex;
+
+        const emphasis = String(ex.muscleEmphasis ?? '').toLowerCase();
+        const muscleGroup = String(ex.muscleGroup ?? '').toLowerCase();
+
+        // Pick a replacement appropriate for available equipment
+        // If they have cables, prefer cable replacement; otherwise dumbbell
+        const REPLACEMENTS: Record<string, { name: string; muscleGroup: string; muscleEmphasis: string; equipment: string; compoundTier: string }> = {
+          'back': hasCables
+            ? { name: 'Cable Row (Close Grip)', muscleGroup: 'Back', muscleEmphasis: 'lats', equipment: 'cable', compoundTier: 'secondary_compound' }
+            : { name: 'Dumbbell Row', muscleGroup: 'Back', muscleEmphasis: 'lats', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'lats': hasCables
+            ? { name: 'Lat Pulldown (Wide Grip)', muscleGroup: 'Back', muscleEmphasis: 'lats', equipment: 'cable', compoundTier: 'secondary_compound' }
+            : { name: 'Dumbbell Row', muscleGroup: 'Back', muscleEmphasis: 'lats', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'mid_back': hasCables
+            ? { name: 'Cable Row (Wide Grip)', muscleGroup: 'Back', muscleEmphasis: 'mid_back', equipment: 'cable', compoundTier: 'secondary_compound' }
+            : { name: 'Dumbbell Row', muscleGroup: 'Back', muscleEmphasis: 'mid_back', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'chest': { name: 'Dumbbell Bench Press', muscleGroup: 'Chest', muscleEmphasis: 'mid_chest', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'mid_chest': { name: 'Dumbbell Bench Press', muscleGroup: 'Chest', muscleEmphasis: 'mid_chest', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'upper_chest': { name: 'Incline Dumbbell Press', muscleGroup: 'Chest', muscleEmphasis: 'upper_chest', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'shoulders': { name: 'Dumbbell Shoulder Press', muscleGroup: 'Shoulders', muscleEmphasis: 'front_delt', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'front_delt': { name: 'Dumbbell Shoulder Press', muscleGroup: 'Shoulders', muscleEmphasis: 'front_delt', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'short_head_bicep': { name: 'Dumbbell Curl', muscleGroup: 'Biceps', muscleEmphasis: 'short_head_bicep', equipment: 'dumbbell', compoundTier: 'isolation' },
+          'long_head_bicep': { name: 'Hammer Curl', muscleGroup: 'Biceps', muscleEmphasis: 'long_head_bicep', equipment: 'dumbbell', compoundTier: 'isolation' },
+          'lateral_head_tricep': { name: 'Dumbbell Tricep Kickback', muscleGroup: 'Triceps', muscleEmphasis: 'lateral_head_tricep', equipment: 'dumbbell', compoundTier: 'isolation' },
+          'long_head_tricep': { name: 'Dumbbell Skull Crusher', muscleGroup: 'Triceps', muscleEmphasis: 'long_head_tricep', equipment: 'dumbbell', compoundTier: 'isolation' },
+          'quads': hasMachines
+            ? { name: 'Leg Press', muscleGroup: 'Quads', muscleEmphasis: 'quads', equipment: 'machine', compoundTier: 'secondary_compound' }
+            : { name: 'Goblet Squat', muscleGroup: 'Quads', muscleEmphasis: 'quads', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'hamstrings': { name: 'Dumbbell Romanian Deadlift', muscleGroup: 'Hamstrings', muscleEmphasis: 'hamstrings', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'glutes': { name: 'Bulgarian Split Squat', muscleGroup: 'Glutes', muscleEmphasis: 'glutes', equipment: 'dumbbell', compoundTier: 'secondary_compound' },
+          'gastrocnemius': { name: 'Dumbbell Calf Raise', muscleGroup: 'Calves', muscleEmphasis: 'gastrocnemius', equipment: 'dumbbell', compoundTier: 'isolation' },
+          'transverse_abs': { name: 'Plank', muscleGroup: 'Core', muscleEmphasis: 'transverse_abs', equipment: 'bodyweight', compoundTier: 'secondary_compound' },
+        };
+
+        const replacement =
+          REPLACEMENTS[emphasis] ??
+          REPLACEMENTS[muscleGroup] ??
+          { name: 'Dumbbell Bench Press', muscleGroup: 'Chest', muscleEmphasis: 'mid_chest', equipment: 'dumbbell', compoundTier: 'secondary_compound' };
+
+        console.warn(`[equipment-enforce] Replaced barbell "${ex.name}" → "${replacement.name}"`);
+
+        return {
+          ...ex,
+          name: replacement.name,
+          muscleGroup: replacement.muscleGroup,
+          muscleEmphasis: replacement.muscleEmphasis,
+          equipment: replacement.equipment,
+          compoundTier: replacement.compoundTier,
+          setTargets: undefined,
+          setStructure: 'straight',
+        };
+      });
+    }
+  }
+  return plan;
+}
+
+// deno-lint-ignore no-explicit-any
 function enforceTier1LowerLimit(plan: any): any {
   const tier1Lower = [
     'back squat',
@@ -1806,6 +1915,191 @@ function deduplicateExercises(plan: any): any {
   return plan;
 }
 
+// deno-lint-ignore no-explicit-any
+function reconcilePlanText(plan: any): string[] {
+  const warnings: string[] = [];
+  const SELF_TALK = /\b(wait|let me|i'll|i will|replacing|honou?r|as a primary muscle for this session|actually,|on second thought)\b/i;
+
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+      const exercises = day.exercises ?? [];
+      const dayId = `W${week.weekNumber} "${day.title}" (day ${day.dayNumber})`;
+      const focus = String(day.sessionFocus ?? '');
+
+      for (const ex of exercises) {
+        const note = String(ex.coachingNote ?? '');
+        if (SELF_TALK.test(note)) {
+          warnings.push(`${dayId}: coachingNote on "${ex.name}" contains self-talk: "${note.slice(0, 60)}..."`);
+        }
+      }
+
+      const setRepMatch = focus.match(/(\d+)\s*[x×]\s*(\d+(?:-\d+)?)/i)
+        ?? focus.match(/(\d+)\s*sets?\s*of\s*(\d+(?:-\d+)?)/i);
+      if (setRepMatch) {
+        const claimedSets = parseInt(setRepMatch[1], 10);
+        const claimedReps = setRepMatch[2];
+        const repMatches = (repsField: string): boolean => {
+          const f = String(repsField).trim();
+          if (f === claimedReps) return true;
+          const single = parseInt(claimedReps, 10);
+          const range = f.match(/^(\d+)-(\d+)$/);
+          if (range && !claimedReps.includes('-')) return single >= +range[1] && single <= +range[2];
+          const fRange = claimedReps.match(/^(\d+)-(\d+)$/);
+          const fSingle = parseInt(f, 10);
+          if (fRange && !f.includes('-')) return fSingle >= +fRange[1] && fSingle <= +fRange[2];
+          return false;
+        };
+        // deno-lint-ignore no-explicit-any
+        const ok = exercises.some((ex: any) => Number(ex.sets) === claimedSets && repMatches(ex.reps));
+        if (!ok) warnings.push(`${dayId}: sessionFocus claims "${setRepMatch[0]}" but no exercise matches. First: ${exercises[0]?.name} ${exercises[0]?.sets}x${exercises[0]?.reps}`);
+      }
+
+      const weightMatch = focus.match(/(\d+(?:\.\d+)?)\s*lbs?/i);
+      if (weightMatch) {
+        const w = parseFloat(weightMatch[1]);
+        // deno-lint-ignore no-explicit-any
+        if (!exercises.some((ex: any) => Number(ex.targetWeight) === w))
+          warnings.push(`${dayId}: sessionFocus claims "${weightMatch[0]}" but no exercise has targetWeight=${w}.`);
+      }
+
+      if (/\bcore\b/i.test(focus)) {
+        // deno-lint-ignore no-explicit-any
+        if (!exercises.some((ex: any) => String(ex.muscleGroup ?? '').toLowerCase() === 'core'))
+          warnings.push(`${dayId}: sessionFocus mentions "core" but no Core exercise present.`);
+      }
+    }
+  }
+  return warnings;
+}
+
+// deno-lint-ignore no-explicit-any
+function enforceLegExtension(plan: any): any {
+  const POSTERIOR_ONLY_FOCUSES = new Set([
+    'legs_posterior', 'lower_posterior',
+  ]);
+
+  const QUAD_SESSION_KEYWORDS = [
+    'leg', 'lower', 'squat', 'quad',
+  ];
+
+  for (const week of plan.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      if (day.type !== 'workout') continue;
+
+      const focus = String(day.focus ?? '').toLowerCase();
+      const title = String(day.title ?? '').toLowerCase();
+
+      // Never add leg extension to posterior chain only days
+      if (POSTERIOR_ONLY_FOCUSES.has(focus)) continue;
+
+      // Only process days that are leg/lower days
+      const isLegDay =
+        QUAD_SESSION_KEYWORDS.some((k) => focus.includes(k)) ||
+        QUAD_SESSION_KEYWORDS.some((k) => title.includes(k));
+      if (!isLegDay) continue;
+
+      // deno-lint-ignore no-explicit-any
+      const exercises: any[] = day.exercises ?? [];
+
+      // Skip if already has leg extension
+      // deno-lint-ignore no-explicit-any
+      const hasLegExtension = exercises.some((e: any) =>
+        String(e.name ?? '').toLowerCase().includes('leg extension'),
+      );
+      if (hasLegExtension) continue;
+
+      // Only add if day has quad work (not a pure hamstring/glute day)
+      // deno-lint-ignore no-explicit-any
+      const hasQuadWork = exercises.some((e: any) => {
+        const mg = String(e.muscleGroup ?? '').toLowerCase();
+        const em = String(e.muscleEmphasis ?? '').toLowerCase();
+        return mg.includes('quad') || mg.includes('leg') || em === 'quads';
+      });
+      if (!hasQuadWork) continue;
+
+      // Don't exceed exercise cap — only add if under 7 exercises
+      if (exercises.length >= 7) continue;
+
+      exercises.push({
+        id: `leg-ext-${day.dayNumber}`,
+        name: 'Leg Extension',
+        muscleGroup: 'Quads',
+        muscleEmphasis: 'quads',
+        equipment: 'machine',
+        compoundTier: 'isolation',
+        sets: 3,
+        reps: '12-15',
+        targetWeight: 0,
+        restSeconds: 60,
+        targetRpe: 7,
+        coachingNote:
+          'Quad isolation through knee extension — targets the VMO and rectus femoris that compound movements cannot fully isolate.',
+        setStructure: 'straight',
+      });
+
+      day.exercises = exercises;
+
+      console.log(
+        `[leg-extension] Added Leg Extension to "${day.title}" (day ${day.dayNumber}, week ${week.weekNumber})`,
+      );
+    }
+  }
+  return plan;
+}
+
+// deno-lint-ignore no-explicit-any
+function enforceCorePresence(plan: any): any {
+  const CORE_POOL = [
+    { name: 'Plank', equipment: 'bodyweight', reps: '30-45 sec', muscleEmphasis: 'transverse_abs' },
+    { name: 'Dead Bug', equipment: 'bodyweight', reps: '8-12', muscleEmphasis: 'transverse_abs' },
+    { name: 'Hanging Leg Raise', equipment: 'bodyweight', reps: '10-12', muscleEmphasis: 'rectus_abdominis' },
+  ];
+
+  for (const week of plan.weeks ?? []) {
+    // deno-lint-ignore no-explicit-any
+    const workoutDays = (week.days ?? []).filter((d: any) => d.type === 'workout');
+    if (workoutDays.length === 0) continue;
+
+    // Count core exercises across the whole week
+    const coreCount = workoutDays.reduce((n: number, d: any) =>
+      // deno-lint-ignore no-explicit-any
+      n + (d.exercises ?? []).filter((e: any) => String(e.muscleGroup ?? '').toLowerCase() === 'core').length, 0);
+
+    // Absolute rule: at least 1 core exercise present in the week (matches CORE INCLUSION rule)
+    if (coreCount >= 1) continue;
+
+    // Pick the day whose sessionFocus/title mentions core, else the last workout day
+    const coreFocusDay = workoutDays.find((d: any) =>
+      /\bcore\b/i.test(String(d.sessionFocus ?? '')) || /\bcore\b/i.test(String(d.title ?? '')))
+      ?? workoutDays[workoutDays.length - 1];
+
+    const exercises = coreFocusDay.exercises ?? [];
+    const core = CORE_POOL[0];
+    const coreExercise = {
+      id: `core-${coreFocusDay.dayNumber}`,
+      name: core.name,
+      muscleGroup: 'Core',
+      muscleEmphasis: core.muscleEmphasis,
+      equipment: core.equipment,
+      compoundTier: 'isolation',
+      sets: exercises[0]?.sets ?? 3,
+      reps: core.reps,
+      targetWeight: 0,
+      restSeconds: 60,
+      targetRpe: 7,
+      coachingNote: 'Anti-extension core stability that builds the bracing strength your compound lifts depend on.',
+      setStructure: 'straight',
+    };
+
+    // Append (core is short; one extra movement on one day is acceptable even at cap)
+    coreFocusDay.exercises = [...exercises, coreExercise];
+
+    console.log(`[core-enforce] Added ${core.name} to "${coreFocusDay.title}" (day ${coreFocusDay.dayNumber}, week ${week.weekNumber}) — week had 0 core exercises`);
+  }
+  return plan;
+}
+
 interface SessionDay {
   day: number;
   dayLabel?: string;
@@ -1823,13 +2117,15 @@ interface SessionDay {
 
 /**
  * Strength volume days: target lift is exercise #1 (PRD). Stamp 8 reps on first barbell compound
- * after plan_json is fully assembled (title includes "volume"; no goalLift name matching).
+ * after plan_json is fully assembled. Volume days are identified via sessionStructure
+ * focus (volume_upper / volume_lower) when available; otherwise title/sessionFocus fallback.
  */
 // deno-lint-ignore no-explicit-any
 function applyStrengthVolumeDayFirstExerciseEightReps(
   planJson: any,
   goal: string,
   goalLift: string | null | undefined,
+  volumeFocusDays: Set<number>,
 ): void {
   console.log('[POST-PROCESSOR ENTRY]', {
     goal,
@@ -1844,8 +2140,12 @@ function applyStrengthVolumeDayFirstExerciseEightReps(
     for (const day of week?.days ?? []) {
       if (day.type !== 'workout') continue;
 
-      const title = (day.title ?? '').toLowerCase();
-      if (!title.includes('volume')) continue;
+      const isVolumeDay =
+        volumeFocusDays.size > 0
+          ? volumeFocusDays.has(day.dayNumber)
+          : (day.title ?? '').toLowerCase().includes('volume') ||
+            (day.sessionFocus ?? '').toLowerCase().includes('volume');
+      if (!isVolumeDay) continue;
 
       const firstExercise = day.exercises?.[0];
       if (!firstExercise) continue;
@@ -2617,12 +2917,34 @@ serve(async (req) => {
       }
       return [];
     })();
+
+    // Derive scheduledDays fallback from sessionStructure workout days if trainingDays is empty
+    const scheduledDaysFallback: string[] = (() => {
+      if (trainingDays.length > 0) return trainingDays;
+      if (Array.isArray(sessionStructure)) {
+        return (sessionStructure as SessionDay[])
+          .filter(d => d.type === 'workout' && typeof d.dayLabel === 'string' && d.dayLabel.length > 0)
+          .map(d => d.dayLabel as string);
+      }
+      return [];
+    })();
+
+    console.log('[generate-plan] scheduledDays resolved:', scheduledDaysFallback, {
+      fromBody_trainingDays: body.trainingDays,
+      fromBody_scheduledDays: body.scheduledDays,
+      fromSessionStructure: Array.isArray(sessionStructure)
+        ? (sessionStructure as SessionDay[]).filter(d => d.type === 'workout').map(d => d.dayLabel)
+        : [],
+    });
+
     const daysPerWeekParsed = parseInt(String(daysPerWeekIn ?? '4'), 10);
     const expRaw = String(experienceIn ?? 'intermediate').toLowerCase();
     const experience =
       expRaw === 'beginner' || expRaw === 'intermediate' || expRaw === 'advanced'
         ? expRaw
         : 'intermediate';
+    console.log('[generate-plan] experience resolved:', experience, 'from raw:', expRaw, 'body.experience:', body.experience);
+    console.log('[generate-plan] week1Factor:', week1Factor(experience), 'for experience:', experience);
     const params =
       GOAL_PROGRAMMING[goal]?.[experience] ??
       GOAL_PROGRAMMING[goal]?.['intermediate'] ??
@@ -2688,6 +3010,14 @@ Core exercises to choose from (pick varied emphasis):
 - Anti-rotation: Pallof Press, Cable Woodchop, Side Plank, Russian Twist
 Never place core exercises on rest days.
 Never skip core entirely regardless of split type.
+
+ABSOLUTE RULE — LEG EXTENSION:
+Every balanced leg session (lower_heavy, lower_volume,
+lower_hypertrophy, legs_full, full_body with leg work)
+with session length 45 min+ MUST include Leg Extension
+or Leg Extension (Single Leg) as the last quad exercise.
+Generating a leg session without Leg Extension when
+session length allows is a critical error.
 
 ABSOLUTE RULE — SESSION COUNT:
 The user trains ${absoluteRuleDayCount} days per week.
@@ -2818,6 +3148,13 @@ Do NOT add additional workout days or combine rest days with training.
       const week1Weight = calculateStartingWeight(current1RMNum, strengthW1Factor);
       const heavyDayWeight = Math.round((current1RMNum * strengthW1Factor) / 2.5) * 2.5;
       const volumeDayWeight = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5;
+      console.log('[generate-plan] strength weights:', {
+        experience,
+        strengthW1Factor,
+        current1RMNum,
+        heavyDayWeight,
+        volumeDayWeight,
+      });
       const heavyTargetSets = 5;
       const heavyTargetRepsPerSet = 5;
       const volumeDayRepsPerSet = 8;
@@ -3212,6 +3549,46 @@ Distribute exercises to ensure all target muscle groups reach minimum developmen
 
     if (!exerciseSelectionSection) {
       exerciseSelectionSection = `EXERCISE SELECTION RULES:
+EQUIPMENT CONSTRAINT (HARD RULE — no exceptions):
+The user's available equipment is: ${equipment}
+
+When equipment is "dumbbells only":
+- NEVER include barbell exercises of any kind:
+  No Barbell Bench Press, Barbell Row, Back Squat,
+  Deadlift, Barbell Curl, Overhead Press (barbell),
+  or any other barbell movement
+- NEVER include cable machine exercises:
+  No Lat Pulldown, Cable Row, Cable Fly, Tricep Pushdown,
+  Face Pull, or any cable attachment movement
+- NEVER include any machine exercises:
+  No Leg Press, Leg Extension, Leg Curl, Machine Press,
+  or any selectorized machine movement
+- ONLY use: Dumbbell variations, Bodyweight movements
+- Allowed dumbbell exercises include:
+  Dumbbell Bench Press, Incline Dumbbell Press,
+  Dumbbell Row, Dumbbell Shoulder Press, Arnold Press,
+  Dumbbell Curl, Hammer Curl, Dumbbell Lateral Raise,
+  Dumbbell Romanian Deadlift, Bulgarian Split Squat,
+  Walking Lunge, Goblet Squat, Dumbbell Skull Crusher,
+  Dumbbell Tricep Kickback, Dumbbell Fly
+- Allowed bodyweight exercises include:
+  Push-Up, Pull-Up, Chin-Up, Dips, Plank,
+  Glute Bridge, Dead Bug, Leg Raise
+
+When equipment is "home gym":
+- Barbell and dumbbell exercises allowed
+- No cable machine exercises unless explicitly listed
+  in the equipment field
+- No selectorized machine exercises
+
+When equipment is "full gym":
+- All equipment types allowed
+- No restrictions
+
+Violating the equipment constraint is a critical error.
+Every exercise in the plan must be executable with
+the stated equipment. Check every exercise before
+including it.
 - Max ${maxExercises} exercises per session (${sessionLength} min band — see SESSION LENGTH CONSTRAINTS)
 - For ${hasStructure ? `the sessionStructure-defined week (follow WEEKLY STRUCTURE day-by-day; never use split name to add or remove workout days)` : `the ${splitDescriptor} split`}, ensure logical muscle group distribution across days
 - Use exercises appropriate for ${equipment}
@@ -3890,20 +4267,22 @@ full_body sessions):
 - Do not use two primary compound squat patterns as
   the first two exercises (e.g. Back Squat + Front Squat).
   Pair a squat with a hinge, then add isolation work.
-- Include Leg Extension or Leg Extension (Single Leg)
-  as a quad isolation finisher when session length
-  allows (45 min+). It is the most common quad isolation
-  exercise and users expect to see it on leg days.
+- MANDATORY: Include Leg Extension or Leg Extension (Single Leg)
+  as a quad isolation finisher on EVERY balanced leg session
+  where session length is 45 min+. This is not optional.
+  Leg Extension is a staple quad isolation exercise.
+  Do not substitute Leg Press or any compound movement here —
+  Leg Extension is the required finisher.
 
 QUAD-FOCUSED SESSIONS (legs_quad, squat_heavy,
 squat_volume):
 - Multiple squat-pattern exercises are allowed and
   encouraged. Hinge is optional.
-- ALWAYS include Leg Extension or Leg Extension (Single Leg)
-  as the quad isolation finisher. This is a staple quad
-  exercise and should appear on every quad-focused day
-  unless the session length is 30-45 mins and exercise
-  count is already at cap.
+- MANDATORY: Always include Leg Extension or
+  Leg Extension (Single Leg) as the final exercise.
+  No exceptions unless session length is 30-45 mins
+  AND the exercise count is already at the cap.
+  This is a hard requirement — not a suggestion.
 
 POSTERIOR CHAIN SESSIONS (legs_posterior,
 lower_posterior):
@@ -3912,6 +4291,8 @@ lower_posterior):
 - Must include at least one hamstring isolation:
   Lying Leg Curl, Seated Leg Curl, Nordic Curl,
   Standing Leg Curl
+- Do NOT include Leg Extension on posterior chain sessions —
+  this is a hamstring/glute day, not quad isolation.
 
 ALLOWED EXERCISE NAMES BY MUSCLE GROUP:
 
@@ -4079,7 +4460,7 @@ Never programme face pulls, cable flyes, lateral raises, curls, calf raises,
 planks, or any isolation movement for sets of 3–5 reps. This is a critical error.`;
 
     const systemPrompt = isPreview ? PREVIEW_SYSTEM_PROMPT : fullSystemPrompt;
-    const maxTokens = isPreview ? 4000 : 12000;
+    const maxTokens = isPreview ? 4000 : 16000;
 
     const response = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
@@ -4121,8 +4502,10 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
     }
 
     const trimmed = responseText.trimEnd();
-    if (!trimmed.endsWith('}') && !trimmed.endsWith('}```')) {
-      console.error('[generate-plan] WARNING: Response may be truncated. Last 50 chars:', trimmed.slice(-50));
+    const endsCleanly = trimmed.endsWith('}') || trimmed.endsWith('}```') || trimmed.endsWith('}\n```');
+    if (!endsCleanly) {
+      console.error('[generate-plan] TRUNCATED: Response does not end cleanly. Last 80 chars:', trimmed.slice(-80));
+      throw new Error('Plan generation was cut short — response truncated. Please try again.');
     }
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -4137,6 +4520,17 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
     } catch (e) {
       console.error('Parse error. Raw text:', responseText);
       throw new Error('JSON parse failed: ' + String(e));
+    }
+
+    // Enforce totalWeeks from payload — Claude occasionally defaults to 12
+    if (plan.totalWeeks !== totalWeeks) {
+      console.warn(`[generate-plan] totalWeeks mismatch: Claude returned ${plan.totalWeeks}, enforcing payload value ${totalWeeks}`);
+      plan.totalWeeks = totalWeeks;
+    }
+    // Enforce daysPerWeek from payload
+    if (plan.daysPerWeek !== actualDaysPerWeek) {
+      console.warn(`[generate-plan] daysPerWeek mismatch: Claude returned ${plan.daysPerWeek}, enforcing ${actualDaysPerWeek}`);
+      plan.daysPerWeek = actualDaysPerWeek;
     }
 
     const week1Data = plan.week ?? plan.weeks?.[0] ?? { weekNumber: 1, days: [] };
@@ -4156,7 +4550,12 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       jordanWelcome: plan.jordanWelcome ?? null,
       totalWeeks: plan.totalWeeks ?? totalWeeks,
       daysPerWeek: plan.daysPerWeek ?? actualDaysPerWeek,
-      scheduledDays: scheduledDaysResolved,
+      scheduledDays: (() => {
+        if (scheduledDaysResolved.length > 0) return scheduledDaysResolved;
+        if (scheduledDaysFallback.length > 0) return scheduledDaysFallback;
+        console.warn('[generate-plan] WARNING: scheduledDays empty — calendar routing will be broken for this plan');
+        return [];
+      })(),
       sessionLength: body.sessionLength ?? null,
       /** Persist onboarding choices — Profile + downstream read plan_json as source of truth */
       experience: body.experience ?? null,
@@ -4243,11 +4642,34 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       })),
     };
 
-    applyStrengthVolumeDayFirstExerciseEightReps(planJsonWithStrengthLift, goal, strengthProgramLiftId);
+    const volumeFocusDays = new Set<number>();
+    if (Array.isArray(sessionStructure)) {
+      for (const entry of sessionStructure as SessionDay[]) {
+        if (entry.focus === 'volume_upper' || entry.focus === 'volume_lower') {
+          volumeFocusDays.add(entry.day);
+        }
+      }
+    }
+
+    applyStrengthVolumeDayFirstExerciseEightReps(
+      planJsonWithStrengthLift,
+      goal,
+      strengthProgramLiftId,
+      volumeFocusDays,
+    );
 
     replaceKneeUnsafeExercises(planJsonWithStrengthLift, injuries);
+    enforceEquipmentConstraint(planJsonWithStrengthLift, equipment);
+    enforceLegExtension(planJsonWithStrengthLift);
+    enforceCorePresence(planJsonWithStrengthLift);
     enforceTier1LowerLimit(planJsonWithStrengthLift);
     deduplicateExercises(planJsonWithStrengthLift);
+
+    const reconcilerWarnings = reconcilePlanText(planJsonWithStrengthLift);
+    if (reconcilerWarnings.length > 0) {
+      console.warn('[reconciler]', reconcilerWarnings.length, 'conflicts:');
+      for (const w of reconcilerWarnings) console.warn('  -', w);
+    }
 
     if (biologicalSex === 'female') {
       // deno-lint-ignore no-explicit-any
@@ -4269,11 +4691,32 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
         ? calculateStartingWeight(parseFloat(String(current1RM)), week1Factor(experience))
         : undefined;
 
+    console.log('[generate-plan] scheduledDays pre-planOut:', {
+      normalizedScheduledDays: (planJsonWithStrengthLift as any).scheduledDays,
+      scheduledDaysResolved,
+      scheduledDaysFallback,
+    });
+
     const planOut = {
       ...planJsonWithStrengthLift,
+      scheduledDays: (() => {
+        const fromPlan = Array.isArray((planJsonWithStrengthLift as any).scheduledDays)
+          ? (planJsonWithStrengthLift as any).scheduledDays.filter(
+              (d: unknown): d is string => typeof d === 'string' && d.length > 0,
+            )
+          : [];
+        if (fromPlan.length > 0) return fromPlan;
+        if (scheduledDaysResolved.length > 0) return scheduledDaysResolved;
+        if (scheduledDaysFallback.length > 0) return scheduledDaysFallback;
+        console.warn('[generate-plan] FINAL WARNING: scheduledDays empty on planOut');
+        return [];
+      })(),
       ...(typeof week1BaselineWeight === 'number' ? { week1BaselineWeight } : {}),
       ...(isPreview ? { isPreview: true } : {}),
+      _reconcilerWarnings: reconcilerWarnings,
     };
+
+    console.log('[generate-plan] Final scheduledDays in planOut:', planOut.scheduledDays);
 
     if (isPreview) {
       trimPreviewWeekDays(planOut as Record<string, unknown>);

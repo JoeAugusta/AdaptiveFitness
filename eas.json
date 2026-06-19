@@ -14,6 +14,14 @@
         "simulator": false
       }
     },
+    "internal": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "ios": {

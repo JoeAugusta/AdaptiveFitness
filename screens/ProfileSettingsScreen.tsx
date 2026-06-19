@@ -386,8 +386,14 @@ export default function ProfileSettingsScreen() {
 
   const { isMetric, setIsMetric, formatBodyWeight, formatHeight } = useMetric();
   const ble = useBLEHeartRate();
-  const { requestPermission: requestHealthPermission, isAvailable: healthAvailable } =
-    useHealthData();
+  const {
+    requestPermission: requestHealthPermission,
+    isAvailable: healthAvailable,
+    fetchHealthData,
+    healthModuleError,
+    coreLoaded,
+    hkAvailableRaw,
+  } = useHealthData();
 
   useEffect(() => {
     if (loading) {
@@ -521,16 +527,51 @@ export default function ProfileSettingsScreen() {
   }, []);
 
   const handleReconnectHealth = useCallback(async () => {
-    if (!healthAvailable) return;
+    const healthLabel = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect';
+
+    if (!healthAvailable || !coreLoaded) {
+      Alert.alert(
+        `${healthLabel} unavailable`,
+        healthModuleError ?? 'The Health module did not load in this build.',
+      );
+      return;
+    }
+
     try {
       await requestHealthPermission();
-      await AsyncStorage.setItem(HEALTH_PERMISSION_GRANTED_KEY, '1');
-      await AsyncStorage.removeItem(HEALTH_PERMISSION_DISMISSED_KEY);
-      setHealthConnected(true);
+      const data = await fetchHealthData();
+      const hasReading =
+        data.hasDataToday ||
+        data.sleepHours != null ||
+        data.hrvMs != null ||
+        data.restingHeartRate != null;
+
+      if (hasReading) {
+        await AsyncStorage.setItem(HEALTH_PERMISSION_GRANTED_KEY, '1');
+        await AsyncStorage.removeItem(HEALTH_PERMISSION_DISMISSED_KEY);
+        setHealthConnected(true);
+      } else {
+        Alert.alert(
+          'Permission needed',
+          Platform.OS === 'ios'
+            ? 'Open Settings > Health > Hone and enable access, then tap Re-sync.'
+            : 'Open Health Connect settings and grant Hone access, then tap Re-sync.',
+        );
+      }
     } catch (err) {
       console.warn('[Health] reconnect failed:', err);
+      Alert.alert(
+        `${healthLabel} error`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
-  }, [healthAvailable, requestHealthPermission]);
+  }, [
+    healthAvailable,
+    coreLoaded,
+    healthModuleError,
+    requestHealthPermission,
+    fetchHealthData,
+  ]);
 
   useEffect(() => {
     loadData();
@@ -985,7 +1026,17 @@ export default function ProfileSettingsScreen() {
                 </Text>
               </View>
             </View>
-            {healthConnected ? (
+            {Platform.OS === 'ios' ? (
+              <TouchableOpacity
+                onPress={() => void handleReconnectHealth()}
+                activeOpacity={0.7}
+                style={styles.deviceReconnectBtn}
+              >
+                <Text style={styles.deviceReconnectBtnText}>
+                  {healthConnected ? 'Re-sync' : 'Connect'}
+                </Text>
+              </TouchableOpacity>
+            ) : healthConnected ? (
               <View style={styles.deviceConnectedBadge}>
                 <Text style={styles.deviceConnectedBadgeText}>Connected</Text>
               </View>
@@ -998,11 +1049,14 @@ export default function ProfileSettingsScreen() {
                 <Text style={styles.deviceReconnectBtnText}>Connect</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.deviceNotConnectedText}>
-                {Platform.OS === 'ios' ? 'iOS only' : 'Not available'}
-              </Text>
+              <Text style={styles.deviceNotConnectedText}>Not available</Text>
             )}
           </View>
+          {!healthConnected ? (
+            <Text style={styles.healthDiagnosticText}>
+              {`core:${coreLoaded ? 'y' : 'n'} hk:${hkAvailableRaw}${healthModuleError ? ` err:${healthModuleError.slice(0, 50)}` : ''}`}
+            </Text>
+          ) : null}
 
           {/* Nutrition sync toggle — only shown when health is connected */}
           {healthConnected && healthAvailable && (
@@ -1933,6 +1987,13 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     maxWidth: 140,
     textAlign: 'right',
+  },
+  healthDiagnosticText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.micro,
+    color: Colors.textTertiary,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   deviceReconnectBtn: {
     backgroundColor: Colors.accentMuted,

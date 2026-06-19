@@ -8,6 +8,8 @@ type PlanExercise = {
   muscleGroup?: string;
   equipment?: string;
   compoundTier?: string;
+  muscleEmphasis?: string;
+  secondaryMuscleTags?: string[];
 };
 
 type PlanDay = {
@@ -65,6 +67,8 @@ export async function persistExerciseSwapsToPlan(
             exercise.muscleGroup = libraryMatch.primaryMuscle;
             exercise.equipment = libraryMatch.equipment;
             exercise.compoundTier = libraryMatch.compoundTier;
+            exercise.muscleEmphasis = libraryMatch.muscleEmphasis;
+            exercise.secondaryMuscleTags = libraryMatch.secondaryMuscleTags;
           }
           modified = true;
         }

@@ -375,6 +375,12 @@ interface ExerciseCardProps {
   planId?: string;
   /** Display names already in today's workout — excludes swap candidates */
   currentWorkoutExerciseNames?: string[];
+  /** Set numbers the user has skipped for this exercise (not logged, excluded from gate) */
+  skippedSetNumbers?: number[];
+  /** Skip all currently-unlogged sets of this exercise */
+  onSkipRemainingSets?: () => void;
+  /** Restore previously skipped sets */
+  onRestoreSkippedSets?: () => void;
 }
 
 export default function ExerciseCard({
@@ -396,6 +402,9 @@ export default function ExerciseCard({
   pyramidSetsOverride,
   planId,
   currentWorkoutExerciseNames,
+  skippedSetNumbers = [],
+  onSkipRemainingSets,
+  onRestoreSkippedSets,
 }: ExerciseCardProps) {
   const { lbsToDisplay, displayToLbs, formatWorkoutWeight, isMetric } = useMetric();
 
@@ -759,14 +768,18 @@ export default function ExerciseCard({
   const getLoggedSet = (setNumber: number) =>
     loggedSets.find((s) => s.setNumber === setNumber);
 
+  const isSetSkipped = (setNumber: number) => skippedSetNumbers.includes(setNumber);
+
   const activeWorkingSetIndex = useMemo(() => {
     // Active set = first set that has NOT been logged yet.
     // This never advances until the user taps ✓ — typing does
     // not change the active highlight.
     return exercise.sets.findIndex(
-      (t) => !loggedSets.some((s) => s.setNumber === t.setNumber),
+      (t) =>
+        !loggedSets.some((s) => s.setNumber === t.setNumber) &&
+        !skippedSetNumbers.includes(t.setNumber),
     );
-  }, [exercise.sets, loggedSets]);
+  }, [exercise.sets, loggedSets, skippedSetNumbers]);
 
   const canLogSet = (setNumber: number) => {
     if (isSetLogged(setNumber)) return false;
@@ -1212,7 +1225,7 @@ export default function ExerciseCard({
                 <View key={ws.label}>
                   <View style={styles.warmupSetRow}>
                     <View style={styles.warmupBadge}>
-                      <Text style={styles.warmupBadgeText}>W{wi + 1}</Text>
+                      <Text style={styles.warmupBadgeText} numberOfLines={1}>W{wi + 1}</Text>
                     </View>
                     <Text style={styles.warmupWeight}>{formatWorkoutWeight(ws.weightLbs)}</Text>
                     <Text style={styles.warmupRepsSep}>×</Text>
@@ -1261,6 +1274,7 @@ export default function ExerciseCard({
 
       {exercise.sets.map((set, setIdx) => {
         const logged = isSetLogged(set.setNumber);
+        const skipped = isSetSkipped(set.setNumber);
         const loggedData = getLoggedSet(set.setNumber);
         const input = getInputForSet(set.setNumber);
         const timedSet = isTimedExercise(set.targetReps);
@@ -1283,12 +1297,17 @@ export default function ExerciseCard({
                 logged && styles.setRowLogged,
                 isActiveRow && styles.setRowActive,
                 isFirstWorkingAfterWarmup && styles.setRowFirstWorking,
+                skipped && styles.setRowSkipped,
               ]}
             >
               <View style={styles.setBadge}>
                 <Text style={styles.setBadgeText}>{set.setNumber}</Text>
               </View>
 
+              {skipped ? (
+                <Text style={styles.setSkippedText}>Skipped</Text>
+              ) : (
+                <>
               {logged && loggedData && editingSet !== set.setNumber ? (
                 <>
                   <Text style={styles.loggedWeight}>
@@ -1517,6 +1536,8 @@ export default function ExerciseCard({
                   </TouchableOpacity>
                 </>
               )}
+                </>
+              )}
             </View>
             {(!logged || editingSet === set.setNumber) &&
               rpeExpandedSet === set.setNumber && (
@@ -1572,6 +1593,39 @@ export default function ExerciseCard({
         );
       })}
 
+      {(() => {
+        const hasSkipped = skippedSetNumbers.length > 0;
+        const hasUnloggedUnskipped = exercise.sets.some(
+          (st) =>
+            !loggedSets.some((s) => s.setNumber === st.setNumber) &&
+            !skippedSetNumbers.includes(st.setNumber),
+        );
+        if (hasSkipped) {
+          return (
+            <TouchableOpacity
+              style={styles.skipRemainingBtn}
+              activeOpacity={0.7}
+              onPress={() => onRestoreSkippedSets?.()}
+            >
+              <Text style={styles.skipRemainingText}>
+                {skippedSetNumbers.length} set{skippedSetNumbers.length === 1 ? '' : 's'} skipped · Restore
+              </Text>
+            </TouchableOpacity>
+          );
+        }
+        if (hasUnloggedUnskipped && loggedSets.length > 0) {
+          return (
+            <TouchableOpacity
+              style={styles.skipRemainingBtn}
+              activeOpacity={0.7}
+              onPress={() => onSkipRemainingSets?.()}
+            >
+              <Text style={styles.skipRemainingText}>Skip remaining sets</Text>
+            </TouchableOpacity>
+          );
+        }
+        return null;
+      })()}
 
       <TouchableOpacity
         style={styles.swapButton}
@@ -2199,7 +2253,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   warmupBadge: {
-    width: 28,
+    minWidth: 28,
     borderRadius: Radius.sm,
     backgroundColor: Colors.bgElevated,
     alignItems: 'center',
@@ -2280,6 +2334,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.successMuted,
     borderRadius: Radius.sm,
     paddingHorizontal: 0,
+  },
+  setRowSkipped: {
+    opacity: 0.5,
+  },
+  setSkippedText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginLeft: Spacing.sm,
+  },
+  skipRemainingBtn: {
+    marginTop: Spacing.sm,
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.xs,
+  },
+  skipRemainingText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
   setBadge: {
     width: 28,

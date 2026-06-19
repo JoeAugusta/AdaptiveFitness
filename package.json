@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "expo-build-properties": "^56.0.19",
+    "expo-build-properties": "~55.0.14",
     "typescript": "~5.9.2"
   },
   "private": true

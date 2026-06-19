@@ -51,6 +51,7 @@ interface PlanDay {
   completed: boolean;
   skipped?: boolean;
   sessionFocus?: string;
+  rescheduledTo?: string;
   cardioType?: 'light' | 'medium';
   suggestedDurationMinutes?: number;
 }
@@ -93,6 +94,7 @@ interface RawDay {
   muscleGroups?: string[];
   exercises?: RawExercise[];
   sessionFocus?: string;
+  rescheduledTo?: string;
   cardioType?: 'light' | 'medium';
   suggestedDurationMinutes?: number;
 }
@@ -547,6 +549,7 @@ export default function PlanViewScreen() {
           completed: logSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
           skipped: skippedSet.has(`${rw.weekNumber}-${rd.dayNumber}`),
           sessionFocus: rd.sessionFocus,
+          rescheduledTo: rd.rescheduledTo ?? undefined,
           cardioType: rd.cardioType,
           suggestedDurationMinutes: rd.suggestedDurationMinutes,
         })),
@@ -621,12 +624,25 @@ export default function PlanViewScreen() {
 
   const handleStartWorkout = (day: PlanDay) => {
     const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+    const todayLabel = getTodayDayLabel();
+    const isRescheduledToToday =
+      typeof day.rescheduledTo === 'string' &&
+      day.rescheduledTo.trim().slice(0, 3) === todayLabel;
 
     // Gate: only allow starting a workout on a scheduled training day.
     const scheduledDays = rawPlanJson?.scheduledDays;
     if (Array.isArray(scheduledDays) && scheduledDays.length > 0) {
-      const todayLabel = getTodayDayLabel();
       if (!isTodayTrainingDay(scheduledDays, todayLabel)) {
+        if (isRescheduledToToday) {
+          navigation.navigate('ActiveWorkout', {
+            planId: pid,
+            weekNumber: planData!.currentWeek,
+            dayNumber: day.dayNumber,
+            workoutTitle: day.title,
+            lockToRouteWeek: true,
+          });
+          return;
+        }
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const todayIdx = dayNames.indexOf(todayLabel);
         const normalized = scheduledDays.map((d) => d.trim().slice(0, 3));
@@ -1154,13 +1170,20 @@ export default function PlanViewScreen() {
 
         {weekData ? (
           weekData.days.map((day) =>
-            day.type === 'workout' ? (
+            day.type === 'workout' ? (() => {
+              const todayLabel = getTodayDayLabel();
+              const isRescheduledToToday =
+                typeof day.rescheduledTo === 'string' &&
+                day.rescheduledTo.trim().slice(0, 3) === todayLabel;
+              return (
               <WorkoutDayCard
                 key={day.dayNumber}
                 day={day}
                 weekPhase={weekData.phase}
                 planSplit={rawPlanJson?.split}
-                isNextWorkout={day.dayNumber === nextWorkoutDayNumber}
+                isNextWorkout={
+                  day.dayNumber === nextWorkoutDayNumber || isRescheduledToToday
+                }
                 isTodayCalendarDay={day.dayNumber === todayCalendarDayNumber && day.dayNumber !== nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
                 onViewResults={handleViewResults}
@@ -1168,7 +1191,8 @@ export default function PlanViewScreen() {
                 onPreviewDay={handlePreviewDay}
                 onRedoWorkout={handleRedoWorkout}
               />
-            ) : day.type === 'cardio' ? (
+              );
+            })() : day.type === 'cardio' ? (
               (() => {
                 const isCardioDone = completedCardioDays.has(day.dayNumber);
                 return (

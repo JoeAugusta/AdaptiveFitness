@@ -297,6 +297,10 @@ function WorkoutDayCard({
           ]}>
             {day.skipped ? '✗' : '✓'}
           </Text>
+        ) : isNextWorkout ? (
+          <View style={styles.nextUpBadge}>
+            <Text style={styles.nextUpBadgeText}>NEXT UP</Text>
+          </View>
         ) : null}
       </View>
 
@@ -382,7 +386,10 @@ function WorkoutDayCard({
           <Text style={styles.viewResultsHint}>View results →</Text>
           {onRedoWorkout ? (
             <TouchableOpacity
-              onPress={() => onRedoWorkout(day)}
+              onPress={(e) => {
+                e.stopPropagation();
+                onRedoWorkout(day);
+              }}
               activeOpacity={0.7}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -779,12 +786,12 @@ export default function PlanViewScreen() {
   const handleRedoWorkout = useCallback((day: PlanDay) => {
     const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
     Alert.alert(
-      'Redo workout?',
-      'This will overwrite your previous log for this session.',
+      'Redo this session?',
+      'Your logged sets, weights, and RPE for this session will be replaced. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Redo',
+          text: 'Start Redo',
           onPress: () => {
             navigation.navigate('ActiveWorkout', {
               planId: pid,
@@ -1503,6 +1510,20 @@ const styles = StyleSheet.create({
   },
   skippedCheck: {
     color: Colors.textTertiary,
+  },
+  nextUpBadge: {
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+  },
+  nextUpBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+    letterSpacing: 1,
   },
   muscleRow: {
     flexDirection: 'row',

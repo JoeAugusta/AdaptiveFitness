@@ -19,7 +19,7 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionIntent } from '../utils/getSessionIntent';
 import { useMetric } from '../utils/units';
-import { getTodayDayLabel, isTodayTrainingDay } from '../utils/dateUtils';
+import { getTodayDayLabel } from '../utils/dateUtils';
 import WorkoutResultsModal, {
   type WorkoutLog,
   type ExerciseObject,
@@ -624,39 +624,6 @@ export default function PlanViewScreen() {
 
   const handleStartWorkout = (day: PlanDay) => {
     const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
-    const todayLabel = getTodayDayLabel();
-    const isRescheduledToToday =
-      typeof day.rescheduledTo === 'string' &&
-      day.rescheduledTo.trim().slice(0, 3) === todayLabel;
-
-    // Gate: only allow starting a workout on a scheduled training day.
-    const scheduledDays = rawPlanJson?.scheduledDays;
-    if (Array.isArray(scheduledDays) && scheduledDays.length > 0) {
-      if (!isTodayTrainingDay(scheduledDays, todayLabel)) {
-        if (isRescheduledToToday) {
-          navigation.navigate('ActiveWorkout', {
-            planId: pid,
-            weekNumber: planData!.currentWeek,
-            dayNumber: day.dayNumber,
-            workoutTitle: day.title,
-            lockToRouteWeek: true,
-          });
-          return;
-        }
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const todayIdx = dayNames.indexOf(todayLabel);
-        const normalized = scheduledDays.map((d) => d.trim().slice(0, 3));
-        const nextDay =
-          normalized.find((d) => dayNames.indexOf(d) > todayIdx) ??
-          normalized[0];
-        Alert.alert(
-          'Rest day',
-          `Today is not a scheduled training day. Your next session is ${nextDay}.`,
-        );
-        return;
-      }
-    }
-
     navigation.navigate('ActiveWorkout', {
       planId: pid,
       weekNumber: planData!.currentWeek,
@@ -888,72 +855,24 @@ export default function PlanViewScreen() {
     selectedWeekData?.weekOverride,
   );
   const weekData = selectedWeekData;
+  // Under the open model: any unlogged session in the current week
+  // can be started any day. nextWorkoutDayNumber is now used only
+  // to identify which card to visually highlight as "next up."
+  // All unlogged cards get a Start button regardless.
   const nextWorkoutDayNumber = (() => {
     if (!weekData) return null;
-
-    // W2+ not yet started — browseable but no Start Workout
     if (selectedWeek > planData.currentWeek) return null;
 
     const workoutDays = weekData.days.filter((d) => d.type === 'workout');
     const completedWorkoutDays = workoutDays.filter((d) => d.completed);
     const daysPerWeek = planData.daysPerWeek;
 
-    // Week is complete — no next workout
     if (completedWorkoutDays.length >= daysPerWeek) return null;
 
-    // Resolve today's label
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayLabel = dayNames[new Date().getDay()];
-    const scheduledDays = Array.isArray(rawPlanJson?.scheduledDays)
-      ? (rawPlanJson!.scheduledDays as string[])
-      : [];
-
-    // If we have scheduled days, today must be a training day for
-    // "Start Workout" to appear at all. If not a training day, nothing
-    // gets the button — all unlogged days show "Preview" instead.
-    if (scheduledDays.length > 0) {
-      const normalizedScheduled = scheduledDays.map((d) => d.trim().slice(0, 3));
-      const isTrainingToday = normalizedScheduled.includes(todayLabel);
-      if (!isTrainingToday) return null;
-
-      // Find which position today occupies in the schedule
-      const todayIndex = normalizedScheduled.indexOf(todayLabel);
-
-      // Map that position to the corresponding plan day
-      const unloggedOrdered = workoutDays
-        .filter((d) => !d.completed)
-        .sort((a, b) => a.dayNumber - b.dayNumber);
-
-      // completedAny: use completed count to determine which slot is next
-      const completedCount = completedWorkoutDays.length;
-
-      // Today's session is the one at position `completedCount` in the
-      // unlogged list — i.e. we've done N sessions, today is session N+1.
-      // Guard: today's schedule index must match completed count
-      // (prevents showing Day 3 button on a Day 2 calendar slot).
-      if (todayIndex !== completedCount) {
-        // Today is a training day but it's not the right session in
-        // sequence (e.g. user skipped a day). Show no Start Workout.
-        return null;
-      }
-
-      return unloggedOrdered[0]?.dayNumber ?? null;
-    }
-
-    // No scheduledDays — fall back to sequence (legacy / dev plans)
-    const completedAny = completedWorkoutDays.length > 0;
-    if (!completedAny) {
-      return workoutDays
-        .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null;
-    }
-    const lastCompletedDayNumber = Math.max(
-      ...completedWorkoutDays.map((d) => d.dayNumber),
-    );
-    return (
-      workoutDays
-        .filter((d) => !d.completed && d.dayNumber > lastCompletedDayNumber)
-        .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null
-    );
+    // Return the first unlogged day in sequence — used for visual highlight only
+    return workoutDays
+      .filter((d) => !d.completed)
+      .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null;
   })();
 
   const todayCalendarDayNumber = (() => {
@@ -1170,19 +1089,14 @@ export default function PlanViewScreen() {
 
         {weekData ? (
           weekData.days.map((day) =>
-            day.type === 'workout' ? (() => {
-              const todayLabel = getTodayDayLabel();
-              const isRescheduledToToday =
-                typeof day.rescheduledTo === 'string' &&
-                day.rescheduledTo.trim().slice(0, 3) === todayLabel;
-              return (
+            day.type === 'workout' ? (
               <WorkoutDayCard
                 key={day.dayNumber}
                 day={day}
                 weekPhase={weekData.phase}
                 planSplit={rawPlanJson?.split}
                 isNextWorkout={
-                  day.dayNumber === nextWorkoutDayNumber || isRescheduledToToday
+                  selectedWeek === planData.currentWeek && !day.completed
                 }
                 isTodayCalendarDay={day.dayNumber === todayCalendarDayNumber && day.dayNumber !== nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}
@@ -1191,8 +1105,7 @@ export default function PlanViewScreen() {
                 onPreviewDay={handlePreviewDay}
                 onRedoWorkout={handleRedoWorkout}
               />
-              );
-            })() : day.type === 'cardio' ? (
+            ) : day.type === 'cardio' ? (
               (() => {
                 const isCardioDone = completedCardioDays.has(day.dayNumber);
                 return (

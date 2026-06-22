@@ -45,12 +45,6 @@ import {
   type SessionSignal,
   PRE_SESSION_COPY,
 } from '../utils/sessionSignal';
-import {
-  checkMissedSession,
-  markSessionSkipped,
-  missedDayLabelToDate,
-  type MissedSessionResult,
-} from '../utils/missedSession';
 import { consumePendingJordanNote } from '../utils/sessionNoteStore';
 import { useMetric, convertSessionFocus } from '../utils/units';
 import CardioDayCard from '../components/CardioDayCard';
@@ -518,9 +512,11 @@ function getJordanRecoverySuggestion(goal: string | null | undefined): string {
 function RecoveryDayCard({
   planGoal,
   dayNumber,
+  onMakeUpSession,
 }: {
   planGoal: string | null | undefined;
   dayNumber: number | null;
+  onMakeUpSession?: () => void;
 }) {
   const suggestion = getJordanRecoverySuggestion(planGoal);
   return (
@@ -553,6 +549,15 @@ function RecoveryDayCard({
           <Text style={styles.recoveryPillarValueBold}>2–3 L water</Text>
         </View>
       </View>
+      <TouchableOpacity
+        style={styles.makeUpSessionLink}
+        activeOpacity={0.7}
+        onPress={() => onMakeUpSession?.()}
+      >
+        <Text style={styles.makeUpSessionLinkText}>
+          Make up a missed session →
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -729,15 +734,6 @@ export default function HomeScreen() {
   const homeShareCardRef = useRef<View>(null);
   const homeShareCapturePendingRef = useRef(false);
 
-  const [missedSessionResult, setMissedSessionResult] =
-    useState<MissedSessionResult | null>(null);
-  const [missedCardDismissed, setMissedCardDismissed] = useState(false);
-  const [planSnapshotForMissed, setPlanSnapshotForMissed] = useState<{
-    planId: string;
-    currentWeek: number;
-    planJson: Record<string, unknown>;
-    startDate?: string | null;
-  } | null>(null);
   const [cardioCompleted, setCardioCompleted] = useState(false);
   const [todayActivityLog, setTodayActivityLog] = useState<ActivityLogRow | null>(null);
   const [activityDashboardUserId, setActivityDashboardUserId] = useState<string | null>(null);
@@ -796,25 +792,6 @@ export default function HomeScreen() {
     return false;
   }, []);
 
-  useEffect(() => {
-    setMissedCardDismissed(false);
-  }, [planSnapshotForMissed?.planId, planSnapshotForMissed?.currentWeek]);
-
-  useEffect(() => {
-    if (!planSnapshotForMissed?.planId || !planSnapshotForMissed.planJson) {
-      setMissedSessionResult(null);
-      return;
-    }
-    if (missedCardDismissed) return;
-
-    checkMissedSession(
-      planSnapshotForMissed.planId,
-      planSnapshotForMissed.currentWeek,
-      planSnapshotForMissed.planJson,
-      planSnapshotForMissed.startDate,
-    ).then(setMissedSessionResult);
-  }, [planSnapshotForMissed, missedCardDismissed]);
-
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
@@ -828,7 +805,6 @@ export default function HomeScreen() {
         setDevBypassDayGate(false);
         setIsWeek1NoSessionsYet(false);
         setHasLoggedWorkoutToday(false);
-        setPlanSnapshotForMissed(null);
         setTodayActivityLog(null);
         setTodaySportLog(null);
         setActivityDashboardUserId(null);
@@ -914,7 +890,6 @@ export default function HomeScreen() {
         setIsTrainingDay(true);
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
-        setPlanSnapshotForMissed(null);
         setTodayActivityLog(null);
         setTodaySportLog(null);
         setIsWeek1NoSessionsYet(false);
@@ -954,8 +929,6 @@ export default function HomeScreen() {
       if (planRow.status === 'completed') {
         setPlanData(null);
         setCardioCompleted(false);
-        setPlanSnapshotForMissed(null);
-        setMissedSessionResult(null);
         setLastSessionMeta(null);
         setLatestSummary(null);
         setCoachSummary(null);
@@ -993,7 +966,6 @@ export default function HomeScreen() {
         setNextTrainingDay(null);
         setDevBypassDayGate(false);
         setIsWeek1NoSessionsYet(false);
-        setPlanSnapshotForMissed(null);
         setTodayActivityLog(null);
         setTodaySportLog(null);
         setHasLoggedWorkoutToday(false);
@@ -1105,7 +1077,6 @@ export default function HomeScreen() {
         setNextTrainingDay(null);
         setIsWeek1NoSessionsYet(false);
         setDevBypassDayGate(false);
-        setPlanSnapshotForMissed(null);
         setStatsLoading(false);
         setProgressedCount(null);
         setIsWeek1(false);
@@ -1213,10 +1184,10 @@ export default function HomeScreen() {
       const calendarTrainingToday =
         !hasDayLabels || isTodayTrainingDay(scheduledDays, todayLabel);
 
-      // Only show "workout complete" if today was actually a training
-      // day in the current week. If current_week advanced to W2 and
-      // today is not a W2 training day, don't show the complete card.
-      const loggedWorkoutToday = !!todayLogRow && calendarTrainingToday;
+      // Show complete card whenever user logged ANY session today —
+      // regardless of whether today is a scheduled training day.
+      // Enables make-up sessions on rest days to still show the complete card.
+      const loggedWorkoutToday = !!todayLogRow;
       setHasLoggedWorkoutToday(loggedWorkoutToday);
 
       if (loggedWorkoutToday) {
@@ -1530,12 +1501,6 @@ export default function HomeScreen() {
         }
       }
 
-      setPlanSnapshotForMissed({
-        planId: plan.id,
-        currentWeek: plan.current_week ?? 1,
-        planJson: planJson as Record<string, unknown>,
-        startDate: planStartRaw ?? null,
-      });
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
       // Clear fresh note once DB has caught up — latestJordanNote in plan_json
@@ -2452,110 +2417,6 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-        {missedSessionResult?.isMissed && !missedCardDismissed && planSnapshotForMissed ? (
-          <View style={styles.missedCard}>
-            <View style={styles.missedCardHeader}>
-              <Text style={styles.missedCardLabel}>MISSED SESSION</Text>
-              <Text style={styles.missedCardTitle}>
-                {missedSessionResult.missedSession?.title}
-              </Text>
-              {(missedSessionResult.missedSession?.muscleGroups?.length ?? 0) > 0 ? (
-                <View style={styles.missedMuscleRow}>
-                  {(missedSessionResult.missedSession?.muscleGroups ?? []).map((mg) => (
-                    <View key={mg} style={styles.missedMuscleBadge}>
-                      <Text style={styles.missedMuscleBadgeText}>{mg}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.missedJordanRow}>
-              <JordanAvatar size={32} />
-              <Text style={styles.missedJordanText}>
-                {missedSessionResult.canReschedule
-                  ? `You missed ${missedSessionResult.missedDayLabel ? `${missedSessionResult.missedDayLabel}'s` : 'a'} session. Do it today or skip it.`
-                  : `You missed ${missedSessionResult.missedDayLabel ? `${missedSessionResult.missedDayLabel}'s` : 'a'} session. Next session we get back on track.`}
-              </Text>
-            </View>
-
-            {missedSessionResult.canReschedule ? (
-              <View style={styles.missedActions}>
-                <TouchableOpacity
-                  style={styles.missedActionPrimary}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setMissedCardDismissed(true);
-                  }}
-                >
-                  <Text style={styles.missedActionPrimaryText}>
-                    Do it today →
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.missedActionSecondary}
-                  activeOpacity={0.8}
-                  onPress={async () => {
-                    const uid = uidRef.current;
-                    if (!uid) return;
-                    try {
-                      console.log('[skip]', {
-                        dayNumber: missedSessionResult.missedSession?.dayNumber,
-                        planId: planSnapshotForMissed?.planId,
-                        weekNumber: planSnapshotForMissed?.currentWeek,
-                      });
-                      await markSessionSkipped(
-                        planSnapshotForMissed.planId,
-                        planSnapshotForMissed.currentWeek,
-                        missedSessionResult.missedSession!.dayNumber,
-                        uid,
-                        missedDayLabelToDate(missedSessionResult.missedDayLabel),
-                      );
-                      setMissedCardDismissed(true);
-                      loadDashboardData();
-                    } catch (e) {
-                      console.error('[missed] markSessionSkipped', e);
-                      Alert.alert('Error', 'Could not update. Please try again.');
-                    }
-                  }}
-                >
-                  <Text style={styles.missedActionSecondaryText}>Skip it</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.missedActionSecondary}
-                activeOpacity={0.8}
-                onPress={async () => {
-                  const uid = uidRef.current;
-                  if (!uid) return;
-                  try {
-                    console.log('[skip]', {
-                      dayNumber: missedSessionResult.missedSession?.dayNumber,
-                      planId: planSnapshotForMissed?.planId,
-                      weekNumber: planSnapshotForMissed?.currentWeek,
-                    });
-                    await markSessionSkipped(
-                      planSnapshotForMissed.planId,
-                      planSnapshotForMissed.currentWeek,
-                      missedSessionResult.missedSession!.dayNumber,
-                      uid,
-                      missedDayLabelToDate(missedSessionResult.missedDayLabel),
-                    );
-                    setMissedCardDismissed(true);
-                    loadDashboardData();
-                  } catch (e) {
-                    console.error('[missed] markSessionSkipped', e);
-                    Alert.alert('Error', 'Could not update. Please try again.');
-                  }
-                }}
-              >
-                <Text style={styles.missedActionSecondaryText}>Got it</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : null}
-
         {/* ── Low-completion prompt — shown when week elapsed but <60% sessions done ── */}
         {lowCompletionPrompt != null && planStatus === 'active' ? (
           <View style={styles.lowCompCard}>
@@ -2774,7 +2635,16 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : (
-            <RecoveryDayCard planGoal={planData?.planGoal} dayNumber={recoveryDayNumber} />
+            <RecoveryDayCard
+              planGoal={planData?.planGoal}
+              dayNumber={recoveryDayNumber}
+              onMakeUpSession={() =>
+                navigation.navigate('WorkoutTab' as any, {
+                  screen: 'PlanView',
+                  params: { planId: planData?.planId ?? '' },
+                })
+              }
+            />
           )
         ) : today ? (
           <View style={styles.workoutCard}>
@@ -2897,7 +2767,16 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         ) : planData?.todayCardioDay ? null : (
-          <RecoveryDayCard planGoal={planData?.planGoal} dayNumber={recoveryDayNumber} />
+          <RecoveryDayCard
+            planGoal={planData?.planGoal}
+            dayNumber={recoveryDayNumber}
+            onMakeUpSession={() =>
+              navigation.navigate('WorkoutTab' as any, {
+                screen: 'PlanView',
+                params: { planId: planData?.planId ?? '' },
+              })
+            }
+          />
         )}
           </>
         )}
@@ -3673,88 +3552,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.accent,
   },
-  missedCard: {
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.warning,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  missedCardHeader: {
-    marginBottom: Spacing.sm,
-  },
-  missedCardLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.warning,
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  missedCardTitle: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  missedMuscleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  missedMuscleBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 3,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.full,
-  },
-  missedMuscleBadgeText: {
-    fontFamily: Fonts.medium,
-    fontSize: FontSizes.caption,
-    color: Colors.textSecondary,
-  },
-  missedJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  missedJordanText: {
-    flex: 1,
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.body,
-    color: Colors.textPrimary,
-    lineHeight: 22,
-  },
-  missedActions: {
-    gap: Spacing.sm,
-  },
-  missedActionPrimary: {
-    height: 48,
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missedActionPrimaryText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.body,
-    color: Colors.textPrimary,
-  },
-  missedActionSecondary: {
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missedActionSecondaryText: {
-    fontFamily: Fonts.medium,
-    fontSize: FontSizes.body,
-    color: Colors.textSecondary,
-  },
 
   workoutCard: {
     marginHorizontal: Spacing.xl,
@@ -4000,6 +3797,16 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     color: Colors.textPrimary,
     textAlign: 'center',
+  },
+  makeUpSessionLink: {
+    marginTop: Spacing.md,
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.xs,
+  },
+  makeUpSessionLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
   },
   workoutLabel: {
     fontSize: FontSizes.label,

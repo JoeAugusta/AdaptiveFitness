@@ -3754,6 +3754,19 @@ Return ONLY this exact JSON structure:
 
     const adaptationDrafts: AdaptationDraft[] = [];
 
+    // Fetch all prior week logs once — used for travel restore AND
+    // skipped-exercise lookback (finding most recent log when current
+    // week has no data for an exercise).
+    const { data: allPriorLogData } = await supabase
+      .from('workout_logs')
+      .select('week_number, day_number, sets_json')
+      .eq('user_id', userId)
+      .eq('plan_id', planId)
+      .lt('week_number', completedWeekNumber)
+      .not('skipped', 'eq', true)
+      .order('week_number', { ascending: false });
+    const allPriorLogs: WorkoutLogRow[] = (allPriorLogData ?? []) as WorkoutLogRow[];
+
     // ── PER-EXERCISE WEIGHT PROGRESSION ─────────────────────────────────────
     // mergeNextWeekWithPreviousStructure keeps completed-week slots (preserves IDs).
     // Progress targetWeight / reps / pyramid ladders from prior plan baselines + RPE logs.
@@ -3768,6 +3781,7 @@ Return ONLY this exact JSON structure:
         (log: any) => Number(log.day_number) === dayNum,
       );
       const sessionSets: any[] = parseSetsJson(matchingPriorLog?.sets_json);
+
       const allPlanWeekSets: any[] = dedupedLogs.flatMap((log: any) =>
         parseSetsJson(log.sets_json),
       );
@@ -3778,15 +3792,7 @@ Return ONLY this exact JSON structure:
 
       let allPlanLogsForTravel: WorkoutLogRow[] = [];
       if (dayWasTravelAffected) {
-        const { data: travelLogData } = await supabase
-          .from('workout_logs')
-          .select('week_number, day_number, sets_json')
-          .eq('user_id', userId)
-          .eq('plan_id', planId)
-          .lt('week_number', completedWeekNumber)
-          .not('skipped', 'eq', true)
-          .order('week_number', { ascending: false });
-        allPlanLogsForTravel = (travelLogData ?? []) as WorkoutLogRow[];
+        allPlanLogsForTravel = allPriorLogs;
       }
 
       const exerciseIdToNameForDay: Record<string, string> = {};
@@ -4330,7 +4336,86 @@ Return ONLY this exact JSON structure:
           );
 
         if (loggedBaselineWeight === 0) {
-          console.log('[SKIP]', exName, '— no sets logged this week');
+          // Before giving up, check prior weeks for the most recent log
+          // of this exercise. Handles skipped sessions mid-plan where
+          // the user logged the exercise in a prior week but not this one.
+          // Example: W2 logged, W3 skipped, W4 should progress from W2.
+          if (isSelfSelectWeightGoal(planGoalStr) && allPriorLogs.length > 0) {
+            const priorLog = findMostRecentLogForExercise(
+              allPriorLogs,
+              currentExerciseName,
+              completedWeekNumber,
+            );
+            if (priorLog && priorLog.weightLbs > 0) {
+              // Found prior data — use it as the baseline and progress normally.
+              // Treat RPE as on-target (7.0) since we don't know their effort
+              // from a skipped week — conservative but correct.
+              const equip = String(
+                exercise.equipment ?? getEquipmentForExerciseName(exName),
+              );
+              const tier = normalizeCompoundTier(
+                exercise.compoundTier ?? getCompoundTierFromName(currentExerciseName),
+              );
+              const accessoryTargetRpe =
+                Number(exercise.targetRpe) > 0 ? Number(exercise.targetRpe) : 7.0;
+              // Use target RPE as the logged RPE since we have no actual data
+              // from the skipped week — this produces a hold (no increment),
+              // which is correct: don't progress from a week they didn't train.
+              const progression = computeAccessoryProgressionTarget({
+                baselineWeight: priorLog.weightLbs,
+                avgLoggedRpe: accessoryTargetRpe,
+                targetRpe: accessoryTargetRpe,
+                equipment: equip,
+                compoundTier: tier,
+                trainingAge: experienceForProgression,
+                exerciseName: currentExerciseName,
+              });
+              let newTargetWeight = applyMaxWeeklyIncrease(
+                priorLog.weightLbs,
+                progression.newTargetWeight,
+                equip,
+                tier,
+              );
+              if (isPyramidExercise(exercise)) {
+                newTargetWeight = stampPyramidFromDesiredTopSet(
+                  exercise,
+                  newTargetWeight,
+                  equip,
+                );
+              } else {
+                exercise.targetWeight = newTargetWeight;
+              }
+              console.log('[LOOKBACK]', currentExerciseName, {
+                priorWeek: priorLog.weekNumber,
+                priorWeight: priorLog.weightLbs,
+                newTargetWeight: Number(exercise.targetWeight ?? newTargetWeight),
+                note: 'skipped this week — holding from prior week log',
+              });
+              upsertAdaptationDraft(adaptationDrafts, {
+                key: exName,
+                exerciseName: currentExerciseName,
+                muscleGroup: String(exercise.muscleGroup ?? ''),
+                previousWeight: priorLog.weightLbs,
+                progressedWeight: Number(exercise.targetWeight ?? newTargetWeight),
+                avgLoggedRpe: null,
+                targetRpe: accessoryTargetRpe,
+                rpeGap: 0,
+                repsExceeded: false,
+                hadRpeData: false,
+                isCalibration: false,
+              });
+              continue;
+            }
+          }
+          // No prior data found anywhere — truly first attempt, default to 0.
+          console.log('[SKIP]', exName, '— no sets logged this or any prior week');
+          exercise.targetWeight = 0;
+          if (Array.isArray(exercise.setTargets)) {
+            exercise.setTargets = exercise.setTargets.map((st: any) => ({
+              ...st,
+              targetWeight: 0,
+            }));
+          }
           continue;
         }
 

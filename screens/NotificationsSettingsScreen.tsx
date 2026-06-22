@@ -29,6 +29,8 @@ const ASYNC_KEY_WORKOUT_TIME = 'workoutReminderTime';
 const ASYNC_KEY_WEIGH_IN_TIME = 'weighInReminderTime';
 const ASYNC_KEY_WORKOUT_NOTIF_ID = 'workoutNotifId';
 const ASYNC_KEY_WEIGH_IN_NOTIF_ID = 'weighInNotifId';
+const ASYNC_KEY_MEAL_LOG_TIME = 'mealLogReminderTime';
+const ASYNC_KEY_MEAL_LOG_NOTIF_ID = 'mealLogNotifId';
 
 // ── Types ──
 
@@ -40,6 +42,8 @@ interface NotificationPreferences {
   reminderTimeISO: string;
   weighInReminder: boolean;
   weighInTimeISO: string;
+  mealLogReminder: boolean;
+  mealLogTimeISO: string;
 }
 
 // ── Helpers ──
@@ -89,6 +93,11 @@ export default function NotificationsSettingsScreen() {
   );
   const [showWorkoutPicker, setShowWorkoutPicker] = useState(false);
   const [showWeighInPicker, setShowWeighInPicker] = useState(false);
+  const [mealLogReminderEnabled, setMealLogReminderEnabled] = useState(false);
+  const [mealLogReminderTime, setMealLogReminderTime] = useState(
+    () => new Date(new Date().setHours(12, 0, 0, 0)),
+  );
+  const [showMealLogPicker, setShowMealLogPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
@@ -98,6 +107,8 @@ export default function NotificationsSettingsScreen() {
   const workoutNotifId = useRef<string | null>(null);
   const workoutTimeSnapshotRef = useRef<Date | null>(null);
   const weighInTimeSnapshotRef = useRef<Date | null>(null);
+  const mealLogNotifId = useRef<string | null>(null);
+  const mealLogTimeSnapshotRef = useRef<Date | null>(null);
 
   // Skeleton pulse while loading
   useEffect(() => {
@@ -130,6 +141,7 @@ export default function NotificationsSettingsScreen() {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const savedWorkoutKey = await AsyncStorage.getItem(ASYNC_KEY_WORKOUT_TIME);
         const savedWeighInKey = await AsyncStorage.getItem(ASYNC_KEY_WEIGH_IN_TIME);
+        const savedMealLogKey = await AsyncStorage.getItem(ASYNC_KEY_MEAL_LOG_TIME);
 
         let prefs: NotificationPreferences | null = null;
         if (raw) {
@@ -140,6 +152,9 @@ export default function NotificationsSettingsScreen() {
           setStreakProtectionEnabled(prefs.streakProtection);
           if (prefs.weighInReminder !== undefined) {
             setWeighInReminderEnabled(prefs.weighInReminder);
+          }
+          if (prefs.mealLogReminder !== undefined) {
+            setMealLogReminderEnabled(prefs.mealLogReminder);
           }
         }
 
@@ -164,6 +179,17 @@ export default function NotificationsSettingsScreen() {
           if (!isNaN(d.getTime())) weighT = d;
         }
 
+        let mealT = new Date(new Date().setHours(12, 0, 0, 0));
+        if (prefs?.mealLogTimeISO) {
+          const d = new Date(prefs.mealLogTimeISO);
+          if (!isNaN(d.getTime())) mealT = d;
+        }
+        if (savedMealLogKey) {
+          const d = new Date(savedMealLogKey);
+          if (!isNaN(d.getTime())) mealT = d;
+        }
+        setMealLogReminderTime(mealT);
+
         setWorkoutReminderTime(workoutT);
         setWeighInReminderTime(weighT);
 
@@ -172,6 +198,9 @@ export default function NotificationsSettingsScreen() {
 
         const storedWeighInNotifId = await AsyncStorage.getItem(ASYNC_KEY_WEIGH_IN_NOTIF_ID);
         if (storedWeighInNotifId) weighInNotifId.current = storedWeighInNotifId;
+
+        const storedMealLogNotifId = await AsyncStorage.getItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID);
+        if (storedMealLogNotifId) mealLogNotifId.current = storedMealLogNotifId;
       } catch (e) {
         console.error('NotificationsSettings init error:', e);
       } finally {
@@ -196,6 +225,8 @@ export default function NotificationsSettingsScreen() {
             reminderTimeISO: workoutReminderTime.toISOString(),
             weighInReminder: weighInReminderEnabled,
             weighInTimeISO: weighInReminderTime.toISOString(),
+            mealLogReminder: mealLogReminderEnabled,
+            mealLogTimeISO: mealLogReminderTime.toISOString(),
             ...overrides,
           };
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
@@ -212,6 +243,8 @@ export default function NotificationsSettingsScreen() {
       workoutReminderTime,
       weighInReminderEnabled,
       weighInReminderTime,
+      mealLogReminderEnabled,
+      mealLogReminderTime,
     ],
   );
 
@@ -327,6 +360,97 @@ export default function NotificationsSettingsScreen() {
       console.error('Weigh-in reschedule error:', e);
     }
   }, [weighInReminderEnabled]);
+
+  const rescheduleMealLogNotification = useCallback(
+    async (time: Date) => {
+      if (Platform.OS === 'web' || !mealLogReminderEnabled) return;
+      try {
+        if (mealLogNotifId.current) {
+          await Notifications.cancelScheduledNotificationAsync(
+            mealLogNotifId.current,
+          );
+          mealLogNotifId.current = null;
+          await AsyncStorage.removeItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID);
+        }
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Log your meals',
+            body: "Keep your nutrition on track — log today's food for Jordan.",
+            sound: true,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: time.getHours(),
+            minute: time.getMinutes(),
+          },
+        });
+        mealLogNotifId.current = id;
+        await AsyncStorage.setItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID, id);
+      } catch (e) {
+        console.error('Meal log reschedule error:', e);
+      }
+    },
+    [mealLogReminderEnabled],
+  );
+
+  const toggleMealLogReminder = useCallback(
+    async (value: boolean) => {
+      setMealLogReminderEnabled(value);
+      if (Platform.OS !== 'web') {
+        try {
+          if (value) {
+            if (mealLogNotifId.current) {
+              await Notifications.cancelScheduledNotificationAsync(
+                mealLogNotifId.current,
+              );
+              mealLogNotifId.current = null;
+              await AsyncStorage.removeItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID);
+            }
+            const id = await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Log your meals',
+                body: "Keep your nutrition on track — log today's food for Jordan.",
+                sound: true,
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DAILY,
+                hour: mealLogReminderTime.getHours(),
+                minute: mealLogReminderTime.getMinutes(),
+              },
+            });
+            mealLogNotifId.current = id;
+            await AsyncStorage.setItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID, id);
+          } else if (mealLogNotifId.current) {
+            await Notifications.cancelScheduledNotificationAsync(
+              mealLogNotifId.current,
+            );
+            mealLogNotifId.current = null;
+            await AsyncStorage.removeItem(ASYNC_KEY_MEAL_LOG_NOTIF_ID);
+          }
+        } catch (e) {
+          console.error('Meal log notification error:', e);
+        }
+      }
+      schedulePreferencesSave({ mealLogReminder: value });
+    },
+    [mealLogReminderTime, schedulePreferencesSave],
+  );
+
+  const commitMealLogReminderTime = useCallback(
+    async (time: Date) => {
+      try {
+        await AsyncStorage.setItem(
+          ASYNC_KEY_MEAL_LOG_TIME,
+          time.toISOString(),
+        );
+      } catch (e) {
+        console.error('Meal log time save error:', e);
+      }
+      schedulePreferencesSave({ mealLogTimeISO: time.toISOString() });
+      await rescheduleMealLogNotification(time);
+    },
+    [schedulePreferencesSave, rescheduleMealLogNotification],
+  );
 
   const commitWorkoutReminderTime = useCallback(
     async (time: Date) => {
@@ -446,6 +570,44 @@ export default function NotificationsSettingsScreen() {
     setShowWeighInPicker(true);
   };
 
+  const dismissMealLogPickerOverlay = () => {
+    if (mealLogTimeSnapshotRef.current) {
+      setMealLogReminderTime(mealLogTimeSnapshotRef.current);
+    }
+    mealLogTimeSnapshotRef.current = null;
+    setShowMealLogPicker(false);
+  };
+
+  const onMealLogPickerDone = () => {
+    mealLogTimeSnapshotRef.current = null;
+    setShowMealLogPicker(false);
+    setMealLogReminderTime((latest) => {
+      void commitMealLogReminderTime(latest);
+      return latest;
+    });
+  };
+
+  const onAndroidMealLogTimeChange = (
+    event: DateTimePickerEvent,
+    date?: Date,
+  ) => {
+    setShowMealLogPicker(false);
+    if (event.type === 'dismissed') return;
+    if (date) {
+      setMealLogReminderTime(date);
+      void commitMealLogReminderTime(date);
+    }
+  };
+
+  const openMealLogPicker = () => {
+    if (Platform.OS === 'android') {
+      setShowMealLogPicker(true);
+      return;
+    }
+    mealLogTimeSnapshotRef.current = new Date(mealLogReminderTime.getTime());
+    setShowMealLogPicker(true);
+  };
+
   // ── Render helpers ──
 
   const renderPermissionSection = () => {
@@ -551,6 +713,41 @@ export default function NotificationsSettingsScreen() {
               <Text style={styles.prefLabel}>Reminder Time</Text>
               <View style={styles.timeRight}>
                 <Text style={styles.timeValue}>{formatTime(weighInReminderTime)}</Text>
+                <Text style={styles.rowChevron}>›</Text>
+              </View>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <Divider />
+        <View style={styles.prefRow}>
+          <View style={styles.prefLabelGroup}>
+            <Text style={styles.prefLabel}>Meal Log Reminder</Text>
+            <Text style={styles.prefSubLabel}>
+              Daily reminder to log your nutrition
+            </Text>
+          </View>
+          <Switch
+            value={mealLogReminderEnabled}
+            onValueChange={toggleMealLogReminder}
+            trackColor={{ false: Colors.divider, true: Colors.accent }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        {mealLogReminderEnabled && (
+          <>
+            <Divider />
+            <TouchableOpacity
+              style={styles.prefRow}
+              onPress={openMealLogPicker}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.prefLabel}>Reminder Time</Text>
+              <View style={styles.timeRight}>
+                <Text style={styles.timeValue}>
+                  {formatTime(mealLogReminderTime)}
+                </Text>
                 <Text style={styles.rowChevron}>›</Text>
               </View>
             </TouchableOpacity>
@@ -669,6 +866,15 @@ export default function NotificationsSettingsScreen() {
         />
       ) : null}
 
+      {Platform.OS === 'android' && showMealLogPicker ? (
+        <DateTimePicker
+          value={mealLogReminderTime}
+          mode="time"
+          display="default"
+          onChange={onAndroidMealLogTimeChange}
+        />
+      ) : null}
+
       {showWorkoutPicker && Platform.OS !== 'android' ? (
         <Modal
           transparent
@@ -732,6 +938,42 @@ export default function NotificationsSettingsScreen() {
                 display="spinner"
                 onChange={(_event, date) => {
                   if (date) setWeighInReminderTime(date);
+                }}
+                themeVariant="dark"
+                textColor={Colors.textPrimary}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {showMealLogPicker && Platform.OS !== 'android' ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible
+          onRequestClose={dismissMealLogPickerOverlay}
+        >
+          <View style={styles.pickerModalRoot}>
+            <Pressable
+              style={styles.pickerBackdrop}
+              onPress={dismissMealLogPickerOverlay}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss time picker"
+            />
+            <View style={styles.pickerSheet}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Meal Log Reminder Time</Text>
+                <Pressable onPress={onMealLogPickerDone} hitSlop={12}>
+                  <Text style={styles.pickerDone}>Done</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={mealLogReminderTime}
+                mode="time"
+                display="spinner"
+                onChange={(_event, date) => {
+                  if (date) setMealLogReminderTime(date);
                 }}
                 themeVariant="dark"
                 textColor={Colors.textPrimary}

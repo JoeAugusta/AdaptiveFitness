@@ -236,6 +236,7 @@ function WorkoutDayCard({
   planSplit,
   onStartWorkout,
   isNextWorkout,
+  isRecommended,
   isTodayCalendarDay,
   onViewResults,
   loadingResults,
@@ -247,6 +248,7 @@ function WorkoutDayCard({
   planSplit: string | undefined;
   onStartWorkout: (day: PlanDay) => void;
   isNextWorkout: boolean;
+  isRecommended: boolean;
   isTodayCalendarDay?: boolean;
   onViewResults: (day: PlanDay) => void;
   loadingResults: boolean;
@@ -261,7 +263,7 @@ function WorkoutDayCard({
     <TouchableOpacity
       style={[
         styles.workoutDayCard,
-        isNextWorkout && !day.completed && styles.workoutDayCardNext,
+        isRecommended && !day.completed && styles.workoutDayCardNext,
         isTodayCalendarDay && styles.workoutDayCardToday,
       ]}
       activeOpacity={
@@ -297,7 +299,7 @@ function WorkoutDayCard({
           ]}>
             {day.skipped ? '✗' : '✓'}
           </Text>
-        ) : isNextWorkout ? (
+        ) : isRecommended ? (
           <View style={styles.nextUpBadge}>
             <Text style={styles.nextUpBadgeText}>NEXT UP</Text>
           </View>
@@ -1104,6 +1106,9 @@ export default function PlanViewScreen() {
                 planSplit={rawPlanJson?.split}
                 isNextWorkout={
                   selectedWeek === planData.currentWeek && !day.completed
+                }
+                isRecommended={
+                  day.dayNumber === nextWorkoutDayNumber
                 }
                 isTodayCalendarDay={day.dayNumber === todayCalendarDayNumber && day.dayNumber !== nextWorkoutDayNumber}
                 onStartWorkout={handleStartWorkout}

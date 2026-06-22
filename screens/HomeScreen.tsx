@@ -1426,14 +1426,24 @@ export default function HomeScreen() {
           // cycled — always allow the advance check.
           const firstWeekElapsed = (() => {
             if (dbCurrentWeek === 1) {
-              const advanceAnchorRaw: string | null =
-                planStartRaw ??
-                (typeof (plan as { created_at?: string }).created_at === 'string'
-                  ? (plan as { created_at: string }).created_at
-                  : null);
-              if (!advanceAnchorRaw) return true;
-              const anchor = new Date(`${advanceAnchorRaw.split('T')[0]}T12:00:00`);
-              return Date.now() >= anchor.getTime() + 7 * 24 * 60 * 60 * 1000;
+              // Advance on Monday in the user's local timezone, but only
+              // after at least 7 full calendar days have passed since the
+              // plan start date. This prevents a plan created Sunday from
+              // advancing to W2 the very next Monday — the user needs a
+              // full week of training before the advance fires.
+              // All math is in local calendar days to avoid timezone issues
+              // that caused early-morning users to be gated until noon.
+              if (!planStartRaw) return true;
+              const planStartMidnight = new Date(
+                `${planStartRaw.split('T')[0]}T00:00:00`,
+              );
+              const todayMidnight = new Date();
+              todayMidnight.setHours(0, 0, 0, 0);
+              const daysSinceStart = Math.floor(
+                (todayMidnight.getTime() - planStartMidnight.getTime()) /
+                  (1000 * 60 * 60 * 24),
+              );
+              return daysSinceStart >= 7;
             }
             return true;
           })();
@@ -1490,7 +1500,10 @@ export default function HomeScreen() {
             const todayStamp = getLocalDateString();
             const alreadyDismissedThisElapse =
               dismissedRaw === `${completedWeekForPrompt}:${todayStamp}`;
-            if (!alreadyDismissedThisElapse) {
+            // Only show if the user actually logged at least one session
+            // this week. Prevents the prompt from firing on the recursive
+            // load after auto-advance where the new week has 0 sessions.
+            if (!alreadyDismissedThisElapse && rawCompletedSessions > 0) {
               setLowCompletionPrompt({
                 weekNumber: completedWeekForPrompt,
                 completed: rawCompletedSessions,

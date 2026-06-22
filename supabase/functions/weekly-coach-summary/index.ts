@@ -318,7 +318,11 @@ ${adjustmentCopy}`.trim();
     }
 
     // Step 3 — Compute performance metrics
-    const sessionsCompleted = new Set(logs.map((l: any) => l.day_number)).size;
+    const sessionsCompleted = new Set(
+      logs
+        .filter((l: any) => l.skipped !== true)
+        .map((l: any) => l.day_number),
+    ).size;
 
     // Late-start W1 detection: if the plan started mid-week, count only the
     // scheduled training days that fell on or after the plan start_date.

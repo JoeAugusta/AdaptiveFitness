@@ -288,9 +288,14 @@ function rpeValueColor(rpe: number) {
 }
 
 function isTimedExercise(repsValue: any): boolean {
-  const repsString = String(repsValue ?? '');
-  return repsString.trim().toLowerCase().includes('sec') ||
-         repsString.trim().toLowerCase().includes('min');
+  const repsString = String(repsValue ?? '').trim().toLowerCase();
+  return (
+    repsString.includes('sec') ||
+    repsString.includes('min') ||
+    /^\d+s$/.test(repsString) ||          // e.g. "30s"
+    /^\d+-\d+s$/.test(repsString) ||      // e.g. "30-60s"
+    /^\d+\s*-\s*\d+\s*s$/.test(repsString) // e.g. "30 - 60s"
+  );
 }
 
 function getAdaptationSignalColor(signal: AdaptationReason['signal']) {
@@ -311,9 +316,12 @@ function getAdaptationSignalColor(signal: AdaptationReason['signal']) {
 }
 
 function parseTimedDuration(repsValue: any): number {
-  const repsString = String(repsValue ?? '');
-  const match = repsString.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 30;
+  const repsString = String(repsValue ?? '').trim().toLowerCase();
+  // For ranges like "30-60s", use the lower bound as the target
+  const rangeMatch = repsString.match(/^(\d+)\s*-\s*(\d+)/);
+  if (rangeMatch) return parseInt(rangeMatch[1], 10);
+  const singleMatch = repsString.match(/(\d+)/);
+  return singleMatch ? parseInt(singleMatch[1], 10) : 30;
 }
 
 export type PlanGoalType =

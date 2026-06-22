@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import { useMetric } from '../utils/units';
-import { stripEmDash } from '../utils/jordanText';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../Lib/supabase';
 
 export interface SetLog {
   exerciseId: string;
@@ -222,77 +219,6 @@ export default function WorkoutResultsModal({
   const groupedSets = useMemo(() => buildExerciseMap(planExercises, sets), [planExercises, sets]);
   const avgRpe = useMemo(() => calculateAvgRpe(sets), [sets]);
 
-  const [jordanDebrief, setJordanDebrief] = useState<string | null>(null);
-  const [jordanLoading, setJordanLoading] = useState(false);
-
-  useEffect(() => {
-    if (!visible) {
-      setJordanDebrief(null);
-      setJordanLoading(false);
-      return;
-    }
-    if (sets.length === 0) {
-      setJordanDebrief(null);
-      setJordanLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setJordanLoading(true);
-    setJordanDebrief(null);
-
-    const idList = sets
-      .map((s) => s.exerciseId)
-      .filter((id) => !!id && String(id).trim().length > 0);
-    const exerciseCount =
-      idList.length > 0 ? new Set(idList).size : 1;
-    const avgTarget = averageTargetRpeFromPlan(planExercises);
-    const avgRpeVal = calculateAvgRpe(sets);
-
-    void (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('coaching-feedback', {
-          body: {
-            exerciseName: 'session_summary',
-            sets,
-            loggedReps: sets.length,
-            targetReps: exerciseCount,
-            loggedRpe: avgRpeVal ?? 0,
-            targetRpe: avgTarget ?? 0,
-            planContext: {
-              goal: summaryPlanGoal ?? null,
-              week: summaryWeek ?? null,
-              phase: summaryPlanPhase ?? null,
-              targetRpe: avgTarget,
-            },
-            completedWeeks: summaryWeek ?? 1,
-          },
-        });
-        if (cancelled) return;
-        if (error) {
-          setJordanDebrief(null);
-          return;
-        }
-        const rawFb =
-          data &&
-          typeof data === 'object' &&
-          data !== null &&
-          'feedback' in data
-            ? (data as { feedback: unknown }).feedback
-            : null;
-        const text = typeof rawFb === 'string' ? rawFb.trim() : '';
-        setJordanDebrief(text.length > 0 ? text : null);
-      } catch {
-        if (!cancelled) setJordanDebrief(null);
-      } finally {
-        if (!cancelled) setJordanLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, sets, planExercises, summaryPlanGoal, summaryWeek, summaryPlanPhase]);
   const totalVolume = useMemo(() => calculateTotalVolume(sets), [sets]);
   const fatigueDescriptor = getFatigueLabel(workoutLog?.session_fatigue_rating ?? null);
 
@@ -342,18 +268,6 @@ export default function WorkoutResultsModal({
           </Text>
           <Text style={styles.headerDate}>{completedDate}</Text>
         </View>
-
-        {jordanLoading ? (
-          <View style={styles.jordanLoadingWrap}>
-            <ActivityIndicator color={Colors.accent} size="small" />
-          </View>
-        ) : null}
-        {!jordanLoading && jordanDebrief ? (
-          <View style={styles.jordanCard}>
-            <Text style={styles.jordanLabel}>JORDAN</Text>
-            <Text style={styles.jordanNoteText}>{stripEmDash(jordanDebrief ?? '')}</Text>
-          </View>
-        ) : null}
 
         <View style={styles.summaryStrip}>
           <View style={styles.summaryCard}>
@@ -599,32 +513,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.regular,
     color: Colors.textTertiary,
-  },
-  jordanLoadingWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  jordanCard: {
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.accentBorder,
-    marginBottom: Spacing.md,
-  },
-  jordanLabel: {
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  jordanNoteText: {
-    fontSize: FontSizes.body,
-    fontFamily: Fonts.regular,
-    color: Colors.textPrimary,
   },
   summaryStrip: {
     flexDirection: 'row',

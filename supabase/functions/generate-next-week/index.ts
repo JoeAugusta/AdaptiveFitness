@@ -1056,10 +1056,17 @@ function buildProgressionPyramidSetTargets(
   anchor: number,
   setCount: number,
   priorSetTargets?: Array<{ targetRpe?: number; targetReps?: string }>,
+  exerciseReps?: string,
 ): Week1PyramidTargetSet[] {
   let n = Math.floor(Number(setCount));
   if (!Number.isFinite(n) || !(n >= 3 && n <= 5)) n = 4;
-  const reps = String(priorSetTargets?.[0]?.targetReps ?? '8');
+  // Prefer exercise-level reps over setTargets[0].targetReps — the
+  // setTargets value may be wrong (e.g. "8" stamped by generate-plan
+  // when exercise reps are "4-6"). Exercise-level reps is authoritative.
+  const reps =
+    (exerciseReps && exerciseReps.trim().length > 0)
+      ? exerciseReps.trim()
+      : String(priorSetTargets?.[0]?.targetReps ?? '');
   const rpeHint = Number(priorSetTargets?.[0]?.targetRpe ?? 8);
   return buildWeek1PyramidSetTargets(anchor, n, reps, rpeHint) ?? [];
 }
@@ -1099,6 +1106,7 @@ function stampPyramidFromDesiredTopSet(
     topRounded,
     setCount,
     exercise.setTargets,
+    String(exercise.reps ?? ''),
   );
   if (nextTargets.length > 0) {
     exercise.setTargets = nextTargets;

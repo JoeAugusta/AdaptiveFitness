@@ -53,7 +53,7 @@ function round5(n: number): number {
 }
 
 export function calculateWarmupSets(workingWeightLbs: number): WarmupSet[] {
-  if (workingWeightLbs < 95) return [];
+  if (workingWeightLbs < 45) return [];
   const w = workingWeightLbs;
   return [
     {
@@ -74,7 +74,7 @@ export function calculateWarmupSets(workingWeightLbs: number): WarmupSet[] {
       reps: 3,
       note: 'One step below working weight',
     },
-  ].filter((s) => s.weightLbs >= 45);
+  ].filter((s) => s.weightLbs >= 10);
 }
 
 export interface SetTarget {
@@ -198,7 +198,17 @@ function shouldShowWarmups(exercise: any): boolean {
 
   // NEVER show warmups for:
   if (inferredEquipment === 'cable') return false;
-  if (inferredEquipment === 'machine') return false;
+  // Block warmups for machine isolation exercises only.
+  // Machine compounds (secondary/primary) at significant weight
+  // warrant warmup sets just like barbell/dumbbell equivalents.
+  if (inferredEquipment === 'machine') {
+    const tier = (exercise.compoundTier ?? '').toLowerCase();
+    const isMachineCompound =
+      tier === 'primary_compound' || tier === 'secondary_compound';
+    if (!isMachineCompound) return false;
+    // Machine compound: apply weight-based threshold
+    return targetWeight >= 100;
+  }
   if (inferredEquipment === 'bodyweight') return false;
 
   // ALWAYS show warmups for barbell compounds:
@@ -227,11 +237,11 @@ function shouldShowWarmups(exercise: any): boolean {
       name.includes('press') ||
       name.includes('row'))
   ) {
-    return targetWeight >= 40;
+    return targetWeight >= 20;
   }
 
   // Dumbbell isolation: weight-dependent
-  if (inferredEquipment === 'dumbbell') return targetWeight >= 30;
+  if (inferredEquipment === 'dumbbell') return targetWeight >= 20;
 
   // Name-based fallbacks when equipment truly unknown:
   if (name.includes('curl') && targetWeight >= 50) return true;
@@ -378,6 +388,7 @@ interface ExerciseCardProps {
   ) => void;
   /** When set (e.g. after swap), overrides exercise.targetWeight for display and defaults */
   targetWeightOverride?: number;
+  perSetWeightOverrides?: Record<number, number>;
   pyramidSetsOverride?: { setNumber: number; weightLbs: number }[];
   /** Active plan id — used to prefill swap weight from workout history */
   planId?: string;
@@ -389,6 +400,8 @@ interface ExerciseCardProps {
   onSkipRemainingSets?: () => void;
   /** Restore previously skipped sets */
   onRestoreSkippedSets?: () => void;
+  showWarmupCallout?: boolean;
+  onDismissWarmupCallout?: () => void;
 }
 
 export default function ExerciseCard({
@@ -407,12 +420,15 @@ export default function ExerciseCard({
   onEditSet,
   onSwapExercise,
   targetWeightOverride,
+  perSetWeightOverrides,
   pyramidSetsOverride,
   planId,
   currentWorkoutExerciseNames,
   skippedSetNumbers = [],
   onSkipRemainingSets,
   onRestoreSkippedSets,
+  showWarmupCallout,
+  onDismissWarmupCallout,
 }: ExerciseCardProps) {
   const { lbsToDisplay, displayToLbs, formatWorkoutWeight, isMetric } = useMetric();
 
@@ -534,9 +550,18 @@ export default function ExerciseCard({
     ]).start();
   }, [coachingLoading, coachingNote, coachingSkelOpacity, coachingContentOpacity]);
 
+  // Self-select pyramid: setTargets exist but all weights are 0.
+  // Treat as reactive (not frozen) so warmups track Set 1 input.
+  const pyramidAllZero =
+    exercise.setStructure === 'pyramid' &&
+    Array.isArray(exercise.setTargets) &&
+    exercise.setTargets.length > 0 &&
+    exercise.setTargets.every((st) => (st.targetWeight ?? 0) === 0);
+
   const isFrozenWarmupMode =
-    (effectiveTargetWeight ?? 0) > 0 ||
-    (exercise.setTargets != null && exercise.setTargets.length > 0);
+    !pyramidAllZero &&
+    ((effectiveTargetWeight ?? 0) > 0 ||
+      (exercise.setTargets != null && exercise.setTargets.length > 0));
 
   /** Mode B (W2+): frozen at mount. Mode A uses reactiveWarmupBase from Set 1 only. */
   const frozenWarmupBase = useMemo(() => {
@@ -545,7 +570,12 @@ export default function ExerciseCard({
       exercise.setTargets != null &&
       exercise.setTargets.length > 0
     ) {
-      return exercise.setTargets[0].targetWeight;
+      // Use the top set (max weight) as warmup anchor, not Set 1 (lightest).
+      // If all weights are 0 (self-select), return 0 so reactive mode takes over.
+      const topWeight = Math.max(
+        ...exercise.setTargets.map((st) => st.targetWeight ?? 0),
+      );
+      return topWeight;
     }
     return effectiveTargetWeight ?? 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: snapshot on mount only
@@ -555,9 +585,13 @@ export default function ExerciseCard({
     ? frozenWarmupBase
     : reactiveWarmupBase;
 
+  // Use warmupBaseWeight so self-select exercises (targetWeight=0)
+  // correctly show warmups once the user types their Set 1 weight.
+  // warmupBaseWeight is reactive to Set 1 input for self-select,
+  // and frozen to the plan prescription for W2+ prescribed exercises.
   const wantsWarmupByRule = shouldShowWarmups({
     ...exercise,
-    targetWeight: effectiveTargetWeight,
+    targetWeight: warmupBaseWeight > 0 ? warmupBaseWeight : (effectiveTargetWeight ?? 0),
   });
 
   useEffect(() => {
@@ -640,6 +674,36 @@ export default function ExerciseCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWeightOverride]);
 
+  // Per-set weight override from Jordan's suggestion — write directly
+  // into inputValues so it takes effect even on already-rendered sets.
+  useEffect(() => {
+    if (!perSetWeightOverrides || Object.keys(perSetWeightOverrides).length === 0) return;
+    setInputValues((prev) => {
+      const next = { ...prev };
+      for (const [setNumStr, overrideWeight] of Object.entries(perSetWeightOverrides)) {
+        const setNum = Number(setNumStr);
+        if (!Number.isFinite(setNum) || overrideWeight <= 0) continue;
+        // Never overwrite a set the user has already logged
+        if (loggedSets.some((s) => s.setNumber === setNum)) continue;
+        const existing = prev[setNum];
+        // Fall back to exercise setTargets or sets for the rep value
+        const setTarget = exercise.setTargets?.find((st) => st.setNumber === setNum);
+        const setDef = exercise.sets.find((s) => s.setNumber === setNum);
+        const repsFallback = setTarget?.targetReps ?? setDef?.targetReps ?? '';
+        const repsValue = existing?.reps && existing.reps.trim().length > 0
+          ? existing.reps
+          : String(repsFallback).split(/[–\-]/)[0]!.trim();
+        next[setNum] = {
+          weight: String(lbsToDisplay(overrideWeight)),
+          reps: repsValue,
+          rpe: existing?.rpe ?? null,
+        };
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perSetWeightOverrides, loggedSets]);
+
   const [editingSet, setEditingSet] = useState<number | null>(null);
   const [rpeExpandedSet, setRpeExpandedSet] = useState<number | null>(null);
   const [showRpeReference, setShowRpeReference] = useState(false);
@@ -657,28 +721,38 @@ export default function ExerciseCard({
 
   const getDefaultInput = (setNumber: number) => {
     const target = exercise.sets.find((s) => s.setNumber === setNumber);
-    const isPyramid = exercise.setStructure === 'pyramid';
-
     const setTarget = exercise.setTargets?.find(
       (st) => st.setNumber === setNumber,
     );
+
+    // Per-set weight override from Jordan's suggestion
+    const perSetOverride = perSetWeightOverrides?.[setNumber];
+    if (
+      perSetOverride != null &&
+      perSetOverride > 0 &&
+      !loggedSets.some((s) => s.setNumber === setNumber)
+    ) {
+      return {
+        weight: String(lbsToDisplay(perSetOverride)),
+        reps: (() => {
+          if (setTarget?.targetReps) {
+            return String(setTarget.targetReps).split(/[–\-]/)[0]!.trim();
+          }
+          if (!target) return '';
+          return String(target.targetReps ?? '').split(/[–\-]/)[0]!.trim();
+        })(),
+        rpe: null as number | null,
+      };
+    }
+
+    const isPyramid = exercise.setStructure === 'pyramid';
+
     const perSetTargetWeight = setTarget?.targetWeight ?? 0;
 
     const exerciseTopSetWeight =
       effectiveTargetWeight ?? exercise.sets[0]?.targetWeight ?? 0;
 
     const isWeek1SelfSelect = isPyramid && exerciseTopSetWeight === 0;
-
-    const loggedWeights = [...loggedSets]
-      .sort((a, b) => a.setNumber - b.setNumber)
-      .filter((s) => s.weightLbs > 0)
-      .map((s) => s.weightLbs);
-    const isLoggingAscending =
-      loggedWeights.length >= 2 &&
-      loggedWeights.every(
-        (w, i) => i === 0 || w >= loggedWeights[i - 1]!,
-      ) &&
-      loggedWeights[loggedWeights.length - 1]! > loggedWeights[0]!;
 
     const pyramidPrefill = (() => {
       if (!isPyramid) return 0;
@@ -703,23 +777,16 @@ export default function ExerciseCard({
       return exerciseTopSetWeight;
     })();
 
-    const lastLogged =
-      !isPyramid && !isLoggingAscending && loggedSets.length > 0
-        ? loggedSets[loggedSets.length - 1]!
-        : null;
-
     return {
-      weight: lastLogged
-        ? String(lbsToDisplay(lastLogged.weightLbs))
-        : isBodyweightExercise
-          ? '0'
-          : (isSelfSelectMode || isWeek1SelfSelect)
-            ? ''
-            : pyramidPrefill > 0
-              ? String(lbsToDisplay(pyramidPrefill))
-              : targetWeightOverride !== undefined
-                ? String(lbsToDisplay(effectiveTargetWeight ?? 0))
-                : String(lbsToDisplay(target?.targetWeight ?? 0)),
+      weight: isBodyweightExercise
+        ? '0'
+        : (isSelfSelectMode || isWeek1SelfSelect)
+          ? ''
+          : pyramidPrefill > 0
+            ? String(lbsToDisplay(pyramidPrefill))
+            : targetWeightOverride !== undefined
+              ? String(lbsToDisplay(effectiveTargetWeight ?? 0))
+              : String(lbsToDisplay(target?.targetWeight ?? 0)),
       reps: (() => {
         if (setTarget?.targetReps) {
           return isTimedExercise(setTarget.targetReps)
@@ -895,6 +962,10 @@ export default function ExerciseCard({
   const repsSubtitlePart = firstTargetIsTimed
     ? `${firstTargetDuration} sec`
     : `${rawReps}${eachSideSuffix}`;
+  const isPyramid = exercise.setStructure === 'pyramid';
+  const setsRepsSummary = isPyramid
+    ? `${exercise.sets.length} sets → top set ${exercise.reps}`
+    : `${exercise.sets.length} sets × ${repsSubtitlePart}`;
   const displayWeight = (() => {
     const targets = exercise.setTargets;
     if (
@@ -910,10 +981,10 @@ export default function ExerciseCard({
   const targetSummary =
     firstTarget != null
       ? isSelfSelectMode
-        ? `${exercise.sets.length} sets × ${repsSubtitlePart}. Choose load for RPE target`
+        ? `${setsRepsSummary}. Choose load for RPE target`
         : isBodyweightExercise
-          ? `${exercise.sets.length} sets × ${repsSubtitlePart} @ Bodyweight`
-          : `${exercise.sets.length} sets × ${repsSubtitlePart} @ ${
+          ? `${setsRepsSummary} @ Bodyweight`
+          : `${setsRepsSummary} @ ${
               displayWeight > 0
                 ? `${formatWorkoutWeight(displayWeight)}${weightSuffix}`
                 : 'Add weight'
@@ -1142,7 +1213,7 @@ export default function ExerciseCard({
           showTappableTargetWeight ? (
             <View style={[styles.targetLineFlex, styles.targetLineTappableRow]}>
               <Text style={styles.targetLine} numberOfLines={3}>
-                {exercise.sets.length} sets × {repsSubtitlePart} @{' '}
+                {setsRepsSummary} @{' '}
               </Text>
               <TouchableOpacity
                 onPress={() => setShowAdaptationSheet(true)}
@@ -1269,6 +1340,30 @@ export default function ExerciseCard({
       >
         <Text style={styles.howToLink}>How To →</Text>
       </TouchableOpacity>
+
+      {showWarmupCallout && onDismissWarmupCallout ? (
+        <View style={styles.warmupCallout}>
+          <View style={styles.warmupCalloutLeft}>
+            <Ionicons
+              name="information-circle-outline"
+              size={15}
+              color={Colors.accent}
+            />
+            <Text style={styles.warmupCalloutText}>
+              Enter your starting weight into Set 1 to generate warmup sets above.{' '}
+              <Text style={styles.warmupCalloutBold}>
+                Set 1 is your first working set, not a warmup.
+              </Text>
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onDismissWarmupCallout}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close" size={14} color={Colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {wantsWarmupByRule && warmupSets.length > 0 ? (
         <View style={styles.workingSetsDividerWrap}>
@@ -2234,6 +2329,36 @@ const styles = StyleSheet.create({
   },
   warmupSection: {
     marginBottom: Spacing.sm,
+  },
+  warmupCallout: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  warmupCalloutLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+  },
+  warmupCalloutText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  warmupCalloutBold: {
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
   },
   warmupHeaderRow: {
     flexDirection: 'row',

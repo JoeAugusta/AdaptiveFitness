@@ -122,9 +122,16 @@ export function enforceSetStructureExercise(
   }
 
   // RULE 2: isolation / fixed equipment → straight, strip pyramid rows
+  // Exception: machine secondary compounds (e.g. Machine Shoulder Press,
+  // Leg Press, Hip Thrust Machine) should still get pyramid like their
+  // barbell/dumbbell equivalents. Only machine isolation = straight.
+  const isMachineCompound =
+    equipmentLower === 'machine' &&
+    (compoundTier === 'primary_compound' || compoundTier === 'secondary_compound');
+
   if (
     compoundTier === 'isolation' ||
-    equipmentLower === 'machine' ||
+    (!isMachineCompound && equipmentLower === 'machine') ||
     equipmentLower === 'cable' ||
     equipmentLower === 'bodyweight'
   ) {
@@ -138,9 +145,12 @@ export function enforceSetStructureExercise(
     return out;
   }
 
-  // RULE 3: barbell/dumbbell compounds → pyramid (setTargets filled later for W1)
+  // RULE 3: barbell/dumbbell/machine compounds → pyramid
+  // Machine compounds (Leg Press, Machine Shoulder Press, Hip Thrust Machine etc.)
+  // get pyramid structure like their free-weight equivalents.
+  // Machine isolations never reach here — they exit at RULE 2.
   if (
-    (equipmentLower === 'barbell' || equipmentLower === 'dumbbell') &&
+    (equipmentLower === 'barbell' || equipmentLower === 'dumbbell' || equipmentLower === 'machine') &&
     (compoundTier === 'primary_compound' || compoundTier === 'secondary_compound')
   ) {
     return {

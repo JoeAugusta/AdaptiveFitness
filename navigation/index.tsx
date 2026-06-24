@@ -88,6 +88,8 @@ function ProgressTabStack() {
       <ProgressStack.Screen name="PersonalRecords" component={PersonalRecordsScreen} />
       <ProgressStack.Screen name="BodyMeasurements" component={BodyMeasurementsScreen} />
       <ProgressStack.Screen name="ProgressPhoto" component={ProgressPhotoScreen} />
+      <ProgressStack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
+      <ProgressStack.Screen name="ExerciseHistoryDetail" component={ExerciseHistoryDetailScreen} />
     </ProgressStack.Navigator>
   );
 }

@@ -11,6 +11,53 @@ const roundTen = (w: number) => Math.round(w / 10) * 10;
 const roundPlate = (w: number) => Math.round(w / 2.5) * 2.5;
 
 /**
+ * Standard pyramid rep buckets keyed by top-set rep range.
+ * Each array is ordered set 1 → top set.
+ * The last entry is always the top set (repeated for sets near top).
+ * 3-set pyramids use indices [2, 3, 4].
+ * 4-set pyramids use indices [1, 2, 3, 4].
+ * 5-set pyramids use indices [0, 1, 2, 3, 4].
+ */
+const PYRAMID_REP_BUCKETS: Record<string, string[]> = {
+  // Strength
+  '1-3': ['8-10', '6-8', '4-6', '2-4', '1-3'],
+  '2-4': ['8-10', '6-8', '4-6', '2-4', '2-4'],
+  '3-5': ['8-10', '6-8', '4-6', '3-5', '3-5'],
+  '4-6': ['10-12', '8-10', '6-8', '4-6', '4-6'],
+  '5-7': ['12-15', '10-12', '8-10', '5-7', '5-7'],
+  // Moderate
+  '6-8': ['12-15', '10-12', '8-10', '6-8', '6-8'],
+  '6-10': ['12-15', '10-12', '8-10', '6-10', '6-10'],
+  '8-10': ['15-20', '12-15', '10-12', '8-10', '8-10'],
+  // Hypertrophy
+  '8-12': ['15-20', '12-15', '10-12', '8-12', '8-12'],
+  '10-12': ['15-20', '12-15', '10-12', '10-12', '10-12'],
+  '10-15': ['15-20', '12-15', '10-15', '10-15', '10-15'],
+};
+
+/**
+ * Returns the bucket array for the given top-set rep range.
+ * Falls back to arithmetic +2 per step if no bucket found.
+ */
+function getPyramidRepLadder(topSetReps: string, setCount: number): string[] {
+  const bucket = PYRAMID_REP_BUCKETS[topSetReps.trim()];
+  if (bucket) {
+    // bucket has 5 entries — slice the last setCount entries
+    // so a 3-set pyramid gets the 3 entries closest to the top
+    return bucket.slice(5 - setCount);
+  }
+  // Fallback: parse and step +2 per set from top
+  const match = topSetReps.match(/^(\d+)(?:-(\d+))?/);
+  const low = match ? parseInt(match[1], 10) : 8;
+  const high = match ? parseInt(match[2] ?? match[1], 10) : 12;
+  return Array.from({ length: setCount }, (_, i) => {
+    const stepsFromTop = (setCount - 1) - i;
+    if (stepsFromTop === 0) return topSetReps;
+    return `${low + stepsFromTop * 2}-${high + stepsFromTop * 2}`;
+  });
+}
+
+/**
  * Builds per-set targets for a pyramid at anchor weight T when setCount is 3, 4, or 5 (exact W1 formulas).
  */
 export function buildWeek1PyramidSetTargets(
@@ -54,12 +101,13 @@ export function buildWeek1PyramidSetTargets(
   }
 
   const reps = typeof targetReps === 'string' ? targetReps : String(targetReps ?? '');
+  const repLadder = getPyramidRepLadder(reps, n);
 
   return weights.map((targetWeight, i) => ({
     setNumber: i + 1,
     targetWeight,
     targetRpe: i === topIndex ? topRpe : secondaryRpe,
-    targetReps: reps,
+    targetReps: repLadder[i],
   }));
 }
 
@@ -83,24 +131,57 @@ export function stampWeek1PyramidSetTargets(planJson: any): any {
             if (ex?.setStructure !== 'pyramid') return ex;
 
             const weightNum = Number(ex.targetWeight ?? 0);
-            if (!Number.isFinite(weightNum) || weightNum <= 0) return ex;
 
             const hasTargets =
               Array.isArray(ex.setTargets) &&
               ex.setTargets.length > 0;
-            if (hasTargets) return ex;
 
             const setCount =
-              typeof ex.sets === 'number' && Number.isFinite(ex.sets)
-                ? ex.sets
-                : NaN;
+              hasTargets
+                ? ex.setTargets.length
+                : typeof ex.sets === 'number' && Number.isFinite(ex.sets)
+                  ? ex.sets
+                  : NaN;
             if (!Number.isFinite(setCount) || setCount <= 0) return ex;
+
+            // If setTargets already exist, apply rep ladder overlay only.
+            if (hasTargets) {
+              const repLadder = getPyramidRepLadder(String(ex.reps ?? ''), setCount);
+              return {
+                ...ex,
+                setTargets: ex.setTargets.map((st: any, i: number) => ({
+                  ...st,
+                  targetReps: repLadder[i] ?? st.targetReps,
+                })),
+              };
+            }
+
+            // Self-select (targetWeight === 0): still build setTargets with
+            // the rep ladder — weights stay 0, user enters them per set.
+            // This ensures pyramid rep targets are visible even before
+            // the user has entered any weight.
+            const repLadder = getPyramidRepLadder(String(ex.reps ?? ''), setCount);
+            const rpe = Number(ex.targetRpe ?? 8);
+            const topIndex = setCount - 1;
+            const secondaryRpe = rpe - 1;
+
+            if (weightNum <= 0) {
+              return {
+                ...ex,
+                setTargets: Array.from({ length: setCount }, (_, i) => ({
+                  setNumber: i + 1,
+                  targetWeight: 0,
+                  targetRpe: i === topIndex ? rpe : secondaryRpe,
+                  targetReps: repLadder[i],
+                })),
+              };
+            }
 
             const targets = buildWeek1PyramidSetTargets(
               weightNum,
               setCount,
               String(ex.reps ?? ''),
-              Number(ex.targetRpe ?? 8),
+              rpe,
             );
             if (targets == null) return ex;
 

@@ -58,6 +58,9 @@ import { buildExerciseBestsFromLogs, isNewWeightPR } from '../utils/personalReco
 import { persistExerciseSwapsToPlan } from '../utils/swapPersistence';
 
 const WORKOUT_DRAFT_KEY = 'hone_workout_draft';
+const JORDAN_W1_BRIEFING_KEY = 'hone_jordan_w1_briefing_dismissed_';
+const JORDAN_W2_BRIEFING_KEY = 'hone_jordan_w2_briefing_dismissed_';
+const WARMUP_CALLOUT_KEY = 'hone_warmup_callout_dismissed_';
 
 type WorkoutDraft = {
   planId: string;
@@ -490,6 +493,22 @@ export default function ActiveWorkoutScreen() {
   );
   const [exerciseTargetWeightOverrides, setExerciseTargetWeightOverrides] =
     useState<Record<string, number>>({});
+  const [perSetWeightOverrides, setPerSetWeightOverrides] = useState<
+    Record<string, number>
+  >({});
+  const perSetWeightOverridesByExercise = useMemo(() => {
+    const result: Record<string, Record<number, number>> = {};
+    for (const [key, val] of Object.entries(perSetWeightOverrides)) {
+      const colonIdx = key.lastIndexOf(':');
+      if (colonIdx < 0) continue;
+      const exId = key.slice(0, colonIdx);
+      const setNum = Number(key.slice(colonIdx + 1));
+      if (!Number.isFinite(setNum)) continue;
+      if (!result[exId]) result[exId] = {};
+      result[exId][setNum] = val;
+    }
+    return result;
+  }, [perSetWeightOverrides]);
   const [exercisePyramidSetsOverrides, setExercisePyramidSetsOverrides] =
     useState<Record<string, { setNumber: number; weightLbs: number }[]>>({});
   const [coachingNotes, setCoachingNotes] = useState<
@@ -555,6 +574,11 @@ export default function ActiveWorkoutScreen() {
   const [warmupSecondsRemaining, setWarmupSecondsRemaining] = useState(WARMUP_DURATION_SECONDS);
   const warmupEndTimeRef = useRef<number | null>(null);
   const [warmupCategory, setWarmupCategory] = useState<WarmupCategory>('fallback');
+
+  const [showJordanW1Briefing, setShowJordanW1Briefing] = useState(false);
+  const [showJordanW2Briefing, setShowJordanW2Briefing] = useState(false);
+  const [jordanW2AdaptationNote, setJordanW2AdaptationNote] = useState<string | null>(null);
+  const [warmupCalloutDismissed, setWarmupCalloutDismissed] = useState(false);
 
   const [sessionPeakHR, setSessionPeakHR] = useState<number | null>(null);
   const [sessionAvgHRSamples, setSessionAvgHRSamples] = useState<number[]>([]);
@@ -1043,9 +1067,19 @@ export default function ActiveWorkoutScreen() {
             sets: Array.from({ length: setCount }, (_, i) => {
               const sn = i + 1;
               const row = setTargets?.find((t) => t.setNumber === sn);
+              // Pyramid: per-set targetReps from setTargets is the rep ladder
+              // and must win over ex.reps (which is the flat top-set range).
+              // Straight sets: ex.reps is authoritative — row.targetReps may
+              // be stale (e.g. "8" stamped incorrectly).
+              const isPyramidEx = ex.setStructure === 'pyramid';
+              const resolvedTargetReps = isPyramidEx
+                ? (row?.targetReps ?? ex.reps ?? '')
+                : (ex.reps && String(ex.reps).trim().length > 0)
+                  ? ex.reps
+                  : (row?.targetReps ?? '');
               return {
                 setNumber: sn,
-                targetReps: row?.targetReps ?? ex.reps,
+                targetReps: resolvedTargetReps,
                 targetWeight: row?.targetWeight ?? ex.targetWeight ?? 0,
                 targetRpe: row?.targetRpe ?? ex.targetRpe,
               };
@@ -1109,6 +1143,40 @@ export default function ActiveWorkoutScreen() {
           setWarmupCategory(category);
           setWarmupSecondsRemaining(WARMUP_DURATION_SECONDS);
           setShowWarmupModal(true);
+        }
+      }
+
+      // ── Jordan briefing cards ──
+      if (idForQueries && dayData) {
+        const w1Key = `${JORDAN_W1_BRIEFING_KEY}${idForQueries}`;
+        const w2Key = `${JORDAN_W2_BRIEFING_KEY}${idForQueries}`;
+        const warmupKey = `${WARMUP_CALLOUT_KEY}${idForQueries}`;
+
+        const [w1Dismissed, w2Dismissed, warmupDismissed] = await Promise.all([
+          AsyncStorage.getItem(w1Key),
+          AsyncStorage.getItem(w2Key),
+          AsyncStorage.getItem(warmupKey),
+        ]);
+
+        setWarmupCalloutDismissed(!!warmupDismissed);
+
+        if (resolvedWeekNumber === 1 && !w1Dismissed) {
+          // Delay so warmup modal fully closes before briefing appears.
+          // Prevents modal stacking conflicts on iOS.
+          setTimeout(() => {
+            setShowJordanW1Briefing(true);
+          }, 600);
+        }
+
+        if (resolvedWeekNumber === 2 && !w2Dismissed) {
+          // Pull adaptation note from first exercise coachingNote
+          const firstEx = (rawExercises ?? [])[0] as PlanJsonExercise | undefined;
+          const adaptNote = firstEx?.coachingNote ?? null;
+          setJordanW2AdaptationNote(adaptNote);
+          // Delay matches W1 — prevents stacking with warmup modal on iOS
+          setTimeout(() => {
+            setShowJordanW2Briefing(true);
+          }, 600);
         }
       }
     } catch (e) {
@@ -1349,6 +1417,7 @@ export default function ActiveWorkoutScreen() {
     } = {},
     heartRate?: { avgBpm: number | null; peakBpm: number | null } | null,
     recoveryCtx?: typeof recoveryContext,
+    justLoggedSetNumber?: number,
   ) => {
     const {
       isUnilateral = false,
@@ -1398,21 +1467,58 @@ export default function ActiveWorkoutScreen() {
         });
       } else {
         const text = data?.feedback ?? 'Good work. Keep it up.';
+        console.log('[COACHING RAW]', {
+          data,
+          suggestedWeight: data?.suggestedWeight,
+          typeofSuggestedWeight: typeof data?.suggestedWeight,
+          parsedWeight: typeof data?.suggestedWeight === 'number' && data.suggestedWeight > 0
+            ? data.suggestedWeight
+            : null,
+          isLastSetOfExercise,
+          exerciseId,
+        });
         setCoachingNotes((prev) => ({ ...prev, [exerciseId]: text }));
         setOverlayNote(text);
-        // Parse suggested weight — only show pill for straight sets,
-        // not pyramid (pyramid sets have per-set weights already)
-        const weightMatch = text.match(/try\s+(\d+(?:\.\d+)?)\s*lbs?/i);
-        const parsedWeight = weightMatch ? Number(weightMatch[1]) : null;
-        const allowSuggestion =
-          parsedWeight != null &&
-          parsedWeight > 0 &&
-          !isPyramid &&
-          !isLastSetOfExercise;
-        if (allowSuggestion) {
-          setOverlayWeightSuggestion({ exerciseId, weightLbs: parsedWeight });
-        } else {
-          setOverlayWeightSuggestion(null);
+        // Use structured suggestedWeight from API response,
+        // fall back to parsing text only if not provided
+        const apiSuggestedWeight =
+          typeof data?.suggestedWeight === 'number' && data.suggestedWeight > 0
+            ? data.suggestedWeight
+            : null;
+        const parsedWeight = apiSuggestedWeight;
+
+        // Never show pill — auto-populate next set weight input instead
+        setOverlayWeightSuggestion(null);
+
+        if (parsedWeight != null && parsedWeight > 0 && !isLastSetOfExercise) {
+          const currentSets = workout?.exercises
+            .find((ex) => ex.id === exerciseId)?.sets ?? [];
+          const loggedSetNumbers = new Set(
+            sets
+              .filter((s) => s.exerciseId === exerciseId)
+              .map((s) => s.setNumber),
+          );
+          // Also exclude the set just logged — state may not have
+          // updated yet when this runs (async closure timing)
+          if (justLoggedSetNumber != null) {
+            loggedSetNumbers.add(justLoggedSetNumber);
+          }
+          const nextSet = currentSets.find(
+            (s) => !loggedSetNumbers.has(s.setNumber),
+          );
+          if (nextSet) {
+            setPerSetWeightOverrides((prev) => ({
+              ...prev,
+              [`${exerciseId}:${nextSet.setNumber}`]: parsedWeight,
+            }));
+          }
+          console.log('[PER SET OVERRIDE SET]', {
+            key: nextSet ? `${exerciseId}:${nextSet.setNumber}` : 'no next set',
+            parsedWeight,
+            nextSet,
+            currentSetsLength: currentSets.length,
+            loggedSetNumbers: [...loggedSetNumbers],
+          });
         }
         overlayNoteAnim.setValue(0);
         setOverlayNoteVisible(true);
@@ -1424,7 +1530,10 @@ export default function ActiveWorkoutScreen() {
         if (overlayDismissTimeout.current) {
           clearTimeout(overlayDismissTimeout.current);
         }
-        const dismissDelay = allowSuggestion ? 11000 : 8000;
+        const dismissDelay =
+          parsedWeight != null && parsedWeight > 0 && !isLastSetOfExercise
+            ? 11000
+            : 8000;
         overlayDismissTimeout.current = setTimeout(() => {
           Animated.timing(overlayNoteAnim, {
             toValue: 0,
@@ -1446,6 +1555,24 @@ export default function ActiveWorkoutScreen() {
       setCoachingLoading((prev) => ({ ...prev, [exerciseId]: false }));
     }
   };
+
+  const dismissW1Briefing = useCallback(async () => {
+    setShowJordanW1Briefing(false);
+    const key = `${JORDAN_W1_BRIEFING_KEY}${sessionPlanIdForLogs ?? ''}`;
+    await AsyncStorage.setItem(key, '1');
+  }, [sessionPlanIdForLogs]);
+
+  const dismissW2Briefing = useCallback(async () => {
+    setShowJordanW2Briefing(false);
+    const key = `${JORDAN_W2_BRIEFING_KEY}${sessionPlanIdForLogs ?? ''}`;
+    await AsyncStorage.setItem(key, '1');
+  }, [sessionPlanIdForLogs]);
+
+  const dismissWarmupCallout = useCallback(async () => {
+    setWarmupCalloutDismissed(true);
+    const key = `${WARMUP_CALLOUT_KEY}${sessionPlanIdForLogs ?? ''}`;
+    await AsyncStorage.setItem(key, '1');
+  }, [sessionPlanIdForLogs]);
 
   const handleLogSet = (
     exerciseId: string,
@@ -1622,6 +1749,7 @@ export default function ActiveWorkoutScreen() {
             },
             heartRate,
             recoveryContext,
+            setNumber,
           );
         })();
       }
@@ -2353,6 +2481,9 @@ export default function ActiveWorkoutScreen() {
                     targetWeightOverride={
                       exerciseTargetWeightOverrides[exercise.id] ?? undefined
                     }
+                    perSetWeightOverrides={
+                      perSetWeightOverridesByExercise[exercise.id] ?? {}
+                    }
                     pyramidSetsOverride={
                       exercisePyramidSetsOverrides[exercise.id] ?? undefined
                     }
@@ -2364,6 +2495,11 @@ export default function ActiveWorkoutScreen() {
                       .map((st) => st.setNumber)}
                     onSkipRemainingSets={() => handleSkipRemainingSets(exercise.id)}
                     onRestoreSkippedSets={() => handleRestoreSkippedSets(exercise.id)}
+                    showWarmupCallout={
+                      !warmupCalloutDismissed &&
+                      exerciseIdx === 0
+                    }
+                    onDismissWarmupCallout={dismissWarmupCallout}
                   />
                     </>
                   )}
@@ -2785,6 +2921,161 @@ export default function ActiveWorkoutScreen() {
             </TouchableOpacity>
           </View>
         </View>
+      ) : null}
+
+      {showJordanW1Briefing ? (
+        <Modal
+          visible={showJordanW1Briefing}
+          transparent
+          animationType="slide"
+          onRequestClose={() => void dismissW1Briefing()}
+        >
+          <View style={styles.briefingModalRoot}>
+            <Pressable
+              style={styles.briefingOverlay}
+              onPress={() => void dismissW1Briefing()}
+            />
+            <View style={styles.briefingSheet}>
+              <View style={styles.briefingHandle} />
+
+              <View style={styles.briefingAvatarRow}>
+                <JordanAvatar size={36} />
+                <Text style={styles.briefingJordanLabel}>JORDAN</Text>
+              </View>
+
+              <Text style={styles.briefingTitle}>
+                Week 1 is your baseline week.
+              </Text>
+
+              <View style={styles.briefingItemList}>
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Starting weights are conservative on purpose.</Text>
+                    {' '}I need to see how you respond before I can push you correctly.
+                  </Text>
+                </View>
+
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Rate your effort after every set (RPE 1–10).</Text>
+                    {' '}7–8 is the target range. 10 is maximum effort. You couldn't do another rep.
+                  </Text>
+                </View>
+
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Every numbered set is a working set.</Text>
+                    {' '}Warmup sets appear above automatically. You don't need to log those.
+                  </Text>
+                </View>
+
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Be honest with your numbers.</Text>
+                    {' '}The more accurate your data this week, the smarter your Week 2 plan becomes.
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.briefingCTA}
+                onPress={() => void dismissW1Briefing()}
+              >
+                <Text style={styles.briefingCTAText}>Got it, let's train →</Text>
+              </Pressable>
+
+              <TouchableOpacity
+                style={styles.briefingDismissLink}
+                onPress={() => void dismissW1Briefing()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.briefingDismissText}>Don't show again</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {showJordanW2Briefing ? (
+        <Modal
+          visible={showJordanW2Briefing}
+          transparent
+          animationType="slide"
+          onRequestClose={() => void dismissW2Briefing()}
+        >
+          <View style={styles.briefingModalRoot}>
+            <Pressable
+              style={styles.briefingOverlay}
+              onPress={() => void dismissW2Briefing()}
+            />
+            <View style={styles.briefingSheet}>
+              <View style={styles.briefingHandle} />
+
+              <View style={styles.briefingAvatarRow}>
+                <JordanAvatar size={36} />
+                <Text style={styles.briefingJordanLabel}>JORDAN</Text>
+              </View>
+
+              <Text style={styles.briefingTitle}>
+                I reviewed your Week 1 data.
+              </Text>
+
+              {jordanW2AdaptationNote ? (
+                <View style={styles.briefingAdaptationCard}>
+                  <Text style={styles.briefingAdaptationLabel}>WHAT CHANGED</Text>
+                  <Text style={styles.briefingAdaptationText}>
+                    {stripEmDash(jordanW2AdaptationNote)}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.briefingItemList}>
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Weights have been adjusted</Text>
+                    {' '}based on your actual effort ratings from last week.
+                  </Text>
+                </View>
+
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Keep rating RPE honestly.</Text>
+                    {' '}Every week I have more data, the more precisely I can push you.
+                  </Text>
+                </View>
+
+                <View style={styles.briefingItem}>
+                  <View style={styles.briefingDot} />
+                  <Text style={styles.briefingItemText}>
+                    <Text style={styles.briefingItemBold}>Every numbered set is a working set.</Text>
+                    {' '}Warmup sets appear above automatically — log starting at Set 1.
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.briefingCTA}
+                onPress={() => void dismissW2Briefing()}
+              >
+                <Text style={styles.briefingCTAText}>Let's go →</Text>
+              </Pressable>
+
+              <TouchableOpacity
+                style={styles.briefingDismissLink}
+                onPress={() => void dismissW2Briefing()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.briefingDismissText}>Don't show again</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       ) : null}
 
       {showPreSessionModal ? (
@@ -3770,5 +4061,120 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
+  },
+  briefingModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  briefingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.overlay,
+  },
+  briefingSheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: 48,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  briefingHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
+  },
+  briefingAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  briefingJordanLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+  },
+  briefingTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.heading2,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.lg,
+  },
+  briefingItemList: {
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  briefingItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  briefingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.accent,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  briefingItemText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  briefingItemBold: {
+    fontFamily: Fonts.bold,
+    color: Colors.textPrimary,
+  },
+  briefingAdaptationCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  briefingAdaptationLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  briefingAdaptationText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  briefingCTA: {
+    height: 56,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  briefingCTAText: {
+    fontFamily: Fonts.semiBold,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+  },
+  briefingDismissLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  briefingDismissText: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
   },
 });

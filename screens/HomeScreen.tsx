@@ -712,6 +712,8 @@ export default function HomeScreen() {
   const [isWeek1NoSessionsYet, setIsWeek1NoSessionsYet] = useState(false);
   /** Logged a workout for this calendar day — show recovery hero until tomorrow */
   const [hasLoggedWorkoutToday, setHasLoggedWorkoutToday] = useState(false);
+  const [missedSessionBannerDismissed, setMissedSessionBannerDismissed] =
+    useState(false);
   const [showWorkoutResultsModal, setShowWorkoutResultsModal] = useState(false);
   const [todayWorkoutLog, setTodayWorkoutLog] = useState<{
     sets_json: unknown;
@@ -795,6 +797,7 @@ export default function HomeScreen() {
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
+      setMissedSessionBannerDismissed(false);
 
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
@@ -1271,14 +1274,17 @@ export default function HomeScreen() {
       const todayWorkout = resolveTodayWorkout({
         weekDays,
         completedDayNumbers: loggedDayNumbers,
-        devBypassDayGate:
-          (devBypassRead || isWeek1NoSessionsYet) && !loggedWorkoutToday,
+        // Only bypass day gate for DEV mode — never for isWeek1NoSessionsYet.
+        // The calendar mapping inside resolveTodayWorkout already handles
+        // the case where no sessions have been logged yet (cold start).
+        // Using isWeek1NoSessionsYet here caused Day 1 to show on Tuesday
+        // when Monday was skipped (completedDayNumbers empty → bypass fires
+        // → firstUnloggedInSequence returns Day 1 instead of Day 2).
+        devBypassDayGate: devBypassRead && !loggedWorkoutToday,
         hasDayLabels,
         scheduledDays,
         todayLabel,
-        isTrainingToday:
-          (trainingEligibleToday || isWeek1NoSessionsYet) &&
-          !loggedWorkoutToday,
+        isTrainingToday: trainingEligibleToday && !loggedWorkoutToday,
         nextWeekReady,
         nextWeekFirstWorkout,
       });
@@ -2164,6 +2170,27 @@ export default function HomeScreen() {
     ? calculateSessionDuration(today.exercises)
     : 45;
 
+  const loggedDayNumbersForRender = new Set(
+    workoutLogs
+      .map((l) => l.day_number)
+      .filter((n): n is number => n != null),
+  );
+
+  const missedSessionDayNumber = (() => {
+    if (!planData || hasLoggedWorkoutToday || !isTrainingDay) return null;
+    const orderedWorkoutDays = [...(planData.weekDays ?? [])]
+      .filter((d) => d.type === 'workout')
+      .sort((a, b) => a.dayNumber - b.dayNumber);
+    const todayDayNumber = planData.todayWorkout?.dayNumber ?? null;
+    const missed = orderedWorkoutDays.find(
+      (d) =>
+        todayDayNumber != null &&
+        d.dayNumber < todayDayNumber &&
+        !loggedDayNumbersForRender.has(d.dayNumber),
+    );
+    return missed?.dayNumber ?? null;
+  })();
+
   const todayLogSets = Array.isArray(
     (todayWorkoutLog?.sets_json as unknown[]),
   ) ? (todayWorkoutLog!.sets_json as unknown[]) : [];
@@ -2633,6 +2660,24 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ) : (
           <>
+            {!missedSessionBannerDismissed && missedSessionDayNumber != null ? (
+              <View style={styles.missedSessionBanner}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={Colors.warning}
+                />
+                <Text style={styles.missedSessionBannerText}>
+                  {`Day ${missedSessionDayNumber} wasn't logged — you can make it up from the Workout tab.`}
+                </Text>
+                <TouchableOpacity
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() => setMissedSessionBannerDismissed(true)}
+                >
+                  <Ionicons name="close" size={16} color={Colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
             {!isTrainingDay && !devBypassDayGate && !planData?.todayCardioDay ? (
           planData?.planStartsOn ? (
             <View style={styles.planFutureCard}>
@@ -3564,6 +3609,27 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.caption,
     color: Colors.accent,
+  },
+  missedSessionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.warningMuted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  missedSessionBannerText: {
+    flex: 1,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textPrimary,
+    lineHeight: 18,
   },
 
   workoutCard: {

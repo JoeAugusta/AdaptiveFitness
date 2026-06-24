@@ -205,6 +205,8 @@ export type ProgressStackParamList = {
   PersonalRecords: undefined;
   BodyMeasurements: undefined;
   ProgressPhoto: undefined;
+  WorkoutHistory: undefined;
+  ExerciseHistoryDetail: { exerciseName: string };
 };
 
 /** Workout tab stack — PlanComplete is also registered on the root stack for navigation from WorkoutComplete */

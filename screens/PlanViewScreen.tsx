@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -366,11 +367,28 @@ function WorkoutDayCard({
       ) : isNextWorkout ? (
         <View style={styles.startButtonRow}>
           <TouchableOpacity
-            style={styles.startButton}
+            style={[
+              styles.startButton,
+              !isRecommended && styles.startButtonSecondary,
+            ]}
             activeOpacity={0.8}
-            onPress={() => onStartWorkout(day)}
+            onPress={() => {
+              console.log('[StartWorkout button tapped]', {
+                dayNumber: day.dayNumber,
+                isNextWorkout,
+                isRecommended,
+              });
+              onStartWorkout(day);
+            }}
           >
-            <Text style={styles.startButtonText}>Start Workout →</Text>
+            <Text
+              style={[
+                styles.startButtonText,
+                !isRecommended && styles.startButtonSecondaryText,
+              ]}
+            >
+              Start Workout →
+            </Text>
           </TouchableOpacity>
           {onPreviewDay ? (
             <TouchableOpacity
@@ -631,17 +649,6 @@ export default function PlanViewScreen() {
     };
   }, [resolvedPlanId, selectedWeek]);
 
-  const handleStartWorkout = (day: PlanDay) => {
-    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
-    navigation.navigate('ActiveWorkout', {
-      planId: pid,
-      weekNumber: planData!.currentWeek,
-      dayNumber: day.dayNumber,
-      workoutTitle: day.title,
-      lockToRouteWeek: true,
-    });
-  };
-
   const handleViewResults = useCallback(
     async (day: PlanDay) => {
       const dayKey = `${selectedWeek}-${day.dayNumber}`;
@@ -864,25 +871,6 @@ export default function PlanViewScreen() {
     selectedWeekData?.weekOverride,
   );
   const weekData = selectedWeekData;
-  // Under the open model: any unlogged session in the current week
-  // can be started any day. nextWorkoutDayNumber is now used only
-  // to identify which card to visually highlight as "next up."
-  // All unlogged cards get a Start button regardless.
-  const nextWorkoutDayNumber = (() => {
-    if (!weekData) return null;
-    if (selectedWeek > planData.currentWeek) return null;
-
-    const workoutDays = weekData.days.filter((d) => d.type === 'workout');
-    const completedWorkoutDays = workoutDays.filter((d) => d.completed);
-    const daysPerWeek = planData.daysPerWeek;
-
-    if (completedWorkoutDays.length >= daysPerWeek) return null;
-
-    // Return the first unlogged day in sequence — used for visual highlight only
-    return workoutDays
-      .filter((d) => !d.completed)
-      .sort((a, b) => a.dayNumber - b.dayNumber)[0]?.dayNumber ?? null;
-  })();
 
   const todayCalendarDayNumber = (() => {
     if (!weekData || !rawPlanJson?.scheduledDays || !Array.isArray(rawPlanJson.scheduledDays)) {
@@ -903,6 +891,107 @@ export default function PlanViewScreen() {
     const match = ordered.find((d) => dayNumberToLabel[d.dayNumber] === todayLabel);
     return match?.dayNumber ?? null;
   })();
+
+  // Under the open model: any unlogged session in the current week
+  // can be started any day. nextWorkoutDayNumber is now used only
+  // to identify which card to visually highlight as "next up."
+  // All unlogged cards get a Start button regardless.
+  const nextWorkoutDayNumber = (() => {
+    if (!weekData) return null;
+    if (selectedWeek > planData.currentWeek) return null;
+
+    const workoutDays = weekData.days.filter((d) => d.type === 'workout');
+    const completedWorkoutDays = workoutDays.filter((d) => d.completed);
+    const daysPerWeek = planData.daysPerWeek;
+
+    if (completedWorkoutDays.length >= daysPerWeek) return null;
+
+    const unloggedDays = workoutDays
+      .filter((d) => !d.completed)
+      .sort((a, b) => a.dayNumber - b.dayNumber);
+
+    if (unloggedDays.length === 0) return null;
+
+    // Option C: prefer today's calendar day if it is an unlogged workout,
+    // fall back to first unlogged in sequence (rest days, no schedule, etc.)
+    if (todayCalendarDayNumber != null) {
+      const todayIsUnloggedWorkout = unloggedDays.find(
+        (d) => d.dayNumber === todayCalendarDayNumber,
+      );
+      if (todayIsUnloggedWorkout) return todayCalendarDayNumber;
+    }
+
+    // Fall back to first unlogged in sequence
+    return unloggedDays[0]?.dayNumber ?? null;
+  })();
+
+  const recommendedDay = weekData?.days.find(
+    (d) => d.dayNumber === nextWorkoutDayNumber && d.type === 'workout',
+  ) ?? null;
+
+  const handleStartWorkout = (day: PlanDay) => {
+    console.log('[handleStartWorkout]', {
+      dayNumber: day.dayNumber,
+      dayTitle: day.title,
+      recommendedDayNumber: recommendedDay?.dayNumber ?? null,
+      isOutOfOrder:
+        recommendedDay != null &&
+        day.dayNumber !== recommendedDay.dayNumber,
+      nextWorkoutDayNumber,
+    });
+    const pid = resolvedPlanId.length >= 10 ? resolvedPlanId : planId.trim();
+
+    const isOutOfOrder =
+      recommendedDay != null &&
+      day.dayNumber !== recommendedDay.dayNumber;
+
+    const startNow = () => {
+      navigation.navigate('ActiveWorkout', {
+        planId: pid,
+        weekNumber: planData!.currentWeek,
+        dayNumber: day.dayNumber,
+        workoutTitle: day.title,
+        lockToRouteWeek: true,
+      });
+    };
+
+    if (isOutOfOrder) {
+      if (Platform.OS === 'web') {
+        // Alert.alert is a no-op on web — use native confirm instead
+        const proceed = window.confirm(
+          `Day ${recommendedDay.dayNumber} (${recommendedDay.title}) is your next scheduled session. Start Day ${day.dayNumber} out of order anyway?`
+        );
+        if (proceed) startNow();
+        return;
+      }
+      Alert.alert(
+        'Out of order',
+        `Day ${recommendedDay.dayNumber} (${recommendedDay.title}) is your next scheduled session. Sessions are programmed in sequence — doing them out of order can affect your progression.\n\nYou can still start Day ${day.dayNumber} now if needed.`,
+        [
+          {
+            text: `Start Day ${day.dayNumber} anyway`,
+            onPress: startNow,
+          },
+          {
+            text: `Go to Day ${recommendedDay.dayNumber}`,
+            style: 'cancel',
+            onPress: () => {
+              navigation.navigate('ActiveWorkout', {
+                planId: pid,
+                weekNumber: planData!.currentWeek,
+                dayNumber: recommendedDay.dayNumber,
+                workoutTitle: recommendedDay.title,
+                lockToRouteWeek: true,
+              });
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    startNow();
+  };
 
   const handleApplyDeload = async () => {
     setShowOverrideSheet(false);
@@ -1630,6 +1719,14 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.bold,
     color: Colors.textPrimary,
+  },
+  startButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  startButtonSecondaryText: {
+    color: Colors.textSecondary,
   },
   startButtonRow: {
     flexDirection: 'row',

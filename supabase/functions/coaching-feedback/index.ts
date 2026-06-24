@@ -203,22 +203,92 @@ Write one pre-session coaching sentence for the athlete.`;
     console.log('[coaching-feedback] isPyramid:', body.isPyramid, 'isPyramidExercise:', isPyramidExercise, 'isLastSetOfExercise:', isLastSetOfExercise);
     const totalSets = Number(body.totalSets ?? 0);
 
-    const suggestedWeight = (() => {
-      if (loggedWeightNum <= 0 || targetWeightNum <= 0) return null;
-      if (isPyramidExercise && setNumber !== 1) return null;
-      // Pyramid set 1 only: if too easy, suggest +5 on base
-      // ExerciseCard will shift entire pyramid up by the delta
-      if (isLastSetOfExercise && !isPyramidExercise) return null;
-      const rpeGap = loggedRpeNum2 - targetRpeNum2;
-      const hitTopOfRange = targetRepsMax > 0 && loggedRepsNum >= targetRepsMax;
-      const hitMinOfRange = loggedRepsNum > 0;
-      const tooEasy = loggedRpeNum2 > 0 && loggedRpeNum2 <= 5 && targetRpeNum2 >= 7 && (hitTopOfRange || hitMinOfRange);
-      const tooHard = loggedRpeNum2 > 0 && rpeGap >= 2.0 && loggedRepsNum < targetRepsMax * 0.85;
-      const roundedBase = Math.round(loggedWeightNum / 5) * 5;
-      if (tooEasy) return roundedBase + 5;
-      if (tooHard) return Math.max(5, roundedBase - 5);
+    // RPE gap: positive = too easy (logged below target), negative = too hard
+    const rpeGap = targetRpeNum2 - loggedRpeNum2;
+    const hitTopOfRange = targetRepsMax > 0 && loggedRepsNum >= targetRepsMax;
+    const roundedBase = Math.round(loggedWeightNum / 5) * 5;
+
+    // ── Straight set weight suggestion ──
+    const straightSuggestedWeight = (() => {
+      if (loggedWeightNum <= 0) return null;
+      if (isPyramidExercise) return null;
+      if (isLastSetOfExercise) return null;
+      if (loggedRpeNum2 <= 0) return null;
+
+      // Too easy: RPE 2+ below target
+      // Aggressive bump when RPE very low, moderate when just a bit low
+      if (rpeGap >= 3 && hitTopOfRange) {
+        // e.g. target RPE 8, logged RPE 5 at top of rep range → +15
+        return roundedBase + 15;
+      }
+      if (rpeGap >= 2 && hitTopOfRange) {
+        // e.g. target RPE 8, logged RPE 6 at top of rep range → +10
+        return roundedBase + 10;
+      }
+      if (rpeGap >= 2) {
+        // Hit RPE gap of 2+ but didn't hit top of rep range → +5
+        return roundedBase + 5;
+      }
+      if (rpeGap >= 1 && hitTopOfRange) {
+        // e.g. target RPE 7, logged RPE 6 at top of rep range → +5
+        return roundedBase + 5;
+      }
+
+      // Too hard: fell more than 1 RPE above target
+      if (rpeGap <= -2) {
+        return Math.max(5, roundedBase - 5);
+      }
+
+      // On target (gap within ±1): hold same weight
+      // Still populate next set so it doesn't stay blank
+      return roundedBase;
+    })();
+
+    // ── Pyramid set weight suggestion ──
+    // For pyramids, Jordan computes what the NEXT set should be
+    // based on RPE gap from this set's target. The pyramid weight
+    // ladder is pre-programmed, but if RPE signals the ladder is
+    // wrong we adjust the next step.
+    const pyramidSuggestedWeight = (() => {
+      if (!isPyramidExercise) return null;
+      if (isLastSetOfExercise) return null;
+      if (loggedWeightNum <= 0) return null;
+      if (loggedRpeNum2 <= 0) return null;
+
+      // Pyramid sets escalate weight each set. The standard ladder
+      // adds roughly 10-15% per step. If RPE is way off, we nudge
+      // the next step accordingly.
+      // Base next-set estimate: logged weight + standard pyramid step
+      const standardStep = Math.round(loggedWeightNum * 0.1 / 5) * 5;
+      const nextSetBase = roundedBase + standardStep;
+
+      if (rpeGap >= 3) {
+        // Way too easy — jump more aggressively
+        return Math.round((roundedBase + standardStep * 1.5) / 5) * 5;
+      }
+      if (rpeGap >= 2) {
+        // Too easy — normal jump is fine, maybe slightly more
+        return Math.round((roundedBase + standardStep * 1.2) / 5) * 5;
+      }
+      if (rpeGap >= 1) {
+        // Slightly easy — standard step
+        return nextSetBase;
+      }
+      if (rpeGap >= -1 && rpeGap <= 1) {
+        // On target — standard pyramid step, still give the number
+        return nextSetBase;
+      }
+      if (rpeGap <= -2) {
+        // Too hard — next pyramid step should be smaller
+        return Math.max(5, Math.round((roundedBase + standardStep * 0.5) / 5) * 5);
+      }
+
       return null;
     })();
+
+    const suggestedWeight = isPyramidExercise
+      ? pyramidSuggestedWeight
+      : straightSuggestedWeight;
 
     const setPositionContext = isLastExercise
       ? 'This is the LAST SET of the LAST EXERCISE. The session is done after this.'
@@ -230,13 +300,15 @@ Write one pre-session coaching sentence for the athlete.`;
       ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
       : isLastSetOfExercise
         ? `- This exercise is done. Orient toward the next exercise or the rest of the session. Do NOT say "next set of this exercise".`
-        : isPyramidExercise
-          ? suggestedWeight != null
-            ? `- This is a pyramid set but set 1 was too easy. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. The pyramid shifts up from there.`
-            : `- This is a pyramid set. Each set gets heavier by design so early sets feeling easy is expected. Do NOT mention any weight or number. Tell them the next set is heavier and to stay controlled.`
-          : suggestedWeight != null
-            ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a suggestion, not a command.`
-            : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
+        : isPyramidExercise && suggestedWeight != null
+          ? `- This is a pyramid set building to a heavy top set. The athlete's RPE on this set was ${loggedRpeNum2} against a target of ${targetRpeNum2}. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. Frame it as a specific coaching adjustment — e.g. "RPE ${loggedRpeNum2} tells me you have more, try ${suggestedWeight} lbs next set." One sentence only.`
+          : isPyramidExercise && rpeGap >= -1 && rpeGap <= 1
+            ? `- This is a pyramid set and RPE is on target. The next set is heavier by design. Tell them what to expect — stay controlled, keep form, the load is climbing. Do NOT mention any specific weight.`
+            : isPyramidExercise && rpeGap <= -2
+              ? `- This is a pyramid set but RPE ran above target. You MUST include the phrase "try ${suggestedWeight ?? Math.max(5, roundedBase - 5)} lbs" for the next set instead of the standard jump. One sentence only.`
+              : suggestedWeight != null
+                ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a coaching directive, not a suggestion.`
+                : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
 
     const perSetSystemPrompt = `${perSetToneInstruction}
 
@@ -262,7 +334,7 @@ ${forwardOrientRule}
   * Never mention HR on the last set of the last exercise — session is done, forward focus only
   * Never mention HR when no HR data is provided
 - Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it is directly relevant to the set just logged — e.g. low sleep + high RPE on a normally easy exercise warrants a brief mention. Do not mention recovery metrics on every set. When you do reference them, be specific: "7h sleep but RPE running high — back off next set" not generic wellness advice. Never mention metrics that weren't provided.
-- NEVER mention a specific weight in lbs under any circumstances unless you were explicitly told "A weight adjustment is warranted" above. If no weight adjustment was flagged, do not mention any number followed by lbs.
+- NEVER mention a specific weight in lbs unless the forwardOrientRule above explicitly tells you to include "try X lbs". If no weight was specified in your instructions, do not mention any number followed by lbs.
 - Never mention being an AI.
 - No markdown.`;
 

@@ -22,7 +22,7 @@ import {
 import { useMetric } from '../utils/units';
 import { hapticLight } from '../utils/haptics';
 import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
-import type { ProgressStackParamList, RootStackParamList } from '../navigation/types';
+import type { ProgressStackParamList } from '../navigation/types';
 
 type PRData = {
   exerciseName: string;
@@ -37,8 +37,6 @@ type Nav = NativeStackNavigationProp<ProgressStackParamList, 'PersonalRecords'>;
 
 export default function PersonalRecordsScreen() {
   const navigation = useNavigation<Nav>();
-  const rootNavigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { formatWorkoutWeight, isMetric } = useMetric();
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
@@ -224,12 +222,7 @@ export default function PersonalRecordsScreen() {
           <TouchableOpacity
             style={styles.historyLink}
             activeOpacity={0.7}
-            onPress={() =>
-              rootNavigation.navigate('Dashboard', {
-                screen: 'WorkoutTab',
-                params: { screen: 'WorkoutHistory' },
-              })
-            }
+            onPress={() => navigation.navigate('WorkoutHistory')}
           >
             <Text style={styles.historyLinkText}>See full history →</Text>
           </TouchableOpacity>

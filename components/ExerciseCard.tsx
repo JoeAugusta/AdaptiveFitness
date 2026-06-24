@@ -570,16 +570,16 @@ export default function ExerciseCard({
       exercise.setTargets != null &&
       exercise.setTargets.length > 0
     ) {
-      // Use the top set (max weight) as warmup anchor, not Set 1 (lightest).
-      // If all weights are 0 (self-select), return 0 so reactive mode takes over.
       const topWeight = Math.max(
         ...exercise.setTargets.map((st) => st.targetWeight ?? 0),
       );
       return topWeight;
     }
     return effectiveTargetWeight ?? 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: snapshot on mount only
-  }, []);
+  // targetWeightOverride included so warmup resets when swap
+  // sets weight to 0 (resetWeight: true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetWeightOverride]);
 
   const warmupBaseWeight = isFrozenWarmupMode
     ? frozenWarmupBase
@@ -1193,9 +1193,11 @@ export default function ExerciseCard({
             <JordanAvatar size={24} />
             <View style={styles.jordanNoteTextColumn}>
               <Text style={styles.jordanNoteText}>
-                {exercise.coachingNote
+                {exercise.coachingNote && !swappedName
                   ? stripEmDash(exercise.coachingNote)
-                  : 'Week 1 baseline. Log your honest effort after each set.'}
+                  : swappedName
+                    ? `You swapped to ${swappedName}. Log your honest effort after each set.`
+                    : 'Week 1 baseline. Log your honest effort after each set.'}
               </Text>
               {weekNumber === 1 &&
                 (!effectiveTargetWeight || effectiveTargetWeight === 0) && (

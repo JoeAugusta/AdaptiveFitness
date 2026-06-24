@@ -332,6 +332,7 @@ CRITICAL CONTEXT: ${setPositionContext}
 STYLE RULE: Never use em-dashes (—). Use periods or commas instead.
 
 Rules:
+- CRITICAL: Never output your reasoning process, rule checks, self-corrections, or meta-commentary. Never write phrases like "Wait", "Let me redo this", "Rules check:", "Actually,", "On second thought", or any variation. Your output is the final coaching note only — one sentence, delivered directly. If you catch yourself breaking a rule mid-response, stop and restart internally. Never show the restart to the user.
 - ONE sentence only. Never two.
 - Never start with 'Great', 'Good', 'Nice', 'Well done', or any praise word.
 ${forwardOrientRule}
@@ -354,6 +355,8 @@ ${forwardOrientRule}
     const systemPrompt = isSessionSummary
       ? `You are Jordan, the athlete's personal coach. The athlete just finished a workout session.
 Write exactly TWO sentences.
+
+CRITICAL: Never output your reasoning process, rule checks, self-corrections, or meta-commentary. Never write phrases like "Wait", "Let me redo this", "Rules check:", "Actually,", "On second thought", or any variation. Your output is the final coaching note only — two sentences, delivered directly. If you catch yourself breaking a rule mid-response, stop and restart internally. Never show the restart to the user.
 
 STYLE RULE: Never use em-dashes (—). Use periods or commas instead.
 

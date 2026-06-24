@@ -67,16 +67,20 @@ export function isTargetLift(exercise: any, goalLiftRaw: string | null | undefin
 
   // Rule 2: exact display name match ONLY — aliases on canonical goal_lift id
   const EXACT_MAP: Record<string, string[]> = {
-    barbell_bench_press: ['bench press'],
-    bench_press: ['bench press'],
-    barbell_squat: ['back squat', 'barbell squat'],
-    squat: ['back squat', 'barbell squat'],
-    deadlift: ['deadlift'],
-    sumo_deadlift: ['sumo deadlift'],
-    overhead_press: ['overhead press', 'barbell overhead press'],
-    ohp: ['overhead press', 'barbell overhead press'],
-    weighted_pull_up: ['weighted pull-up', 'weighted pullup'],
-    weighted_pullup: ['weighted pull-up', 'weighted pullup'],
+    barbell_bench_press: ['bench press', 'barbell bench press'],
+    bench_press: ['bench press', 'barbell bench press'],
+    barbell_squat: ['back squat', 'barbell squat', 'squat'],
+    squat: ['back squat', 'barbell squat', 'squat'],
+    back_squat: ['back squat', 'barbell squat', 'squat'],
+    deadlift: ['deadlift', 'conventional deadlift', 'barbell deadlift'],
+    sumo_deadlift: ['sumo deadlift', 'sumo barbell deadlift'],
+    overhead_press: ['overhead press', 'barbell overhead press', 'barbell ohp'],
+    ohp: ['overhead press', 'barbell overhead press', 'barbell ohp'],
+    weighted_pull_up: ['weighted pull-up', 'weighted pullup', 'pull-up', 'pullup'],
+    weighted_pullup: ['weighted pull-up', 'weighted pullup', 'pull-up', 'pullup'],
+    barbell_row: ['barbell row', 'bent-over row', 'bent over row',
+                  'barbell row (overhand wide)', 'barbell row (overhand narrow)',
+                  'barbell row (underhand)'],
   };
 
   const gKey = normalizeGoalLiftId(goalLift);
@@ -85,6 +89,13 @@ export function isTargetLift(exercise: any, goalLiftRaw: string | null | undefin
   const exName = (
     exercise.exerciseName ?? exercise.name ?? ''
   ).toLowerCase().trim();
+
+  console.log('[isTargetLift check]', {
+    exName,
+    gKey,
+    validNames,
+    result: validNames.includes(exName),
+  });
 
   return validNames.includes(exName);
 }
@@ -109,6 +120,18 @@ export function enforceSetStructureExercise(
 ): any {
   const compoundTier = ex.compoundTier;
   const equipmentLower = String(ex.equipment ?? 'barbell').toLowerCase();
+
+  console.log('[enforceSetStructure]', {
+    name: ex.name,
+    exerciseId: ex.exerciseId,
+    goal,
+    strengthGoalLift,
+    isTarget: goal === 'strength' && strengthGoalLift
+      ? isStrengthGoalTargetLift(ex, strengthGoalLift)
+      : false,
+    compoundTier: ex.compoundTier,
+    equipment: ex.equipment,
+  });
 
   // RULE 1 (highest): strength goal target lift
   if (

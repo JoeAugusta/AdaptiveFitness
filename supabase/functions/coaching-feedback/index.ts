@@ -38,6 +38,9 @@ serve(async (req) => {
       loggedRpe,
       isUnilateral,
     } = body;
+    const goal: string | null = typeof body.goal === 'string'
+      ? body.goal
+      : null;
     const heartRateAvgBpm =
       typeof body.heartRateAvgBpm === 'number' ? body.heartRateAvgBpm : null;
     const heartRatePeakBpm =
@@ -214,6 +217,11 @@ Write one pre-session coaching sentence for the athlete.`;
       if (isPyramidExercise) return null;
       if (isLastSetOfExercise) return null;
       if (loggedRpeNum2 <= 0) return null;
+      // Strength plans: if target weight is prescribed (non-zero),
+      // do not auto-adjust — the load is percentage-based, not RPE-derived.
+      // Jordan can still comment on RPE but should not change the weight.
+      const isWeightPrescribed = targetWeightNum > 0;
+      if (isWeightPrescribed && goal === 'strength') return null;
 
       // Too easy: RPE 2+ below target
       // Aggressive bump when RPE very low, moderate when just a bit low
@@ -296,19 +304,24 @@ Write one pre-session coaching sentence for the athlete.`;
         ? 'This is the LAST SET of this exercise. Next is a different exercise.'
         : 'This is a mid-exercise set. More sets of this exercise are coming.';
 
+    const isStrengthPrescribed =
+      goal === 'strength' && targetWeightNum > 0;
+
     const forwardOrientRule = isLastExercise
       ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
       : isLastSetOfExercise
         ? `- This exercise is done. Orient toward the next exercise or the rest of the session. Do NOT say "next set of this exercise".`
         : isPyramidExercise && suggestedWeight != null
-          ? `- This is a pyramid set building to a heavy top set. The athlete's RPE on this set was ${loggedRpeNum2} against a target of ${targetRpeNum2}. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. Frame it as a specific coaching adjustment — e.g. "RPE ${loggedRpeNum2} tells me you have more, try ${suggestedWeight} lbs next set." One sentence only.`
+          ? `- This is a pyramid set building to a heavy top set. The athlete's RPE on this set was ${loggedRpeNum2} against a target of ${targetRpeNum2}. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. Frame it as a specific coaching adjustment. One sentence only.`
           : isPyramidExercise && rpeGap >= -1 && rpeGap <= 1
-            ? `- This is a pyramid set and RPE is on target. The next set is heavier by design. Tell them what to expect — stay controlled, keep form, the load is climbing. Do NOT mention any specific weight.`
+            ? `- This is a pyramid set and RPE is on target. The next set is heavier by design. Tell them what to expect. Do NOT mention any specific weight.`
             : isPyramidExercise && rpeGap <= -2
-              ? `- This is a pyramid set but RPE ran above target. You MUST include the phrase "try ${suggestedWeight ?? Math.max(5, roundedBase - 5)} lbs" for the next set instead of the standard jump. One sentence only.`
-              : suggestedWeight != null
-                ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a coaching directive, not a suggestion.`
-                : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
+              ? `- This is a pyramid set but RPE ran above target. You MUST include the phrase "try ${suggestedWeight ?? Math.max(5, roundedBase - 5)} lbs" for the next set. One sentence only.`
+              : isStrengthPrescribed
+                ? `- This is a strength plan with prescribed loads. Do NOT suggest a different weight. Orient toward execution quality on the next set — brace, timing, bar path, or position cues only. One sentence.`
+                : suggestedWeight != null
+                  ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a coaching directive.`
+                  : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
 
     const perSetSystemPrompt = `${perSetToneInstruction}
 

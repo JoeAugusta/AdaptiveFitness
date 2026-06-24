@@ -550,13 +550,22 @@ const SPLIT_DAY_PRESETS: Record<string, Array<{ label: string; days: string[] }>
   strength_2x: [
     { label: 'Mon / Thu', days: ['Mon', 'Thu'] },
     { label: 'Tue / Fri', days: ['Tue', 'Fri'] },
+    { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
+    { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
     { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
     { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Mon / Tue / Wed / Fri / Sat', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Wed / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat', 'Sun'] },
   ],
   strength_3x: [
     { label: 'Mon / Wed / Fri', days: ['Mon', 'Wed', 'Fri'] },
     { label: 'Tue / Thu / Sat', days: ['Tue', 'Thu', 'Sat'] },
     { label: 'Mon / Tue / Thu / Fri', days: ['Mon', 'Tue', 'Thu', 'Fri'] },
+    { label: 'Mon / Wed / Fri / Sat', days: ['Mon', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Wed / Fri / Sat', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
+    { label: 'Mon / Tue / Wed / Fri / Sat / Sun', days: ['Mon', 'Tue', 'Wed', 'Fri', 'Sat', 'Sun'] },
   ],
   squat_focused_5: [
     { label: 'Mon / Tue / Thu / Fri / Sat', days: ['Mon', 'Tue', 'Thu', 'Fri', 'Sat'] },
@@ -691,6 +700,13 @@ export default function ExperienceScreen() {
         experience,
       );
       setRecommendedSplit(rec);
+      console.log('[split debug]', {
+        daysCountSelected,
+        splitId: rec.splitId,
+        splitName: rec.splitName,
+        presetsForSplit: getPresetsForSplit(rec.splitId, daysCountSelected ?? 0),
+        allPresetsForSplitId: SPLIT_DAY_PRESETS[rec.splitId] ?? [],
+      });
       setSessionStructure(structure);
       originalStructureRef.current = structure;
       originalRecRef.current = rec;

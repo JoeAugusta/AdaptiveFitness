@@ -1451,6 +1451,7 @@ export default function ActiveWorkoutScreen() {
           isPyramid,
           setNumber,
           totalSets,
+          goal: workout?.goal ?? null,
           heartRateAvgBpm: heartRate?.avgBpm ?? null,
           heartRatePeakBpm: heartRate?.peakBpm ?? null,
           sleepHours: recoveryCtx?.sleepHours ?? null,

@@ -373,7 +373,17 @@ export function getRecommendedSplit(
     const isBeginnerStrength =
       expLower === 'beginner' || trainingBackground === 'New to structured training';
     const hist = splitHistoryLabelToId(currentSplit);
-    let splitId: string = isBeginnerStrength ? 'strength_3x' : 'strength_2x';
+    let splitId: string;
+    if (isBeginnerStrength) {
+      splitId = d <= 4 ? 'strength_3x' : d === 5 ? 'ppl_upper' : 'ppl';
+    } else if (d <= 4) {
+      splitId = 'strength_2x';
+    } else if (d === 5) {
+      splitId = isLowerBodyLift ? 'squat_focused_5' : 'ppl_upper';
+    } else {
+      // 6+ days
+      splitId = isLowerBodyLift ? 'strength_2x' : 'ppl';
+    }
     if (hist === 'squat_focused_5' && isLowerBodyLift && d === 5) {
       splitId = 'squat_focused_5';
     }
@@ -413,13 +423,22 @@ export function getRecommendedSplit(
         reason: `Three days is perfect for a hybrid approach — each session starts heavy on a compound, then we shift into hypertrophy work. You'll train your strength and your size in the same session.`,
       };
     }
-    if (d >= 4 && d <= 5) {
+    if (d === 4) {
       console.log('[splitRec] power_hypertrophy branch:', d, 'days → phul');
       return {
         splitId: 'phul',
         splitName: getSplitLabel('phul'),
         workoutDays: 4,
         reason: `I'll have you going heavy on the big lifts to build real strength, then switching gears to higher reps on accessories — you'll get both the 1RM gains and the size that comes with volume.`,
+      };
+    }
+    if (d === 5) {
+      console.log('[splitRec] power_hypertrophy branch:', d, 'days → ppl_upper');
+      return {
+        splitId: 'ppl_upper',
+        splitName: getSplitLabel('ppl_upper'),
+        workoutDays: 5,
+        reason: `Five days gives you enough frequency to hit every muscle twice a week — heavy compounds first, then we layer in accessory volume. Push, pull, and legs each get a heavy and a volume session.`,
       };
     }
     // 6 or 7 days — PPL caps at 6 workout sessions

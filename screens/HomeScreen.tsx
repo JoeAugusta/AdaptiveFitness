@@ -17,7 +17,7 @@ import {
   Share,
   type DimensionValue,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
@@ -620,6 +620,7 @@ function getBestEpleyFromWeekLogs(
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const {
     isPro,
@@ -741,6 +742,8 @@ export default function HomeScreen() {
   const [activityDashboardUserId, setActivityDashboardUserId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifSheet, setShowNotifSheet] = useState(false);
+  const [hasUnreadJordanContent, setHasUnreadJordanContent] =
+    useState(false);
   const [notifications, setNotifications] = useState<Array<{
     id: string;
     type: string;
@@ -1656,6 +1659,15 @@ export default function HomeScreen() {
       const unviewedWeek = Number.isFinite(parsedUnviewed) ? parsedUnviewed : null;
       setUnviewedSummaryWeekNumber(unviewedWeek);
 
+      // Notification dot: show when weekly summary is unread
+      // or it's the first session of a new week
+      const unviewedWeekForDot = await AsyncStorage.getItem(
+        'hone_unviewed_summary_week',
+      );
+      if (unviewedWeekForDot) {
+        setHasUnreadJordanContent(true);
+      }
+
       // Fire stats in background — dashboard renders immediately
       loadStats(userId, plan.id, plan.current_week);
 
@@ -1755,6 +1767,16 @@ export default function HomeScreen() {
       })();
     }, [healthAvailable]),
   );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      const unviewedWeek = await AsyncStorage.getItem(
+        'hone_unviewed_summary_week',
+      );
+      setHasUnreadJordanContent(!!unviewedWeek);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const loadStats = async (uid: string, planId: string, currentWeek: number) => {
     if (!planId) {
@@ -3527,6 +3549,21 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Floating Jordan button ── */}
+      <TouchableOpacity
+        style={[
+          styles.jordanFab,
+          { bottom: insets.bottom + 72 },
+        ]}
+        onPress={() => navigation.navigate('JordanScreen')}
+        activeOpacity={0.85}
+      >
+        <JordanAvatar size={32} />
+        {hasUnreadJordanContent && (
+          <View style={styles.jordanFabDot} />
+        )}
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -4825,5 +4862,34 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     marginTop: 4,
     flexShrink: 0,
+  },
+  jordanFab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1.5,
+    borderColor: Colors.accentBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 50,
+  },
+  jordanFabDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.accent,
+    borderWidth: 1.5,
+    borderColor: Colors.bgPrimary,
   },
 });

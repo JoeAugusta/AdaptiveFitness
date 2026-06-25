@@ -40,6 +40,7 @@ import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
 import WorkoutHistoryScreen from '../screens/WorkoutHistoryScreen';
 import ExerciseHistoryDetailScreen from '../screens/ExerciseHistoryDetailScreen';
 import FreeSessionScreen from '../screens/FreeSessionScreen';
+import JordanScreen from '../screens/JordanScreen';
 
 // ── Nested stack navigators (untyped — screen files own their nav prop types) ──
 
@@ -59,6 +60,11 @@ function HomeTabStack() {
       <HomeStack.Screen name="Dashboard" component={HomeScreen} />
       <HomeStack.Screen name="WeeklyCoachSummary" component={WeeklyCoachSummaryScreen} />
       <HomeStack.Screen name="AdaptationFeed" component={AdaptationFeedScreen} />
+      <HomeStack.Screen
+        name="JordanScreen"
+        component={JordanScreen}
+        options={{ headerShown: false, animation: 'slide_from_bottom' }}
+      />
     </HomeStack.Navigator>
   );
 }

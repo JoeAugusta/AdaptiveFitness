@@ -173,6 +173,7 @@ export type RootStackParamList = {
     planId: string;
     weekNumber: number;
   };
+  JordanScreen: undefined;
   AdaptationFeed: {
     weekNumber: number;
   };

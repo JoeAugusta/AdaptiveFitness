@@ -161,6 +161,7 @@ export type RootStackParamList = {
     prsHit: number;
     sessionAvgHR?: number | null;
     sessionPeakHR?: number | null;
+    avgRecoveryDelta?: number | null;
   };
   /** Final plan retrospective (full-screen, same level as WorkoutComplete) */
   PlanComplete: { planId: string };

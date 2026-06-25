@@ -78,19 +78,25 @@ const FATIGUE_MAP: Record<
   },
 };
 
+function getRecoveryQuality(
+  avgDelta: number | null,
+): { label: string; color: string } | null {
+  if (avgDelta === null) return null;
+  if (avgDelta >= 50) return { label: 'Strong', color: Colors.success };
+  if (avgDelta >= 25) return { label: 'Adequate', color: Colors.warning };
+  return { label: 'Needs work', color: Colors.danger };
+}
+
 const STAT_CARDS = (
   totalExercises: number,
   totalSets: number,
   durationMinutes: number,
   prsHit: number,
-  avgHR: number | null,
 ): Array<{ icon: ReactNode; label: string; value: string; isPr?: boolean }> => [
   { icon: <Ionicons name="barbell-outline" size={24} color={Colors.accent} />, label: 'Exercises', value: String(totalExercises) },
   { icon: <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />, label: 'Sets Logged', value: String(totalSets) },
   { icon: <Ionicons name="time-outline" size={24} color={Colors.accent} />, label: 'Duration', value: `${durationMinutes} min` },
-  ...(avgHR !== null
-    ? [{ icon: <Ionicons name="heart-outline" size={24} color={Colors.danger} />, label: 'Avg HR', value: `${avgHR} bpm` }]
-    : [{ icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: true }]),
+  { icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: prsHit > 0 },
 ];
 
 function rawWeekNumber(w: {
@@ -179,6 +185,7 @@ export default function WorkoutCompleteScreen() {
     prsHit,
     sessionAvgHR = null,
     sessionPeakHR = null,
+    avgRecoveryDelta = null,
   } = route.params;
 
   useEffect(() => {
@@ -212,7 +219,7 @@ export default function WorkoutCompleteScreen() {
   }, [triggerNextSessionAdjustment]);
 
   const fatigue = FATIGUE_MAP[fatigueRating] ?? FATIGUE_MAP[3];
-  const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit, sessionAvgHR);
+  const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit);
 
   // Animations
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -902,6 +909,7 @@ export default function WorkoutCompleteScreen() {
             heartRateAvgBpm: sessionAvgHR ?? null,
             heartRatePeakBpm: sessionPeakHR ?? null,
             hrTrend: hrTrend ?? null,
+            avgRecoveryDelta: avgRecoveryDelta ?? null,
             sessionContext: {
               totalSets,
               totalExercises,
@@ -1064,6 +1072,31 @@ export default function WorkoutCompleteScreen() {
             );
           })}
         </View>
+
+        {avgRecoveryDelta !== null ? (() => {
+          const quality = getRecoveryQuality(avgRecoveryDelta);
+          if (!quality) return null;
+          const recoveryNote =
+            avgRecoveryDelta >= 50
+              ? 'Your HR recovered well between sets. Cardiovascular fitness is keeping up with your training load.'
+              : avgRecoveryDelta >= 25
+                ? 'HR recovery between sets was adequate. Standard rest periods are working.'
+                : 'HR recovery between sets was slow. Consider extending rest periods next session.';
+          return (
+            <View style={styles.recoveryBanner}>
+              <View style={styles.recoveryBannerRow}>
+                <Ionicons name="pulse-outline" size={18} color={quality.color} />
+                <Text style={styles.recoveryBannerLabel}>HR RECOVERY</Text>
+                <View style={[styles.recoveryBannerBadge, { backgroundColor: quality.color + '22' }]}>
+                  <Text style={[styles.recoveryBannerBadgeText, { color: quality.color }]}>
+                    {quality.label}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.recoveryBannerNote}>{recoveryNote}</Text>
+            </View>
+          );
+        })() : null}
 
         {showSummaryBanner && (
           <View style={styles.summaryBanner}>
@@ -1342,6 +1375,43 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
+  },
+
+  recoveryBanner: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  recoveryBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  recoveryBannerLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    flex: 1,
+  },
+  recoveryBannerBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  recoveryBannerBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+  },
+  recoveryBannerNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
   },
 
   recoveryCard: {

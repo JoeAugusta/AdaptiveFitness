@@ -581,8 +581,10 @@ export default function ActiveWorkoutScreen() {
   const [warmupCalloutDismissed, setWarmupCalloutDismissed] = useState(false);
 
   const [sessionPeakHR, setSessionPeakHR] = useState<number | null>(null);
+  const [recoveryDeltas, setRecoveryDeltas] = useState<number[]>([]);
   const [sessionAvgHRSamples, setSessionAvgHRSamples] = useState<number[]>([]);
   const lastSetLoggedAtRef = useRef<number | null>(null);
+  const lastSetPeakHRRef = useRef<number | null>(null);
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1729,6 +1731,16 @@ export default function ActiveWorkoutScreen() {
             );
           }
 
+          const hrRecoveryDelta: number | null = null;
+
+          // Store peak HR for recovery delta on next set
+          lastSetPeakHRRef.current = heartRate?.peakBpm ?? null;
+
+          // Accumulate recovery delta for session summary
+          if (hrRecoveryDelta !== null) {
+            setRecoveryDeltas((prev) => [...prev, hrRecoveryDelta]);
+          }
+
           console.log('[Recovery] passing to coaching-feedback:', JSON.stringify(recoveryContext));
 
           fetchCoachingNote(
@@ -2169,6 +2181,13 @@ export default function ActiveWorkoutScreen() {
         ? sessionDayNumber
         : params.dayNumber;
 
+    const avgRecoveryDelta =
+      recoveryDeltas.length > 0
+        ? Math.round(
+            recoveryDeltas.reduce((a, b) => a + b, 0) / recoveryDeltas.length,
+          )
+        : null;
+
     navigation.navigate('WorkoutComplete', {
       planId: planIdForComplete,
       weekNumber: sessionWeekForLogs,
@@ -2180,6 +2199,7 @@ export default function ActiveWorkoutScreen() {
       prsHit,
       sessionAvgHR,
       sessionPeakHR,
+      avgRecoveryDelta,
     });
   };
 

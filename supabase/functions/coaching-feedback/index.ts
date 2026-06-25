@@ -49,6 +49,10 @@ serve(async (req) => {
     const hrTrend = body.hrTrend && typeof body.hrTrend === 'object'
       ? body.hrTrend as { delta: number; direction: 'up' | 'down'; recentAvg: number }
       : null;
+    const avgRecoveryDelta =
+      typeof body.avgRecoveryDelta === 'number'
+        ? body.avgRecoveryDelta
+        : null;
 
     const sleepHours =
       typeof body.sleepHours === 'number' ? body.sleepHours : null;
@@ -381,6 +385,16 @@ Rules:
   * HR trending UP with no load change = accumulated fatigue or poor recovery — mention briefly
   * No trend data or delta < 5 bpm: do not mention HR trend
   * Never fabricate trend data. Only use what is explicitly provided.
+- Intra-session HR recovery may be provided (avg bpm drop between sets during rest):
+  * ≥ 50 bpm: strong cardiovascular recovery — mention only if it meaningfully
+    contrasts with high RPE or high fatigue rating. Example: "Your HR recovered
+    well between sets despite the high RPE — fitness is keeping up."
+  * 25-49 bpm: adequate — do NOT mention
+  * < 25 bpm: slow recovery — mention briefly if RPE also ran high or fatigue
+    rating was 1-2. Example: "HR recovery between sets was slow — rest periods
+    may need extending next session."
+  * Never mention specific bpm numbers to the user
+  * Never mention recovery if avgRecoveryDelta was not provided
 - Do not mention being an AI`
       : perSetSystemPrompt;
 
@@ -402,7 +416,9 @@ ${loggedRpeNum > 0 ? `Average RPE: ${loggedRpeNum} (target was ${targetRpeNum})`
         ? `${Math.abs(hrTrend.delta)} bpm lower (was avg ${hrTrend.recentAvg} bpm) — same or higher load`
         : `${Math.abs(hrTrend.delta)} bpm higher (was avg ${hrTrend.recentAvg} bpm)`}.`
     : ''
-}${planContextLine}${hasRecoveryData ? `\n${buildRecoveryContext()}` : ''}
+}${avgRecoveryDelta !== null
+  ? `\nIntra-session HR recovery (avg bpm drop between sets): ${avgRecoveryDelta} bpm`
+  : ''}${planContextLine}${hasRecoveryData ? `\n${buildRecoveryContext()}` : ''}
 Give a 2-sentence session debrief.
 - If HR trended DOWN meaningfully: call it out as adaptation in sentence 1
 - If HR trended UP: note accumulated fatigue if RPE also ran high

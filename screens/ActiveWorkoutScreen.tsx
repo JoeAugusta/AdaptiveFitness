@@ -573,6 +573,7 @@ export default function ActiveWorkoutScreen() {
   const [showWarmupModal, setShowWarmupModal] = useState(false);
   const [warmupSecondsRemaining, setWarmupSecondsRemaining] = useState(WARMUP_DURATION_SECONDS);
   const warmupEndTimeRef = useRef<number | null>(null);
+  const pendingBriefingRef = useRef<'w1' | 'w2' | null>(null);
   const [warmupCategory, setWarmupCategory] = useState<WarmupCategory>('fallback');
 
   const [showJordanW1Briefing, setShowJordanW1Briefing] = useState(false);
@@ -772,6 +773,16 @@ export default function ActiveWorkoutScreen() {
     setIsLoading(false);
     return MOCK_WORKOUT;
   };
+
+  const firePendingBriefing = useCallback(() => {
+    const pending = pendingBriefingRef.current;
+    if (!pending) return;
+    pendingBriefingRef.current = null;
+    setTimeout(() => {
+      if (pending === 'w1') setShowJordanW1Briefing(true);
+      if (pending === 'w2') setShowJordanW2Briefing(true);
+    }, 300);
+  }, []);
 
   const loadWorkoutData = async () => {
     try {
@@ -1145,6 +1156,10 @@ export default function ActiveWorkoutScreen() {
           setWarmupCategory(category);
           setWarmupSecondsRemaining(WARMUP_DURATION_SECONDS);
           setShowWarmupModal(true);
+          // Briefing fires via firePendingBriefing when warmup closes
+        } else {
+          // No warmup — fire briefing directly after load settles
+          setTimeout(() => firePendingBriefing(), 300);
         }
       }
 
@@ -1163,22 +1178,13 @@ export default function ActiveWorkoutScreen() {
         setWarmupCalloutDismissed(!!warmupDismissed);
 
         if (resolvedWeekNumber === 1 && !w1Dismissed) {
-          // Delay so warmup modal fully closes before briefing appears.
-          // Prevents modal stacking conflicts on iOS.
-          setTimeout(() => {
-            setShowJordanW1Briefing(true);
-          }, 600);
-        }
-
-        if (resolvedWeekNumber === 2 && !w2Dismissed) {
+          pendingBriefingRef.current = 'w1';
+        } else if (resolvedWeekNumber === 2 && !w2Dismissed) {
           // Pull adaptation note from first exercise coachingNote
           const firstEx = (rawExercises ?? [])[0] as PlanJsonExercise | undefined;
           const adaptNote = firstEx?.coachingNote ?? null;
           setJordanW2AdaptationNote(adaptNote);
-          // Delay matches W1 — prevents stacking with warmup modal on iOS
-          setTimeout(() => {
-            setShowJordanW2Briefing(true);
-          }, 600);
+          pendingBriefingRef.current = 'w2';
         }
       }
     } catch (e) {
@@ -1339,6 +1345,7 @@ export default function ActiveWorkoutScreen() {
       if (remaining === 0) {
         warmupEndTimeRef.current = null;
         setShowWarmupModal(false);
+        firePendingBriefing();
       }
     }, 1000);
 
@@ -1352,6 +1359,7 @@ export default function ActiveWorkoutScreen() {
         if (remaining === 0) {
           warmupEndTimeRef.current = null;
           setShowWarmupModal(false);
+          firePendingBriefing();
         }
       }
     });
@@ -1360,7 +1368,7 @@ export default function ActiveWorkoutScreen() {
       clearInterval(warmupInterval);
       warmupSub.remove();
     };
-  }, [showWarmupModal]);
+  }, [showWarmupModal, firePendingBriefing]);
 
   useEffect(() => {
     if (!isRestActive) return;
@@ -1585,9 +1593,9 @@ export default function ActiveWorkoutScreen() {
     rpe: number | null,
     options?: { replaceOnly?: boolean },
   ) => {
-    const exercise = (workout?.exercises ?? []).find(
-      (ex) => ex.id === exerciseId,
-    );
+    const exercise =
+      (workout?.exercises ?? []).find((ex) => ex.id === exerciseId) ??
+      addedExercises.find((ex) => ex.id === exerciseId);
     const isSwapped = exerciseSwaps[exerciseId] !== undefined;
     const resolvedMuscleGroup = (() => {
       if (exercise?.muscleGroup && String(exercise.muscleGroup).trim() !== '') {
@@ -1838,7 +1846,9 @@ export default function ActiveWorkoutScreen() {
 
   const handleSkipRemainingSets = useCallback((exerciseId: string) => {
     void hapticLight();
-    const exercise = (workout?.exercises ?? []).find((ex) => ex.id === exerciseId);
+    const exercise =
+      (workout?.exercises ?? []).find((ex) => ex.id === exerciseId) ??
+      addedExercises.find((ex) => ex.id === exerciseId);
     if (!exercise) return;
     const loggedSetNumbers = new Set(
       sets.filter((s) => s.exerciseId === exerciseId).map((s) => s.setNumber),
@@ -2920,7 +2930,10 @@ export default function ActiveWorkoutScreen() {
             <TouchableOpacity
               style={styles.warmupStartBtn}
               activeOpacity={0.85}
-              onPress={() => setShowWarmupModal(false)}
+              onPress={() => {
+                setShowWarmupModal(false);
+                firePendingBriefing();
+              }}
             >
               <Text style={styles.warmupStartBtnText}>Start Workout →</Text>
             </TouchableOpacity>
@@ -2936,6 +2949,7 @@ export default function ActiveWorkoutScreen() {
                   await AsyncStorage.setItem(skipKey, '1');
                 }
                 setShowWarmupModal(false);
+                firePendingBriefing();
               }}
             >
               <Text style={styles.warmupSkipText}>Don&apos;t show again</Text>
@@ -2945,18 +2959,15 @@ export default function ActiveWorkoutScreen() {
       ) : null}
 
       {showJordanW1Briefing ? (
-        <Modal
-          visible={showJordanW1Briefing}
-          transparent
-          animationType="slide"
-          onRequestClose={() => void dismissW1Briefing()}
+        <View
+          style={[StyleSheet.absoluteFillObject, styles.briefingModalRoot]}
+          pointerEvents="box-none"
         >
-          <View style={styles.briefingModalRoot}>
-            <Pressable
-              style={styles.briefingOverlay}
-              onPress={() => void dismissW1Briefing()}
-            />
-            <View style={styles.briefingSheet}>
+          <Pressable
+            style={styles.briefingOverlay}
+            onPress={() => void dismissW1Briefing()}
+          />
+          <View style={styles.briefingSheet}>
               <View style={styles.briefingHandle} />
 
               <View style={styles.briefingAvatarRow}>
@@ -3017,23 +3028,19 @@ export default function ActiveWorkoutScreen() {
                 <Text style={styles.briefingDismissText}>Don't show again</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
+        </View>
       ) : null}
 
       {showJordanW2Briefing ? (
-        <Modal
-          visible={showJordanW2Briefing}
-          transparent
-          animationType="slide"
-          onRequestClose={() => void dismissW2Briefing()}
+        <View
+          style={[StyleSheet.absoluteFillObject, styles.briefingModalRoot]}
+          pointerEvents="box-none"
         >
-          <View style={styles.briefingModalRoot}>
-            <Pressable
-              style={styles.briefingOverlay}
-              onPress={() => void dismissW2Briefing()}
-            />
-            <View style={styles.briefingSheet}>
+          <Pressable
+            style={styles.briefingOverlay}
+            onPress={() => void dismissW2Briefing()}
+          />
+          <View style={styles.briefingSheet}>
               <View style={styles.briefingHandle} />
 
               <View style={styles.briefingAvatarRow}>
@@ -3095,8 +3102,7 @@ export default function ActiveWorkoutScreen() {
                 <Text style={styles.briefingDismissText}>Don't show again</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
+        </View>
       ) : null}
 
       {showPreSessionModal ? (
@@ -4086,10 +4092,11 @@ const styles = StyleSheet.create({
   briefingModalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: Colors.overlay,
+    zIndex: 300,
   },
   briefingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.overlay,
   },
   briefingSheet: {
     backgroundColor: Colors.bgElevated,

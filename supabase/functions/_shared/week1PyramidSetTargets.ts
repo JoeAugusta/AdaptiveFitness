@@ -78,25 +78,49 @@ export function buildWeek1PyramidSetTargets(
   let weights: number[];
   let topIndex: number;
 
+  // Determine if this is a strength rep range (top set ≤ 6 reps)
+  // Strength pyramids use a tighter spread — all sets are working
+  // sets. Hypertrophy pyramids use a wider spread where Set 1
+  // serves as an extended warmup.
+  const topSetLow = parseInt(targetReps.split(/[-–]/)[0] ?? '8', 10);
+  const isStrengthPyramid = Number.isFinite(topSetLow) && topSetLow <= 6;
+
   if (n === 3) {
-    weights = [roundTen(T * 0.8), roundTen(T * 0.9), roundPlate(T)];
+    weights = isStrengthPyramid
+      ? [roundTen(T * 0.88), roundTen(T * 0.94), roundPlate(T)]
+      : [roundTen(T * 0.80), roundTen(T * 0.90), roundPlate(T)];
     topIndex = 2;
   } else if (n === 4) {
-    weights = [
-      roundTen(T * 0.75),
-      roundTen(T * 0.85),
-      roundTen(T * 0.92),
-      roundPlate(T),
-    ];
+    weights = isStrengthPyramid
+      ? [
+          roundTen(T * 0.85),
+          roundTen(T * 0.90),
+          roundTen(T * 0.95),
+          roundPlate(T),
+        ]
+      : [
+          roundTen(T * 0.75),
+          roundTen(T * 0.85),
+          roundTen(T * 0.92),
+          roundPlate(T),
+        ];
     topIndex = 3;
   } else {
-    weights = [
-      roundTen(T * 0.7),
-      roundTen(T * 0.8),
-      roundTen(T * 0.85),
-      roundTen(T * 0.9),
-      roundPlate(T),
-    ];
+    weights = isStrengthPyramid
+      ? [
+          roundTen(T * 0.82),
+          roundTen(T * 0.87),
+          roundTen(T * 0.91),
+          roundTen(T * 0.95),
+          roundPlate(T),
+        ]
+      : [
+          roundTen(T * 0.70),
+          roundTen(T * 0.80),
+          roundTen(T * 0.85),
+          roundTen(T * 0.90),
+          roundPlate(T),
+        ];
     topIndex = 4;
   }
 

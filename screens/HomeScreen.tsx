@@ -802,23 +802,14 @@ export default function HomeScreen() {
       setIsLoading(true);
       setMissedSessionBannerDismissed(false);
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } =
+        await supabase.auth.getSession();
       const userId = session?.user?.id;
-      if (!userId) {
-        setPlanStatus(null);
-        setUnviewedSummaryWeekNumber(null);
-        setStatsLoading(false);
-        setDevBypassDayGate(false);
-        setIsWeek1NoSessionsYet(false);
-        setHasLoggedWorkoutToday(false);
-        setTodayActivityLog(null);
-        setTodaySportLog(null);
-        setActivityDashboardUserId(null);
-        setProfile(null);
-        setGoalProgress(null);
-        setProgressedCount(null);
-        setIsWeek1(false);
-        setIsDeload(false);
+
+      if (sessionError || !userId) {
+        if (__DEV__) console.warn('[Dashboard] invalid session:', sessionError);
+        await supabase.auth.signOut();
+        navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
         return;
       }
       uidRef.current = userId;
@@ -3514,6 +3505,11 @@ export default function HomeScreen() {
                             planId: planData.planId,
                             weekNumber: meta.week_number,
                           });
+                        } else if (notif.type === 'pr_hit') {
+                          navigation.navigate(
+                            'ProgressTab' as any,
+                            { screen: 'PersonalRecords' },
+                          );
                         }
                       }}
                     >
@@ -3559,7 +3555,7 @@ export default function HomeScreen() {
         onPress={() => navigation.navigate('JordanScreen')}
         activeOpacity={0.85}
       >
-        <JordanAvatar size={32} />
+        <JordanAvatar size={24} />
         {hasUnreadJordanContent && (
           <View style={styles.jordanFabDot} />
         )}
@@ -4866,28 +4862,28 @@ const styles = StyleSheet.create({
   jordanFab: {
     position: 'absolute',
     right: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.bgElevated,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: Colors.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
     zIndex: 50,
   },
   jordanFabDot: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: Colors.accent,
     borderWidth: 1.5,
     borderColor: Colors.bgPrimary,

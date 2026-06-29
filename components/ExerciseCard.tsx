@@ -496,6 +496,7 @@ export default function ExerciseCard({
     setSet1EnteredWeight(0);
     setReactiveWarmupBase(0);
     setWarmupSectionExpanded(true);
+    userEditedSetsRef.current = new Set();
   }, [exercise.id]);
 
   useLayoutEffect(() => {
@@ -570,10 +571,17 @@ export default function ExerciseCard({
       exercise.setTargets != null &&
       exercise.setTargets.length > 0
     ) {
-      const topWeight = Math.max(
+      // Anchor warmups to Set 1 weight, not the top set.
+      // The pyramid itself handles progressive loading —
+      // warming up to top set weight would put warmup 3
+      // above the user's first working set.
+      const set1 = exercise.setTargets.find(st => st.setNumber === 1);
+      const set1Weight = set1?.targetWeight ?? 0;
+      if (set1Weight > 0) return set1Weight;
+      // Fallback to top set only if Set 1 is self-select (weight 0)
+      return Math.max(
         ...exercise.setTargets.map((st) => st.targetWeight ?? 0),
       );
-      return topWeight;
     }
     return effectiveTargetWeight ?? 0;
   // targetWeightOverride included so warmup resets when swap
@@ -615,6 +623,9 @@ export default function ExerciseCard({
   const [inputValues, setInputValues] = useState<
     Record<number, { weight: string; reps: string; rpe: number | null }>
   >({});
+  // Tracks sets where user has manually typed a weight —
+  // Jordan's per-set override will not overwrite these
+  const userEditedSetsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     if (targetWeightOverride === undefined || targetWeightOverride <= 0) return;
     console.log('[weight override]', {
@@ -685,6 +696,8 @@ export default function ExerciseCard({
         if (!Number.isFinite(setNum) || overrideWeight <= 0) continue;
         // Never overwrite a set the user has already logged
         if (loggedSets.some((s) => s.setNumber === setNum)) continue;
+        // Never overwrite a weight the user has manually typed
+        if (userEditedSetsRef.current.has(setNum)) continue;
         const existing = prev[setNum];
         // Fall back to exercise setTargets or sets for the rep value
         const setTarget = exercise.setTargets?.find((st) => st.setNumber === setNum);
@@ -814,6 +827,13 @@ export default function ExerciseCard({
     field: 'weight' | 'reps',
     value: string,
   ) => {
+    // Mark as user-edited so Jordan's override doesn't overwrite it
+    if (field === 'weight') {
+      userEditedSetsRef.current = new Set([
+        ...userEditedSetsRef.current,
+        setNumber,
+      ]);
+    }
     if (field === 'weight' && isSelfSelectMode) {
       setEnteredWeight(parseFloat(value) || 0);
     }
@@ -870,6 +890,9 @@ export default function ExerciseCard({
   const previousWasSwapped = previousSets.some((s) => s.swapped);
 
   const handleLogSet = (setNumber: number) => {
+    // Clear the user-edited flag for this set now that it's logged
+    // so future override attempts on this set number don't get blocked
+    userEditedSetsRef.current.delete(setNumber);
     const input = getInputForSet(setNumber);
     const weightLbs = isBodyweightExercise ? 0 : displayToLbs(parseFloat(input.weight));
     const reps = parseInt(input.reps, 10);

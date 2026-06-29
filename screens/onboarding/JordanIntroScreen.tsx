@@ -26,6 +26,10 @@ export default function JordanIntroScreen() {
               {`I'm Jordan. I'll coach you through every session and ask how hard each set felt. That's how I know what to adjust next week. Be honest with me and your plan gets better every week.`}
             </Text>
           </View>
+
+          <Text style={styles.stepHint}>
+            8 quick questions and your plan is ready.
+          </Text>
         </View>
 
         <View style={styles.ctaBar}>
@@ -91,6 +95,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
     lineHeight: 24,
+  },
+  stepHint: {
+    marginTop: Spacing.lg,
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
   },
   ctaBar: {
     position: 'absolute',

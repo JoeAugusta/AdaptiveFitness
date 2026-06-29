@@ -336,7 +336,7 @@ CRITICAL CONTEXT: ${setPositionContext}
 STYLE RULE: Never use em-dashes (—). Use periods or commas instead.
 
 Rules:
-- CRITICAL: Never output your reasoning process, rule checks, self-corrections, or meta-commentary. Never write phrases like "Wait", "Let me redo this", "Rules check:", "Actually,", "On second thought", or any variation. Your output is the final coaching note only — one sentence, delivered directly. If you catch yourself breaking a rule mid-response, stop and restart internally. Never show the restart to the user.
+- CRITICAL OUTPUT RULE: Your response is delivered directly to an athlete in a fitness app. It must be ONE sentence of coaching. Never output your reasoning, rule-checking, or self-correction process under any circumstances. Banned patterns (any variation of these terminates your response and restarts it internally — NEVER show them): "Wait", "Let me", "I need to", "Re-read", "Rules check", "Let me check", "Actually", "On second thought", "The rule says", "I must", "They already", "per the rules", "according to", or ANY meta-commentary about your own instructions. If you catch yourself writing any of these, stop immediately and output only the final coaching sentence. The user never sees your reasoning. Ever.
 - ONE sentence only. Never two.
 - Never start with 'Great', 'Good', 'Nice', 'Well done', or any praise word.
 ${forwardOrientRule}
@@ -360,7 +360,7 @@ ${forwardOrientRule}
       ? `You are Jordan, the athlete's personal coach. The athlete just finished a workout session.
 Write exactly TWO sentences.
 
-CRITICAL: Never output your reasoning process, rule checks, self-corrections, or meta-commentary. Never write phrases like "Wait", "Let me redo this", "Rules check:", "Actually,", "On second thought", or any variation. Your output is the final coaching note only — two sentences, delivered directly. If you catch yourself breaking a rule mid-response, stop and restart internally. Never show the restart to the user.
+CRITICAL OUTPUT RULE: Your response is delivered directly to an athlete in a fitness app. It must be TWO sentences of coaching. Never output your reasoning, rule-checking, or self-correction process under any circumstances. Banned patterns (any variation of these terminates your response and restarts it internally — NEVER show them): "Wait", "Let me", "I need to", "Re-read", "Rules check", "Let me check", "Actually", "On second thought", "The rule says", "I must", "They already", "per the rules", "according to", or ANY meta-commentary about your own instructions. If you catch yourself writing any of these, stop immediately and output only the final coaching sentences. The user never sees your reasoning. Ever.
 
 STYLE RULE: Never use em-dashes (—). Use periods or commas instead.
 

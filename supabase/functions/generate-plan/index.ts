@@ -2627,14 +2627,10 @@ function enforceRepRanges(planJson: any, bSex: string): any {
 // Calculate starting weight from 1RM percentage
 function week1Factor(experience: string): number {
   switch (experience?.toLowerCase()) {
-    case 'beginner':
-      return 0.7;
-    case 'intermediate':
-      return 0.75;
-    case 'advanced':
-      return 0.82;
-    default:
-      return 0.75;
+    case 'beginner':     return 0.72;
+    case 'intermediate': return 0.78;
+    case 'advanced':     return 0.88;
+    default:             return 0.78;
   }
 }
 

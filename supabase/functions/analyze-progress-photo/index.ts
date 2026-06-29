@@ -46,8 +46,14 @@ development, glute fullness and shape, calf development
 OVERALL: symmetry between left/right, upper/lower
 body balance, postural alignment
 
-When a body region is not visible in any photo, do not
-comment on it. When it is visible, be specific about
+Each photo is labeled with its view angle and what body
+regions are visible. Trust the labels — if a photo is
+labeled as a full body front view, assess all visible
+regions including lower body (quads, hamstrings, calves).
+Only skip a body region if it is genuinely obscured or
+cropped out of frame. Do not assume a region is not
+visible without clear evidence it is absent from the image.
+When it is visible, be specific about
 what training adaptations are apparent.
 - Never comment negatively on any body part
 - Keep coaching note to 3 sentences maximum
@@ -442,7 +448,13 @@ serve(async (req) => {
       });
     }
 
-    // Current photo
+    // Current photo — label first so Claude knows what to expect
+    userContent.push({
+      type: 'text',
+      text: priorPhotoBase64
+        ? 'CURRENT CHECK-IN PHOTO — FRONT VIEW (full body visible including legs, quads, and lower body):'
+        : 'CURRENT PHOTO — FRONT VIEW (full body visible including legs, quads, and lower body):',
+    });
     userContent.push({
       type: 'image',
       source: {
@@ -453,6 +465,10 @@ serve(async (req) => {
     });
 
     if (photoBase64Side) {
+      userContent.push({
+        type: 'text',
+        text: 'CURRENT CHECK-IN PHOTO — SIDE VIEW (lateral profile, useful for assessing depth, posture, and midsection):',
+      });
       userContent.push({
         type: 'image',
         source: {
@@ -465,17 +481,16 @@ serve(async (req) => {
 
     if (photoBase64Back) {
       userContent.push({
+        type: 'text',
+        text: 'CURRENT CHECK-IN PHOTO — BACK VIEW (posterior chain, glutes, hamstrings, back development):',
+      });
+      userContent.push({
         type: 'image',
         source: {
           type: 'base64',
           media_type: 'image/jpeg',
           data: photoBase64Back.replace(/^data:image\/[a-z+]+;base64,/i, ''),
         },
-      });
-      userContent.push({
-        type: 'text',
-        text:
-          'BACK VIEW PHOTO (shows posterior chain, glutes, hamstrings, back development):',
       });
     }
 

@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_EXERCISE_CUES, EXERCISE_CUES } from './exerciseLibraryCues';
+import { canonicalExerciseId } from '../Lib/exerciseMaxLoads';
 
 export type MovementPattern =
   | 'horizontal_push'
@@ -104,7 +105,8 @@ const E = (
     Exercise,
     'secondaryMuscleTags' | 'movementPattern' | 'compoundTier' | 'rotationGroup' | 'rotationPriority'
   >;
-  const cueTuple = EXERCISE_CUES[base.id] ?? DEFAULT_EXERCISE_CUES;
+  const cueTuple =
+    EXERCISE_CUES[canonicalExerciseId(base.id)] ?? DEFAULT_EXERCISE_CUES;
   return {
     ...base,
     ...meta,
@@ -905,7 +907,10 @@ export function getCuesForExerciseName(name: string): string[] {
   const e = EXERCISES.find(
     (x) => x.name.toLowerCase().trim() === String(name).toLowerCase().trim(),
   );
-  return e ? [...e.cues] : [...DEFAULT_EXERCISE_CUES];
+  if (!e) return [...DEFAULT_EXERCISE_CUES];
+  const cueTuple =
+    EXERCISE_CUES[canonicalExerciseId(e.id)] ?? DEFAULT_EXERCISE_CUES;
+  return [...cueTuple];
 }
 
 /** Lookup by name — handles AI-generated names not in library via keyword heuristics. */

@@ -531,6 +531,381 @@ export const EXERCISE_CUES: Record<string, readonly [string, string, string]> = 
     'Extend wrist against band, control return',
     'Keep elbow still — only wrist moves',
   ],
+  // ── Append inside EXERCISE_CUES in exerciseLibraryCues.ts ──
+// 74 entries covering every non-alias exercise that currently falls to DEFAULT_EXERCISE_CUES.
+// Alias ids (c02b, c05d, c06a, s03b, s19, tr03b, tr04b, tr06b, h03b, h05b, tp07, cv08)
+// are intentionally ABSENT — resolve them via canonicalExerciseId() in the lookup.
+
+c01a: [
+  'Grip 1–2 hand-widths wider than your normal bench grip',
+  'Lower to mid-chest — shorter stroke, more chest, less triceps',
+  'Keep elbows under the bar; wide grip punishes flaring hardest',
+],
+c01b: [
+  'Underhand grip just outside shoulders, thumbs wrapped, wrists stacked',
+  'Lower to lower chest with elbows tucked close to ribs',
+  'Press up and slightly back — targets upper chest despite flat bench',
+],
+c05a: [
+  'Set pulleys high, step forward, slight forward lean',
+  'Sweep hands down and together toward your hips',
+  'Squeeze lower chest at the bottom — don’t turn it into a pressdown',
+],
+c05b: [
+  'Set pulleys low, palms facing forward, staggered stance',
+  'Sweep up and together, finishing at upper-chest height',
+  'Lead with your chest, not your biceps — soft elbows throughout',
+],
+c05c: [
+  'Set pulleys at chest height, one foot forward for balance',
+  'Bring hands together straight in front of your sternum',
+  'Hold the squeeze a beat — mid-cable hits the whole pec evenly',
+],
+c15: [
+  'Set pulleys low, bench at 30–45° between the stacks',
+  'Fly up and together over your upper chest',
+  'Keep shoulder blades pinned to the pad — no reaching at the top',
+],
+c16: [
+  'Set bench to a slight decline, dumbbells over lower chest',
+  'Lower with elbows about 45° from your torso',
+  'Press up without letting the bells drift toward your face',
+],
+c17: [
+  'Lie across or along bench, one dumbbell held over your chest',
+  'Lower behind your head with slightly bent elbows until you feel a lat stretch',
+  'Pull back over your chest — ribs down, no arching off the bench',
+],
+b01a: [
+  'Grip well outside shoulders, hinge to ~45°, bar under shoulders',
+  'Row to your lower chest with elbows flared wider than usual',
+  'Squeeze upper back and rear delts — this grip targets thickness up high',
+],
+b01b: [
+  'Overhand grip at shoulder width or inside, braced hinge position',
+  'Pull to your stomach with elbows staying close to your sides',
+  'Drive elbows back, not up — narrower grip means more lat',
+],
+b01c: [
+  'Underhand grip at shoulder width, hinge and brace before pulling',
+  'Row to your belt line, elbows tight to your ribs',
+  'Don’t curl the bar up — pull with your back, arms just connect',
+],
+b12: [
+  'Stand inside the bar, grip handles, chest up, hips back',
+  'Drive through your whole foot to stand tall — no leaning back',
+  'Lower under control by pushing hips back, not folding at the spine',
+],
+b13: [
+  'Set pins just below your knees, grip like a deadlift',
+  'Brace hard, then drive hips through to lockout',
+  'Squeeze glutes at the top — don’t hyperextend your lower back',
+],
+b04a: [
+  'Grip wide on the bar, chest tall, slight lean back',
+  'Pull to your upper chest, elbows driving down and out',
+  'Wide grip shortens the stroke — full stretch at the top still matters',
+],
+b04b: [
+  'Close neutral or narrow grip, chest up, shoulders down',
+  'Pull to your sternum, elbows tracking straight down',
+  'Let your arms fully lengthen at the top — that stretch is the rep',
+],
+b04c: [
+  'Underhand grip at shoulder width, wrists straight',
+  'Pull the bar to your upper chest, elbows tight to your sides',
+  'Resist turning it into a curl — lats pull, biceps assist',
+],
+b05a: [
+  'Feet braced, close-grip handle, sit tall with chest up',
+  'Pull to your stomach, elbows skimming your ribs',
+  'Pause the squeeze, then let your shoulder blades reach forward fully',
+],
+b05b: [
+  'Wide bar attachment, grip outside shoulders, chest proud',
+  'Row to your lower chest with elbows flared out',
+  'Think about pinching your shoulder blades — upper back does the work',
+],
+b05c: [
+  'Underhand grip on a straight bar, sit tall',
+  'Pull to your belt line, elbows tucked tight',
+  'Keep torso still — no rocking to move the stack',
+],
+b05d: [
+  'One handle, brace your free hand on your thigh or the machine',
+  'Row to your hip, letting your shoulder blade fully retract',
+  'Resist torso rotation — the stack shouldn’t swing you around',
+],
+b06a: [
+  'Knee and hand on bench, dumbbell hanging, palm facing back',
+  'Row to your hip with your elbow flaring slightly outward',
+  'Pronated grip biases upper back — squeeze between your shoulder blades',
+],
+b14: [
+  'Straight bar at high pulley, arms long, slight hinge forward',
+  'Sweep the bar to your thighs with elbows nearly locked',
+  'Pure lat pullover motion — if your elbows bend, it’s a pushdown',
+],
+b15: [
+  'Landmine bar beside you, staggered stance, grip the sleeve end',
+  'Row to your hip with your elbow tracking wide',
+  'Brace your free forearm on your thigh — no torso twist',
+],
+b16: [
+  'Lie chest-down on a high flat bench, bar hanging below',
+  'Row to touch the bench underside, squeeze your mid-back',
+  'The bench kills momentum — if reps stall, the weight is honest',
+],
+s10: [
+  'Hold an upright post, lean your body away from the low cable',
+  'Raise the cable arm to shoulder height, leading with your elbow',
+  'The lean loads the full range — control the bottom stretch',
+],
+s10a: [
+  'Set cables at face height, grab opposite handles, arms crossed',
+  'Pull open and back in a wide arc to your sides',
+  'Finish with arms wide like a T — rear delts, not traps',
+],
+s11: [
+  'Hold a band at shoulder height, hands inside shoulder width',
+  'Pull the band apart until it touches your chest',
+  'Keep ribs down and shoulders low — small muscles, strict reps',
+],
+s12: [
+  'Face the pec deck pad, handles at shoulder height',
+  'Sweep arms open and back with a slight elbow bend',
+  'Pause when your arms pass your torso line — no shrugging',
+],
+s13: [
+  'Seat under the Smith bar, bar at chin height to start',
+  'Press straight up to lockout without banging the stops',
+  'Lower to chin level under control — fixed path, strict tempo',
+],
+s14: [
+  'Low cable behind you, handle in one or both hands',
+  'Raise straight in front to shoulder height, arms nearly straight',
+  'Stop at eye level — higher just shifts load to your traps',
+],
+s15: [
+  'Dumbbells resting on your thighs, palms facing down or neutral',
+  'Raise straight forward to shoulder height, one or both arms',
+  'No swing from the hips — lighter and stricter beats heavier and sloppy',
+],
+s16: [
+  'Grip a barbell at shoulder width, resting on your thighs',
+  'Raise to shoulder height with straight arms, ribs down',
+  'Lower in three seconds — the bar punishes momentum on this one',
+],
+s17: [
+  'Hold a plate at 3 and 9 o’clock against your thighs',
+  'Raise to eye level with slightly bent arms',
+  'Keep your torso vertical — leaning back is cheating the front delts',
+],
+s18: [
+  'Hinge to nearly parallel, dumbbells hanging under your chest',
+  'Raise out to your sides, pinkies leading slightly',
+  'Dead-stop each rep at the bottom — swinging steals the rear delts’ work',
+],
+s20: [
+  'Sit on a bench end, chest to your thighs, bells under your legs',
+  'Raise out wide with soft elbows to shoulder height',
+  'The seat locks out momentum — stay folded over throughout',
+],
+bi02a: [
+  'Palms up from the very bottom of every rep',
+  'Curl to shoulder height without your elbows drifting forward',
+  'Squeeze hard at the top — full supination is the biceps’ best angle',
+],
+bi02b: [
+  'Palms down, grip the bells like hammers turned flat',
+  'Curl with your elbows pinned to your sides',
+  'Lower slow — pronated grip loads your forearms and brachialis',
+],
+bi09: [
+  'Neutral grip, curl one dumbbell across toward your opposite shoulder',
+  'Keep your elbow at your side — only your forearm travels',
+  'Alternate arms, no torso lean to help the bell over',
+],
+bi10: [
+  'Rope at low pulley, neutral grip, elbows at your sides',
+  'Curl the rope up, keeping palms facing each other',
+  'Constant cable tension — no rest at the bottom, no swing at the top',
+],
+bi11: [
+  'Seated, elbow braced against your inner thigh',
+  'Curl to your shoulder with zero upper-arm movement',
+  'The brace exposes cheating — if the weight moves, your biceps moved it',
+],
+bi12: [
+  'Face away from a low cable, arm behind your body',
+  'Curl from a deep stretch, elbow staying behind your torso',
+  'The stretch is the point — full extension every rep',
+],
+bi13: [
+  'Grip the EZ bar on the angled sections, palms semi-supinated',
+  'Curl to shoulder height, elbows pinned to your sides',
+  'The angle spares your wrists — don’t let it invite extra weight',
+],
+bi14: [
+  'Grip the EZ bar on the outer angled sections',
+  'Curl with elbows tucked, wide grip biasing the inner biceps',
+  'Lower fully each rep — half reps hide in wide-grip curls',
+],
+bi15: [
+  'Rope at the low pulley, palms facing each other',
+  'Curl and twist your palms up as you reach the top',
+  'Spread the rope ends at the peak for a harder squeeze',
+],
+bi16: [
+  'Chest against an incline bench set steep, arms hanging straight down',
+  'Curl to your forehead line without your elbows swinging back',
+  'Arms hang in front — no shoulder assistance is possible; stay strict',
+],
+tr01a: [
+  'Rope at high pulley, elbows locked to your sides',
+  'Push down and spread the rope ends apart at the bottom',
+  'Full elbow lockout each rep — the spread is the squeeze',
+],
+tr01b: [
+  'Straight bar, overhand grip, elbows pinned to your ribs',
+  'Push to full lockout without your shoulders rounding forward',
+  'Let the bar rise to chest height — full stretch, no elbow drift',
+],
+tr01c: [
+  'V-bar at high pulley, neutral grip, slight forward lean',
+  'Press down to lockout, elbows glued to your sides',
+  'Neutral grip lets you go heavier — keep the reps just as strict',
+],
+tr01d: [
+  'Underhand grip on a straight bar, wrists straight',
+  'Push down to lockout, keeping tension through your knuckles',
+  'Lighter than overhand is normal — this grip isolates the medial head',
+],
+tr02a: [
+  'Face away from the cable, rope behind your head, elbows up',
+  'Extend forward to lockout, biceps staying beside your ears',
+  'The stretch at the back is the money — control it, don’t drop it',
+],
+tr02b: [
+  'One dumbbell or handle overhead, opposite hand bracing your elbow',
+  'Lower behind your head, then extend to full lockout',
+  'Keep the working elbow pointed at the ceiling the whole set',
+],
+tr12: [
+  'Face away from a high pulley, rope overhead, staggered stance',
+  'Extend forward and up to full lockout',
+  'Elbows stay narrow — flaring turns it into a press',
+],
+tr13: [
+  'EZ bar over your forehead, grip on the angled sections',
+  'Lower to your hairline with elbows pointed at the ceiling',
+  'Extend without your elbows flaring — the angle spares your wrists, not your form',
+],
+tr14: [
+  'Dumbbells over your face, palms facing each other',
+  'Lower beside your ears, elbows fixed and narrow',
+  'Neutral grip allows a deeper stretch — use it, control it',
+],
+tr15: [
+  'Hands under your chest, thumbs and index fingers forming a diamond',
+  'Lower until your chest touches your hands, elbows tight',
+  'Press away without your hips sagging — narrow means triceps',
+],
+q11: [
+  'Step backward into a lunge, front shin staying vertical',
+  'Lower until your back knee nearly touches the floor',
+  'Drive through your front heel to stand — torso tall throughout',
+],
+q12: [
+  'Full foot on a knee-height box, torso leaning slightly forward',
+  'Drive through the elevated leg to stand tall on the box',
+  'Lower slowly — don’t push off the bottom leg to cheat',
+],
+q13: [
+  'One leg on the extension pad, the other resting aside',
+  'Extend to full lockout and squeeze your quad hard',
+  'Lower in three seconds — single-leg exposes the strong side’s cheating',
+],
+q14: [
+  'Ankle cuff on a low cable, face away, brace on something stable',
+  'Kick forward to full knee lockout',
+  'Control the return — the cable pulls back faster than a machine',
+],
+h09: [
+  'Heels on the ball, hips bridged off the floor',
+  'Curl the ball toward you, hips staying high',
+  'Extend back out slowly — dropping your hips deletes the hamstrings',
+],
+h10: [
+  'Stand at the machine, pad behind one ankle, hips square',
+  'Curl your heel toward your glutes without your hip flexing',
+  'Lower slow — standing curls cheat easily through hip swing',
+],
+h11: [
+  'One dumbbell opposite the working leg, soft standing knee',
+  'Hinge forward as your rear leg extends behind for balance',
+  'Push your hips back, not down — stop when your hamstring says stop',
+],
+h12: [
+  'Bar on your back like a squat, feet hip width',
+  'Push your hips back and fold forward with a flat spine',
+  'Stop at your hamstring stretch limit — this is a hinge, not a bow',
+],
+g09: [
+  'On all fours, core braced, one knee bent at 90°',
+  'Drive that heel toward the ceiling using your glute',
+  'Stop when your thigh reaches torso line — arching your back is fake range',
+],
+g10: [
+  'Sit tall in the machine, pads outside your knees',
+  'Push your knees apart against the pads',
+  'Pause at full spread — lean slightly forward to bias the upper glutes',
+],
+cv07: [
+  'One foot on the edge of a step, other foot hooked behind',
+  'Press to full tiptoe, pause at the top',
+  'Lower until your heel drops below the step — full stretch every rep',
+],
+cv09: [
+  'Bar on your back, balls of your feet on a plate or block',
+  'Rise to full tiptoe without bending your knees',
+  'Slow negatives — bouncing out of the stretch wastes the rep',
+],
+co08: [
+  'Lie back holding a plate or dumbbell against your chest',
+  'Curl your shoulder blades off the floor, ribs toward hips',
+  'Exhale hard at the top — short range, maximum squeeze',
+],
+co09: [
+  'Knees bent, feet anchored or flat, hands across your chest',
+  'Curl up one vertebra at a time to your knees',
+  'Lower with the same control — flopping down is half a rep',
+],
+co10: [
+  'Lie flat, hands under your hips for support',
+  'Raise straight legs to vertical, lower back staying pressed down',
+  'Lower until just off the floor — if your back arches, shorten the range',
+],
+co11: [
+  'Hands lightly behind your head, legs raised, knees bent',
+  'Drive opposite elbow toward opposite knee as the other leg extends',
+  'Slow rotation beats fast flailing — count the squeeze, not the reps',
+],
+co12: [
+  'Forearm under your shoulder, feet stacked, body in one line',
+  'Lift your hips so nothing sags between shoulder and ankle',
+  'Breathe steadily — hold time only counts while the line is straight',
+],
+co13: [
+  'Cable set high, both hands on the handle, feet wide',
+  'Pull diagonally across your body to the opposite hip',
+  'Rotate through your torso — arms stay long, hips finish the turn',
+],
+tp08: [
+  'Smith bar at arm’s length in front of your thighs',
+  'Shrug straight up toward your ears, pause at the top',
+  'The fixed path removes stability work — earn it with a two-second hold',
+],
 };
 
 export const DEFAULT_EXERCISE_CUES: readonly [string, string, string] = [

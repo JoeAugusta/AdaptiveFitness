@@ -32,17 +32,18 @@ import ProjectionChart, {
 } from '../components/ProjectionChart';
 import { useMetric } from '../utils/units';
 import { buildGoalHeroModel, type GoalHeroModel } from '../utils/goalTrackerHero';
+import EdgeBar from '../components/EdgeBar';
 import { matchesTargetLift, epleyEstimated1RMLbs } from '../utils/strengthGoalLift';
 import { getLocalDate, getLocalDateString } from '../utils/dateUtils';
 import { parseSetsJson } from '../utils/workoutHistoryData';
 
 const TRACKER_CHART_STROKE: Record<string, string> = {
-  fat_loss:          '#F97316',
+  fat_loss:          Colors.ember,
   hypertrophy:       '#22C55E',
   strength:          '#F59E0B',
   power_hypertrophy: '#F59E0B',
-  recomp:            '#F97316',
-  general:           '#F97316',
+  recomp:            Colors.ember,
+  general:           Colors.ember,
 };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -256,13 +257,7 @@ function GoalHeroSkeleton({ pulse }: { pulse: Animated.Value }) {
   );
 }
 
-function GoalProgressHeroCard({
-  model,
-  progressAnim,
-}: {
-  model: GoalHeroModel;
-  progressAnim: Animated.Value;
-}) {
+function GoalProgressHeroCard({ model }: { model: GoalHeroModel }) {
   return (
     <View style={styles.heroCard}>
       <Text style={styles.heroGoalTypeLabel}>{model.label}</Text>
@@ -274,19 +269,13 @@ function GoalProgressHeroCard({
         <Text style={styles.heroPrimarySub}>{model.primarySub}</Text>
       ) : null}
       <View style={styles.heroBarRow}>
-        <View style={styles.heroBarTrack}>
-          <Animated.View
-            style={[
-              styles.heroBarFill,
-              {
-                width: progressAnim.interpolate({
-                  inputRange: [0, 100],
-                  outputRange: ['0%', '100%'],
-                }),
-              },
-            ]}
-          />
-        </View>
+        <EdgeBar
+          progress={model.progressPct / 100}
+          height={6}
+          trackColor={Colors.bgCard}
+          fillColor={Colors.accent}
+          style={styles.heroBarEdge}
+        />
         {model.goalReached ? (
           <Text style={styles.heroGoalReachedLabel}>Goal reached</Text>
         ) : (
@@ -640,8 +629,6 @@ export default function GoalTrackerScreen() {
   const [modalInputFocused, setModalInputFocused] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
 
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const heroProgressAnim = useRef(new Animated.Value(0)).current;
   const skeletonPulse = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
@@ -865,27 +852,6 @@ export default function GoalTrackerScreen() {
       ? calculateProgress(goal, plan, sessionCount)
       : null;
 
-  useEffect(() => {
-    if (progress) {
-      progressAnim.setValue(0);
-      Animated.timing(progressAnim, {
-        toValue: progress.progressPct,
-        duration: 800,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [progress?.progressPct]);
-
-  useEffect(() => {
-    if (!strengthGoalHero) return;
-    heroProgressAnim.setValue(0);
-    Animated.timing(heroProgressAnim, {
-      toValue: strengthGoalHero.progressPct,
-      duration: 800,
-      useNativeDriver: false,
-    }).start();
-  }, [strengthGoalHero?.progressPct, strengthGoalHero?.label]);
-
   const milestoneProgressPct =
     goal?.goal_type === 'strength'
       ? strengthGoalHero?.progressPct
@@ -1024,8 +990,8 @@ export default function GoalTrackerScreen() {
     : 0;
 
   const trackerChartStrokeColor = goal
-    ? TRACKER_CHART_STROKE[goal.goal_type] ?? '#F97316'
-    : '#F97316';
+    ? TRACKER_CHART_STROKE[goal.goal_type] ?? Colors.ember
+    : Colors.ember;
   const trackerChartGoal: ProjectionChartGoal | null =
     goal &&
     (goal.goal_type === 'fat_loss' ||
@@ -1066,10 +1032,7 @@ export default function GoalTrackerScreen() {
         ) : null}
 
         {!loading && strengthGoalHero ? (
-          <GoalProgressHeroCard
-            model={strengthGoalHero}
-            progressAnim={heroProgressAnim}
-          />
+          <GoalProgressHeroCard model={strengthGoalHero} />
         ) : null}
 
         {loading && !isStrengthGoalPlan ? (
@@ -1197,19 +1160,12 @@ export default function GoalTrackerScreen() {
                   <Text style={styles.progressHint}>Log your weight to track fat loss progress</Text>
                 )}
 
-                <View style={styles.progressTrack}>
-                  <Animated.View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: progressAnim.interpolate({
-                          inputRange: [0, 100],
-                          outputRange: ['0%', '100%'],
-                        }),
-                      },
-                    ]}
-                  />
-                </View>
+                <EdgeBar
+                  progress={progress.progressPct / 100}
+                  height={6}
+                  fillColor={Colors.accent}
+                  style={styles.goalCardProgressBar}
+                />
               </View>
             )}
 
@@ -1291,7 +1247,8 @@ export default function GoalTrackerScreen() {
                   <Text style={styles.evrMetricValue}>Just getting started</Text>
                 ) : (
                   <Text style={styles.evrMetricValue}>
-                    {consistencyPct}% of weeks trained
+                    <Text style={styles.evrMetricValueNumber}>{consistencyPct}</Text>
+                    % of weeks trained
                   </Text>
                 )}
               </View>
@@ -1310,7 +1267,16 @@ export default function GoalTrackerScreen() {
                       currentWeek <= 1 && styles.evrMetricValueWarning,
                     ]}
                   >
-                    {currentWeek <= 1 ? '—' : `${avgSessionsPerWeek.toFixed(1)} avg`}
+                    {currentWeek <= 1 ? (
+                      '—'
+                    ) : (
+                      <>
+                        <Text style={styles.evrMetricValueNumber}>
+                          {avgSessionsPerWeek.toFixed(1)}
+                        </Text>
+                        {' avg'}
+                      </>
+                    )}
                   </Text>
                   <Text style={styles.evrPaceTarget}> (target: {daysPerWeek})</Text>
                 </View>
@@ -1554,7 +1520,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   heroPrimaryValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
     marginBottom: Spacing.xs,
@@ -1571,20 +1537,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.sm,
   },
-  heroBarTrack: {
+  heroBarEdge: {
     flex: 1,
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.bgCard,
-    overflow: 'hidden',
-  },
-  heroBarFill: {
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.accent,
   },
   heroBarPct: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     minWidth: 36,
@@ -1720,7 +1677,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   trackerCalloutColValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     textAlign: 'center',
@@ -1827,7 +1784,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   progressPct: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
   },
@@ -1844,17 +1801,8 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 6,
   },
-  progressTrack: {
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.divider,
+  goalCardProgressBar: {
     marginTop: 12,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.accent,
   },
 
   statsRow: {
@@ -1870,7 +1818,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
   },
@@ -1978,6 +1926,9 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'right',
   },
+  evrMetricValueNumber: {
+    fontFamily: Fonts.monoMedium,
+  },
   evrMetricValueWarning: { color: Colors.warning },
   evrPaceValue: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 0 },
   evrPaceTarget: {
@@ -2028,7 +1979,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   milestonePctText: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.micro,
     textAlign: 'center',
   },
@@ -2149,7 +2100,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalInput: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     backgroundColor: Colors.bgPrimary,

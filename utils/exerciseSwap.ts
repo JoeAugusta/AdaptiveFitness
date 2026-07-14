@@ -1023,6 +1023,8 @@ export const SWAP_POOL: Record<string, SwapPoolEntry[]> = {
     { name: 'Hack Squat', sameWeightOk: false },
     { name: 'Walking Lunge', sameWeightOk: false },
     { name: 'Goblet Squat', sameWeightOk: false },
+    { name: 'Leg Extension', sameWeightOk: false },
+    { name: 'Leg Extension (Single Leg)', sameWeightOk: true },
   ],
   'leg extension': [
     { name: 'Leg Press', sameWeightOk: false },

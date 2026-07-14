@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: 12,
     fontSize: FontSizes.body,
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   durationUnit: {

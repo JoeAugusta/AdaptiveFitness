@@ -14,7 +14,7 @@ import type { RouteProp } from '@react-navigation/native';
 import Slider from '@react-native-community/slider';
 import type { RootStackParamList } from '../../navigation/types';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
-import { JordanAvatar } from '../../components/JordanAvatar';
+import { JordanLabel } from '../../components/JordanLabel';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { cmToFtIn, LBS_TO_KG, useMetric } from '../../utils/units';
 
@@ -406,7 +406,7 @@ export default function BodyMetricsScreen() {
 
           {targetWeightJordanNote ? (
             <View style={styles.jordanWeightNote}>
-              <JordanAvatar size={18} />
+              <JordanLabel />
               <Text style={styles.jordanWeightNoteText}>{targetWeightJordanNote}</Text>
             </View>
           ) : null}
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: Radius.md,
     padding: 14,
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
@@ -663,18 +663,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   jordanWeightNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
     marginTop: Spacing.md,
     padding: Spacing.md,
     backgroundColor: Colors.accentMuted,
     borderLeftWidth: 3,
     borderLeftColor: Colors.accentBorder,
     borderRadius: Radius.md,
+    gap: Spacing.xs,
   },
   jordanWeightNoteText: {
-    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
@@ -741,7 +738,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bfNumber: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
   },

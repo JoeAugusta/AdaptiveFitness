@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { stripEmDash } from '../utils/jordanText';
+import { deleteUserAccount } from '../utils/deleteAccount';
 import {
   View,
   Text,
@@ -729,18 +730,7 @@ export default function ProfileSettingsScreen() {
       } = await supabase.auth.getSession();
       if (!session?.user?.id) throw new Error('No session');
 
-      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: session.user.id }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Deletion failed');
-      }
+      await deleteUserAccount();
 
       await supabase.auth.signOut();
       setShowDeleteConfirm(false);

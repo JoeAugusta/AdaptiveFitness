@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   },
   rpeNumber: {
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   rpeNumTierLow: {

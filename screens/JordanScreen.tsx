@@ -24,6 +24,13 @@ import {
 } from '../constants/design';
 import { JordanAvatar } from '../components/JordanAvatar';
 import { stripEmDash } from '../utils/jordanText';
+import {
+  getExerciseRecords,
+  isTimedRawSet,
+  parseSetsJson,
+  plausibilityStatusForRawSet,
+  shouldExcludeSetFromRecords,
+} from '../Lib/records';
 import Purchases from 'react-native-purchases';
 import {
   matchFAQIntent,
@@ -57,6 +64,8 @@ type PlanContext = {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  exerciseRecordsSummary: string | null;
+  recentSetsSummary: string | null;
 };
 
 // ── Greeting logic ─────────────────────────────────────────
@@ -254,7 +263,7 @@ export default function JordanScreen() {
         const userId = session?.user?.id;
         if (!userId) return;
 
-        const [planRes, summaryRes, macroRes] = await Promise.all([
+        const [planRes, summaryRes, macroRes, recordsRes, lastLogRes] = await Promise.all([
           supabase
             .from('plans')
             .select('current_week, total_weeks, plan_json')
@@ -275,6 +284,15 @@ export default function JordanScreen() {
             .select('daily_calories, protein_g, carbs_g, fat_g')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          getExerciseRecords(userId).catch(() => [] as Awaited<ReturnType<typeof getExerciseRecords>>),
+          supabase
+            .from('workout_logs')
+            .select('sets_json')
+            .eq('user_id', userId)
+            .eq('skipped', false)
+            .order('logged_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
         ]);
@@ -304,6 +322,44 @@ export default function JordanScreen() {
           | { performanceSummary?: string; headline?: string }
           | null;
 
+        const exerciseRecordsSummary =
+          recordsRes.length > 0
+            ? recordsRes
+                .slice(0, 8)
+                .map(
+                  (r) =>
+                    `${r.display_name}: ${r.best_e1rm} lbs est. 1RM (${r.best_load}×${r.best_reps})`,
+                )
+                .join('; ')
+            : null;
+
+        const recentSets = parseSetsJson(lastLogRes.data?.sets_json);
+        const recentQualifying = recentSets
+          .filter((s) => {
+            const name =
+              typeof s.exerciseName === 'string' ? s.exerciseName.trim() : '';
+            if (!name) return false;
+            const weight = Number(s.weightLbs ?? s.weight ?? 0);
+            const reps = Number(s.reps ?? 0);
+            return !shouldExcludeSetFromRecords({
+              is_timed: isTimedRawSet(s),
+              plausibility_status: plausibilityStatusForRawSet(s),
+              exercise_name: name,
+              weight_lbs: weight,
+              reps,
+              rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+            });
+          })
+          .slice(0, 12)
+          .map((s) => {
+            const name = String(s.exerciseName ?? '').trim();
+            const w = Math.round(Number(s.weightLbs ?? 0));
+            const r = Number(s.reps ?? 0);
+            return `${name} ${w}×${r}`;
+          });
+        const recentSetsSummary =
+          recentQualifying.length > 0 ? recentQualifying.join('; ') : null;
+
         // Clear unviewed summary badge
         await AsyncStorage.removeItem('hone_unviewed_summary_week');
 
@@ -327,6 +383,8 @@ export default function JordanScreen() {
               (macroRes.data?.carbs_g as number) ?? null,
             fatG:
               (macroRes.data?.fat_g as number) ?? null,
+            exerciseRecordsSummary,
+            recentSetsSummary,
           });
         }
       } catch (err) {
@@ -463,6 +521,8 @@ export default function JordanScreen() {
                   proteinG: planCtx.proteinG,
                   carbsG: planCtx.carbsG,
                   fatG: planCtx.fatG,
+                  exerciseRecordsSummary: planCtx.exerciseRecordsSummary,
+                  recentSetsSummary: planCtx.recentSetsSummary,
                 }
               : {},
           },

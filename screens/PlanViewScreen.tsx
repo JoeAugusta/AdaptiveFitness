@@ -30,6 +30,7 @@ import {
   applyWeekOverride,
   clearWeekOverride,
 } from '../utils/weekOverride';
+import { getPhaseDisplay, normalizePhaseOverride } from '../utils/phaseDisplay';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PlanView'>;
 type RouteType = RouteProp<RootStackParamList, 'PlanView'>;
@@ -164,71 +165,6 @@ function formatCompletedDate(dateString?: string | null): string {
     day: 'numeric',
     year: 'numeric',
   });
-}
-
-function getPhaseDisplay(
-  phase: string | undefined,
-  weekNumber: number,
-  totalWeeks: number,
-  enhancedRecovery: boolean = false,
-  biologicalSex?: string,
-  override?: { type: string },
-): { label: string; color: string; bg: string } {
-  if (override?.type === 'deload') {
-    return { label: 'DELOAD', color: Colors.success, bg: Colors.successMuted };
-  }
-  if (override?.type === 'travel') {
-    return { label: 'TRAVEL', color: Colors.textSecondary, bg: Colors.bgElevated };
-  }
-
-  const effectivePhase =
-    weekNumber === 1 && (!phase || phase === 'accumulation')
-      ? 'baseline'
-      : phase;
-
-  if (effectivePhase === 'baseline') {
-    return {
-      label: 'BASELINE',
-      color: Colors.accent,
-      bg: Colors.accentMuted,
-    };
-  }
-
-  const useExtendedCadence = enhancedRecovery || biologicalSex === 'female';
-  const deloadCadence = useExtendedCadence ? 5 : 4;
-  if (weekNumber % deloadCadence === 0) {
-    return {
-      label: 'DELOAD',
-      color: Colors.success,
-      bg: Colors.successMuted,
-    };
-  }
-  if (effectivePhase === 'intensification') {
-    return {
-      label: 'INTENSITY',
-      color: Colors.warning,
-      bg: Colors.warningMuted,
-    };
-  }
-  if (effectivePhase === 'deload') {
-    return {
-      label: 'DELOAD',
-      color: Colors.success,
-      bg: Colors.successMuted,
-    };
-  }
-  if (weekNumber > totalWeeks / 2) {
-    return {
-      label: 'INTENSITY',
-      color: Colors.warning,
-      bg: Colors.warningMuted,
-    };
-  }
-  return {
-      label: 'ACCUM',
-    color: Colors.accent,
-    bg: Colors.accentMuted,
-  };
 }
 
 function WorkoutDayCard({
@@ -866,9 +802,7 @@ export default function PlanViewScreen() {
     selectedWeekData?.phase,
     selectedWeek,
     planData.totalWeeks,
-    planData.enhancedRecovery,
-    planData.biologicalSex,
-    selectedWeekData?.weekOverride,
+    normalizePhaseOverride(selectedWeekData?.weekOverride),
   );
   const weekData = selectedWeekData;
 
@@ -1126,7 +1060,12 @@ export default function PlanViewScreen() {
             const isLocked = wn > planData.currentWeek;
             const isCompletedWeek = wn < planData.currentWeek;
             const weekEntry = planData.weeks.find((w) => w.weekNumber === wn);
-            const wPhase = getPhaseDisplay(weekEntry?.phase, wn, planData.totalWeeks, planData.enhancedRecovery, planData.biologicalSex, weekEntry?.weekOverride);
+            const wPhase = getPhaseDisplay(
+              weekEntry?.phase,
+              wn,
+              planData.totalWeeks,
+              normalizePhaseOverride(weekEntry?.weekOverride),
+            );
 
             const tabStyles = [
               styles.weekTabCircle,

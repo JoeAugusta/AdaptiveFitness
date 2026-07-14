@@ -14,7 +14,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import InfoTooltip from '../../components/InfoTooltip';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
-import { JordanAvatar } from '../../components/JordanAvatar';
+import { JordanLabel } from '../../components/JordanLabel';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 
 const COLOR_PROTEIN = Colors.accent;
@@ -449,7 +449,7 @@ export default function MacroSetupScreen() {
         </View>
 
         <View style={styles.calorieDirectionCard}>
-          <JordanAvatar size={20} />
+          <JordanLabel />
           <Text style={styles.calorieDirectionText}>{jordanCalorieNote}</Text>
         </View>
 
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   calorieNumber: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
   },
@@ -692,9 +692,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   calorieDirectionCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
     marginTop: Spacing.sm,
     marginBottom: Spacing.xs,
     padding: Spacing.md,
@@ -702,9 +699,9 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: Colors.accentBorder,
     borderRadius: Radius.md,
+    gap: Spacing.xs,
   },
   calorieDirectionText: {
-    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
@@ -785,7 +782,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   macroAmount: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
   },
   macroGSuffix: {

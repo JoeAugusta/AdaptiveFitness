@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { RootStackParamList, SubscriptionPlanId } from '../../navigation/types';
 import { BETA_BYPASS } from '../../constants/betaBypass';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
-import { JordanAvatar } from '../../components/JordanAvatar';
+import { JordanLabel } from '../../components/JordanLabel';
 import { useEntitlement } from '../../hooks/useEntitlement';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Pricing'>;
@@ -130,8 +130,7 @@ export default function PricingScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <JordanAvatar size={48} />
-          <Text style={styles.jordanLabel}>JORDAN</Text>
+          <JordanLabel />
         </View>
 
         <Text style={styles.headline}>Your plan is ready to build.</Text>
@@ -226,13 +225,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     paddingTop: Spacing.xl,
-  },
-  jordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginTop: Spacing.sm,
   },
   headline: {
     fontFamily: Fonts.bold,

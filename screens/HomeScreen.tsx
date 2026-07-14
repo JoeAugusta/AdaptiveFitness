@@ -68,6 +68,7 @@ function formatActivityIntensityShort(intensity: string): string {
   return intensity.charAt(0).toUpperCase() + intensity.slice(1);
 }
 import { JordanAvatar } from '../components/JordanAvatar';
+import { JordanLabel } from '../components/JordanLabel';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { useHealthData } from '../hooks/useHealthData';
 import HealthConnectCard, {
@@ -75,10 +76,18 @@ import HealthConnectCard, {
   HEALTH_PERMISSION_GRANTED_KEY,
 } from '../components/HealthConnectCard';
 import HealthRecoveryCard from '../components/HealthRecoveryCard';
-import { epleyEstimated1RMLbs, matchesTargetLift } from '../utils/strengthGoalLift';
+import EdgeBar from '../components/EdgeBar';
+import {
+  estimateE1RM,
+  isTimedRawSet,
+  plausibilityStatusForRawSet,
+  shouldExcludeSetFromRecords,
+} from '../Lib/records';
+import { matchesTargetLift } from '../utils/strengthGoalLift';
 import { parseSetsJson } from '../utils/workoutHistoryData';
 import { useAuth } from '../contexts/AuthContext';
 import { stripEmDash, cleanJordanMessage } from '../utils/jordanText';
+import { getPhaseDisplay, normalizePhaseOverride } from '../utils/phaseDisplay';
 import { Ionicons } from '@expo/vector-icons';
 
 /** Mirrors `getSessionSignal` in utils/sessionSignal — uses already-loaded week logs. */
@@ -217,59 +226,6 @@ function formatJordanCardUpdatedLabel(
   const m = d.getMonth() + 1;
   const day = d.getDate();
   return `Updated ${m}/${day}/${String(y).slice(-2)}`;
-}
-
-function getPhaseDisplay(
-  phase: string | undefined,
-  weekNumber: number,
-  totalWeeks: number,
-): { label: string; color: string; bg: string; borderColor?: string } {
-  const effectivePhase =
-    weekNumber === 1 && (!phase || phase === 'accumulation')
-      ? 'baseline'
-      : phase;
-
-  if (effectivePhase === 'baseline') {
-    return {
-      label: 'BASELINE',
-      color: Colors.bgPrimary,
-      bg: Colors.accent,
-    };
-  }
-
-  if (weekNumber % 4 === 0) {
-    return {
-      label: 'DELOAD',
-      color: Colors.success,
-      bg: Colors.successMuted,
-    };
-  }
-  if (effectivePhase === 'intensification') {
-    return {
-      label: 'INTENSIFICATION',
-      color: Colors.warning,
-      bg: Colors.warningMuted,
-    };
-  }
-  if (effectivePhase === 'deload') {
-    return {
-      label: 'DELOAD',
-      color: Colors.success,
-      bg: Colors.successMuted,
-    };
-  }
-  if (weekNumber > totalWeeks / 2) {
-    return {
-      label: 'INTENSIFICATION',
-      color: Colors.warning,
-      bg: Colors.warningMuted,
-    };
-  }
-  return {
-      label: 'ACCUMULATION',
-    color: Colors.accent,
-    bg: Colors.accentMuted,
-  };
 }
 
 /** BUG-8: Primary = plan_json.scheduledDays; then week dayLabels; then profile.training_days */
@@ -598,7 +554,7 @@ function calculateSessionDuration(exercises: Exercise[]): number {
 const formatLiftName = (lift: string) =>
   lift.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-function getBestEpleyFromWeekLogs(
+function getBestEst1RMFromWeekLogs(
   logs: Array<{ sets_json?: unknown }>,
   targetLift: string | null,
 ): number | null {
@@ -610,9 +566,24 @@ function getBestEpleyFromWeekLogs(
       if (!matchesTargetLift(name, targetLift)) continue;
       const w = Number(s.weightLbs ?? s.weight ?? 0);
       const r = Number(s.reps ?? 0);
-      if (w <= 0 || r <= 0) continue;
-      const est = epleyEstimated1RMLbs(w, r);
-      if (est > best) best = est;
+      if (
+        shouldExcludeSetFromRecords({
+          is_timed: isTimedRawSet(s),
+          plausibility_status: plausibilityStatusForRawSet(s),
+          exercise_name: name,
+          weight_lbs: w,
+          reps: r,
+          rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+        })
+      ) {
+        continue;
+      }
+      const est = estimateE1RM({
+        load: w,
+        reps: r,
+        rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+      });
+      if (est != null && est > best) best = est;
     }
   }
   return best > 0 ? best : null;
@@ -640,6 +611,9 @@ export default function HomeScreen() {
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<string | undefined>(undefined);
+  const [currentWeekOverride, setCurrentWeekOverride] = useState<
+    ReturnType<typeof normalizePhaseOverride>
+  >(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setProfile] = useState<{
     display_name?: string | null;
@@ -691,6 +665,7 @@ export default function HomeScreen() {
       session_fatigue_rating?: number;
     }>
   >([]);
+  const [loggedDayNumbersThisWeek, setLoggedDayNumbersThisWeek] = useState<Set<number>>(new Set());
 
   const [todayWeight, setTodayWeight] = useState<number | null>(null);
   const [todaySleepHours, setTodaySleepHours] = useState<number | null>(null);
@@ -717,6 +692,7 @@ export default function HomeScreen() {
     useState(false);
   const [showWorkoutResultsModal, setShowWorkoutResultsModal] = useState(false);
   const [todayWorkoutLog, setTodayWorkoutLog] = useState<{
+    id?: string;
     sets_json: unknown;
     session_fatigue_rating: number | null;
   } | null>(null);
@@ -766,9 +742,9 @@ export default function HomeScreen() {
   const displayedGoalProgress = useMemo(() => {
     if (!goalProgress || goalProgress.target1RM <= 0) return null;
     const floor = goalProgress.current1RM;
-    const epley = getBestEpleyFromWeekLogs(workoutLogs, goalProgress.targetLift);
+    const est1RM = getBestEst1RMFromWeekLogs(workoutLogs, goalProgress.targetLift);
     const current1RM =
-      epley != null && epley > floor ? epley : floor > 0 ? floor : epley ?? 0;
+      est1RM != null && est1RM > floor ? est1RM : floor > 0 ? floor : est1RM ?? 0;
     if (current1RM <= 0) return null;
     return {
       ...goalProgress,
@@ -879,6 +855,7 @@ export default function HomeScreen() {
       if (planError || !planRow) {
         setPlanStatus(null);
         setPlanData(null);
+        setLoggedDayNumbersThisWeek(new Set());
         setLatestSummary(null);
         setCardioCompleted(false);
         setUnviewedSummaryWeekNumber(null);
@@ -925,6 +902,7 @@ export default function HomeScreen() {
 
       if (planRow.status === 'completed') {
         setPlanData(null);
+        setLoggedDayNumbersThisWeek(new Set());
         setCardioCompleted(false);
         setLastSessionMeta(null);
         setLatestSummary(null);
@@ -955,8 +933,12 @@ export default function HomeScreen() {
         ) ?? planJson.weeks?.[0];
 
       const currentWeekPhase: string | undefined = currentWeekData?.phase;
+      const currentWeekOverrideRaw = (
+        currentWeekData as { weekOverride?: { type?: string } } | undefined
+      )?.weekOverride;
 
       if (!currentWeekData) {
+        setLoggedDayNumbersThisWeek(new Set());
         setUnviewedSummaryWeekNumber(null);
         setStatsLoading(false);
         setIsTrainingDay(true);
@@ -1126,6 +1108,7 @@ export default function HomeScreen() {
       const loggedDayNumbers = new Set(
         (logsWeek ?? []).map((l: { day_number: number }) => l.day_number),
       );
+      setLoggedDayNumbersThisWeek(loggedDayNumbers);
       const rawCompletedSessions = completedDayNumbers.size;
 
       const completedSessions = rawCompletedSessions;
@@ -1190,7 +1173,7 @@ export default function HomeScreen() {
       if (loggedWorkoutToday) {
         const { data: fullLog } = await supabase
           .from('workout_logs')
-          .select('sets_json, session_fatigue_rating, logged_at')
+          .select('id, sets_json, session_fatigue_rating, logged_at')
           .eq('user_id', userId)
           .eq('plan_id', plan.id)
           .eq('week_number', plan.current_week)
@@ -1421,41 +1404,61 @@ export default function HomeScreen() {
         const normalizedToday = todayLabelForAdvance.trim().slice(0, 3);
 
         if (normalizedFirst === normalizedToday) {
-          // For W1: anchor is plan start_date (guards against Day-1 false advance).
-          // For W2+: if today matches the first scheduled day, the week has
-          // cycled — always allow the advance check.
-          const firstWeekElapsed = (() => {
-            if (dbCurrentWeek === 1) {
-              // Advance on Monday in the user's local timezone, but only
-              // after at least 7 full calendar days have passed since the
-              // plan start date. This prevents a plan created Sunday from
-              // advancing to W2 the very next Monday — the user needs a
-              // full week of training before the advance fires.
-              // All math is in local calendar days to avoid timezone issues
-              // that caused early-morning users to be gated until noon.
-              if (!planStartRaw) return true;
-              const planStartMidnight = new Date(
-                `${planStartRaw.split('T')[0]}T00:00:00`,
-              );
-              const todayMidnight = new Date();
-              todayMidnight.setHours(0, 0, 0, 0);
-              const daysSinceStart = Math.floor(
-                (todayMidnight.getTime() - planStartMidnight.getTime()) /
-                  (1000 * 60 * 60 * 24),
-              );
-              return daysSinceStart >= 7;
-            }
-            return true;
+          // Temporal guard: week N cannot end before start_date + N*7 calendar
+          // days (local midnight). W1 requires daysSinceStart >= 7; W2 requires
+          // >= 14; etc. Day-of-week match alone is not sufficient for W2+.
+          const daysSinceStart = (() => {
+            if (!planStartRaw) return null;
+            const planStartMidnight = new Date(
+              `${planStartRaw.split('T')[0]}T00:00:00`,
+            );
+            const todayMidnight = new Date();
+            todayMidnight.setHours(0, 0, 0, 0);
+            return Math.floor(
+              (todayMidnight.getTime() - planStartMidnight.getTime()) /
+                (1000 * 60 * 60 * 24),
+            );
           })();
 
-          if (firstWeekElapsed) {
+          const minWeekDurationElapsed = (() => {
+            if (!planStartRaw) {
+              console.warn(
+                '[ADVANCE GATE] no start_date — temporal guard skipped',
+              );
+              return true;
+            }
+            return (daysSinceStart ?? 0) >= dbCurrentWeek * 7;
+          })();
+
+          const weekJustStarted = rawCompletedSessions <= 1;
+          const floorMet = daysPerWeek > 0 && (rawCompletedSessions / daysPerWeek) >= 0.6;
+          const isDeloadWeek = (currentWeekData as { phase?: string } | undefined)?.phase === 'deload';
+          const shouldAdvance = !weekJustStarted && (floorMet || isDeloadWeek);
+
+          console.log('[ADVANCE GATE]', {
+            dbCurrentWeek,
+            daysSinceStart,
+            requiredDays: dbCurrentWeek * 7,
+            todayLabel: normalizedToday,
+            firstScheduledDay: normalizedFirst,
+            rawCompletedSessions,
+            floorMet,
+            isDeloadWeek,
+            weekJustStarted,
+            shouldAdvance,
+          });
+
+          if (minWeekDurationElapsed) {
             const nextWeekNumber = dbCurrentWeek + 1;
             const nextWeekExists = (planJson.weeks ?? []).some(
               (w: unknown) => getPlanWeekNumber(w) === nextWeekNumber,
             );
-            const floorMet = daysPerWeek > 0 && (rawCompletedSessions / daysPerWeek) >= 0.6;
-            const isDeloadWeek = (currentWeekData as { phase?: string } | undefined)?.phase === 'deload';
-            const shouldAdvance = floorMet || isDeloadWeek;
+            // Guard against re-evaluating a week that was JUST advanced
+            // into (e.g. auto-advance fired on a prior load, current_week
+            // flipped, then this same calendar-day check re-runs and
+            // mistakes the brand-new week for "the week that just elapsed").
+            // A week that started today or has ≤1 session logged cannot
+            // be "the week that just elapsed" — skip advance/prompt logic.
 
             if (shouldAdvance) {
               if (advanceInFlightRef.current) return;
@@ -1503,19 +1506,20 @@ export default function HomeScreen() {
             // Only show if the user actually logged at least one session
             // this week. Prevents the prompt from firing on the recursive
             // load after auto-advance where the new week has 0 sessions.
-            if (!alreadyDismissedThisElapse && rawCompletedSessions > 0) {
+            if (!weekJustStarted && !alreadyDismissedThisElapse && rawCompletedSessions > 0) {
               setLowCompletionPrompt({
                 weekNumber: completedWeekForPrompt,
                 completed: rawCompletedSessions,
                 total: daysPerWeek,
               });
             }
-          } // closes if (firstWeekElapsed)
+          } // closes if (minWeekDurationElapsed)
         }
       }
 
       setJordanWelcome(jordanWelcome);
       setCurrentPhase(currentWeekPhase);
+      setCurrentWeekOverride(normalizePhaseOverride(currentWeekOverrideRaw));
       // Clear fresh note once DB has caught up — latestJordanNote in plan_json
       // is written async by WorkoutCompleteScreen; once loaded it takes over.
       if (
@@ -2112,6 +2116,17 @@ export default function HomeScreen() {
           ? await generatePreSessionMessage(lastSignalLocal)
           : null;
 
+      // Compute readiness-based RPE adjustment.
+      // Readiness ≤ 2 → lower intensity ceiling by 1 RPE point.
+      // Readiness ≥ 4 → nudge intensity up by 0.5 RPE points.
+      // Only applies to primary compounds — see ActiveWorkoutScreen.
+      const rpeAdjustment: number = (() => {
+        const r = todayReadiness;
+        if (r !== null && r <= 2) return -1;
+        if (r !== null && r >= 4) return 0.5;
+        return 0;
+      })();
+
       navigation.navigate('ActiveWorkout', {
         planId: planData?.planId ?? 'mock',
         weekNumber: todayWorkout.isNextWeek
@@ -2122,6 +2137,7 @@ export default function HomeScreen() {
         preSessionMessage: preSessionCopyLocal
           ? (cleanJordanMessage(stripEmDash(preSessionCopyLocal)) ?? null)
           : null,
+        rpeAdjustment,
       });
     } finally {
       setIsStartingWorkout(false);
@@ -2183,12 +2199,6 @@ export default function HomeScreen() {
     ? calculateSessionDuration(today.exercises)
     : 45;
 
-  const loggedDayNumbersForRender = new Set(
-    workoutLogs
-      .map((l) => l.day_number)
-      .filter((n): n is number => n != null),
-  );
-
   const missedSessionDayNumber = (() => {
     if (!planData || hasLoggedWorkoutToday || !isTrainingDay) return null;
     const orderedWorkoutDays = [...(planData.weekDays ?? [])]
@@ -2199,7 +2209,7 @@ export default function HomeScreen() {
       (d) =>
         todayDayNumber != null &&
         d.dayNumber < todayDayNumber &&
-        !loggedDayNumbersForRender.has(d.dayNumber),
+        !loggedDayNumbersThisWeek.has(d.dayNumber),
     );
     return missed?.dayNumber ?? null;
   })();
@@ -2264,8 +2274,6 @@ export default function HomeScreen() {
   })();
   const completionRatio =
     daysPerWeek > 0 ? Math.min(1, completedSessions / daysPerWeek) : 0;
-  const progressFillWidth: DimensionValue =
-    `${Math.round(completionRatio * 100)}%`;
 
   const streakDisplay = currentStreak === 0 ? '—' : String(currentStreak);
   const sessionsDisplay = statsLoading ? '-' : String(totalSessions);
@@ -2474,8 +2482,8 @@ export default function HomeScreen() {
         {lowCompletionPrompt != null && planStatus === 'active' ? (
           <View style={styles.lowCompCard}>
             <Text style={styles.lowCompWeekLabel}>WEEK {lowCompletionPrompt.weekNumber}</Text>
-            <View style={styles.lowCompJordanRow}>
-              <JordanAvatar size={32} />
+            <View style={styles.lowCompJordanBlock}>
+              <JordanLabel />
               <Text style={styles.lowCompJordanText}>
                 {stripEmDash(`You got ${lowCompletionPrompt.completed} of ${lowCompletionPrompt.total} sessions in last week. Want to repeat it to build a fuller base, or push forward to Week ${lowCompletionPrompt.weekNumber + 1}?`)}
               </Text>
@@ -2726,6 +2734,7 @@ export default function HomeScreen() {
                     currentPhase,
                     planData.currentWeek,
                     planData.totalWeeks,
+                    currentWeekOverride,
                   );
                   return (
                     <View
@@ -2888,9 +2897,12 @@ export default function HomeScreen() {
                 })}
               </View>
 
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: progressFillWidth }]} />
-              </View>
+              <EdgeBar
+                progress={completionRatio}
+                height={8}
+                fillColor={Colors.accent}
+                style={styles.weekProgressBar}
+              />
             </View>
           </View>
         )}
@@ -3107,7 +3119,7 @@ export default function HomeScreen() {
               })
             }
           >
-            <JordanAvatar size={32} />
+            <JordanLabel />
             <Text style={styles.summaryUnreadText}>
               {`Jordan reviewed your Week ${unviewedSummaryWeekNumber}. Tap to read`}
             </Text>
@@ -3117,10 +3129,7 @@ export default function HomeScreen() {
         {/* ── 8. Coach Card ── */}
         <View style={styles.coachCard}>
           <View style={styles.coachHeaderRow}>
-            <View style={styles.coachHeaderLeft}>
-              <JordanAvatar size={32} />
-              <Text style={styles.coachBrand}>JORDAN</Text>
-            </View>
+            <JordanLabel />
             {coachSummary ? (
               <View style={styles.weekPill}>
                 <Text style={styles.weekPillText}>
@@ -3232,6 +3241,9 @@ export default function HomeScreen() {
           dayTitle={planData.todayWorkout?.title ?? 'Today\'s Session'}
           completedDate={new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           workoutLog={todayWorkoutLog as WorkoutLog | null}
+          workoutLogId={todayWorkoutLog?.id ?? null}
+          logSource="workout"
+          onSetsUpdated={() => void loadDashboardData()}
           exerciseMap={todayExerciseMap}
           planExercises={todayPlanExercises}
           summaryPlanGoal={planData.planGoal}
@@ -3555,7 +3567,7 @@ export default function HomeScreen() {
         onPress={() => navigation.navigate('JordanScreen')}
         activeOpacity={0.85}
       >
-        <JordanAvatar size={24} />
+        <JordanAvatar size={24} ringed />
         {hasUnreadJordanContent && (
           <View style={styles.jordanFabDot} />
         )}
@@ -3825,7 +3837,7 @@ const styles = StyleSheet.create({
   },
   workoutDoneStatValue: {
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   workoutDoneStatValuePr: {
@@ -3980,7 +3992,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   statLabel: {
@@ -4202,17 +4214,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.textPrimary,
   },
-  progressTrack: {
+  weekProgressBar: {
     marginTop: 12,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.divider,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.accent,
   },
 
   /** Quick stats strip (streak / sessions / lbs) — grouped for conditional render */
@@ -4267,7 +4270,7 @@ const styles = StyleSheet.create({
   },
   quickStatValue: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   quickStatValuePrimary: {
@@ -4320,17 +4323,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
-  },
-  coachHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  coachBrand: {
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.accent,
-    letterSpacing: 1.5,
   },
   weekPill: {
     backgroundColor: Colors.accentMuted,
@@ -4506,14 +4498,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: Spacing.sm,
   },
-  lowCompJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
+  lowCompJordanBlock: {
     marginBottom: Spacing.md,
   },
   lowCompJordanText: {
-    flex: 1,
+    marginTop: Spacing.xs,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,

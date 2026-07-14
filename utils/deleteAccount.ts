@@ -1,23 +1,19 @@
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+import { supabase } from '../Lib/supabase';
 
 /**
  * Deletes all user-owned rows and auth user via Edge Function (service role).
  */
-export async function deleteUserAccount(userId: string): Promise<void> {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
+export async function deleteUserAccount(): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('delete-account', {
+    body: {},
   });
 
-  let json: { success?: boolean; error?: string };
-  try {
-    json = (await res.json()) as { success?: boolean; error?: string };
-  } catch {
-    throw new Error('Invalid response from server');
+  if (error) {
+    throw new Error(error.message ?? 'Delete failed');
   }
 
-  if (!res.ok || json.success !== true) {
-    throw new Error(json.error ?? `Delete failed (${res.status})`);
+  const json = data as { success?: boolean; error?: string } | null;
+  if (!json || json.success !== true) {
+    throw new Error(json?.error ?? 'Delete failed');
   }
 }

@@ -15,7 +15,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
-import { JordanAvatar } from '../components/JordanAvatar';
+import { JordanLabel } from '../components/JordanLabel';
 
 type AdaptationChangeType =
   | 'increase'
@@ -212,10 +212,7 @@ export default function AdaptationFeedScreen() {
 
   const ListFooter = !isEmpty ? (
     <View style={styles.jordanFooter}>
-      <View style={styles.jordanFooterRow}>
-        <JordanAvatar size={32} />
-        <Text style={styles.jordanLabel}>JORDAN</Text>
-      </View>
+      <JordanLabel />
       <Text style={styles.jordanFooterText}>
         These adjustments are based on your effort ratings from last week. The more
         honest your RPE, the more accurate your plan gets.
@@ -373,7 +370,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   weightLine: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     marginTop: Spacing.md,
@@ -404,7 +401,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   badgeTextOnColor: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: '#FFFFFF',
   },
@@ -424,18 +421,7 @@ const styles = StyleSheet.create({
   jordanFooter: {
     marginTop: Spacing.xxl,
     paddingTop: Spacing.lg,
-  },
-  jordanFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  jordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
   },
   jordanFooterText: {
     fontFamily: Fonts.regular,

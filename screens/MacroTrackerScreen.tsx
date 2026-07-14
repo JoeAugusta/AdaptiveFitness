@@ -26,12 +26,13 @@ import Svg, {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../Lib/supabase';
 import MealBuilderModal, { type BuiltMeal } from '../components/MealBuilderModal';
+import EdgeBar from '../components/EdgeBar';
 import type { Allergen, DietaryStyle, MealSlot } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { hapticLight, hapticSuccess, hapticWarning } from '../utils/haptics';
 import { stripEmDash } from '../utils/jordanText';
 import { Ionicons } from '@expo/vector-icons';
-import { JordanAvatar } from '../components/JordanAvatar';
+import { JordanLabel } from '../components/JordanLabel';
 import {
   applyTrainingDayMacroAdjust,
   clampMacroAdjustDraft,
@@ -206,18 +207,18 @@ function jordanAdherenceMessage(
       return (
         `Deficit is holding across ${daysWithLogs} days. ` +
         `${calDiff > 30 ? `${calDiff} cal ${overUnder} target` : 'right on target'} ` +
-        `— protein is what protects muscle here, keep hitting it.`
+        `protein is what protects muscle here, keep hitting it.`
       );
     }
     if (muscle) {
       return (
         `${daysWithLogs} days logged and the surplus is consistent. ` +
         `${calDiff > 30 ? `You're averaging ${calDiff} cal ${overUnder} target` : `Hitting ${caloriesTarget} cal consistently`} ` +
-        `— that's the fuel the training needs.`
+        `that's the fuel the training needs.`
       );
     }
     return (
-      `Consistent week on nutrition — ` +
+      `Consistent week on nutrition. ` +
       `${daysWithLogs} days logged at ${Math.round(avgRatio * 100)}% of your ` +
       `${caloriesTarget} cal target.`
     );
@@ -226,7 +227,7 @@ function jordanAdherenceMessage(
   if (avgRatio >= 0.7) {
     if (deficit) {
       return (
-        `Close but not quite — averaging ${Math.round(avgRatio * 100)}% ` +
+        `Close but not quite. Averaging ${Math.round(avgRatio * 100)}% ` +
         `of your ${caloriesTarget} cal target across ${daysWithLogs} days. ` +
         `Protein is the priority; hit that first before worrying about total calories.`
       );
@@ -240,25 +241,25 @@ function jordanAdherenceMessage(
     }
     return (
       `${Math.round(avgRatio * 100)}% adherence across ${daysWithLogs} days ` +
-      `— decent but the gap from ${caloriesTarget} cal adds up over weeks.`
+      `decent but the gap from ${caloriesTarget} cal adds up over weeks.`
     );
   }
 
   if (deficit) {
     return (
       `Inconsistent logging makes it hard to manage the deficit. ` +
-      `Pick one meal to anchor each day — usually breakfast — and build from there.`
+      `Pick one meal to anchor each day, usually breakfast, and build from there.`
     );
   }
   if (muscle) {
     return (
       `Under target most days. At your goal you need ${caloriesTarget} cal ` +
-      `consistently — missed days slow the process. A high-calorie meal prep day ` +
+      `consistently. Missed days slow the process. A high-calorie meal prep day ` +
       `helps.`
     );
   }
   return (
-    `Tough week on nutrition. Don't try to catch up — ` +
+    `Tough week on nutrition. Don't try to catch up. ` +
     `just get tomorrow's ${caloriesTarget} cal sorted and go from there.`
   );
 }
@@ -509,7 +510,7 @@ function WeeklyBarChart({
         const pct = target > 0 ? d.calories / target : 0;
         let color: string;
         if (d.calories === 0) color = Colors.divider;
-        else if (pct >= 0.9) color = Colors.success;
+        else if (pct >= 0.9) color = Colors.accent;
         else if (pct >= 0.7) color = Colors.warning;
         else color = Colors.danger;
 
@@ -1637,7 +1638,10 @@ export default function MacroTrackerScreen() {
             {activityCalories > 0 ? (
               <>
                 <Text style={styles.calorieAdjustedBig}>
-                  {displayCalorieTarget.toLocaleString()} kcal today
+                  <Text style={styles.calorieAdjustedBigNumber}>
+                    {displayCalorieTarget.toLocaleString()}
+                  </Text>
+                  {' kcal today'}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowActivityLogSheet(true)}
@@ -1697,7 +1701,7 @@ export default function MacroTrackerScreen() {
           <View style={styles.calOvershootBanner}>
             <Text style={styles.calOvershootIcon}>⚠</Text>
             <Text style={styles.calOvershootText}>
-              Over target by {calorieOvershootAmount} cal — protein is the priority for the rest
+              Over target by {calorieOvershootAmount} cal. Protein is the priority for the rest
               of the day.
             </Text>
           </View>
@@ -1707,7 +1711,7 @@ export default function MacroTrackerScreen() {
           {([
             { label: 'PROTEIN', val: todayTotals.protein_g, tgt: t.protein_g, color: Colors.accent },
             { label: 'CARBS', val: todayTotals.carbs_g, tgt: t.carbs_g, color: Colors.warning },
-            { label: 'FATS', val: todayTotals.fats_g, tgt: t.fats_g, color: Colors.success },
+            { label: 'FATS', val: todayTotals.fats_g, tgt: t.fats_g, color: Colors.textSecondary },
           ] as const).map((m) => {
             const pct = m.tgt > 0 ? Math.min(100, (m.val / m.tgt) * 100) : 0;
             return (
@@ -1715,14 +1719,12 @@ export default function MacroTrackerScreen() {
                 <Text style={styles.macroSectionLabel}>{m.label}</Text>
                 <Text style={styles.macroValue}>{Math.round(m.val)}g</Text>
                 <Text style={styles.macroTargetMicro}>/ {Math.round(m.tgt)}g</Text>
-                <View style={styles.macroBarTrack}>
-                  <View
-                    style={[
-                      styles.macroBarFill,
-                      { width: `${pct}%`, backgroundColor: m.color },
-                    ]}
-                  />
-                </View>
+                <EdgeBar
+                  progress={pct / 100}
+                  height={4}
+                  fillColor={m.color}
+                  style={styles.macroBarEdge}
+                />
               </View>
             );
           })}
@@ -1736,12 +1738,12 @@ export default function MacroTrackerScreen() {
               <Text style={styles.jordanBody}>{stripEmDash(jordanMealNote)}</Text>
             ) : (
               <Text style={styles.jordanBody}>
-                {`You're at ${todayTotals.calories} cal with ${Math.round(todayTotals.protein_g)}g protein logged. Keep building on it — protein is the priority.`}
+                {`You're at ${todayTotals.calories} cal with ${Math.round(todayTotals.protein_g)}g protein logged. Keep building on it. Protein is the priority.`}
               </Text>
             )
           ) : (
             <Text style={styles.jordanBody}>
-              {`Your target today is ${t.calories.toLocaleString()} cal and ${Math.round(t.protein_g)}g protein. Log each meal as you eat — the data is how I tune your plan.`}
+              {`Your target today is ${t.calories.toLocaleString()} cal and ${Math.round(t.protein_g)}g protein. Log each meal as you eat. The data is how I tune your plan.`}
             </Text>
           )}
         </View>
@@ -1924,7 +1926,7 @@ export default function MacroTrackerScreen() {
           ) : null}
           <View style={styles.statPillRow}>
             <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: Colors.success }]} />
+              <View style={[styles.statDot, { backgroundColor: Colors.textSecondary }]} />
               <Text style={styles.statPillText}>{weeklyStats.daysOnTarget} days on target</Text>
             </View>
             <View style={styles.statPill}>
@@ -2036,7 +2038,7 @@ export default function MacroTrackerScreen() {
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.logBtn} onPress={handleLogMeal} activeOpacity={0.8}>
-                    <Text style={styles.logBtnText}>Log Meal</Text>
+                    <Text style={styles.logBtnText}>Log meal</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2227,8 +2229,8 @@ export default function MacroTrackerScreen() {
                     invalid={adjustDraftInvalid}
                   />
 
-                  <View style={styles.macroAdjustJordanRow}>
-                    <JordanAvatar size={20} />
+                  <View style={styles.macroAdjustJordanBlock}>
+                    <JordanLabel />
                     <Text style={styles.macroAdjustJordanNote}>
                       {profileWeightLbs != null
                         ? `Protein floor ${Math.round(profileWeightLbs)}g. Carbs balance automatically.`
@@ -2458,10 +2460,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   calorieAdjustedBig: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.heading2,
     color: Colors.accent,
     marginTop: 4,
+  },
+  calorieAdjustedBigNumber: {
+    fontFamily: Fonts.monoMedium,
   },
   calorieAdjustedBreakdown: {
     fontFamily: Fonts.regular,
@@ -2477,7 +2482,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   calorieBig: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
     marginTop: 6,
@@ -2493,7 +2498,7 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     marginTop: 4,
   },
-  calorieRemainingUnder: { color: Colors.success },
+  calorieRemainingUnder: { color: Colors.textSecondary },
   calorieRemainingOver: { color: Colors.danger },
   dayTypePill: {
     flexDirection: 'row',
@@ -2604,14 +2609,14 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   macroAdjustValueDisplay: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
     textAlign: 'center',
     minWidth: 100,
   },
   macroAdjustValueInput: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.display,
     color: Colors.textPrimary,
     textAlign: 'center',
@@ -2640,15 +2645,12 @@ const styles = StyleSheet.create({
   macroAdjustCarbsCaptionDanger: {
     color: Colors.danger,
   },
-  macroAdjustJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  macroAdjustJordanBlock: {
     marginTop: Spacing.lg,
     marginBottom: Spacing.lg,
+    gap: Spacing.xs,
   },
   macroAdjustJordanNote: {
-    flex: 1,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
@@ -2721,7 +2723,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mealLoggedToastInner: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.accent,
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
@@ -2757,27 +2759,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   macroValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
     marginTop: 4,
   },
   macroTargetMicro: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.micro,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  macroBarTrack: {
-    height: 4,
-    alignSelf: 'stretch',
-    width: '100%',
-    borderRadius: Radius.full,
-    backgroundColor: Colors.divider,
+  macroBarEdge: {
     marginTop: 8,
-    overflow: 'hidden',
   },
-  macroBarFill: { height: 4, borderRadius: Radius.full },
 
   loggedMealsHeaderRow: {
     flexDirection: 'row',
@@ -2831,13 +2826,13 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   loggedMealCal: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: Colors.accent,
     marginTop: 2,
   },
   loggedMealMacros: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 6,
@@ -2914,7 +2909,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   adherenceLegendSwatchSuccess: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.accent,
   },
   adherenceLegendSwatchWarning: {
     backgroundColor: Colors.warning,
@@ -3164,7 +3159,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   sMacroPillGreen: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.accent,
     borderRadius: Radius.full,
     paddingHorizontal: 8,
     paddingVertical: 3,

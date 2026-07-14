@@ -1,16 +1,24 @@
+const EMBER = '#F97316';
+const EMBER_FAINT = 'rgba(249,115,22,0.12)';
+const EMBER_BORDER = 'rgba(249,115,22,0.4)';
+
 export const Colors = {
   // Backgrounds
-  bgPrimary: '#09090B',
+  bgPrimary: '#0E0F12',
   bgCard: '#111113',
   bgElevated: '#1C1C1E',
 
   // Accent
-  accent: '#F97316',
-  accentDark: '#EA580C',
-  accentMuted: 'rgba(249,115,22,0.12)',
-  accentBorder: 'rgba(249,115,22,0.4)',
+  ember: EMBER,
+  emberFaint: EMBER_FAINT,
+  emberBorder: EMBER_BORDER,
+  accent: EMBER,
+  accentDark: EMBER,
+  accentMuted: EMBER_FAINT,
+  accentBorder: EMBER_BORDER,
 
   // Text
+  bone: '#F5F2EC',
   textPrimary: '#FAFAFA',
   textSecondary: '#A1A1AA',
   textTertiary: '#52525B',
@@ -35,6 +43,10 @@ export const Fonts = {
   medium: 'DMSans_500Medium',
   semiBold: 'DMSans_600SemiBold',
   bold: 'DMSans_700Bold',
+  mono: 'IBMPlexMono_400Regular',
+  monoMedium: 'IBMPlexMono_500Medium',
+  display: 'ChakraPetch_700Bold',
+  displaySemi: 'ChakraPetch_600SemiBold',
 } as const;
 
 export const FontSizes = {
@@ -107,7 +119,7 @@ export const CommonStyles = {
   primaryButton: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#F97316',
+    backgroundColor: Colors.ember,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -120,14 +132,14 @@ export const CommonStyles = {
     height: 50,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#F97316',
+    borderColor: Colors.ember,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   secondaryButtonText: {
     fontSize: 15,
     fontFamily: 'DMSans_600SemiBold',
-    color: '#F97316',
+    color: Colors.ember,
   },
   destructiveButton: {
     height: 52,
@@ -144,9 +156,9 @@ export const CommonStyles = {
     color: '#EF4444',
   },
   selectedCard: {
-    backgroundColor: 'rgba(249,115,22,0.12)',
+    backgroundColor: Colors.emberFaint,
     borderWidth: 1.5,
-    borderColor: 'rgba(249,115,22,0.4)',
+    borderColor: Colors.emberBorder,
     borderRadius: 16,
     padding: 20,
   },
@@ -161,7 +173,7 @@ export const CommonStyles = {
     fontFamily: 'DMSans_700Bold',
   },
   accentPill: {
-    backgroundColor: 'rgba(249,115,22,0.12)',
+    backgroundColor: Colors.emberFaint,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 9999,
@@ -169,7 +181,7 @@ export const CommonStyles = {
   accentPillText: {
     fontSize: 12,
     fontFamily: 'DMSans_700Bold',
-    color: '#F97316',
+    color: Colors.ember,
   },
   inputField: {
     backgroundColor: '#1C1C1E',

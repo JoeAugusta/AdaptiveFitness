@@ -18,12 +18,17 @@ import type { RootStackParamList } from '../navigation/types';
 import Svg, { Line as SvgLine, Rect, Circle, Text as SvgText, G } from 'react-native-svg';
 import { supabase } from '../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import EdgeBar from '../components/EdgeBar';
 import { Ionicons } from '@expo/vector-icons';
 import { useMetric, lbsToDisplay, unitLabel } from '../utils/units';
 import {
-  fetchPersonalRecords,
-  type PersonalRecord,
-} from '../utils/personalRecords';
+  estimateE1RM,
+  getExerciseRecords,
+  isTimedRawSet,
+  plausibilityStatusForRawSet,
+  shouldExcludeSetFromRecords,
+  type ExerciseRecordDisplay,
+} from '../Lib/records';
 import { useEntitlement } from '../hooks/useEntitlement';
 import {
   daysUntilCheckIn,
@@ -837,7 +842,7 @@ export default function ProgressChartsScreen() {
   const [planWeeksJson, setPlanWeeksJson] = useState<PlanWeekLike[]>([]);
   const [planCreatedAt, setPlanCreatedAt] = useState<string | null>(null);
   const [planTotalWeeks, setPlanTotalWeeks] = useState(12);
-  const [prs, setPrs] = useState<PersonalRecord[]>([]);
+  const [prs, setPrs] = useState<ExerciseRecordDisplay[]>([]);
   const [prsLoading, setPrsLoading] = useState(true);
   const [lastPhotoAnalysisAt, setLastPhotoAnalysisAt] = useState<string | null>(
     null,
@@ -899,7 +904,7 @@ export default function ProgressChartsScreen() {
       setPlanId(plan.id);
 
       setPrsLoading(true);
-      void fetchPersonalRecords(userId, plan.id)
+      void getExerciseRecords(userId)
         .then((records) => {
           setPrs(records);
         })
@@ -1061,9 +1066,28 @@ export default function ProgressChartsScreen() {
           s.exerciseName ?? s.name ?? exerciseMap[s.exerciseId]?.name ?? s.exerciseId ?? '';
         const weight = Number(s.weightLbs ?? s.weight ?? s.loggedWeight ?? 0);
         const reps = Number(s.reps ?? s.loggedReps ?? 0);
-        if (!name || weight === 0) continue;
+        if (!name || weight <= 0 || reps <= 0) continue;
 
-        const est1RM = weight * (1 + reps / 30);
+        if (
+          shouldExcludeSetFromRecords({
+            is_timed: isTimedRawSet(s),
+            plausibility_status: plausibilityStatusForRawSet(s),
+            exercise_name: name,
+            weight_lbs: weight,
+            reps,
+            rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+          })
+        ) {
+          continue;
+        }
+
+        const est1RM = estimateE1RM({
+          load: weight,
+          reps,
+          rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+        });
+        if (est1RM == null) continue;
+
         if (!sMap[name]) sMap[name] = new Map();
         const prev = sMap[name].get(wk) ?? 0;
         if (est1RM > prev) sMap[name].set(wk, Math.round(est1RM));
@@ -1674,7 +1698,7 @@ export default function ProgressChartsScreen() {
               <View style={styles.prList}>
                 {prs.slice(0, 5).map((pr, i) => (
                   <TouchableOpacity
-                    key={`${pr.exerciseName}-${i}`}
+                    key={`${pr.exercise_key}-${i}`}
                     style={[
                       styles.prRow,
                       i === Math.min(prs.length, 5) - 1 && { borderBottomWidth: 0 },
@@ -1693,7 +1717,7 @@ export default function ProgressChartsScreen() {
                     </Text>
 
                     <Text style={styles.prRowName} numberOfLines={1}>
-                      {pr.exerciseName}
+                      {pr.display_name}
                     </Text>
 
                     <View style={styles.prRowRight}>
@@ -1703,7 +1727,7 @@ export default function ProgressChartsScreen() {
                         </View>
                       ) : null}
                       <Text style={styles.prRowValue}>
-                        {formatWorkoutWeight(pr.estimated1RM)}
+                        {formatWorkoutWeight(pr.best_e1rm)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -1715,7 +1739,7 @@ export default function ProgressChartsScreen() {
               <View style={styles.jordanCard}>
                 <Text style={styles.jordanLabel}>JORDAN</Text>
                 <Text style={styles.jordanText}>
-                  {stripEmDash(`Your strongest lift is ${prs[0].exerciseName} at an estimated ${formatWorkoutWeight(prs[0].estimated1RM)} 1RM.${
+                  {stripEmDash(`Your strongest lift is ${prs[0].display_name} at an estimated ${formatWorkoutWeight(prs[0].best_e1rm)} 1RM.${
                     prs.filter((p) => p.isRecent).length > 0
                       ? ` You set ${prs.filter((p) => p.isRecent).length} new record${prs.filter((p) => p.isRecent).length > 1 ? 's' : ''} in the last two weeks.`
                       : ' Keep logging to push these numbers up.'
@@ -1824,17 +1848,12 @@ export default function ProgressChartsScreen() {
                                     <Text style={styles.volMuscle}>{mg}</Text>
                                     <Text style={styles.volSets}>{sets} sets</Text>
                                   </View>
-                                  <View style={styles.volBarBg}>
-                                    <View
-                                      style={[
-                                        styles.volBarFill,
-                                        {
-                                          width: `${pct * 100}%` as `${number}%`,
-                                          backgroundColor: color,
-                                        },
-                                      ]}
-                                    />
-                                  </View>
+                                  <EdgeBar
+                                    progress={pct}
+                                    height={8}
+                                    fillColor={color}
+                                    style={styles.volBarEdge}
+                                  />
                                 </View>
                               );
                             })}
@@ -2277,7 +2296,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading1,
     color: Colors.textPrimary,
   },
@@ -2414,16 +2433,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginLeft: 8,
   },
-  volBarBg: {
-    height: 6,
-    backgroundColor: Colors.divider,
-    borderRadius: Radius.full,
+  volBarEdge: {
     marginTop: 6,
-    overflow: 'hidden',
-  },
-  volBarFill: {
-    height: 6,
-    borderRadius: Radius.full,
   },
   volSummary: {
     fontFamily: Fonts.regular,

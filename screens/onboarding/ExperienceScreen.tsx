@@ -27,7 +27,7 @@ import {
 } from '../../utils/splitRecommendation';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { stripEmDash } from '../../utils/jordanText';
-import { JordanAvatar } from '../../components/JordanAvatar';
+import { JordanLabel } from '../../components/JordanLabel';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Experience'>;
 type RouteType = RouteProp<RootStackParamList, 'Experience'>;
@@ -1201,10 +1201,7 @@ export default function ExperienceScreen() {
           >
             <View style={styles.jordanStripe} />
             <View style={styles.jordanCardInner}>
-              <View style={styles.jordanHeaderRow}>
-                <JordanAvatar size={32} />
-                <Text style={styles.jordanName}>Jordan</Text>
-              </View>
+              <JordanLabel style={styles.jordanCardLabel} />
 
               <View style={styles.splitBadgeRow}>
                 <View style={styles.splitNamePill}>
@@ -1807,10 +1804,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Spacing.lg,
   },
-  jordanHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  jordanCardLabel: {
     marginBottom: Spacing.sm,
   },
   splitBadgeRow: {
@@ -1877,11 +1871,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
-  },
-  jordanName: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
   },
   sessionList: {
     gap: Spacing.md,

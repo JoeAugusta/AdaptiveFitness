@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   durationText: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: Colors.accent,
   },

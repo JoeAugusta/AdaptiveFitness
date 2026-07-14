@@ -43,7 +43,7 @@ import ProjectionChart, {
 
 import { BETA_BYPASS } from '../../constants/betaBypass';
 
-const CHART_ORANGE = '#F97316';
+const CHART_ORANGE = Colors.ember;
 const CHART_GREEN = '#22C55E';
 const CHART_AMBER = '#F59E0B';
 const COLOR_PROTEIN = Colors.textPrimary;

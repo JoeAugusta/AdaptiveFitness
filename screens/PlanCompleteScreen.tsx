@@ -21,7 +21,7 @@ import {
   Radius,
   LineHeights,
 } from '../constants/design';
-import { JordanAvatar } from '../components/JordanAvatar';
+import { JordanLabel } from '../components/JordanLabel';
 import { Ionicons } from '@expo/vector-icons';
 import { stripEmDash } from '../utils/jordanText';
 
@@ -97,25 +97,11 @@ export default function PlanCompleteScreen() {
       const userId = session?.user?.id;
       if (!userId) throw new Error('No session');
 
-      const baseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-      const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-      if (!baseUrl || !anonKey) throw new Error('Missing config');
+      const { data, error } = await supabase.functions.invoke('generate-final-review', {
+        body: { planId, userId },
+      });
 
-      const res = await fetch(
-        `${baseUrl}/functions/v1/generate-final-review`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: anonKey,
-          },
-          body: JSON.stringify({ planId, userId }),
-        },
-      );
-
-      if (!res.ok) throw new Error('Review generation failed');
-      const data: unknown = await res.json();
+      if (error) throw new Error(error.message ?? 'Review generation failed');
       if (!isFinalReview(data)) throw new Error('Invalid response');
       setReview(data);
     } catch {
@@ -209,14 +195,9 @@ export default function PlanCompleteScreen() {
         <View style={styles.heroBlock}>
           <Text style={styles.heroHeadline}>{stripEmDash(review.headline)}</Text>
           <View style={[styles.heroUnderline, { backgroundColor: underlineColor }]} />
-          <View style={styles.avatarRow}>
-            <View style={styles.avatarCircleWrap}>
-              <JordanAvatar size={40} />
-            </View>
-            <View style={styles.avatarMeta}>
-              <Text style={styles.jordanLabel}>JORDAN</Text>
-              <Text style={styles.completedDate}>Completed {completedDate}</Text>
-            </View>
+          <View style={styles.avatarMeta}>
+            <JordanLabel />
+            <Text style={styles.completedDate}>Completed {completedDate}</Text>
           </View>
         </View>
 
@@ -365,23 +346,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     marginTop: Spacing.md,
   },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.xl,
-  },
-  avatarCircleWrap: {
-    marginRight: Spacing.md,
-  },
   avatarMeta: {
-    flex: 1,
-  },
-  jordanLabel: {
-    fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 4,
+    marginTop: Spacing.xl,
   },
   completedDate: {
     fontFamily: Fonts.regular,
@@ -410,7 +376,7 @@ const styles = StyleSheet.create({
   },
   statPillValue: {
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   jordanCard: {

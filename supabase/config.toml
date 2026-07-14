@@ -1,0 +1,35 @@
+# JWT verification for all Edge Functions (replaces --no-verify-jwt deploy flags).
+# Client calls must send Authorization: Bearer <access_token> via supabase.functions.invoke.
+
+[functions.adjust-macros]
+verify_jwt = true
+
+[functions.adjust-next-session]
+verify_jwt = true
+
+[functions.analyze-progress-photo]
+verify_jwt = true
+
+[functions.coaching-feedback]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.generate-final-review]
+verify_jwt = true
+
+[functions.generate-meals]
+verify_jwt = true
+
+[functions.generate-next-week]
+verify_jwt = true
+
+[functions.generate-plan]
+verify_jwt = true
+
+[functions.jordan-chat]
+verify_jwt = true
+
+[functions.weekly-coach-summary]
+verify_jwt = true

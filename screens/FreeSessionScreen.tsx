@@ -19,6 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { WorkoutStackParamList } from '../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { supabase } from '../Lib/supabase';
+import { afterFreeSessionSaved, plausibilityStatusForLoad } from '../Lib/records';
 import ExerciseCard from '../components/ExerciseCard';
 import type { LoggedSet, CompoundTier, SetTarget } from '../components/ExerciseCard';
 import { EXERCISES, type Exercise as LibraryExercise } from '../constants/exerciseLibrary';
@@ -48,7 +49,7 @@ type Phase = 'setup' | 'logging' | 'complete';
 /** Matches WorkoutResultsModal / ActiveWorkout 1–5 energy scale */
 const FATIGUE_OPTIONS = [
   { rating: 1, label: 'Wiped',  color: '#EF4444' },
-  { rating: 2, label: 'Tired',  color: '#F97316' },
+  { rating: 2, label: 'Tired',  color: Colors.ember },
   { rating: 3, label: 'Good',   color: '#F59E0B' },
   { rating: 4, label: 'Strong', color: '#84CC16' },
   { rating: 5, label: 'Beast',  color: '#22C55E' },
@@ -161,15 +162,19 @@ export default function FreeSessionScreen() {
       weight: number,
       reps: number,
       rpe: number | null,
+      isTimed = false,
     ) => {
+      const exerciseName = exercises.find((e) => e.id === exerciseId)?.name;
       const newSet: LoggedSet = {
         exerciseId,
-        exerciseName: exercises.find((e) => e.id === exerciseId)?.name,
+        exerciseName,
         setNumber,
         weightLbs: weight,
         reps,
         rpe,
         swapped: false,
+        plausibility_status: plausibilityStatusForLoad(exerciseName, weight),
+        ...(isTimed ? { isTimed: true } : {}),
       };
       setLoggedSets((prev) => [...prev, newSet]);
 
@@ -178,6 +183,53 @@ export default function FreeSessionScreen() {
       setIsRestActive(true);
     },
     [exercises],
+  );
+
+  const handleEditSet = useCallback(
+    (
+      exerciseId: string,
+      setNumber: number,
+      weight: number,
+      reps: number,
+      rpe: number | null,
+      isTimed = false,
+    ) => {
+      const exerciseName = exercises.find((e) => e.id === exerciseId)?.name;
+      const newSet: LoggedSet = {
+        exerciseId,
+        exerciseName,
+        setNumber,
+        weightLbs: weight,
+        reps,
+        rpe,
+        swapped: false,
+        plausibility_status: plausibilityStatusForLoad(exerciseName, weight),
+        ...(isTimed ? { isTimed: true } : {}),
+      };
+      setLoggedSets((prev) => {
+        const idx = prev.findIndex(
+          (s) => s.exerciseId === exerciseId && s.setNumber === setNumber,
+        );
+        if (idx >= 0) {
+          return prev.map((s, i) => (i === idx ? newSet : s));
+        }
+        return [...prev, newSet];
+      });
+    },
+    [exercises],
+  );
+
+  const handleConfirmFlaggedSet = useCallback(
+    (exerciseId: string, setNumber: number) => {
+      setLoggedSets((prev) =>
+        prev.map((s) =>
+          s.exerciseId === exerciseId && s.setNumber === setNumber
+            ? { ...s, plausibility_status: 'confirmed' as const }
+            : s,
+        ),
+      );
+    },
+    [],
   );
 
   const generateJordanNote = (): string => {
@@ -217,15 +269,27 @@ export default function FreeSessionScreen() {
       } = await supabase.auth.getSession();
       if (!session?.user?.id) throw new Error('No session');
 
-      const { error } = await supabase.from('free_sessions').insert({
-        user_id: session.user.id,
-        session_name: sessionName.trim() || 'Extra Work',
-        sets_json: loggedSets,
-        session_fatigue_rating: fatigueRating,
-        notes: notes.trim() || null,
-        logged_at: new Date().toISOString(),
-      });
+      const loggedAtIso = new Date().toISOString();
+      const { data: savedSession, error } = await supabase
+        .from('free_sessions')
+        .insert({
+          user_id: session.user.id,
+          session_name: sessionName.trim() || 'Extra Work',
+          sets_json: loggedSets,
+          session_fatigue_rating: fatigueRating,
+          notes: notes.trim() || null,
+          logged_at: loggedAtIso,
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      if (savedSession?.id) {
+        await afterFreeSessionSaved({
+          userId: session.user.id,
+          sets: loggedSets,
+        });
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (navigation as any).navigate('Dashboard', {
@@ -470,6 +534,8 @@ export default function FreeSessionScreen() {
                     goal="general"
                     experience="intermediate"
                     onLogSet={handleLogSet}
+                    onEditSet={handleEditSet}
+                    onConfirmFlaggedSet={handleConfirmFlaggedSet}
                     onSwapExercise={(_exerciseId, _newName) => {}}
                   />
                   <TouchableOpacity

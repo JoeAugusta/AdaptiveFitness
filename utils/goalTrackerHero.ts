@@ -1,4 +1,10 @@
-import { epleyEstimated1RMLbs, matchesTargetLift } from './strengthGoalLift';
+import {
+  estimateE1RM,
+  isTimedRawSet,
+  plausibilityStatusForRawSet,
+  shouldExcludeSetFromRecords,
+} from '../Lib/records';
+import { matchesTargetLift } from './strengthGoalLift';
 import { getHypertrophyProjection, type CaloriePace } from './projections';
 
 export type GoalHeroModel = {
@@ -77,7 +83,7 @@ function buildExerciseNameMap(planJson: PlanJsonLike): Record<string, string> {
   return exerciseMap;
 }
 
-/** Max Epley 1RM across all logged sets matching target lift. */
+/** Max est. 1RM across qualifying logged sets matching target lift. */
 export function estimate1RMFromAllLogs(
   logs: LogRow[],
   targetLift: string,
@@ -110,15 +116,30 @@ export function estimate1RMFromAllLogs(
       if (!matchesTargetLift(displayName, targetLift)) {
         continue;
       }
-      if (w <= 0 || r <= 0) continue;
+      if (
+        shouldExcludeSetFromRecords({
+          is_timed: isTimedRawSet(s),
+          plausibility_status: plausibilityStatusForRawSet(s),
+          exercise_name: displayName,
+          weight_lbs: w,
+          reps: r,
+          rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+        })
+      ) {
+        continue;
+      }
 
       matchedSets.push({ exerciseName: displayName, weightLbs: w, reps: r });
       if (w > bestWeight || (w === bestWeight && r > bestReps)) {
         bestWeight = w;
         bestReps = r;
       }
-      const est = epleyEstimated1RMLbs(w, r);
-      if (est > best) best = est;
+      const est = estimateE1RM({
+        load: w,
+        reps: r,
+        rpe: s.rpe == null || s.rpe === 0 ? null : Number(s.rpe),
+      });
+      if (est != null && est > best) best = est;
     }
   }
 

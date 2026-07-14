@@ -7,8 +7,8 @@ import {
   fallbackJordanNoteFromRpe,
   resolveSessionTitleFromPlan,
   truncateJordanNoteForShare,
-  type ShareTopLift,
 } from './workoutShare';
+import { getSessionOutcome } from '../Lib/records';
 import { SHARE_CARD_WIDTH, type ShareCardProps } from '../components/ShareCard';
 import type { RefObject } from 'react';
 import { View } from 'react-native';
@@ -36,7 +36,7 @@ export async function prepareShareCardData(
     const [{ data: log }, { data: planRow }] = await Promise.all([
       supabase
         .from('workout_logs')
-        .select('sets_json')
+        .select('id, sets_json, logged_at')
         .eq('user_id', userId)
         .eq('plan_id', params.planId)
         .eq('week_number', params.weekNumber)
@@ -61,7 +61,25 @@ export async function prepareShareCardData(
 
     const { totalSets: setsFromLog, avgRpe } = computeSessionShareStats(sets);
     const totalSetsCount = setsFromLog > 0 ? setsFromLog : params.totalSets;
-    const topLifts = computeTopLiftsFromSets(sets);
+    let topLifts = computeTopLiftsFromSets(sets);
+
+    if (log?.id) {
+      const loggedAt = String(log.logged_at ?? new Date().toISOString());
+      try {
+        const outcome = await getSessionOutcome(userId, log.id, loggedAt);
+        const prNames = new Set(
+          outcome.prs.map((row) => row.display_name.trim().toLowerCase()),
+        );
+        if (prNames.size > 0) {
+          topLifts = topLifts.map((lift) => ({
+            ...lift,
+            isPr: prNames.has(lift.exerciseName.trim().toLowerCase()),
+          }));
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[workoutShareAction] PR lift marking failed:', err);
+      }
+    }
     const planJson = planRow?.plan_json;
 
     const latestJordanNote =

@@ -8,7 +8,6 @@ import {
   ScrollView,
   FlatList,
   TextInput,
-  type ViewStyle,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -20,6 +19,7 @@ import {
   type MealSlot,
 } from '../constants/ingredientLibrary';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
+import EdgeBar from './EdgeBar';
 import { Ionicons } from '@expo/vector-icons';
 
 export type BuiltMeal = {
@@ -143,13 +143,13 @@ export default function MealBuilderModal({
   }, [isSearchActive, searchQuery, activeCategory, dietaryStyle, allergies, allIngredientsFlat]);
 
   const calRatio = targetCalories > 0 ? totals.calories / targetCalories : 0;
-  const progressPct = Math.min(100, calRatio * 100);
+  const mealBarProgress = Math.min(1, calRatio);
 
-  let progressFillStyle: ViewStyle = styles.progressFillBlue;
+  let mealBarFillColor = Colors.accent;
   if (calRatio > 1.1) {
-    progressFillStyle = styles.progressFillAmber;
+    mealBarFillColor = Colors.warning;
   } else if (calRatio >= 0.9) {
-    progressFillStyle = styles.progressFillGreen;
+    mealBarFillColor = Colors.success;
   }
 
   const addIngredient = useCallback((ing: Ingredient) => {
@@ -250,15 +250,12 @@ export default function MealBuilderModal({
                 </View>
               </View>
             </View>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFillBase,
-                  progressFillStyle,
-                  { width: `${progressPct}%` as `${number}%` },
-                ]}
-              />
-            </View>
+            <EdgeBar
+              progress={mealBarProgress}
+              height={6}
+              fillColor={mealBarFillColor}
+              style={styles.mealProgressBar}
+            />
           </View>
 
           <View style={styles.searchBar}>
@@ -583,17 +580,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.divider,
+  mealProgressBar: {
     marginTop: 10,
-    overflow: 'hidden',
   },
-  progressFillBase: { height: 6, borderRadius: 3 },
-  progressFillBlue: { backgroundColor: Colors.accent },
-  progressFillAmber: { backgroundColor: Colors.warning },
-  progressFillGreen: { backgroundColor: Colors.success },
 
   tabScroll: { marginVertical: 16, maxHeight: 44 },
   tabScrollContent: { gap: 8, flexDirection: 'row', alignItems: 'center' },
@@ -660,7 +649,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   miniPillCalText: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.micro,
     color: Colors.textSecondary,
   },
@@ -691,7 +680,7 @@ const styles = StyleSheet.create({
   miniPillWhite: {
     color: Colors.textPrimary,
     fontSize: FontSizes.micro,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
   },
 
   qtyBtn: {
@@ -720,7 +709,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   qtyCount: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     minWidth: 20,

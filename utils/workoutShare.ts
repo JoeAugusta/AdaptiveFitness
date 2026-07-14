@@ -1,11 +1,4 @@
 import { stripEmDash } from './jordanText';
-import { epleyEstimated1RMLbs } from './strengthGoalLift';
-import {
-  buildExerciseBestsFromLogs,
-  isNewWeightPR,
-  resolveExerciseName,
-  type ExerciseBest,
-} from './personalRecords';
 
 type LogSet = {
   exerciseName?: string;
@@ -21,6 +14,7 @@ export type ShareTopLift = {
   reps: number;
   /** When no weighted sets — show sets completed instead */
   setsCompleted?: number;
+  isPr?: boolean;
 };
 
 export function computeSessionShareStats(sets: LogSet[]): {
@@ -107,6 +101,16 @@ export function formatShareLiftLine(lift: ShareTopLift): string {
   return `${n} ${n === 1 ? 'set' : 'sets'} completed`;
 }
 
+/** Compact lift line for share cards — matches mockup ("305 lbs x 3"). */
+export function formatShareLiftLineCompact(lift: ShareTopLift): string {
+  if (lift.weightLbs > 0) {
+    const repsPart = lift.reps > 0 ? `${lift.reps}` : '—';
+    return `${lift.weightLbs.toLocaleString('en-US')} lbs x ${repsPart}`;
+  }
+  const n = lift.setsCompleted ?? 0;
+  return `${n} ${n === 1 ? 'set' : 'sets'}`;
+}
+
 export function fallbackJordanNoteFromRpe(avgRpe: number): string {
   if (avgRpe <= 0 || avgRpe < 7) {
     return 'Solid session. Loads will increase next week.';
@@ -125,59 +129,6 @@ export function truncateJordanNoteForShare(text: string): string {
   if (/[.!?]$/.test(first)) return first;
   return `${first}.`;
 }
-
-export type SessionPrShare = {
-  exerciseName: string;
-  weightLbs: number;
-  reps: number;
-  isEstimated: boolean;
-  estimated1RM: number;
-};
-
-type LogSetForPr = LogSet & {
-  exerciseId?: string;
-  setNumber?: number;
-  name?: string;
-};
-
-/** Sets in this session that beat prior logged bests (weight-first, not e1RM). */
-export function computeSessionPrsFromLog(
-  sets: LogSetForPr[],
-  historicalBests: Record<string, ExerciseBest>,
-): SessionPrShare[] {
-  const prs: SessionPrShare[] = [];
-
-  for (const s of sets) {
-    const w = Math.round(Number(s.weightLbs ?? s.weight ?? 0));
-    const r = Number(s.reps ?? 0);
-    if (w <= 0 || r <= 0) continue;
-
-    const displayName = resolveExerciseName(s);
-    if (!displayName) continue;
-
-    if (!isNewWeightPR(w, r, historicalBests[displayName])) continue;
-
-    prs.push({
-      exerciseName: displayName,
-      weightLbs: w,
-      reps: r,
-      isEstimated: r > 1,
-      estimated1RM: epleyEstimated1RMLbs(w, r),
-    });
-  }
-
-  return prs;
-}
-
-export function pickTopSessionPr(prs: SessionPrShare[]): SessionPrShare | null {
-  if (prs.length === 0) return null;
-  return [...prs].sort((a, b) => {
-    if (b.weightLbs !== a.weightLbs) return b.weightLbs - a.weightLbs;
-    return b.reps - a.reps;
-  })[0] ?? null;
-}
-
-export { buildExerciseBestsFromLogs };
 
 type PlanSetTarget = { setNumber?: number; targetWeight?: number };
 type PlanExerciseForPr = {

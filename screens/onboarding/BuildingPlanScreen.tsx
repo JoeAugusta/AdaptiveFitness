@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
-  LayoutChangeEvent,
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,6 +25,7 @@ import { Colors, Fonts, FontSizes, LineHeights, Spacing, Radius } from '../../co
 import { useAuth } from '../../contexts/AuthContext';
 import BetaFeedbackModal from '../../components/BetaFeedbackModal';
 import { JordanAvatar } from '../../components/JordanAvatar';
+import EdgeBar from '../../components/EdgeBar';
 import { stripEmDash } from '../../utils/jordanText';
 import {
   computeFirstSessionDate,
@@ -289,7 +289,6 @@ export default function BuildingPlanScreen() {
   const replacePlanId = params.replacePlanId;
   const selectedPlan: SubscriptionPlanId = params.selectedPlan ?? 'annual';
   const [displaySubtitle, setDisplaySubtitle] = useState(LOADING_STEPS[0].message);
-  const [progressBarWidth, setProgressBarWidth] = useState(0);
 
   const stopSequenceRef = useRef(false);
   const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -299,7 +298,6 @@ export default function BuildingPlanScreen() {
 
   const avatarPulseOpacity = useRef(new Animated.Value(1)).current;
   const subtitleOpacity = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
   const rowOpacities = useRef(
     LOADING_STEPS.map(() => new Animated.Value(0)),
   ).current;
@@ -383,14 +381,6 @@ export default function BuildingPlanScreen() {
   }, [currentStepIndex, sequenceEpoch, rowOpacities]);
 
   const progressFraction = completedSteps.length / LOADING_STEPS.length;
-
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: progressFraction,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [progressFraction, progressAnim]);
 
   const prevStepForSubtitleRef = useRef(0);
   useEffect(() => {
@@ -1020,15 +1010,6 @@ export default function BuildingPlanScreen() {
     }
   };
 
-  const onProgressBarLayout = (e: LayoutChangeEvent) => {
-    setProgressBarWidth(e.nativeEvent.layout.width);
-  };
-
-  const progressFillWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, Math.max(0, progressBarWidth)],
-  });
-
   const isWaitingForApi = animDone && !apiDone && !errorState;
 
   return (
@@ -1166,11 +1147,12 @@ export default function BuildingPlanScreen() {
           </View>
 
           <View style={styles.midSection}>
-            <View style={styles.progressTrack} onLayout={onProgressBarLayout}>
-              <Animated.View
-                style={[styles.progressFill, { width: progressFillWidth }]}
-              />
-            </View>
+            <EdgeBar
+              progress={progressFraction}
+              height={4}
+              trackColor={Colors.bgElevated}
+              fillColor={Colors.accent}
+            />
 
             <View style={styles.stepList}>
               {LOADING_STEPS.slice(0, currentStepIndex + 1).map((step, i) => {
@@ -1422,18 +1404,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: Spacing.xxl,
     minHeight: 0,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 4,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.bgElevated,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 4,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.accent,
   },
   stepList: {
     marginTop: Spacing.lg,

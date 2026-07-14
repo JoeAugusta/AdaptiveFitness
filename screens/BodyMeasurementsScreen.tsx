@@ -778,12 +778,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   statValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
   },
   statDelta: {
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     marginTop: Spacing.xs,
   },
@@ -892,7 +892,7 @@ const modalStyles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
     textAlign: 'right',

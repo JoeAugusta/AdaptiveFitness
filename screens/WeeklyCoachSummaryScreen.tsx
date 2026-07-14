@@ -750,7 +750,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   statChipValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.accent,
   },

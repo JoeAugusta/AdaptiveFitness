@@ -183,7 +183,7 @@ export default function ProjectionChart({
   yLabel,
   lines: linesProp,
   data,
-  projectionColor = '#F97316',
+  projectionColor = Colors.ember,
   color: colorProp,
   chartGoal = null,
   recompBfStart = 22,
@@ -251,7 +251,7 @@ export default function ProjectionChart({
       case 'fat_loss':
       case 'general':
       default:
-        return '#F97316';
+        return Colors.ember;
     }
   }, [chartGoal]);
 
@@ -469,7 +469,7 @@ export default function ProjectionChart({
             y={TOP}
             width={shadeW}
             height={plotH}
-            fill="rgba(249,115,22,0.05)"
+            fill={Colors.emberFaint}
           />
         ) : null}
 
@@ -550,7 +550,7 @@ export default function ProjectionChart({
               y1={targetY}
               x2={chartRightX}
               y2={targetY}
-              stroke="#F97316"
+              stroke={Colors.ember}
               strokeWidth={1.5}
               strokeDasharray="6,4"
               opacity={0.6}
@@ -559,7 +559,7 @@ export default function ProjectionChart({
               x={chartRightX - 4}
               y={targetY - 6}
               textAnchor="end"
-              fill="#F97316"
+              fill={Colors.ember}
               fontSize={11}
               fontFamily={Fonts.bold}
             >
@@ -705,14 +705,14 @@ export default function ProjectionChart({
               y1={TOP}
               x2={markerX}
               y2={TOP + plotH}
-              stroke="#F97316"
+              stroke={Colors.ember}
               strokeWidth={2}
               strokeDasharray="4,3"
             />
             <SvgText
               x={markerX + 6}
               y={TOP + 14}
-              fill="#F97316"
+              fill={Colors.ember}
               fontSize={10}
               fontFamily={Fonts.bold}
             >

@@ -12,7 +12,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { Ionicons } from '@expo/vector-icons';
-import { JordanAvatar } from '../../components/JordanAvatar';
+import { JordanLabel } from '../../components/JordanLabel';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'RPEEducation'>;
 type RouteType = RouteProp<RootStackParamList, 'RPEEducation'>;
@@ -58,10 +58,7 @@ export default function RPEEducationScreen() {
         <View style={styles.jordanCard}>
           <View style={styles.jordanStripe} />
           <View style={styles.jordanInner}>
-            <View style={styles.jordanHeaderRow}>
-              <JordanAvatar size={32} />
-              <Text style={styles.jordanName}>Jordan</Text>
-            </View>
+            <JordanLabel />
             <Text style={styles.jordanBody}>
               After each set, I&apos;ll ask you to rate how hard it felt on a 1 to 10 scale. I use
               these ratings to adjust your weights each week, so be honest.
@@ -201,16 +198,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Spacing.md,
   },
-  jordanHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  jordanName: {
-    fontFamily: Fonts.semiBold,
-    fontSize: FontSizes.caption,
-    color: Colors.accent,
-    marginLeft: Spacing.sm,
-  },
   jordanBody: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
@@ -251,9 +238,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(34,197,94,0.4)',
   },
   bubbleOrange: {
-    backgroundColor: 'rgba(249,115,22,0.15)',
+    backgroundColor: Colors.emberFaint,
     borderWidth: 1,
-    borderColor: 'rgba(249,115,22,0.4)',
+    borderColor: Colors.emberBorder,
   },
   bubbleRed: {
     backgroundColor: 'rgba(239,68,68,0.15)',
@@ -285,7 +272,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   badgeEasy: { backgroundColor: 'rgba(34,197,94,0.15)' },
-  badgeTarget: { backgroundColor: 'rgba(249,115,22,0.15)' },
+  badgeTarget: { backgroundColor: Colors.emberFaint },
   badgeMax: { backgroundColor: 'rgba(239,68,68,0.15)' },
   anchorBadgeText: {
     fontFamily: Fonts.semiBold,

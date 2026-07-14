@@ -6,6 +6,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { requireAuth } from '../_shared/auth.ts';
+import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -138,24 +140,36 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    const { userId, planId, weekNumber } = await req.json();
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
 
-    if (!userId || !planId || weekNumber == null) {
+  try {
+    const { planId, weekNumber } = await req.json();
+
+    if (!planId || weekNumber == null) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: userId, planId, weekNumber' }),
+        JSON.stringify({ error: 'Missing required fields: planId, weekNumber' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
       );
     }
 
-    // Step 1 — Fetch plan row and workout_logs from Supabase
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const [planResult, logsResult, profileResult] = await Promise.all([
-      supabase.from('plans').select('plan_json, goal_id, start_date').eq('id', planId).single(),
+    const ownership = await requirePlanOwnership(
+      supabase,
+      planId,
+      userId,
+      corsHeaders,
+      'plan_json, goal_id, start_date, user_id',
+    );
+    if ('errorResponse' in ownership) return ownership.errorResponse;
+    const planRow = ownership.plan;
+
+    const [logsResult, profileResult] = await Promise.all([
       supabase
         .from('workout_logs')
         .select('*')
@@ -165,8 +179,9 @@ serve(async (req) => {
       supabase.from('user_profiles').select('weight_lbs').eq('user_id', userId).maybeSingle(),
     ]);
 
-    if (planResult.error) throw new Error(`Failed to fetch plan: ${planResult.error.message}`);
     if (logsResult.error) throw new Error(`Failed to fetch workout logs: ${logsResult.error.message}`);
+
+    const planResult = { data: planRow, error: null as null };
 
     const planJson = planResult.data.plan_json;
     const logs = logsResult.data ?? [];
@@ -353,8 +368,43 @@ ${adjustmentCopy}`.trim();
     const exercisesOverPerformed: string[] = [];
     const exercisesUnderPerformed: string[] = [];
     const exercisesTooLight: string[] = []; // completed with very low RPE
-    const prsHit: string[] = [];
     const rpeDeltas: number[] = [];
+
+    const weekLogIds = logs
+      .filter((l: any) => l.skipped !== true)
+      .map((l: any) => l.id as string)
+      .filter((id: string) => Boolean(id));
+
+    let prsHit: string[] = [];
+    let prCountFromRecords = 0;
+
+    if (weekLogIds.length > 0) {
+      const { data: recordRows, error: recordsErr } = await supabase
+        .from('exercise_records')
+        .select('display_name, best_workout_log_id, baseline_date, best_date, best_source')
+        .eq('user_id', userId);
+
+      if (recordsErr) {
+        throw new Error(`Failed to fetch exercise_records: ${recordsErr.message}`);
+      }
+
+      const idSet = new Set(weekLogIds);
+      const prRows = (recordRows ?? []).filter(
+        (row: {
+          best_source?: string;
+          best_workout_log_id?: string;
+          baseline_date?: string;
+          best_date?: string;
+        }) =>
+          row.best_source === 'workout' &&
+          idSet.has(String(row.best_workout_log_id ?? '')) &&
+          String(row.baseline_date ?? '') < String(row.best_date ?? ''),
+      );
+      prCountFromRecords = prRows.length;
+      prsHit = prRows
+        .map((row: { display_name?: string }) => String(row.display_name ?? '').trim())
+        .filter((name: string) => name.length > 0);
+    }
 
     type ActualData = {
       totalWeight: number;
@@ -417,10 +467,6 @@ ${adjustmentCopy}`.trim();
         exercisesTooLight.push(name);
       }
 
-      if (actual.maxWeight > prescribed.targetWeight * 1.05) {
-        prsHit.push(name);
-      }
-
       // RPE delta: positive = harder than target, negative = easier than target
       if (prescribed.targetRpe > 0 && avgRpe > 0) {
         rpeDeltas.push(avgRpe - prescribed.targetRpe);
@@ -476,6 +522,7 @@ ${adjustmentCopy}`.trim();
       exercisesTooLight,
       stagnantExercises,
       prsHit,
+      prCountFromRecords,
       avgRpeVsTarget: Math.round(avgRpeVsTarget * 10) / 10,
       rpeDataRecorded, // true = user logged RPE, false = no RPE data
       isDeloadWeek,
@@ -560,7 +607,7 @@ Your response must be a JSON object with these exact fields:
   "nextWeekChanges": "2 sentences maximum. What is changing and the single most important reason why. Be specific but brief.",
   "nutritionCheckin": "1-2 sentences on macro targets. Keep brief.",
   "motivationalNote": "1 sentence max. Specific to this week's data. Forward-looking. No sign-off — the UI already shows the Jordan label.",
-  "prCount": <integer — number of exercises where athlete hit a personal best this week. Use prsHit.length from metrics>,
+  "prCount": <integer — personal bests this week from exercise_records. Use metrics.prCountFromRecords exactly>,
   "sessionsCompleted": <integer — sessions the athlete completed. Use metrics.sessionsCompleted>,
   "sessionsPlanned": <integer — sessions planned for the week. Use metrics.sessionsPlanned>,
   "avgRpe": <number rounded to 1 decimal — average logged RPE across all sets this week. Use metrics.avgLoggedRpe. Set to 0 if rpeDataRecorded is false>
@@ -726,12 +773,14 @@ Return ONLY this exact JSON structure with no other text:
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found in Claude response');
 
-    let summary: unknown;
+    let summary: Record<string, unknown>;
     try {
-      summary = JSON.parse(jsonMatch[0]);
+      summary = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     } catch (e) {
       throw new Error('JSON parse failed: ' + String(e));
     }
+
+    summary.prCount = prCountFromRecords;
 
     // Save summary to weekly_summaries using service role
     const { error: saveError } = await supabase

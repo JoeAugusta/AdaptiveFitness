@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk';
+import { requireAuth } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,6 +38,9 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+
   try {
     const body = await req.json();
 
@@ -60,6 +64,8 @@ serve(async (req: Request) => {
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
+        exerciseRecordsSummary?: string | null;
+        recentSetsSummary?: string | null;
       };
     };
 
@@ -108,6 +114,12 @@ serve(async (req: Request) => {
         : null,
       planContext.proteinG != null
         ? `Macro targets: ${planContext.proteinG}g protein / ${planContext.carbsG ?? '?'}g carbs / ${planContext.fatG ?? '?'}g fat`
+        : null,
+      planContext.exerciseRecordsSummary
+        ? `Personal records (est. 1RM): ${planContext.exerciseRecordsSummary}`
+        : null,
+      planContext.recentSetsSummary
+        ? `Recent logged sets (plausible only): ${planContext.recentSetsSummary}`
         : null,
     ].filter(Boolean).join('\n');
 

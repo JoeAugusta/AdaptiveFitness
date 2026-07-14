@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireAuth } from '../_shared/auth.ts';
+import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +20,10 @@ function dayNum(d: Record<string, unknown>): number | undefined {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
 
   try {
     const body = await req.json();
@@ -44,19 +50,16 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const { data: plan, error: planError } = await supabase
-      .from('plans')
-      .select('plan_json')
-      .eq('id', planId)
-      .single();
+    const ownership = await requirePlanOwnership(
+      supabase,
+      planId,
+      userId,
+      corsHeaders,
+      'id, user_id, plan_json',
+    );
+    if ('errorResponse' in ownership) return ownership.errorResponse;
 
-    if (planError || !plan) {
-      return new Response(JSON.stringify({ error: 'Plan not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
+    const plan = ownership.plan;
     const planJson = JSON.parse(JSON.stringify(plan.plan_json)) as {
       weeks?: Array<Record<string, unknown>>;
     };
@@ -77,6 +80,7 @@ serve(async (req) => {
       .from('workout_logs')
       .select('day_number')
       .eq('plan_id', planId)
+      .eq('user_id', userId)
       .eq('week_number', weekNumber);
 
     const loggedDayNumbers = new Set(
@@ -120,7 +124,6 @@ serve(async (req) => {
       const setCount = typeof ex.sets === 'number' ? ex.sets : Number(ex.sets ?? 0);
       const isPrimary = PRIMARY_TIERS.has(tier) || setCount >= 4;
 
-      // GUARD: never adjust self-select exercises (Week 1 no-weight exercises)
       if (!ex.targetWeight || ex.targetWeight === 0) return ex;
 
       if (!isPrimary) return ex;
@@ -144,7 +147,8 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from('plans')
       .update({ plan_json: { ...planJson, weeks: updatedWeeks } })
-      .eq('id', planId);
+      .eq('id', planId)
+      .eq('user_id', userId);
 
     if (updateError) throw updateError;
 

@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { requireAuth } from '../_shared/auth.ts';
 import {
   enforceSetStructureExercise,
   finalizeStrengthGoalTargetLift,
@@ -8,6 +9,7 @@ import {
 import {
   finalizeStrengthTargetLiftPeriodisationOnDays,
 } from '../_shared/strengthTargetLiftPeriodisation.ts';
+import { normalizeLoads } from '../_shared/normalizeLoads.ts';
 import { stampWeek1PyramidSetTargets } from '../_shared/week1PyramidSetTargets.ts';
 
 const corsHeaders = {
@@ -2635,7 +2637,7 @@ function week1Factor(experience: string): number {
 }
 
 function calculateStartingWeight(oneRM: number, percentage: number): number {
-  return Math.round((oneRM * percentage) / 2.5) * 2.5;
+  return Math.round((oneRM * percentage) / 5) * 5;
 }
 
 function buildSessionBreakdown(sessionStructure: SessionDay[]): string {
@@ -2827,12 +2829,14 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
+
   try {
     const body = (await req.json()) as GeneratePlanBody;
     const isPreview =
       body.isPreview === true || body.planGenerationMode === 'preview';
-    const userId =
-      typeof body.userId === 'string' && body.userId.trim() !== '' ? body.userId.trim() : null;
     const deviceId =
       typeof body.deviceId === 'string' && body.deviceId.trim() !== ''
         ? body.deviceId.trim()
@@ -3104,7 +3108,7 @@ ${workoutLines}
 For "Heavy Upper" or "Heavy Lower" days:
   Target lift: W1 5×5 @ RPE 7. Accessories: 2–3 exercises.
 For "Volume Upper" or "Volume Lower" days:
-  Target lift Week 1: follow VOLUME DAY rules in RULE 3 (heavy load × 0.85 rounded 2.5 lb; target-lift reps = 8 per set on every volume day; same set count).
+  Target lift Week 1: follow VOLUME DAY rules in RULE 3 (heavy load × 0.85 rounded 5 lb; target-lift reps = 8 per set on every volume day; same set count).
 ${bodyConstraint}
 `;
           })()
@@ -3142,8 +3146,8 @@ Do NOT add additional workout days or combine rest days with training.
       const target1RMNum = parseFloat(String(target1RM ?? current1RM ?? '0'));
       const strengthW1Factor = week1Factor(experience);
       const week1Weight = calculateStartingWeight(current1RMNum, strengthW1Factor);
-      const heavyDayWeight = Math.round((current1RMNum * strengthW1Factor) / 2.5) * 2.5;
-      const volumeDayWeight = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5;
+      const heavyDayWeight = calculateStartingWeight(current1RMNum, strengthW1Factor);
+      const volumeDayWeight = Math.round((heavyDayWeight * 0.85) / 5) * 5;
       console.log('[generate-plan] strength weights:', {
         experience,
         strengthW1Factor,
@@ -3174,7 +3178,7 @@ VOLUME DAY target lift: always 8 reps regardless of week.
 The volume day is hypertrophy-focused — higher reps, lower intensity than the heavy day.
 
 VOLUME DAY rules (focus: volume_upper or volume_lower):
- - Target lift weight: heavy day weight × 0.85, rounded to nearest 2.5 lbs
+ - Target lift weight: heavy day weight × 0.85, rounded to nearest 5 lbs
    Example: heavy day = 275 lbs → volume day = 235 lbs
  - Target lift reps: 8 per set on the target lift (fixed; not tied to heavy-day rep prescription)
    Example: heavy day = 5×5 → volume day = 5×8 at the volume-day weight above
@@ -3182,7 +3186,7 @@ VOLUME DAY rules (focus: volume_upper or volume_lower):
  - sessionFocus text MUST match the exercise prescription exactly — for volume_upper use the pattern:
    'Volume upper — {sets}×{reps} bench at {weight}lbs.' (adapt "bench" to the actual lift noun: press, squat, deadlift, etc.)
    For volume_lower use the parallel pattern 'Volume lower — {sets}×{reps} … at {weight}lbs.'
-   where {sets}, {reps}, {weight} match the FIRST target lift exercise JSON for that day, and {weight} = Math.round((heavyDayWeight * 0.85) / 2.5) * 2.5
+   where {sets}, {reps}, {weight} match the FIRST target lift exercise JSON for that day, and {weight} = Math.round((heavyDayWeight * 0.85) / 5) * 5
  - Accessories: higher rep ranges (3×8–12), same upper body muscles
 
 
@@ -3256,7 +3260,7 @@ CRITICAL WEIGHT RULES for strength goal:
 
 STRENGTH FREQUENCY RULES — Week 1 target lift ONLY (percentage bands below DO NOT replace FIXED ATHLETE WEEK 1 + RULE 3):
 - Heavy session (heavy / heavy_*): ${heavyTargetSets}×${heavyTargetRepsPerSet} @ ~${Math.round(strengthW1Factor * 100)}% current 1RM → targetWeight = ${heavyDayWeight} lbs fixed for JSON
-- Volume session (volume_*): same set count ${heavyTargetSets}, reps per set = ${volumeDayRepsPerSet}, targetWeight = ${volumeDayWeight} lbs fixed (= ${heavyDayWeight} × 0.85, 2.5 lb plate rounding)
+- Volume session (volume_*): same set count ${heavyTargetSets}, reps per set = ${volumeDayRepsPerSet}, targetWeight = ${volumeDayWeight} lbs fixed (= ${heavyDayWeight} × 0.85, 5 lb plate rounding)
   Do NOT use ~70–75% 1RM guesses on volume day; use ${volumeDayWeight} exactly.
 - This gives the athlete 2 exposures per week to the target movement
 - If only 3 days/week (PPL): Day 1 = heavy push, Day 2 = pull, Day 3 = legs
@@ -4693,7 +4697,7 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       scheduledDaysFallback,
     });
 
-    const planOut = {
+    const planOut = normalizeLoads({
       ...planJsonWithStrengthLift,
       scheduledDays: (() => {
         const fromPlan = Array.isArray((planJsonWithStrengthLift as any).scheduledDays)
@@ -4710,7 +4714,7 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       ...(typeof week1BaselineWeight === 'number' ? { week1BaselineWeight } : {}),
       ...(isPreview ? { isPreview: true } : {}),
       _reconcilerWarnings: reconcilerWarnings,
-    };
+    });
 
     console.log('[generate-plan] Final scheduledDays in planOut:', planOut.scheduledDays);
 

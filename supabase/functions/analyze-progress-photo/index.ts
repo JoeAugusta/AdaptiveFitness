@@ -4,6 +4,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { requireAuth } from '../_shared/auth.ts';
+import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -288,10 +290,13 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
+
   try {
     const body = await req.json();
     const {
-      userId,
       planId,
       weekNumber,
       photoBase64Front,
@@ -299,7 +304,6 @@ serve(async (req) => {
       photoBase64Back,
       photoWeightLbs,
     } = body as {
-      userId?: string;
       planId?: string;
       weekNumber?: number;
       photoBase64Front?: string;
@@ -308,9 +312,9 @@ serve(async (req) => {
       photoWeightLbs?: number;
     };
 
-    if (!userId || !photoBase64Front) {
+    if (!photoBase64Front) {
       return new Response(
-        JSON.stringify({ error: 'Missing userId or photoBase64Front' }),
+        JSON.stringify({ error: 'Missing photoBase64Front' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
       );
     }
@@ -319,6 +323,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
+
+    if (planId) {
+      const ownership = await requirePlanOwnership(supabase, planId, userId, corsHeaders, 'id, user_id');
+      if ('errorResponse' in ownership) return ownership.errorResponse;
+    }
 
     const [profileRes, goalRes, macroRes, baselineRes] = await Promise.all([
       supabase

@@ -4,6 +4,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireAuth } from '../_shared/auth.ts';
+import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,27 +61,30 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    const body = (await req.json()) as { planId?: string; userId?: string };
-    const planId = body.planId;
-    const userId = body.userId;
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
 
-    if (!planId || !userId) {
+  try {
+    const body = (await req.json()) as { planId?: string };
+    const planId = body.planId;
+
+    if (!planId) {
       return new Response(
-        JSON.stringify({ error: 'Missing planId or userId' }),
+        JSON.stringify({ error: 'Missing planId' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    // ── 1. Fetch plan ──────────────────────────────────────────────────────
-    const { data: plan, error: planErr } = await supabase
-      .from('plans')
-      .select('id, goal_id, plan_json, total_weeks, created_at, user_id')
-      .eq('id', planId)
-      .eq('user_id', userId)
-      .single();
-
-    if (planErr || !plan) throw new Error('Plan not found');
+    const ownership = await requirePlanOwnership(
+      supabase,
+      planId,
+      userId,
+      corsHeaders,
+      'id, goal_id, plan_json, total_weeks, created_at, user_id',
+    );
+    if ('errorResponse' in ownership) return ownership.errorResponse;
+    const plan = ownership.plan;
 
     const planJson = plan.plan_json as PlanJson;
     const goal = typeof planJson.goal === 'string' ? planJson.goal : '';

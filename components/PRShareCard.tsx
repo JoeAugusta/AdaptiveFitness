@@ -1,8 +1,14 @@
 import { View, Text, StyleSheet } from 'react-native';
 import type { RefObject } from 'react';
-import Svg, { Circle } from 'react-native-svg';
-import { Colors, Fonts, FontSizes, Radius, Spacing } from '../constants/design';
+import { Colors, Fonts, FontSizes, Spacing } from '../constants/design';
 import { LBS_TO_KG } from '../utils/units';
+import {
+  ShareCardFooter,
+  ShareCardHeader,
+  ShareCardWatermark,
+  SHARE_CARD_BG,
+  SHARE_MUTED_COLOR,
+} from './shareCardShared';
 
 export const PR_SHARE_CARD_SIZE = 375;
 
@@ -36,11 +42,9 @@ function currentMonthYearLabel(): string {
 
 export default function PRShareCard({
   exerciseName,
-  estimated1RM,
   bestWeightLbs,
   bestReps,
   isMetric,
-  isEstimated = true,
   rank,
   cardRef,
 }: PRShareCardProps) {
@@ -50,64 +54,51 @@ export default function PRShareCard({
 
   return (
     <View ref={cardRef} style={styles.card} collapsable={false}>
+      <ShareCardWatermark />
 
-      {/* Concentric rings — top right */}
-      <View style={styles.ringsContainer} pointerEvents="none">
-        <Svg width={320} height={320} viewBox="0 0 100 100" style={styles.ringsSvg}>
-          <Circle cx="50" cy="50" r="48" fill="none" stroke="#FFFFFF" strokeWidth="0.8" opacity="0.12" />
-          <Circle cx="50" cy="50" r="40" fill="none" stroke="#FFFFFF" strokeWidth="0.4" opacity="0.12" />
-          <Circle cx="50" cy="50" r="32" fill="none" stroke="#FFFFFF" strokeWidth="0.3" opacity="0.12" />
-        </Svg>
+      <View style={styles.diagonalLineWrap} pointerEvents="none">
+        <View style={styles.diagonalLine} />
       </View>
 
-      {/* Orange arc — bottom left */}
-      <View style={styles.arcContainer} pointerEvents="none">
-        <Svg width={200} height={200} viewBox="0 0 100 100" style={styles.arcSvg}>
-          <Circle cx="0" cy="100" r="80" fill="none" stroke={Colors.accent} strokeWidth="12" opacity="0.15" />
-        </Svg>
-      </View>
+      <ShareCardHeader contextLabel={currentMonthYearLabel()} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.wordmark}>Hone</Text>
-        <Text style={styles.weekLabel}>
-          {currentMonthYearLabel()}
-        </Text>
-      </View>
-
-      {/* Main content — bottom aligned */}
       <View style={styles.body}>
-        <Text style={styles.recordLabel}>NEW PR</Text>
+        <View style={styles.badgeRow}>
+          <Text style={styles.recordLabel}>NEW PR</Text>
+          {typeof rank === 'number' && rank > 0 ? (
+            <View style={styles.rankBadge}>
+              <Text style={styles.rankBadgeText}>
+                <Text style={styles.rankBadgeRank}>#{rank}</Text>
+                {' ALL-TIME'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-        {/* Big number inline with unit */}
         <View style={styles.numberRow}>
-          <Text style={styles.weightNumber}>{displayWeight}</Text>
+          <Text
+            style={styles.weightNumber}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.35}
+          >
+            {displayWeight}
+          </Text>
           <View style={styles.unitRepsStack}>
             <Text style={styles.weightUnit}>{unit}</Text>
             <Text style={styles.repsInline}>{repsLabel}</Text>
           </View>
         </View>
 
-        {/* Exercise name */}
-        <View style={styles.exerciseRow}>
-          <Text style={styles.exerciseName} numberOfLines={1}>{exerciseName}</Text>
-        </View>
-
-        <View style={styles.divider} />
-
-        {/* Footer row */}
-        <View style={styles.footerRow}>
-          <View>
-            <Text style={styles.tagline}>Train smarter.</Text>
-            <Text style={styles.subTagline}>Your plan adapts every week.</Text>
-          </View>
-          {typeof rank === 'number' && rank > 0 ? (
-            <View style={styles.rankBadge}>
-              <Text style={styles.rankBadgeText}>#{rank} ALL-TIME</Text>
-            </View>
-          ) : null}
-        </View>
+        <Text style={styles.exerciseName} numberOfLines={1} ellipsizeMode="tail">
+          {exerciseName}
+        </Text>
       </View>
+
+      <ShareCardFooter
+        tagline="Sharper every session."
+        subTagline="Every PR detected automatically."
+      />
     </View>
   );
 }
@@ -116,153 +107,93 @@ const styles = StyleSheet.create({
   card: {
     width: PR_SHARE_CARD_SIZE,
     height: PR_SHARE_CARD_SIZE,
-    backgroundColor: Colors.bgPrimary,
+    backgroundColor: SHARE_CARD_BG,
     overflow: 'hidden',
   },
-  ringsContainer: {
+  diagonalLineWrap: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  diagonalLine: {
     position: 'absolute',
-    top: -30,
-    right: -60,
-    width: 320,
-    height: 320,
-  },
-  ringsSvg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  arcContainer: {
-    position: 'absolute',
-    bottom: -20,
-    left: -20,
-    width: 200,
-    height: 200,
-  },
-  arcSvg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-  },
-  wordmark: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.heading2,
-    color: Colors.accent,
-    letterSpacing: -0.5,
-  },
-  weekLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: 10,
-    color: '#3a3a3a',
-    letterSpacing: 1,
+    left: -72,
+    top: '38%',
+    width: 520,
+    height: 5,
+    backgroundColor: Colors.ember,
+    opacity: 0.85,
+    transform: [{ rotate: '-20deg' }],
   },
   body: {
     flex: 1,
     justifyContent: 'flex-end',
     paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.lg,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   recordLabel: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.label,
-    color: Colors.textTertiary,
+    color: Colors.accent,
     letterSpacing: 3,
-    marginBottom: 6,
+  },
+  rankBadge: {
+    borderWidth: 1,
+    borderColor: Colors.emberBorder,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  rankBadgeText: {
+    fontFamily: Fonts.monoMedium,
+    fontSize: FontSizes.micro,
+    color: Colors.accent,
+    letterSpacing: 1,
+  },
+  rankBadgeRank: {
+    fontFamily: Fonts.monoMedium,
   },
   numberRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
-    marginBottom: 12,
-    paddingTop: 8,
+    marginBottom: Spacing.md,
   },
   weightNumber: {
-    fontFamily: Fonts.bold,
+    flexShrink: 1,
+    maxWidth: '72%',
+    fontFamily: Fonts.display,
     fontSize: 118,
     color: Colors.accent,
-    lineHeight: 124,
-    letterSpacing: -4,
+    lineHeight: 118,
+    letterSpacing: -2,
+    includeFontPadding: false,
   },
   weightUnit: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: 28,
-    color: Colors.accent,
-    paddingBottom: 6,
+    color: SHARE_MUTED_COLOR,
+    paddingBottom: 8,
   },
   unitRepsStack: {
     flexDirection: 'column',
     justifyContent: 'flex-end',
-    paddingBottom: 8,
+    paddingBottom: 6,
     gap: 4,
   },
   repsInline: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
-    color: Colors.textSecondary,
+    color: SHARE_MUTED_COLOR,
     letterSpacing: 0.3,
   },
-  exerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
-  },
   exerciseName: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.displaySemi,
     fontSize: FontSizes.title,
     color: Colors.textPrimary,
-    flexShrink: 1,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.textTertiary,
-  },
-  sourceLabel: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
-    color: Colors.textTertiary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#1a1a1a',
-    marginBottom: 14,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tagline: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.caption,
-    color: Colors.textPrimary,
-  },
-  subTagline: {
-    fontFamily: Fonts.regular,
-    fontSize: 10,
-    color: '#3a3a3a',
-    marginTop: 1,
-  },
-  rankBadge: {
-    backgroundColor: 'rgba(249,115,22,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(249,115,22,0.4)',
-    borderRadius: Radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-  },
-  rankBadgeText: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1,
   },
 });

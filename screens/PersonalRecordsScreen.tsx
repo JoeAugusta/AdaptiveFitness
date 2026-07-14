@@ -15,10 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { supabase } from '../Lib/supabase';
-import {
-  fetchPersonalRecords,
-  type PersonalRecord,
-} from '../utils/personalRecords';
+import { getExerciseRecords, type ExerciseRecordDisplay } from '../Lib/records';
 import { useMetric } from '../utils/units';
 import { hapticLight } from '../utils/haptics';
 import PRShareCard, { PR_SHARE_CARD_SIZE } from '../components/PRShareCard';
@@ -39,18 +36,18 @@ export default function PersonalRecordsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { formatWorkoutWeight, isMetric } = useMetric();
-  const [prs, setPrs] = useState<PersonalRecord[]>([]);
+  const [prs, setPrs] = useState<ExerciseRecordDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPR, setSelectedPR] = useState<PRData | null>(null);
   const prCardRef = useRef<View>(null);
 
-  const handleShareSinglePR = useCallback(async (pr: PersonalRecord, rank: number) => {
+  const handleShareSinglePR = useCallback(async (pr: ExerciseRecordDisplay, rank: number) => {
     setSelectedPR({
-      exerciseName: pr.exerciseName,
-      estimated1RM: pr.estimated1RM,
-      bestWeightLbs: pr.bestWeightLbs,
-      bestReps: pr.bestReps,
-      isEstimated: pr.bestReps > 1,
+      exerciseName: pr.display_name,
+      estimated1RM: pr.best_e1rm,
+      bestWeightLbs: pr.best_load,
+      bestReps: pr.best_reps,
+      isEstimated: pr.best_reps > 1,
       rank: rank + 1,
     });
     await hapticLight();
@@ -65,7 +62,7 @@ export default function PersonalRecordsScreen() {
         });
         await shareAsync(uri, {
           mimeType: 'image/jpeg',
-          dialogTitle: `Share ${pr.exerciseName} PR`,
+          dialogTitle: `Share ${pr.display_name} PR`,
         });
       } catch (e) {
         console.warn('[PRShare]', e);
@@ -84,9 +81,14 @@ export default function PersonalRecordsScreen() {
         setLoading(false);
         return;
       }
-      const records = await fetchPersonalRecords(session.user.id, undefined, 50);
-      setPrs(records);
-      setLoading(false);
+      try {
+        const records = await getExerciseRecords(session.user.id);
+        setPrs(records);
+      } catch {
+        setPrs([]);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -134,14 +136,14 @@ export default function PersonalRecordsScreen() {
             <View style={styles.stripCell}>
               <Text style={styles.stripLabel}>BEST LIFT</Text>
               <Text style={styles.stripValue} numberOfLines={1}>
-                {prs[0]?.exerciseName?.split(' ')[0] ?? '—'}
+                {prs[0]?.display_name?.split(' ')[0] ?? '—'}
               </Text>
             </View>
             <View style={styles.stripDivider} />
             <View style={styles.stripCell}>
               <Text style={styles.stripLabel}>TOP 1RM</Text>
               <Text style={styles.stripValue}>
-                {prs[0] ? formatWorkoutWeight(prs[0].estimated1RM) : '—'}
+                {prs[0] ? formatWorkoutWeight(prs[0].best_e1rm) : '—'}
               </Text>
             </View>
           </View>
@@ -156,7 +158,7 @@ export default function PersonalRecordsScreen() {
             <View style={styles.list}>
               {prs.map((pr, i) => (
                 <View
-                  key={`${pr.exerciseName}-${i}`}
+                  key={`${pr.exercise_key}-${i}`}
                   style={[
                     styles.row,
                     i === prs.length - 1 && { borderBottomWidth: 0 },
@@ -179,7 +181,7 @@ export default function PersonalRecordsScreen() {
                     <View style={styles.rowMeta}>
                       <View style={styles.rowNameRow}>
                         <Text style={styles.rowName} numberOfLines={1}>
-                          {pr.exerciseName}
+                          {pr.display_name}
                         </Text>
                         {pr.isRecent ? (
                           <View style={styles.newBadge}>
@@ -188,9 +190,12 @@ export default function PersonalRecordsScreen() {
                         ) : null}
                       </View>
                       <Text style={styles.rowSub}>
-                        Best set: {formatWorkoutWeight(pr.bestWeightLbs)} × {pr.bestReps} reps
+                        Best set:{' '}
+                        <Text style={styles.rowSubValues}>
+                          {formatWorkoutWeight(pr.best_load)} × {pr.best_reps} reps
+                        </Text>
                         {'  ·  '}
-                        {new Date(pr.loggedAt).toLocaleDateString('en-US', {
+                        {new Date(pr.best_date).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                         })}
@@ -199,7 +204,7 @@ export default function PersonalRecordsScreen() {
                   </View>
 
                   <View style={styles.rowRight}>
-                    <Text style={styles.rowValue}>{formatWorkoutWeight(pr.estimated1RM)}</Text>
+                    <Text style={styles.rowValue}>{formatWorkoutWeight(pr.best_e1rm)}</Text>
                     <Text style={styles.rowUnit}>est. 1RM</Text>
                   </View>
                   <TouchableOpacity
@@ -228,8 +233,7 @@ export default function PersonalRecordsScreen() {
           </TouchableOpacity>
 
           <Text style={styles.footer}>
-            Estimated 1RM calculated using the Epley formula. Single-rep maxes
-            recorded directly.
+            Estimated 1RM from your logged sets (RPE-adjusted). Records update when you save a workout.
           </Text>
         </ScrollView>
       )}
@@ -290,7 +294,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   stripValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.textPrimary,
   },
@@ -319,7 +323,7 @@ const styles = StyleSheet.create({
   rowRank: {
     fontSize: 18,
     width: 44,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textTertiary,
     textAlign: 'center',
   },
@@ -347,6 +351,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
+  rowSubValues: {
+    fontFamily: Fonts.monoMedium,
+  },
   rowRight: {
     alignItems: 'flex-end',
     marginRight: Spacing.sm,
@@ -364,7 +371,7 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
   rowValue: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.heading2,
     color: Colors.accent,
   },

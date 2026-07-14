@@ -51,11 +51,13 @@ import {
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
-import { JordanAvatar } from '../components/JordanAvatar';
+import { JordanLabel } from '../components/JordanLabel';
 import { RPEReferenceSheet } from '../components/RPEReferenceSheet';
+import EdgeBar from '../components/EdgeBar';
 import { stripEmDash } from '../utils/jordanText';
-import { buildExerciseBestsFromLogs, isNewWeightPR } from '../utils/personalRecords';
 import { persistExerciseSwapsToPlan } from '../utils/swapPersistence';
+import { JORDAN_FALLBACK } from '../Lib/jordanOutput';
+import { afterWorkoutLogSaved, getSessionOutcome, plausibilityStatusForLoad } from '../Lib/records';
 
 const WORKOUT_DRAFT_KEY = 'hone_workout_draft';
 const JORDAN_W1_BRIEFING_KEY = 'hone_jordan_w1_briefing_dismissed_';
@@ -77,7 +79,7 @@ type RouteType = RouteProp<RootStackParamList, 'ActiveWorkout'>;
 
 const FATIGUE_OPTIONS = [
   { rating: 1, label: 'Wiped',  color: '#EF4444' },
-  { rating: 2, label: 'Tired',  color: '#F97316' },
+  { rating: 2, label: 'Tired',  color: Colors.ember },
   { rating: 3, label: 'Good',   color: '#F59E0B' },
   { rating: 4, label: 'Strong', color: '#84CC16' },
   { rating: 5, label: 'Beast',  color: '#22C55E' },
@@ -463,6 +465,8 @@ export default function ActiveWorkoutScreen() {
   const route = useRoute<RouteType>();
   const params = route.params;
   const preSessionMessage = params.preSessionMessage ?? null;
+  /** Readiness-based RPE adjustment — display only, never mutates plan_json. */
+  const rpeAdjustment = params.rpeAdjustment ?? 0;
   const sessionStartedAt = useRef(new Date()).current;
 
   // Workout data
@@ -1456,6 +1460,7 @@ export default function ActiveWorkoutScreen() {
           loggedRpe: loggedRpe ?? 'not rated',
           isUnilateral,
           weekNumber: sessionWeekForLogs,
+          isDeloadWeek: sessionPlanPhaseRaw === 'deload',
           isLastSetOfExercise,
           isLastExercise,
           isPyramid,
@@ -1477,7 +1482,7 @@ export default function ActiveWorkoutScreen() {
           return next;
         });
       } else {
-        const text = data?.feedback ?? 'Good work. Keep it up.';
+        const text = data?.feedback ?? JORDAN_FALLBACK;
         console.log('[COACHING RAW]', {
           data,
           suggestedWeight: data?.suggestedWeight,
@@ -1591,6 +1596,7 @@ export default function ActiveWorkoutScreen() {
     weight: number,
     reps: number,
     rpe: number | null,
+    isTimed = false,
     options?: { replaceOnly?: boolean },
   ) => {
     const exercise =
@@ -1616,16 +1622,19 @@ export default function ActiveWorkoutScreen() {
       return undefined;
     })();
 
+    const exerciseName =
+      exercise != null ? exerciseSwaps[exerciseId] || exercise.name : undefined;
     const newSet: LoggedSet = {
       exerciseId,
-      exerciseName:
-        exercise != null ? exerciseSwaps[exerciseId] || exercise.name : undefined,
+      exerciseName,
       muscleGroup: resolvedMuscleGroup,
       setNumber,
       weightLbs: weight,
       reps,
       rpe,
       swapped: isSwapped,
+      plausibility_status: plausibilityStatusForLoad(exerciseName, weight),
+      ...(isTimed ? { isTimed: true } : {}),
     };
 
     const existingIdx = sets.findIndex(
@@ -1706,51 +1715,60 @@ export default function ActiveWorkoutScreen() {
           isLastSetOfExercise: setNumber >= exercise.sets.length,
           isPyramid: exercise.setStructure === 'pyramid',
         });
-        void (async () => {
-          // Query HR post-set — BLE takes priority over Apple Health
-          let heartRate: { avgBpm: number | null; peakBpm: number | null } | null = null;
-          // HR window = time since last set was logged (= duration of this set + any delay)
-          // Capped at 120s to avoid including prior rest period HR
-          // If no prior set this session, use 60s default (covers most set durations)
-          const hrWindowSeconds = Math.min(120, Math.max(30, Math.round(msSinceLastSet / 1000)));
+        // Fire coaching feedback IMMEDIATELY — never block on HR query.
+        // BLE HR is synchronous (already buffered) so include it if available.
+        // HealthKit HR is fetched separately with a hard timeout and does
+        // NOT gate the coaching call — it was causing intermittent silent
+        // failures to fire on cellular/slow HealthKit sync.
+        const immediateBleHR = ble.isConnected
+          ? ble.getRecentHRAverage(
+              Math.min(120, Math.max(30, Math.round(msSinceLastSet / 1000))),
+            )
+          : null;
+        const immediateHeartRate =
+          immediateBleHR?.avgBpm != null
+            ? { avgBpm: immediateBleHR.avgBpm, peakBpm: immediateBleHR.peakBpm }
+            : null;
 
-          if (ble.isConnected) {
-            const bleHR = ble.getRecentHRAverage(hrWindowSeconds);
-            if (bleHR.avgBpm !== null) {
-              heartRate = { avgBpm: bleHR.avgBpm, peakBpm: bleHR.peakBpm };
-            }
+        if (immediateHeartRate?.avgBpm) {
+          setSessionAvgHRSamples((prev) => [...prev, immediateHeartRate.avgBpm!]);
+        }
+        if (immediateHeartRate?.peakBpm) {
+          setSessionPeakHR((prev) =>
+            prev === null
+              ? immediateHeartRate.peakBpm!
+              : Math.max(prev, immediateHeartRate.peakBpm!),
+          );
+        }
+        lastSetPeakHRRef.current = immediateHeartRate?.peakBpm ?? null;
+
+        if (newSet.plausibility_status === 'flagged') {
+          const flaggedNote =
+            'That weight looks unusual. Confirm or edit it and I\'ll coach from the real number.';
+          setCoachingNotes((prev) => ({ ...prev, [exerciseId]: flaggedNote }));
+          setOverlayNote(flaggedNote);
+          setOverlayWeightSuggestion(null);
+          overlayNoteAnim.setValue(0);
+          setOverlayNoteVisible(true);
+          Animated.timing(overlayNoteAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+          if (overlayDismissTimeout.current) {
+            clearTimeout(overlayDismissTimeout.current);
           }
-          if (!heartRate) {
-            const isHealthGranted =
-              healthAvailable &&
-              (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
-            heartRate = isHealthGranted ? await queryPostSetHeartRate(hrWindowSeconds) : null;
-          }
-
-          console.log('[HR] window:', hrWindowSeconds, 's | result:', JSON.stringify(heartRate));
-
-          // Track session-wide HR
-          if (heartRate?.avgBpm) {
-            setSessionAvgHRSamples((prev) => [...prev, heartRate.avgBpm!]);
-          }
-          if (heartRate?.peakBpm) {
-            setSessionPeakHR((prev) =>
-              prev === null ? heartRate.peakBpm! : Math.max(prev, heartRate.peakBpm!),
-            );
-          }
-
-          const hrRecoveryDelta: number | null = null;
-
-          // Store peak HR for recovery delta on next set
-          lastSetPeakHRRef.current = heartRate?.peakBpm ?? null;
-
-          // Accumulate recovery delta for session summary
-          if (hrRecoveryDelta !== null) {
-            setRecoveryDeltas((prev) => [...prev, hrRecoveryDelta]);
-          }
-
-          console.log('[Recovery] passing to coaching-feedback:', JSON.stringify(recoveryContext));
-
+          overlayDismissTimeout.current = setTimeout(() => {
+            Animated.timing(overlayNoteAnim, {
+              toValue: 0,
+              duration: 300,
+              useNativeDriver: true,
+            }).start(() => {
+              setOverlayNoteVisible(false);
+              setOverlayWeightSuggestion(null);
+            });
+          }, 8000);
+        } else {
           fetchCoachingNote(
             exerciseId,
             displayName,
@@ -1768,11 +1786,52 @@ export default function ActiveWorkoutScreen() {
               setNumber,
               totalSets: exercise.sets.length,
             },
-            heartRate,
+            immediateHeartRate,
             recoveryContext,
             setNumber,
           );
-        })();
+        }
+
+        // Fetch HealthKit HR separately, non-blocking, with a timeout.
+        // Only used for session-wide HR tracking (avg/peak) — never
+        // gates or delays the coaching note itself.
+        if (!immediateHeartRate) {
+          void (async () => {
+            try {
+              const isHealthGranted =
+                healthAvailable &&
+                (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
+              if (!isHealthGranted) return;
+
+              const hrWindowSeconds = Math.min(
+                120,
+                Math.max(30, Math.round(msSinceLastSet / 1000)),
+              );
+
+              const timeoutPromise = new Promise<null>((resolve) =>
+                setTimeout(() => resolve(null), 4000),
+              );
+              const healthHR = await Promise.race([
+                queryPostSetHeartRate(hrWindowSeconds),
+                timeoutPromise,
+              ]);
+
+              if (healthHR?.avgBpm) {
+                setSessionAvgHRSamples((prev) => [...prev, healthHR.avgBpm!]);
+              }
+              if (healthHR?.peakBpm) {
+                setSessionPeakHR((prev) =>
+                  prev === null
+                    ? healthHR.peakBpm!
+                    : Math.max(prev, healthHR.peakBpm!),
+                );
+                lastSetPeakHRRef.current = healthHR.peakBpm;
+              }
+            } catch (err) {
+              if (__DEV__) console.warn('[HR] HealthKit query failed/timed out:', err);
+            }
+          })();
+        }
       }
     }
   };
@@ -1783,9 +1842,40 @@ export default function ActiveWorkoutScreen() {
     weight: number,
     reps: number,
     rpe: number | null,
+    isTimed = false,
   ) => {
-    handleLogSet(exerciseId, setNumber, weight, reps, rpe, { replaceOnly: true });
+    handleLogSet(exerciseId, setNumber, weight, reps, rpe, isTimed, { replaceOnly: true });
   };
+
+  const handleConfirmFlaggedSet = useCallback(
+    (exerciseId: string, setNumber: number) => {
+      setSets((prev) => {
+        const next = prev.map((s) =>
+          s.exerciseId === exerciseId && s.setNumber === setNumber
+            ? { ...s, plausibility_status: 'confirmed' as const }
+            : s,
+        );
+        const draft: WorkoutDraft = {
+          planId: sessionPlanIdForLogs ?? '',
+          dayNumber: sessionDayNumber ?? params.dayNumber,
+          weekNumber: sessionWeekForLogs,
+          sets: next,
+          savedAt: Date.now(),
+          sessionStartedAtMs: sessionStartTimeRef.current,
+          skippedSetKeys: Array.from(skippedSets),
+        };
+        void AsyncStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify(draft));
+        return next;
+      });
+    },
+    [
+      sessionPlanIdForLogs,
+      sessionDayNumber,
+      params.dayNumber,
+      sessionWeekForLogs,
+      skippedSets,
+    ],
+  );
 
   const handleSkipExercise = (exerciseId: string) => {
     void hapticLight();
@@ -2036,7 +2126,10 @@ export default function ActiveWorkoutScreen() {
       });
     }
 
-    let prsHit = 0;
+    let prsHitForMeta = 0;
+    let baselinesForMeta = 0;
+    let savedWorkoutLogId: string | null = null;
+    let sessionDateIso = new Date().toISOString().slice(0, 10);
 
     const sessionAvgHR = sessionAvgHRSamples.length > 0
       ? Math.round(sessionAvgHRSamples.reduce((a, b) => a + b, 0) / sessionAvgHRSamples.length)
@@ -2048,44 +2141,23 @@ export default function ActiveWorkoutScreen() {
       } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
-      if (userId && planIdForLog) {
-        const { data: priorLogs } = await supabase
-          .from('workout_logs')
-          .select('sets_json')
-          .eq('user_id', userId)
-          .eq('plan_id', planIdForLog)
-          .eq('skipped', false);
-
-        const historicalBests = buildExerciseBestsFromLogs(priorLogs ?? []);
-        // 1. Only count PR if exercise has prior history (historicalBests entry exists)
-        // 2. Dedupe per exercise — take best set per exercise name, count once
-        const prByExercise = new Map<string, { weight: number; reps: number }>();
-        for (const s of sets) {
-          const exercise = (workout?.exercises ?? []).find(
-            (ex) => ex.id === s.exerciseId,
-          );
-          const name =
-            (typeof s.exerciseName === 'string' && s.exerciseName.trim()) ||
-            exercise?.name?.trim() ||
-            '';
-          if (!name) continue;
-          const weight = Number(s.weightLbs ?? 0);
-          const reps = Number(s.reps ?? 0);
-          if (weight <= 0 || reps <= 0) continue;
-          // Require prior history — week 1 with no logs doesn't count as PR
-          if (!historicalBests[name]) continue;
-          if (!isNewWeightPR(weight, reps, historicalBests[name])) continue;
-          const existing = prByExercise.get(name);
-          if (!existing || weight > existing.weight || (weight === existing.weight && reps > existing.reps)) {
-            prByExercise.set(name, { weight, reps });
-          }
-        }
-        prsHit = prByExercise.size;
-      }
-
       // isUnilateral exercises: reps logged here are per-side. Volume calc multiplies ×2.
       // Do NOT double the value before storing — store exactly what the user entered.
-      const { error: insertError } = await supabase
+      let priorSetsForRecords: ReturnType<typeof parseSetsJson> = [];
+      if (planIdForLog && dayNumberForLog != null) {
+        const { data: existingSlotLog } = await supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('plan_id', planIdForLog)
+          .eq('week_number', sessionWeekForLogs)
+          .eq('day_number', dayNumberForLog)
+          .maybeSingle();
+        priorSetsForRecords = parseSetsJson(existingSlotLog?.sets_json);
+      }
+
+      const loggedAtIso = new Date().toISOString();
+      sessionDateIso = loggedAtIso.slice(0, 10);
+      const { data: savedLog, error: insertError } = await supabase
         .from('workout_logs')
         .upsert(
           {
@@ -2093,7 +2165,7 @@ export default function ActiveWorkoutScreen() {
             plan_id: planIdForLog,
             week_number: sessionWeekForLogs,
             day_number: dayNumberForLog,
-            logged_at: new Date().toISOString(),
+            logged_at: loggedAtIso,
             session_fatigue_rating: fatigueRating,
             notes: sessionNotes || null,
             sets_json: sets,
@@ -2101,9 +2173,29 @@ export default function ActiveWorkoutScreen() {
             hr_peak: sessionPeakHR ?? null,
           },
           { onConflict: 'plan_id,week_number,day_number' },
-        );
+        )
+        .select('id')
+        .single();
 
       if (insertError) throw insertError;
+      savedWorkoutLogId = savedLog?.id ?? null;
+
+      if (userId) {
+        await afterWorkoutLogSaved({
+          userId,
+          sets,
+          priorSets: priorSetsForRecords,
+        });
+        if (savedWorkoutLogId) {
+          const outcome = await getSessionOutcome(
+            userId,
+            savedWorkoutLogId,
+            loggedAtIso.slice(0, 10),
+          );
+          prsHitForMeta = outcome.prs.length;
+          baselinesForMeta = outcome.baselines.length;
+        }
+      }
 
       const swapEntries = Object.entries(exerciseSwaps);
       if (swapEntries.length > 0 && planIdForLog && dayNumberForLog != null) {
@@ -2135,7 +2227,8 @@ export default function ActiveWorkoutScreen() {
                 ...(currentPlan.plan_json as Record<string, unknown>),
                 lastSessionMeta: {
                   durationMinutes: Math.floor(elapsedSeconds / 60),
-                  prsHit,
+                  prsHit: prsHitForMeta,
+                  baselinesSet: baselinesForMeta,
                   totalSets: sets.length,
                   dayNumber: dayNumberForLog,
                   weekNumber: sessionWeekForLogs,
@@ -2206,7 +2299,8 @@ export default function ActiveWorkoutScreen() {
       totalExercises: (workout?.exercises ?? []).length,
       durationMinutes: Math.floor(elapsedSeconds / 60),
       fatigueRating,
-      prsHit,
+      workoutLogId: savedWorkoutLogId ?? '',
+      sessionDate: sessionDateIso,
       sessionAvgHR,
       sessionPeakHR,
       avgRecoveryDelta,
@@ -2233,10 +2327,37 @@ export default function ActiveWorkoutScreen() {
   const phase2Exercise = workoutExercises.find((e) => e.phase === 'hypertrophy');
   const phase2Reps = phase2Exercise?.reps ?? '8–12';
 
-  const restProgressWidth: DimensionValue =
+  const restProgress =
     restDurationTotal > 0
-      ? `${Math.max(0, Math.min(100, (restSecondsRemaining / restDurationTotal) * 100))}%`
-      : '0%';
+      ? Math.max(0, Math.min(1, restSecondsRemaining / restDurationTotal))
+      : 0;
+
+  /** Apply readiness RPE adjustment to primary compounds only.
+   *  Clamps result between 5 and 10. Display only — plan unchanged. */
+  const applyRpeAdjustment = useCallback(
+    (exercise: WorkoutExercise): WorkoutExercise => {
+      if (rpeAdjustment === 0) return exercise;
+      const isPrimaryCompound =
+        exercise.phase === 'strength' ||
+        exercise.compoundTier === 'primary_compound';
+      if (!isPrimaryCompound) return exercise;
+      return {
+        ...exercise,
+        targetRpe: exercise.targetRpe != null
+          ? Math.min(10, Math.max(5, exercise.targetRpe + rpeAdjustment))
+          : exercise.targetRpe,
+        sets: exercise.sets.map((s) => ({
+          ...s,
+          targetRpe: Math.min(10, Math.max(5, s.targetRpe + rpeAdjustment)),
+        })),
+        setTargets: exercise.setTargets?.map((st) => ({
+          ...st,
+          targetRpe: Math.min(10, Math.max(5, st.targetRpe + rpeAdjustment)),
+        })),
+      };
+    },
+    [rpeAdjustment],
+  );
 
   if (isLoading) {
     return (
@@ -2279,7 +2400,10 @@ export default function ActiveWorkoutScreen() {
                 activeOpacity={0.7}
               >
                 <Ionicons name="heart" size={12} color={Colors.danger} />
-                <Text style={styles.bleHRBadgeText}>{ble.currentHR} bpm</Text>
+                <Text style={styles.bleHRBadgeText}>
+                  <Text style={styles.bleHRBadgeBpm}>{ble.currentHR}</Text>
+                  {' bpm'}
+                </Text>
               </TouchableOpacity>
             ) : !ble.isConnected && !ble.pairedDevice ? (
               <TouchableOpacity
@@ -2422,7 +2546,8 @@ export default function ActiveWorkoutScreen() {
                           {exerciseSwaps[exercise.id] ?? exercise.name}
                         </Text>
                         <Text style={styles.unifiedRowMeta}>
-                          {exerciseSets.length} sets ✓
+                          <Text style={styles.unifiedRowMetaValue}>{exerciseSets.length}</Text>
+                          {' sets ✓'}
                         </Text>
                       </View>
                       <Ionicons
@@ -2484,7 +2609,7 @@ export default function ActiveWorkoutScreen() {
                         )}
                       </View>
                   <ExerciseCard
-                    exercise={exercise}
+                    exercise={applyRpeAdjustment(exercise)}
                     loggedSets={sets.filter((s) => s.exerciseId === exercise.id)}
                     previousSets={getPreviousSetsForExercise(
                       previousSetsMap,
@@ -2500,6 +2625,7 @@ export default function ActiveWorkoutScreen() {
                     programGoalLift={workout?.goalLift ?? null}
                     onLogSet={handleLogSet}
                     onEditSet={handleEditSet}
+                    onConfirmFlaggedSet={handleConfirmFlaggedSet}
                     onSwapExercise={handleSwapExercise}
                     experience={workoutExperience}
                     planId={
@@ -2562,7 +2688,10 @@ export default function ActiveWorkoutScreen() {
                     { opacity: restSubtextOpacity },
                   ]}
                 >
-                  Rest · {formatRestCountdown(restDurationTotal)}
+                  Rest ·{' '}
+                  <Text style={styles.restBannerSubtextTime}>
+                    {formatRestCountdown(restDurationTotal)}
+                  </Text>
                 </Animated.Text>
                 <Text style={styles.restBannerCountdown}>
                   {formatRestCountdown(restSecondsRemaining)}
@@ -2573,14 +2702,12 @@ export default function ActiveWorkoutScreen() {
                 <Text style={styles.restBannerSkip}>Skip →</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.restBannerTrack}>
-              <View
-                style={[
-                  styles.restBannerFill,
-                  { width: restProgressWidth },
-                ]}
-              />
-            </View>
+            <EdgeBar
+              progress={restProgress}
+              height={8}
+              fillColor={Colors.accent}
+              style={styles.restBannerProgress}
+            />
             </View>
           ) : null}
         </View>
@@ -2786,10 +2913,7 @@ export default function ActiveWorkoutScreen() {
           <View style={styles.rpeNudgeSheet}>
             <View style={styles.rpeNudgeHandle} />
 
-            <View style={styles.rpeNudgeHeaderRow}>
-              <JordanAvatar size={32} />
-              <Text style={styles.rpeNudgeJordanLabel}>JORDAN</Text>
-            </View>
+            <JordanLabel style={styles.rpeNudgeHeader} />
 
             <Text style={styles.rpeNudgeTitle}>
               No effort ratings this session.
@@ -2899,8 +3023,8 @@ export default function ActiveWorkoutScreen() {
             </View>
 
             {/* Jordan one-liner */}
-            <View style={styles.warmupJordanRow}>
-              <JordanAvatar size={28} />
+            <View style={styles.warmupJordanBlock}>
+              <JordanLabel />
               <Text style={styles.warmupJordanText}>
                 {WARMUP_JORDAN_LINES[warmupCategory]}
               </Text>
@@ -2970,10 +3094,7 @@ export default function ActiveWorkoutScreen() {
           <View style={styles.briefingSheet}>
               <View style={styles.briefingHandle} />
 
-              <View style={styles.briefingAvatarRow}>
-                <JordanAvatar size={36} />
-                <Text style={styles.briefingJordanLabel}>JORDAN</Text>
-              </View>
+              <JordanLabel style={styles.briefingJordanHeader} />
 
               <Text style={styles.briefingTitle}>
                 Week 1 is your baseline week.
@@ -3043,10 +3164,7 @@ export default function ActiveWorkoutScreen() {
           <View style={styles.briefingSheet}>
               <View style={styles.briefingHandle} />
 
-              <View style={styles.briefingAvatarRow}>
-                <JordanAvatar size={36} />
-                <Text style={styles.briefingJordanLabel}>JORDAN</Text>
-              </View>
+              <JordanLabel style={styles.briefingJordanHeader} />
 
               <Text style={styles.briefingTitle}>
                 I reviewed your Week 1 data.
@@ -3119,10 +3237,7 @@ export default function ActiveWorkoutScreen() {
           />
           <View style={styles.preSessionSheet}>
             <View style={styles.preSessionHandle} />
-            <View style={styles.preSessionAvatarWrap}>
-              <JordanAvatar size={40} />
-            </View>
-            <Text style={styles.preSessionLabel}>JORDAN</Text>
+            <JordanLabel style={styles.preSessionJordanHeader} />
             <Text style={styles.preSessionMessage}>
               {preSessionMessage != null ? stripEmDash(preSessionMessage) : ''}
             </Text>
@@ -3305,7 +3420,7 @@ const styles = StyleSheet.create({
   timerText: {
     zIndex: 2,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.accent,
     fontVariant: ['tabular-nums'],
     minWidth: 56,
@@ -3323,9 +3438,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.danger,
   },
   bleHRBadgeText: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.regular,
     fontSize: FontSizes.micro,
     color: Colors.danger,
+  },
+  bleHRBadgeBpm: {
+    fontFamily: Fonts.monoMedium,
   },
   bleConnectPrompt: {
     flexDirection: 'row',
@@ -3398,6 +3516,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  unifiedRowMetaValue: {
+    fontFamily: Fonts.monoMedium,
   },
   unskipBtn: {
     paddingHorizontal: Spacing.md,
@@ -3486,9 +3607,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginTop: 4,
   },
+  restBannerSubtextTime: {
+    fontFamily: Fonts.monoMedium,
+  },
   restBannerCountdown: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.accent,
     fontVariant: ['tabular-nums'],
   },
@@ -3497,17 +3621,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     color: Colors.textSecondary,
   },
-  restBannerTrack: {
+  restBannerProgress: {
     marginTop: Spacing.md,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.divider,
-    overflow: 'hidden',
-  },
-  restBannerFill: {
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.accent,
   },
 
   bottomBar: {
@@ -3762,15 +3877,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
-  preSessionAvatarWrap: {
+  preSessionJordanHeader: {
     alignSelf: 'center',
-    marginBottom: Spacing.sm,
-  },
-  preSessionLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
     marginBottom: Spacing.sm,
   },
   preSessionMessage: {
@@ -3818,17 +3926,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
-  rpeNudgeHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  rpeNudgeHeader: {
     marginBottom: Spacing.md,
-  },
-  rpeNudgeJordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
   },
   rpeNudgeTitle: {
     fontFamily: Fonts.bold,
@@ -3921,16 +4020,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   warmupTimer: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     fontSize: 40,
     color: Colors.accent,
     fontVariant: ['tabular-nums'],
     lineHeight: 46,
   },
-  warmupJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
+  warmupJordanBlock: {
     marginBottom: Spacing.lg,
     paddingHorizontal: Spacing.xs,
     paddingBottom: Spacing.lg,
@@ -3938,7 +4034,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   warmupJordanText: {
-    flex: 1,
+    marginTop: Spacing.xs,
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
@@ -4116,17 +4212,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
-  briefingAvatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  briefingJordanHeader: {
     marginBottom: Spacing.md,
-  },
-  briefingJordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
   },
   briefingTitle: {
     fontFamily: Fonts.bold,

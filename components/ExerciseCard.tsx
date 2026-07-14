@@ -10,6 +10,7 @@ import {
   TouchableWithoutFeedback,
   Animated,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import {
@@ -25,7 +26,7 @@ import { useMetric, formatTrendDeltaLbs } from '../utils/units';
 import { hapticLight, hapticMedium, hapticPR } from '../utils/haptics';
 import { RPEReferenceSheet } from './RPEReferenceSheet';
 import ExerciseEducationModal from './ExerciseEducationModal';
-import { JordanAvatar } from './JordanAvatar';
+import { JordanLabel } from './JordanLabel';
 import {
   buildExerciseSwapCandidates,
   buildSwapCandidateFromName,
@@ -260,6 +261,8 @@ export interface LoggedSet {
   reps: number;
   rpe: number | null;
   swapped: boolean;
+  plausibility_status?: 'ok' | 'flagged' | 'confirmed';
+  isTimed?: boolean;
 }
 
 function getLastWeekPills(
@@ -369,6 +372,7 @@ interface ExerciseCardProps {
     weight: number,
     reps: number,
     rpe: number | null,
+    isTimed?: boolean,
   ) => void;
   onEditSet?: (
     exerciseId: string,
@@ -376,7 +380,12 @@ interface ExerciseCardProps {
     weight: number,
     reps: number,
     rpe: number | null,
+    isTimed?: boolean,
   ) => void;
+  onConfirmFlaggedSet?: (
+    exerciseId: string,
+    setNumber: number,
+  ) => void | Promise<void>;
   onSwapExercise: (
     exerciseId: string,
     newName: string,
@@ -418,6 +427,7 @@ export default function ExerciseCard({
   experience: _experience = 'intermediate',
   onLogSet,
   onEditSet,
+  onConfirmFlaggedSet,
   onSwapExercise,
   targetWeightOverride,
   perSetWeightOverrides,
@@ -863,6 +873,45 @@ export default function ExerciseCard({
   const getLoggedSet = (setNumber: number) =>
     loggedSets.find((s) => s.setNumber === setNumber);
 
+  const openEditForLoggedSet = useCallback(
+    (setNumber: number, loggedData: LoggedSet) => {
+      setInputValues((prev) => ({
+        ...prev,
+        [setNumber]: {
+          weight:
+            loggedData.weightLbs > 0
+              ? String(lbsToDisplay(loggedData.weightLbs))
+              : '0',
+          reps: String(loggedData.reps),
+          rpe: loggedData.rpe,
+        },
+      }));
+      setEditingSet(setNumber);
+    },
+    [lbsToDisplay],
+  );
+
+  const promptFlaggedSetResolution = useCallback(
+    (setNumber: number, loggedData: LoggedSet) => {
+      Alert.alert(
+        'Unusual weight',
+        `${Math.round(loggedData.weightLbs)} lbs on ${displayName} is above the typical range. Is it correct?`,
+        [
+          {
+            text: 'Edit set',
+            style: 'cancel',
+            onPress: () => openEditForLoggedSet(setNumber, loggedData),
+          },
+          {
+            text: 'Yes, keep it',
+            onPress: () => void onConfirmFlaggedSet?.(exercise.id, setNumber),
+          },
+        ],
+      );
+    },
+    [displayName, exercise.id, onConfirmFlaggedSet, openEditForLoggedSet],
+  );
+
   const isSetSkipped = (setNumber: number) => skippedSetNumbers.includes(setNumber);
 
   const activeWorkingSetIndex = useMemo(() => {
@@ -898,7 +947,9 @@ export default function ExerciseCard({
     const reps = parseInt(input.reps, 10);
     if (isNaN(reps) || reps <= 0) return;
     if (!isBodyweightExercise && (isNaN(weightLbs) || weightLbs <= 0)) return;
-    onLogSet(exercise.id, setNumber, weightLbs, reps, input.rpe);
+    const setTarget = exercise.sets.find((s) => s.setNumber === setNumber);
+    const timed = setTarget ? isTimedExercise(setTarget.targetReps) : false;
+    onLogSet(exercise.id, setNumber, weightLbs, reps, input.rpe, timed);
 
     // Auto-expand RPE for next set if current set had no RPE
     if (input.rpe === null) {
@@ -986,6 +1037,18 @@ export default function ExerciseCard({
     ? `${firstTargetDuration} sec`
     : `${rawReps}${eachSideSuffix}`;
   const isPyramid = exercise.setStructure === 'pyramid';
+  // Derive RPE target for display above working sets.
+  // For pyramid: show the top-set RPE (last set).
+  // For straight: use exercise.targetRpe or first set's targetRpe.
+  // Only show when there is a clear prescribed RPE.
+  const displayTargetRpe = (() => {
+    if (isPyramid && exercise.setTargets && exercise.setTargets.length > 0) {
+      const topSet = exercise.setTargets[exercise.setTargets.length - 1];
+      return topSet?.targetRpe ?? exercise.targetRpe ?? null;
+    }
+    const rpe = exercise.targetRpe ?? exercise.sets[0]?.targetRpe ?? null;
+    return typeof rpe === 'number' && rpe > 0 ? rpe : null;
+  })();
   const setsRepsSummary = isPyramid
     ? `${exercise.sets.length} sets → top set ${exercise.reps}`
     : `${exercise.sets.length} sets × ${repsSubtitlePart}`;
@@ -1212,9 +1275,8 @@ export default function ExerciseCard({
 
       {isSelfSelectMode ? (
         <View style={styles.selfSelectStrip}>
-          <View style={styles.selfSelectStripRow}>
-            <JordanAvatar size={24} />
-            <View style={styles.jordanNoteTextColumn}>
+          <JordanLabel />
+          <View style={styles.jordanNoteTextColumn}>
               <Text style={styles.jordanNoteText}>
                 {exercise.coachingNote && !swappedName
                   ? stripEmDash(exercise.coachingNote)
@@ -1229,7 +1291,6 @@ export default function ExerciseCard({
                   </Text>
                 )}
             </View>
-          </View>
         </View>
       ) : null}
 
@@ -1277,7 +1338,8 @@ export default function ExerciseCard({
             {lastWeekBestStr ? (
               <View style={styles.lastWeekBestPill}>
                 <Text style={styles.lastWeekBestPillText}>
-                  <Ionicons name="trophy-outline" size={16} color={Colors.accent} /> {lastWeekBestStr}
+                  <Ionicons name="trophy-outline" size={16} color={Colors.accent} />{' '}
+                  <Text style={styles.lastWeekBestPillValue}>{lastWeekBestStr}</Text>
                 </Text>
               </View>
             ) : null}
@@ -1300,7 +1362,9 @@ export default function ExerciseCard({
             <Text style={styles.lastWeekSwappedNote}>Swapped exercise last week</Text>
           ) : null}
           {lastWeekAvgRpeStr != null ? (
-            <Text style={styles.lastWeekRpeLine}>Avg RPE {lastWeekAvgRpeStr}</Text>
+            <Text style={styles.lastWeekRpeLine}>
+              Avg RPE <Text style={styles.lastWeekRpeValue}>{lastWeekAvgRpeStr}</Text>
+            </Text>
           ) : (
             <Text style={styles.lastWeekRpeMissing}>No RPE logged last week</Text>
           )}
@@ -1335,13 +1399,11 @@ export default function ExerciseCard({
                     <Text style={styles.warmupRepsSep}>×</Text>
                     <Text style={styles.warmupReps}>{ws.reps}</Text>
                   </View>
-                  {wi === 0 ? (
-                    <Text style={styles.warmupNoteOnce}>
-                      These don&apos;t count toward your logged sets
-                    </Text>
-                  ) : null}
                 </View>
               ))}
+              <Text style={styles.warmupNoteOnce}>
+                These don&apos;t count toward your logged sets
+              </Text>
             </>
           ) : null}
         </View>
@@ -1397,6 +1459,17 @@ export default function ExerciseCard({
             <Text style={styles.workingSetsDividerLabel}>WORKING SETS</Text>
           </View>
           <View style={styles.workingSetsDividerLine} />
+        </View>
+      ) : null}
+
+      {displayTargetRpe !== null ? (
+        <View style={styles.rpeTargetStrip}>
+          <Ionicons name="flag-outline" size={12} color={Colors.textTertiary} />
+          <Text style={styles.rpeTargetStripText}>
+            Target RPE{' '}
+            <Text style={styles.rpeTargetStripValue}>{displayTargetRpe}</Text>
+            {isPyramid ? ' top set' : ''}
+          </Text>
         </View>
       ) : null}
 
@@ -1463,33 +1536,33 @@ export default function ExerciseCard({
                       <Text style={styles.rpeBadgePlaceholder}>RPE</Text>
                     )}
                   </View>
-                  {onEditSet ? (
-                    <TouchableOpacity
-                      style={styles.editSetBtn}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      onPress={() => {
-                        // Pre-fill inputValues with logged data for editing
-                        setInputValues((prev) => ({
-                          ...prev,
-                          [set.setNumber]: {
-                            weight: loggedData.weightLbs > 0
-                              ? String(lbsToDisplay(loggedData.weightLbs))
-                              : '0',
-                            reps: String(loggedData.reps),
-                            rpe: loggedData.rpe,
-                          },
-                        }));
-                        setEditingSet(set.setNumber);
-                      }}
-                    >
-                      <Ionicons name="pencil-outline" size={16} color={Colors.textTertiary} />
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.completionCircleDone}>
-                      <Ionicons name="checkmark" size={16} color={Colors.success} />
-                    </View>
-                  )}
+                  <View style={styles.setRowActions}>
+                    {loggedData.plausibility_status === 'flagged' && onConfirmFlaggedSet ? (
+                      <TouchableOpacity
+                        style={styles.flaggedSetIndicator}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={() => promptFlaggedSetResolution(set.setNumber, loggedData)}
+                      >
+                        <Ionicons name="flag-outline" size={14} color={Colors.warning} />
+                        <Text style={styles.flaggedSetLabel}>Unusual</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {onEditSet ? (
+                      <TouchableOpacity
+                        style={styles.editSetBtn}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={() => openEditForLoggedSet(set.setNumber, loggedData)}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={Colors.textTertiary} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.completionCircleDone}>
+                        <Ionicons name="checkmark" size={16} color={Colors.success} />
+                      </View>
+                    )}
+                  </View>
                 </>
               ) : logged && loggedData && editingSet === set.setNumber ? (
                 // Edit mode — re-open inputs pre-filled with logged values
@@ -1571,7 +1644,7 @@ export default function ExerciseCard({
                       const reps = parseInt(input.reps, 10);
                       if (isNaN(reps) || reps <= 0) return;
                       if (!isBodyweightExercise && (isNaN(weightLbs) || weightLbs <= 0)) return;
-                      onEditSet?.(exercise.id, set.setNumber, weightLbs, reps, input.rpe);
+                      onEditSet?.(exercise.id, set.setNumber, weightLbs, reps, input.rpe, timedSet);
                       setEditingSet(null);
                     }}
                   >
@@ -1904,10 +1977,7 @@ export default function ExerciseCard({
           <View style={styles.sheetContainer}>
             <View style={styles.sheetHandle} />
 
-            <View style={styles.sheetJordanRow}>
-              <JordanAvatar size={32} />
-              <Text style={styles.sheetJordanLabel}>JORDAN</Text>
-            </View>
+            <JordanLabel style={styles.sheetJordanHeader} />
 
             {adaptationReason ? (
               <>
@@ -2109,7 +2179,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   targetLine: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.caption,
     color: Colors.textSecondary,
   },
@@ -2123,7 +2193,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   targetWeightTappable: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.accent,
     textDecorationLine: 'underline',
@@ -2150,17 +2220,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
-  sheetJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
+  sheetJordanHeader: {
     marginBottom: Spacing.md,
-  },
-  sheetJordanLabel: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.label,
-    color: Colors.accent,
-    letterSpacing: 1.5,
   },
   sheetHeadlineRow: {
     flexDirection: 'row',
@@ -2199,7 +2260,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sheetContextValue: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.monoMedium,
     fontSize: FontSizes.body,
     color: Colors.textPrimary,
   },
@@ -2256,6 +2317,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     color: Colors.textSecondary,
   },
+  lastWeekBestPillValue: {
+    fontFamily: Fonts.monoMedium,
+  },
   lastWeekPillsRow: {
     marginTop: 6,
     flexDirection: 'row',
@@ -2272,7 +2336,7 @@ const styles = StyleSheet.create({
   },
   lastWeekSetPillText: {
     fontSize: FontSizes.micro,
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   lastWeekMorePill: {
@@ -2285,7 +2349,7 @@ const styles = StyleSheet.create({
   },
   lastWeekMorePillText: {
     fontSize: FontSizes.micro,
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textTertiary,
   },
   lastWeekSwappedNote: {
@@ -2299,6 +2363,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.micro,
     fontFamily: Fonts.regular,
     color: Colors.textTertiary,
+  },
+  lastWeekRpeValue: {
+    fontFamily: Fonts.monoMedium,
   },
   lastWeekRpeMissing: {
     marginTop: Spacing.xs,
@@ -2315,11 +2382,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     marginBottom: Spacing.sm,
-  },
-  selfSelectStripRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   jordanNoteTextColumn: {
     flex: 1,
@@ -2421,12 +2484,12 @@ const styles = StyleSheet.create({
   },
   warmupBadgeText: {
     fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textTertiary,
   },
   warmupWeight: {
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textTertiary,
   },
   warmupRepsSep: {
@@ -2436,7 +2499,7 @@ const styles = StyleSheet.create({
   },
   warmupReps: {
     fontSize: FontSizes.body,
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textTertiary,
     flex: 1,
   },
@@ -2514,6 +2577,22 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     color: Colors.textTertiary,
   },
+  rpeTargetStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: Spacing.xs,
+    marginBottom: 2,
+  },
+  rpeTargetStripText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    letterSpacing: 0.3,
+  },
+  rpeTargetStripValue: {
+    fontFamily: Fonts.monoMedium,
+  },
   setBadge: {
     width: 28,
     height: 28,
@@ -2524,7 +2603,7 @@ const styles = StyleSheet.create({
   },
   setBadgeText: {
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   setInputWeight: {
@@ -2536,7 +2615,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     textAlign: 'center',
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   setInputReps: {
@@ -2548,7 +2627,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     textAlign: 'center',
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   bodyweightText: {
@@ -2565,7 +2644,7 @@ const styles = StyleSheet.create({
     width: 72,
     textAlign: 'center',
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   inputFocused: {
@@ -2581,21 +2660,21 @@ const styles = StyleSheet.create({
   loggedWeight: {
     width: 90,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
     textAlign: 'center',
   },
   loggedReps: {
     width: 72,
     fontSize: FontSizes.title,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
     textAlign: 'center',
   },
   loggedTimedText: {
     width: 92,
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
     textAlign: 'center',
   },
@@ -2609,7 +2688,7 @@ const styles = StyleSheet.create({
   },
   rpeBadgeValue: {
     fontSize: FontSizes.caption,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
   },
   rpeBadgePlaceholder: {
     fontSize: 9,
@@ -2639,6 +2718,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  flaggedSetIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.warningMuted,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+    flexShrink: 0,
+  },
+  flaggedSetLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.semiBold,
+    color: Colors.warning,
   },
   completionCheckIdle: {
     fontSize: FontSizes.title,
@@ -2698,7 +2794,7 @@ const styles = StyleSheet.create({
   },
   rpeInlineBtnText: {
     fontSize: 10,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   rpeInlineBtnTextSelected: {
@@ -2739,6 +2835,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgElevated,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+  },
+  setRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flexShrink: 0,
   },
   swapButton: {

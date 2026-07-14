@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
   View,
@@ -34,15 +34,12 @@ import { useMetric } from '../utils/units';
 import { prepareShareCardData } from '../utils/workoutShareAction';
 import {
   computeSessionShareStats,
-  computeSessionPrsFromLog,
   computeTopLiftsFromSets,
   fallbackJordanNoteFromRpe,
-  buildExerciseBestsFromLogs,
-  pickTopSessionPr,
   resolveSessionTitleFromPlan,
   truncateJordanNoteForShare,
-  type SessionPrShare,
 } from '../utils/workoutShare';
+import { countFlaggedSetsInJson, getSessionOutcome } from '../Lib/records';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'WorkoutComplete'>;
 type RouteType = RouteProp<RootStackParamList, 'WorkoutComplete'>;
@@ -57,7 +54,7 @@ const FATIGUE_MAP: Record<
     tip: 'Take it easy tomorrow — prioritise sleep and light movement.',
   },
   2: {
-    color: '#F97316',
+    color: Colors.ember,
     label: 'Tired',
     tip: 'Take it easy tomorrow — prioritise sleep and light movement.',
   },
@@ -87,17 +84,63 @@ function getRecoveryQuality(
   return { label: 'Needs work', color: Colors.danger };
 }
 
-const STAT_CARDS = (
-  totalExercises: number,
-  totalSets: number,
-  durationMinutes: number,
-  prsHit: number,
-): Array<{ icon: ReactNode; label: string; value: string; isPr?: boolean }> => [
-  { icon: <Ionicons name="barbell-outline" size={24} color={Colors.accent} />, label: 'Exercises', value: String(totalExercises) },
-  { icon: <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />, label: 'Sets Logged', value: String(totalSets) },
-  { icon: <Ionicons name="time-outline" size={24} color={Colors.accent} />, label: 'Duration', value: `${durationMinutes} min` },
-  { icon: <Ionicons name="trophy-outline" size={24} color={Colors.accent} />, label: 'PRs Hit', value: String(prsHit), isPr: prsHit > 0 },
-];
+const STAT_TILE_COUNT = 4;
+
+const STATIC_TILE_META = [
+  { key: 'exercises', label: 'Exercises' },
+  { key: 'sets', label: 'Sets Logged' },
+  { key: 'duration', label: 'Duration' },
+  { key: 'records', label: 'PRs Hit' },
+] as const;
+
+type RecordsTileDisplay = {
+  label: string;
+  value: string;
+  isPr: boolean;
+  isBaseline: boolean;
+};
+
+function recordsTileDisplay(
+  outcomeStatus: 'pending' | 'ready' | 'error',
+  prCount: number,
+  baselineCount: number,
+): RecordsTileDisplay {
+  if (outcomeStatus !== 'ready') {
+    return { label: 'PRs Hit', value: '—', isPr: false, isBaseline: false };
+  }
+  if (prCount > 0) {
+    return {
+      label: 'PRs Hit',
+      value: String(prCount),
+      isPr: true,
+      isBaseline: false,
+    };
+  }
+  if (baselineCount > 0) {
+    return {
+      label: 'Baselines Set',
+      value: String(baselineCount),
+      isPr: false,
+      isBaseline: true,
+    };
+  }
+  return { label: 'PRs Hit', value: '0', isPr: false, isBaseline: false };
+}
+
+function statTileIcon(key: (typeof STATIC_TILE_META)[number]['key']): ReactNode {
+  switch (key) {
+    case 'exercises':
+      return <Ionicons name="barbell-outline" size={24} color={Colors.accent} />;
+    case 'sets':
+      return (
+        <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />
+      );
+    case 'duration':
+      return <Ionicons name="time-outline" size={24} color={Colors.accent} />;
+    case 'records':
+      return <Ionicons name="trophy-outline" size={24} color={Colors.accent} />;
+  }
+}
 
 function rawWeekNumber(w: {
   weekNumber?: unknown;
@@ -182,7 +225,8 @@ export default function WorkoutCompleteScreen() {
     totalExercises,
     durationMinutes,
     fatigueRating,
-    prsHit,
+    workoutLogId,
+    sessionDate,
     sessionAvgHR = null,
     sessionPeakHR = null,
     avgRecoveryDelta = null,
@@ -219,11 +263,32 @@ export default function WorkoutCompleteScreen() {
   }, [triggerNextSessionAdjustment]);
 
   const fatigue = FATIGUE_MAP[fatigueRating] ?? FATIGUE_MAP[3];
-  const stats = STAT_CARDS(totalExercises, totalSets, durationMinutes, prsHit);
+  const [outcomeStatus, setOutcomeStatus] = useState<'pending' | 'ready' | 'error'>(
+    'pending',
+  );
+  const [sessionPrCount, setSessionPrCount] = useState(0);
+  const [sessionBaselineCount, setSessionBaselineCount] = useState(0);
+  const [flaggedSetCount, setFlaggedSetCount] = useState(0);
+  const recordsDisplay = useMemo(
+    () => recordsTileDisplay(outcomeStatus, sessionPrCount, sessionBaselineCount),
+    [outcomeStatus, sessionPrCount, sessionBaselineCount],
+  );
 
-  // Animations
+  const statTileValues = useMemo(
+    () => ({
+      exercises: String(totalExercises),
+      sets: String(totalSets),
+      duration: `${durationMinutes} min`,
+      records: recordsDisplay.value,
+    }),
+    [totalExercises, totalSets, durationMinutes, recordsDisplay.value],
+  );
+
+  // Animations — fixed length, never tied to async outcome state
   const checkScale = useRef(new Animated.Value(0)).current;
-  const cardOpacities = useRef(stats.map(() => new Animated.Value(0))).current;
+  const cardOpacities = useRef(
+    Array.from({ length: STAT_TILE_COUNT }, () => new Animated.Value(0)),
+  ).current;
   const skeletonOpacity = useRef(new Animated.Value(0.4)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -238,6 +303,11 @@ export default function WorkoutCompleteScreen() {
   // Separate display state to trigger re-render
   const [coachNoteDisplay, setCoachNoteDisplay] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(true);
+  const [hrTrendDisplay, setHrTrendDisplay] = useState<{
+    delta: number;
+    direction: 'up' | 'down';
+    recentAvg: number;
+  } | null>(null);
 
   const [showSummaryBanner, setShowSummaryBanner] = useState(false);
   const [nextWeekReady, setNextWeekReady] = useState(false);
@@ -258,7 +328,13 @@ export default function WorkoutCompleteScreen() {
   const shareCardRef = useRef<View>(null);
   const shareCapturePendingRef = useRef(false);
   const prCardRef = useRef<View>(null);
-  const [topPr, setTopPr] = useState<SessionPrShare | null>(null);
+  const [topPr, setTopPr] = useState<{
+    exerciseName: string;
+    weightLbs: number;
+    reps: number;
+    isEstimated: boolean;
+    estimated1RM: number;
+  } | null>(null);
   const { isMetric } = useMetric();
 
   useEffect(() => {
@@ -283,7 +359,7 @@ export default function WorkoutCompleteScreen() {
         dayNumber,
         totalSets,
         durationMinutes,
-        prsHit,
+        prsHit: sessionPrCount,
         latestJordanNote: null,
       });
       if (!payload) return;
@@ -297,7 +373,7 @@ export default function WorkoutCompleteScreen() {
       setShareCardData(null);
       shareCapturePendingRef.current = false;
     }
-  }, [planId, weekNumber, dayNumber, totalSets, durationMinutes, prsHit]);
+  }, [planId, weekNumber, dayNumber, totalSets, durationMinutes, sessionPrCount]);
 
   const handleSharePR = useCallback(async () => {
     if (!topPr || !prCardRef.current) return;
@@ -403,7 +479,7 @@ export default function WorkoutCompleteScreen() {
   }, [shareCardVisible, shareCardData]);
 
   useEffect(() => {
-    if (prsHit <= 0) return;
+    if (outcomeStatus !== 'ready' || sessionPrCount <= 0) return;
     let cancelled = false;
     const prTimer = setTimeout(() => {
       if (!cancelled) void hapticPR();
@@ -412,10 +488,14 @@ export default function WorkoutCompleteScreen() {
       cancelled = true;
       clearTimeout(prTimer);
     };
-  }, [prsHit]);
+  }, [outcomeStatus, sessionPrCount]);
 
   useEffect(() => {
-    if (prsHit <= 0) {
+    if (!workoutLogId) {
+      if (__DEV__) {
+        console.warn('[WorkoutComplete] missing workoutLogId — records tile stays placeholder');
+      }
+      setOutcomeStatus('error');
       setTopPr(null);
       return;
     }
@@ -426,70 +506,65 @@ export default function WorkoutCompleteScreen() {
           data: { session },
         } = await supabase.auth.getSession();
         const userId = session?.user?.id;
-        if (!userId || cancelled) return;
+        if (!userId || cancelled) {
+          if (!cancelled && !userId) {
+            if (__DEV__) {
+              console.warn('[WorkoutComplete] no authenticated user for session outcome');
+            }
+            setOutcomeStatus('error');
+          }
+          return;
+        }
 
-        const [{ data: log }, { data: priorLogs }] = await Promise.all([
-          supabase
-            .from('workout_logs')
-            .select('sets_json')
-            .eq('user_id', userId)
-            .eq('plan_id', planId)
-            .eq('week_number', weekNumber)
-            .eq('day_number', dayNumber)
-            .order('logged_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from('workout_logs')
-            .select('sets_json, week_number, day_number')
-            .eq('user_id', userId)
-            .eq('plan_id', planId)
-            .eq('skipped', false),
-        ]);
-
+        const outcome = await getSessionOutcome(
+          userId,
+          workoutLogId,
+          sessionDate,
+        );
         if (cancelled) return;
 
-        const sets = (log?.sets_json ?? []) as Array<{
-          exerciseName?: string;
-          exerciseId?: string;
-          name?: string;
-          setNumber?: number;
-          weightLbs?: number;
-          weight?: number;
-          reps?: number;
-        }>;
-        const historicalLogs = (priorLogs ?? []).filter(
-          (row) =>
-            !(
-              row.week_number === weekNumber &&
-              row.day_number === dayNumber
-            ),
-        );
-        const historicalBests = buildExerciseBestsFromLogs(historicalLogs);
-        const sessionPrs = computeSessionPrsFromLog(sets, historicalBests);
-        const topPrResult = pickTopSessionPr(sessionPrs);
-        setTopPr(topPrResult);
+        setSessionPrCount(outcome.prs.length);
+        setSessionBaselineCount(outcome.baselines.length);
+        setOutcomeStatus('ready');
 
-        // Write in-app notification for PRs — non-blocking
-        if (topPrResult && prsHit > 0) {
+        const topRecord = [...outcome.prs].sort(
+          (a, b) => b.best_e1rm - a.best_e1rm,
+        )[0];
+        if (topRecord) {
+          setTopPr({
+            exerciseName: topRecord.display_name,
+            weightLbs: topRecord.best_load,
+            reps: topRecord.best_reps,
+            isEstimated: topRecord.best_reps > 1,
+            estimated1RM: topRecord.best_e1rm,
+          });
+        } else {
+          setTopPr(null);
+        }
+
+        if (topRecord && outcome.prs.length > 0) {
           void (async () => {
             try {
-              const prBody = prsHit === 1
-                ? `New PR on ${topPrResult.exerciseName} — ${topPrResult.weightLbs} lbs × ${topPrResult.reps}`
-                : `${prsHit} PRs this session. Top: ${topPrResult.exerciseName} at ${topPrResult.weightLbs} lbs`;
+              const prBody =
+                outcome.prs.length === 1
+                  ? `New PR on ${topRecord.display_name} — ${topRecord.best_load} lbs × ${topRecord.best_reps}`
+                  : `${outcome.prs.length} PRs this session. Top: ${topRecord.display_name} at ${topRecord.best_load} lbs`;
               await supabase.from('notifications').insert({
                 user_id: userId,
                 type: 'pr_hit',
-                title: prsHit === 1 ? 'Personal record!' : `${prsHit} personal records!`,
+                title:
+                  outcome.prs.length === 1
+                    ? 'Personal record!'
+                    : `${outcome.prs.length} personal records!`,
                 body: prBody,
                 metadata: {
                   plan_id: planId,
                   week_number: weekNumber,
                   day_number: dayNumber,
-                  prs_hit: prsHit,
-                  top_exercise: topPrResult.exerciseName,
-                  top_weight_lbs: topPrResult.weightLbs,
-                  top_reps: topPrResult.reps,
+                  prs_hit: outcome.prs.length,
+                  top_exercise: topRecord.display_name,
+                  top_weight_lbs: topRecord.best_load,
+                  top_reps: topRecord.best_reps,
                 },
               });
             } catch (notifErr) {
@@ -498,14 +573,43 @@ export default function WorkoutCompleteScreen() {
           })();
         }
       } catch (err) {
-        if (__DEV__) console.warn('[WorkoutComplete] session PR load failed:', err);
-        if (!cancelled) setTopPr(null);
+        console.warn('[WorkoutComplete] session outcome load failed:', err);
+        if (!cancelled) {
+          setOutcomeStatus('error');
+          setTopPr(null);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [prsHit, planId, weekNumber, dayNumber]);
+  }, [workoutLogId, sessionDate, planId, weekNumber, dayNumber]);
+
+  useEffect(() => {
+    if (!workoutLogId) {
+      setFlaggedSetCount(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('workout_logs')
+          .select('sets_json')
+          .eq('id', workoutLogId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        setFlaggedSetCount(countFlaggedSetsInJson(data?.sets_json));
+      } catch (err) {
+        console.warn('[WorkoutComplete] flagged set count failed:', err);
+        if (!cancelled) setFlaggedSetCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workoutLogId]);
 
   useEffect(() => {
     if (nextWeekReady) {
@@ -731,9 +835,9 @@ export default function WorkoutCompleteScreen() {
             'adjust-macros',
             { body: { userId, planId, weekNumber } },
           );
-          if (macroAdj?.status === 'adjusted' && macroAdj.reasoning) {
-            setMacroAdjustment(macroAdj.reasoning);
-          }
+        if ((macroAdj?.status === 'adjusted' || macroAdj?.status === 'adherence_check') && macroAdj.reasoning) {
+          setMacroAdjustment(macroAdj.reasoning);
+        }
         } catch (macroErr) {
           console.error('adjust-macros invoke failed:', macroErr);
         }
@@ -862,25 +966,40 @@ export default function WorkoutCompleteScreen() {
         // Fetch last 4 sessions' HR for trend context
         const { data: priorHRLogs } = await supabase
           .from('workout_logs')
-          .select('hr_avg, hr_peak, week_number, day_number')
+          .select('hr_avg, hr_peak, week_number, day_number, logged_at')
+          .eq('user_id', userId)
           .eq('plan_id', planId)
           .not('hr_avg', 'is', null)
           .order('logged_at', { ascending: false })
-          .limit(4);
+          .limit(5);
 
-        const priorHRAvgs = (priorHRLogs ?? [])
+        // Exclude the just-completed session (it's already in
+        // workout_logs by the time this screen loads)
+        const priorHRAvgsExcludingCurrent = (priorHRLogs ?? [])
+          .filter(
+            (r: { week_number?: number; day_number?: number }) =>
+              !(r.week_number === weekNumber && r.day_number === dayNumber),
+          )
           .map((r: { hr_avg?: number | null }) => r.hr_avg)
-          .filter((v): v is number => v != null);
+          .filter((v): v is number => v != null)
+          .slice(0, 2);
 
         const hrTrend = (() => {
-          if (priorHRAvgs.length < 2 || sessionAvgHR === null) return null;
+          if (priorHRAvgsExcludingCurrent.length < 2 || sessionAvgHR === null) return null;
           const recentAvg = Math.round(
-            priorHRAvgs.slice(0, 2).reduce((a, b) => a + b, 0) / 2,
+            priorHRAvgsExcludingCurrent.reduce((a, b) => a + b, 0) /
+              priorHRAvgsExcludingCurrent.length,
           );
           const delta = sessionAvgHR - recentAvg;
           if (Math.abs(delta) < 5) return null; // not meaningful
-          return { delta, direction: delta < 0 ? 'down' : 'up', recentAvg };
+          return {
+            delta,
+            direction: (delta < 0 ? 'down' : 'up') as 'up' | 'down',
+            recentAvg,
+          };
         })();
+
+        setHrTrendDisplay(hrTrend);
 
         type PlanWeek = { weekNumber?: number; days?: PlanDay[] };
         type PlanDay = { dayNumber?: number; exercises?: Array<{ targetRpe?: number }> };
@@ -1040,38 +1159,47 @@ export default function WorkoutCompleteScreen() {
           >
             <Ionicons name="checkmark" size={36} color={Colors.textPrimary} />
           </Animated.View>
-          <Text style={styles.heroTitle}>Workout Complete!</Text>
+          <Text style={styles.heroTitle}>Workout complete</Text>
           <Text style={styles.heroSubtitle}>
             Week {weekNumber} · Day {dayNumber}
           </Text>
         </View>
 
         <View style={styles.statsGrid}>
-          {stats.map((stat, i) => {
-            const isPrCard = stat.isPr && prsHit > 0;
+          {STATIC_TILE_META.map((tile, i) => {
+            const isRecordsTile = tile.key === 'records';
+            const label = isRecordsTile ? recordsDisplay.label : tile.label;
+            const value = statTileValues[tile.key];
+            const isPrCard = isRecordsTile && recordsDisplay.isPr;
             return (
               <Animated.View
-                key={stat.label}
+                key={tile.key}
                 style={[
                   styles.statCard,
                   isPrCard && styles.statCardPr,
                   { opacity: cardOpacities[i] },
                 ]}
               >
-                {stat.icon}
+                {statTileIcon(tile.key)}
                 <Text
                   style={[styles.statValue, isPrCard && styles.statValuePr]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.7}
                 >
-                  {stat.value}
+                  {value}
                 </Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
               </Animated.View>
             );
           })}
         </View>
+
+        {flaggedSetCount > 0 ? (
+          <Text style={styles.flaggedSetsNote}>
+            {flaggedSetCount} set{flaggedSetCount === 1 ? '' : 's'} flagged as unusual — review in workout results
+          </Text>
+        ) : null}
 
         {avgRecoveryDelta !== null ? (() => {
           const quality = getRecoveryQuality(avgRecoveryDelta);
@@ -1097,6 +1225,42 @@ export default function WorkoutCompleteScreen() {
             </View>
           );
         })() : null}
+
+        {hrTrendDisplay !== null ? (
+          <View style={styles.hrTrendBanner}>
+            <View style={styles.hrTrendBannerRow}>
+              <Ionicons
+                name={hrTrendDisplay.direction === 'down' ? 'trending-down' : 'trending-up'}
+                size={18}
+                color={hrTrendDisplay.direction === 'down' ? Colors.success : Colors.warning}
+              />
+              <Text style={styles.hrTrendBannerLabel}>HR TREND</Text>
+              <View
+                style={[
+                  styles.hrTrendBannerBadge,
+                  {
+                    backgroundColor:
+                      (hrTrendDisplay.direction === 'down' ? Colors.success : Colors.warning) + '22',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.hrTrendBannerBadgeText,
+                    { color: hrTrendDisplay.direction === 'down' ? Colors.success : Colors.warning },
+                  ]}
+                >
+                  {hrTrendDisplay.direction === 'down' ? 'Improving' : 'Elevated'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.hrTrendBannerNote}>
+              {hrTrendDisplay.direction === 'down'
+                ? 'Your heart rate is running lower than recent sessions. That is a sign of improving cardiovascular fitness.'
+                : 'Your heart rate is running higher than recent sessions. Worth keeping an eye on recovery.'}
+            </Text>
+          </View>
+        ) : null}
 
         {showSummaryBanner && (
           <View style={styles.summaryBanner}>
@@ -1350,6 +1514,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginBottom: Spacing.lg,
   },
+  flaggedSetsNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.lg,
+    marginTop: -Spacing.sm,
+  },
   statCard: {
     width: '47%',
     backgroundColor: Colors.bgCard,
@@ -1364,7 +1535,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: FontSizes.display,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
     marginBottom: Spacing.xs,
   },
@@ -1408,6 +1579,42 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
   },
   recoveryBannerNote: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  hrTrendBanner: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+  },
+  hrTrendBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  hrTrendBannerLabel: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.label,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+    flex: 1,
+  },
+  hrTrendBannerBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  hrTrendBannerBadgeText: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSizes.caption,
+  },
+  hrTrendBannerNote: {
     fontFamily: Fonts.regular,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../constants/design';
 import { isExerciseUnilateral } from '../constants/exerciseLibrary';
 import { useMetric } from '../utils/units';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../Lib/supabase';
+import { confirmFlaggedSet, updateSessionLoggedSet, type SessionSource } from '../Lib/records';
 
 export interface SetLog {
   exerciseId: string;
@@ -21,6 +25,7 @@ export interface SetLog {
   rpe: number | null;
   swapped?: boolean;
   exerciseName?: string;
+  plausibility_status?: 'ok' | 'flagged' | 'confirmed';
 }
 
 export interface WorkoutLog {
@@ -45,6 +50,9 @@ interface WorkoutResultsModalProps {
   workoutLog: WorkoutLog | null;
   exerciseMap: Record<string, string>;
   planExercises: ExerciseObject[];
+  workoutLogId?: string | null;
+  logSource?: SessionSource;
+  onSetsUpdated?: () => void;
   /** Optional — enriches Jordan session_summary debrief when present */
   summaryPlanGoal?: string | null;
   summaryWeek?: number | null;
@@ -206,16 +214,26 @@ export default function WorkoutResultsModal({
   workoutLog,
   exerciseMap,
   planExercises,
+  workoutLogId = null,
+  logSource = 'workout',
+  onSetsUpdated,
   summaryPlanGoal = null,
   summaryWeek = null,
   summaryPlanPhase = null,
 }: WorkoutResultsModalProps) {
-  const { formatWorkoutWeight } = useMetric();
+  const { formatWorkoutWeight, displayToLbs, lbsToDisplay } = useMetric();
+  const [setsState, setSetsState] = useState<SetLog[]>([]);
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [editingSetKey, setEditingSetKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({ weight: '', reps: '' });
+  const [savingEditKey, setSavingEditKey] = useState<string | null>(null);
 
-  const sets = useMemo(
-    () => parseSetsJson((workoutLog?.sets_json as WorkoutLog['sets_json'] | string | null | undefined) ?? []),
-    [workoutLog],
-  );
+  useEffect(() => {
+    setSetsState(parseSetsJson(workoutLog?.sets_json ?? []));
+    setEditingSetKey(null);
+  }, [workoutLog]);
+
+  const sets = setsState;
   const groupedSets = useMemo(() => buildExerciseMap(planExercises, sets), [planExercises, sets]);
   const avgRpe = useMemo(() => calculateAvgRpe(sets), [sets]);
 
@@ -244,6 +262,127 @@ export default function WorkoutResultsModal({
     });
     return map;
   }, [planExercises]);
+
+  const openEditForSet = useCallback(
+    (exerciseId: string, setNumber: number, set: SetLog) => {
+      setEditingSetKey(`${exerciseId}-${setNumber}`);
+      setEditDraft({
+        weight:
+          set.weightLbs != null && set.weightLbs > 0
+            ? String(lbsToDisplay(set.weightLbs))
+            : '0',
+        reps: String(set.reps ?? 0),
+      });
+    },
+    [lbsToDisplay],
+  );
+
+  const saveEditForSet = useCallback(
+    async (exerciseId: string, setNumber: number, set: SetLog) => {
+      const editKey = `${exerciseId}-${setNumber}`;
+      if (savingEditKey === editKey) return;
+
+      const weightLbs = Math.round(displayToLbs(parseFloat(editDraft.weight)));
+      const reps = parseInt(editDraft.reps, 10);
+      if (!Number.isFinite(weightLbs) || weightLbs < 0 || !Number.isFinite(reps) || reps <= 0) {
+        return;
+      }
+
+      setSavingEditKey(editKey);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId || !workoutLogId) return;
+
+        const updated = await updateSessionLoggedSet({
+          userId,
+          source: logSource,
+          logId: workoutLogId,
+          exerciseId,
+          setNumber,
+          weightLbs,
+          reps,
+          rpe: set.rpe,
+        });
+
+        setSetsState((prev) =>
+          prev.map((row) =>
+            row.exerciseId === exerciseId && row.setNumber === setNumber
+              ? {
+                  ...row,
+                  weightLbs,
+                  reps,
+                  plausibility_status:
+                    (updated.plausibility_status as SetLog['plausibility_status']) ?? 'ok',
+                }
+              : row,
+          ),
+        );
+        setEditingSetKey(null);
+        onSetsUpdated?.();
+      } catch (err) {
+        console.warn('[WorkoutResultsModal] save edited set failed:', err);
+      } finally {
+        setSavingEditKey(null);
+      }
+    },
+    [displayToLbs, editDraft.reps, editDraft.weight, logSource, onSetsUpdated, savingEditKey, workoutLogId],
+  );
+
+  const handleConfirmFlaggedSet = useCallback(
+    (exerciseId: string, setNumber: number, exerciseName: string, weightLbs: number, set: SetLog) => {
+      const confirmKey = `${exerciseId}-${setNumber}`;
+      if (confirmingKey === confirmKey) return;
+
+      const runConfirm = async () => {
+        setConfirmingKey(confirmKey);
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          const userId = session?.user?.id;
+          if (!userId || !workoutLogId) return;
+
+          await confirmFlaggedSet({
+            userId,
+            source: logSource,
+            logId: workoutLogId,
+            exerciseId,
+            setNumber,
+          });
+
+          setSetsState((prev) =>
+            prev.map((row) =>
+              row.exerciseId === exerciseId && row.setNumber === setNumber
+                ? { ...row, plausibility_status: 'confirmed' }
+                : row,
+            ),
+          );
+          onSetsUpdated?.();
+        } catch (err) {
+          console.warn('[WorkoutResultsModal] confirm flagged set failed:', err);
+        } finally {
+          setConfirmingKey(null);
+        }
+      };
+
+      Alert.alert(
+        'Unusual weight',
+        `${Math.round(weightLbs)} lbs on ${exerciseName} is above the typical range. Is it correct?`,
+        [
+          {
+            text: 'Edit set',
+            style: 'cancel',
+            onPress: () => openEditForSet(exerciseId, setNumber, set),
+          },
+          { text: 'Yes, keep it', onPress: () => void runConfirm() },
+        ],
+      );
+    },
+    [confirmingKey, logSource, onSetsUpdated, openEditForSet, workoutLogId],
+  );
 
   if (__DEV__) {
     console.log('[WorkoutResultsModal]', {
@@ -361,11 +500,25 @@ export default function WorkoutResultsModal({
                   {targetLabel ? <Text style={styles.targetText}>{targetLabel}</Text> : null}
                   {hasPhasedExercises && currentPhase === 'strength' ? (
                     <Text style={styles.phaseMetricText}>
-                      Top: {formatWorkoutWeight(exTopWeight)} · RPE {exAvgRpe?.toFixed(1) ?? '—'}
+                      Top:{' '}
+                      <Text style={styles.phaseMetricValue}>
+                        {formatWorkoutWeight(exTopWeight)}
+                      </Text>
+                      {' · RPE '}
+                      <Text style={styles.phaseMetricValue}>
+                        {exAvgRpe?.toFixed(1) ?? '—'}
+                      </Text>
                     </Text>
                   ) : null}
                   {hasPhasedExercises && currentPhase === 'hypertrophy' ? (
-                    <Text style={styles.phaseMetricText}>Vol: {formatVolume(exVolume)} · RPE {exAvgRpe?.toFixed(1) ?? '—'}</Text>
+                    <Text style={styles.phaseMetricText}>
+                      Vol:{' '}
+                      <Text style={styles.phaseMetricValue}>{formatVolume(exVolume)}</Text>
+                      {' · RPE '}
+                      <Text style={styles.phaseMetricValue}>
+                        {exAvgRpe?.toFixed(1) ?? '—'}
+                      </Text>
+                    </Text>
                   ) : null}
                 </View>
 
@@ -381,6 +534,10 @@ export default function WorkoutResultsModal({
                     const rpeColors = getRpeDisplayColor(set.rpe);
                     const showRpeBadge = !!set.rpe && set.rpe > 0;
                     const isLast = index === exerciseSets.length - 1;
+                    const isFlagged = set.plausibility_status === 'flagged';
+                    const editKey = `${exerciseId}-${set.setNumber}`;
+                    const isEditing = editingSetKey === editKey;
+                    const canEdit = Boolean(workoutLogId);
 
                     return (
                       <View key={`${exerciseId}-${set.setNumber}-${index}`} style={[styles.setRow, !isLast && styles.setRowDivider]}>
@@ -388,11 +545,35 @@ export default function WorkoutResultsModal({
                           <Text style={styles.setBadgeText}>S{set.setNumber}</Text>
                         </View>
 
-                        <View style={styles.weightRepsWrap}>
-                          <Text style={styles.weightRepsText}>
-                            {formatSetDisplay(set, planExercise, formatWorkoutWeight)}
-                          </Text>
-                        </View>
+                        {isEditing ? (
+                          <>
+                            <TextInput
+                              style={styles.editInput}
+                              keyboardType="numeric"
+                              value={editDraft.weight}
+                              onChangeText={(v) =>
+                                setEditDraft((prev) => ({ ...prev, weight: v }))
+                              }
+                              selectTextOnFocus
+                            />
+                            <Text style={styles.editTimesSep}>×</Text>
+                            <TextInput
+                              style={styles.editInput}
+                              keyboardType="numeric"
+                              value={editDraft.reps}
+                              onChangeText={(v) =>
+                                setEditDraft((prev) => ({ ...prev, reps: v }))
+                              }
+                              selectTextOnFocus
+                            />
+                          </>
+                        ) : (
+                          <View style={styles.weightRepsWrap}>
+                            <Text style={styles.weightRepsText}>
+                              {formatSetDisplay(set, planExercise, formatWorkoutWeight)}
+                            </Text>
+                          </View>
+                        )}
 
                         {showRpeBadge ? (
                           <View style={[styles.rpeBadge, { backgroundColor: rpeColors.bg }]}>
@@ -404,17 +585,62 @@ export default function WorkoutResultsModal({
                           <Text style={styles.noRpeText}>—</Text>
                         )}
 
-                        {repStatus ? (
-                          <Text
-                            style={[
-                              styles.repStatusText,
-                              repStatus === '↓' ? styles.repStatusDown : styles.repStatusGood,
-                            ]}
-                          >
-                            {repStatus}
-                          </Text>
+                        {isEditing ? (
+                          <View style={styles.setRowActions}>
+                            <TouchableOpacity
+                              style={styles.editSetBtn}
+                              onPress={() => void saveEditForSet(exerciseId, set.setNumber, set)}
+                            >
+                              <Ionicons name="checkmark" size={16} color={Colors.success} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.editSetBtn}
+                              onPress={() => setEditingSetKey(null)}
+                            >
+                              <Ionicons name="close" size={16} color={Colors.textTertiary} />
+                            </TouchableOpacity>
+                          </View>
                         ) : (
-                          <View style={styles.repStatusSpacer} />
+                          <View style={styles.setRowActions}>
+                            {isFlagged && canEdit ? (
+                              <TouchableOpacity
+                                style={styles.flaggedSetIndicator}
+                                activeOpacity={0.7}
+                                onPress={() =>
+                                  handleConfirmFlaggedSet(
+                                    exerciseId,
+                                    set.setNumber,
+                                    exerciseName,
+                                    set.weightLbs ?? 0,
+                                    set,
+                                  )
+                                }
+                              >
+                                <Ionicons name="flag-outline" size={12} color={Colors.warning} />
+                                <Text style={styles.flaggedSetLabel}>Unusual</Text>
+                              </TouchableOpacity>
+                            ) : repStatus ? (
+                              <Text
+                                style={[
+                                  styles.repStatusText,
+                                  repStatus === '↓' ? styles.repStatusDown : styles.repStatusGood,
+                                ]}
+                              >
+                                {repStatus}
+                              </Text>
+                            ) : (
+                              <View style={styles.repStatusSpacer} />
+                            )}
+                            {canEdit ? (
+                              <TouchableOpacity
+                                style={styles.editSetBtn}
+                                activeOpacity={0.7}
+                                onPress={() => openEditForSet(exerciseId, set.setNumber, set)}
+                              >
+                                <Ionicons name="pencil-outline" size={14} color={Colors.textTertiary} />
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
                         )}
                       </View>
                     );
@@ -427,7 +653,9 @@ export default function WorkoutResultsModal({
                   ) : null}
                   <Text style={styles.bestSetText}>
                     Best set:{' '}
-                    {formatSetDisplay(bestSet, planExercise, formatWorkoutWeight)}
+                    <Text style={styles.bestSetValue}>
+                      {formatSetDisplay(bestSet, planExercise, formatWorkoutWeight)}
+                    </Text>
                   </Text>
                 </View>
                 </View>
@@ -482,6 +710,9 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginTop: 2,
   },
+  phaseMetricValue: {
+    fontFamily: Fonts.monoMedium,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -528,7 +759,7 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     fontSize: FontSizes.heading2,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   fatigueDescriptor: {
@@ -629,7 +860,7 @@ const styles = StyleSheet.create({
   },
   setBadgeText: {
     fontSize: FontSizes.label,
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textSecondary,
   },
   weightRepsWrap: {
@@ -638,7 +869,7 @@ const styles = StyleSheet.create({
   },
   weightRepsText: {
     fontSize: FontSizes.body,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
     color: Colors.textPrimary,
   },
   rpeBadge: {
@@ -649,7 +880,7 @@ const styles = StyleSheet.create({
   },
   rpeText: {
     fontSize: FontSizes.label,
-    fontFamily: Fonts.semiBold,
+    fontFamily: Fonts.monoMedium,
   },
   noRpeText: {
     marginLeft: Spacing.sm,
@@ -674,7 +905,56 @@ const styles = StyleSheet.create({
   },
   repStatusSpacer: {
     width: 18,
+  },
+  setRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginLeft: Spacing.sm,
+    flexShrink: 0,
+  },
+  editSetBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editInput: {
+    minWidth: 52,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgElevated,
+    fontFamily: Fonts.monoMedium,
+    fontSize: FontSizes.body,
+    color: Colors.textPrimary,
+    marginLeft: Spacing.sm,
+  },
+  editTimesSep: {
+    marginHorizontal: 4,
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+  },
+  flaggedSetIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: Spacing.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.warningMuted,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+  },
+  flaggedSetLabel: {
+    fontSize: FontSizes.label,
+    fontFamily: Fonts.semiBold,
+    color: Colors.warning,
   },
   exerciseFooter: {
     paddingHorizontal: Spacing.md,
@@ -693,6 +973,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.caption,
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
+  },
+  bestSetValue: {
+    fontFamily: Fonts.monoMedium,
   },
   rawFallbackWrap: {
     marginHorizontal: Spacing.lg,

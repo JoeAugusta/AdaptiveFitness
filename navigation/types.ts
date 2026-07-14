@@ -149,6 +149,10 @@ export type RootStackParamList = {
     preSessionMessage?: string | null;
     /** When true, use `weekNumber` from route (e.g. Plan calendar). Omit for Dashboard — DB `plans.current_week` is source of truth. */
     lockToRouteWeek?: boolean;
+    /** Readiness-based RPE adjustment for this session only.
+     *  -1 = readiness ≤ 2 (rough/tired), +0.5 = readiness ≥ 4 (good/great), 0 = neutral.
+     *  Applied to primary compound targetRpe display only — never written to plan_json. */
+    rpeAdjustment?: number;
   };
   WorkoutComplete: {
     planId: string;
@@ -158,7 +162,10 @@ export type RootStackParamList = {
     totalExercises: number;
     durationMinutes: number;
     fatigueRating: number;
-    prsHit: number;
+    workoutLogId: string;
+    sessionDate: string;
+    /** @deprecated Loaded from exercise_records via workoutLogId */
+    prsHit?: number;
     sessionAvgHR?: number | null;
     sessionPeakHR?: number | null;
     avgRecoveryDelta?: number | null;

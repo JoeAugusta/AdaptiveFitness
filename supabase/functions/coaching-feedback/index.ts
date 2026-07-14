@@ -5,11 +5,20 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { requireAuth } from '../_shared/auth.ts';
+import {
+  appendJordanWeightLine,
+  JORDAN_FALLBACK,
+  sanitizeExerciseName,
+  sanitizeJordanOutput,
+} from '../../../Lib/jordanOutput.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+type JordanMode = 'pre_session' | 'per_set' | 'session_summary';
 
 function getJordanToneTier(weeks: number): 'newcomer' | 'building' | 'established' | 'veteran' {
   if (weeks <= 1) return 'newcomer';
@@ -18,15 +27,63 @@ function getJordanToneTier(weeks: number): 'newcomer' | 'building' | 'establishe
   return 'veteran';
 }
 
+async function fetchSanitizedJordanText(
+  mode: JordanMode,
+  maxSentences: number,
+  makeFetch: () => Promise<Response>,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetchAnthropicMessagesWithRetry(makeFetch);
+
+    if (response.status === 503) {
+      return null;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      return mode === 'session_summary' ? null : JORDAN_FALLBACK;
+    }
+
+    const raw = data.content?.[0]?.text;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      console.warn('[jordan-leak]', { mode, raw });
+      continue;
+    }
+
+    const sanitized = sanitizeJordanOutput(raw.trim(), maxSentences);
+    if (sanitized) {
+      return sanitized;
+    }
+    console.warn('[jordan-leak]', { mode, raw });
+  }
+
+  return mode === 'session_summary' ? null : JORDAN_FALLBACK;
+}
+
+function finalizePerSetFeedback(
+  feedback: string,
+  suggestedWeight: number | null,
+  isLastSetOfExercise: boolean,
+): string {
+  if (suggestedWeight == null || isLastSetOfExercise) {
+    return feedback;
+  }
+  return appendJordanWeightLine(feedback, suggestedWeight);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const authResult = await requireAuth(req, { corsHeaders });
+  if ('errorResponse' in authResult) return authResult.errorResponse;
+
   let isSessionSummary = false;
+  let isPreSession = false;
+  let suggestedWeight: number | null = null;
 
   try {
-    // BUG-5: Unilateral exercise handling — inject per-side context into prompt
     const body = await req.json();
     const {
       exerciseName,
@@ -38,6 +95,7 @@ serve(async (req) => {
       loggedRpe,
       isUnilateral,
     } = body;
+    const safeExerciseName = sanitizeExerciseName(exerciseName);
     const goal: string | null = typeof body.goal === 'string'
       ? body.goal
       : null;
@@ -81,6 +139,7 @@ serve(async (req) => {
 
     const isLastSetOfExercise = body.isLastSetOfExercise === true;
     const isLastExercise = body.isLastExercise === true;
+    const isDeloadWeek: boolean = body.isDeloadWeek === true;
 
     const planContext =
       body.planContext && typeof body.planContext === 'object'
@@ -116,8 +175,8 @@ Lead with the number, follow with the implication. No hand-holding.`,
     const perSetToneInstruction =
       perSetToneInstructionMap[toneTier] ?? perSetToneInstructionMap.newcomer;
 
-    isSessionSummary = exerciseName === 'session_summary';
-    const isPreSession = body.mode === 'pre_session';
+    isSessionSummary = safeExerciseName === 'session_summary';
+    isPreSession = body.mode === 'pre_session';
 
     if (isPreSession) {
       const lastSessionSignal =
@@ -141,28 +200,28 @@ Be specific, not generic. Sound like a coach who has reviewed their numbers.`;
       const preSessionUserContent = `${signalContext}${recoveryLine ? `\n${recoveryLine}` : ''}
 Write one pre-session coaching sentence for the athlete.`;
 
-      const preSessionResponse = await fetchAnthropicMessagesWithRetry(() =>
-        fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 80,
-            system: preSessionSystemPrompt,
-            messages: [{ role: 'user', content: preSessionUserContent }],
+      const preSessionText = await fetchSanitizedJordanText(
+        'pre_session',
+        1,
+        () =>
+          fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-6',
+              max_tokens: 80,
+              system: preSessionSystemPrompt,
+              messages: [{ role: 'user', content: preSessionUserContent }],
+            }),
           }),
-        })
       );
 
-      const preSessionData = await preSessionResponse.json();
-      const preSessionText = preSessionData.content?.[0]?.text?.trim() ?? null;
-
       return new Response(
-        JSON.stringify({ feedback: preSessionText }),
+        JSON.stringify({ feedback: preSessionText ?? JORDAN_FALLBACK }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
@@ -172,7 +231,6 @@ Write one pre-session coaching sentence for the athlete.`;
       const targetW = Number(targetWeight);
       const ratio = targetW > 0 ? loggedW / targetW : 0;
 
-      // 3x+ difference = almost certainly a swap, not an error
       const isLikelySwap = ratio > 3.0 || (ratio > 0 && ratio < 0.33);
 
       if (isLikelySwap) {
@@ -186,8 +244,6 @@ Write one pre-session coaching sentence for the athlete.`;
           },
         );
       }
-
-      // isAnomalous (1.5x–3x): fall through to Claude for existing feedback
     }
 
     const loggedWeightNum = Number(loggedWeight);
@@ -204,103 +260,89 @@ Write one pre-session coaching sentence for the athlete.`;
       return 0;
     })();
 
-    // Weight suggestion logic — only for non-last sets with clear signal
     const isPyramidExercise = body.isPyramid === true || body.isPyramid === 'true';
     const setNumber = Number(body.setNumber ?? 0);
     console.log('[coaching-feedback] isPyramid:', body.isPyramid, 'isPyramidExercise:', isPyramidExercise, 'isLastSetOfExercise:', isLastSetOfExercise);
     const totalSets = Number(body.totalSets ?? 0);
 
-    // RPE gap: positive = too easy (logged below target), negative = too hard
     const rpeGap = targetRpeNum2 - loggedRpeNum2;
     const hitTopOfRange = targetRepsMax > 0 && loggedRepsNum >= targetRepsMax;
     const roundedBase = Math.round(loggedWeightNum / 5) * 5;
 
-    // ── Straight set weight suggestion ──
     const straightSuggestedWeight = (() => {
+      if (isDeloadWeek) return null;
       if (loggedWeightNum <= 0) return null;
       if (isPyramidExercise) return null;
       if (isLastSetOfExercise) return null;
       if (loggedRpeNum2 <= 0) return null;
-      // Strength plans: if target weight is prescribed (non-zero),
-      // do not auto-adjust — the load is percentage-based, not RPE-derived.
-      // Jordan can still comment on RPE but should not change the weight.
       const isWeightPrescribed = targetWeightNum > 0;
       if (isWeightPrescribed && goal === 'strength') return null;
 
-      // Too easy: RPE 2+ below target
-      // Aggressive bump when RPE very low, moderate when just a bit low
       if (rpeGap >= 3 && hitTopOfRange) {
-        // e.g. target RPE 8, logged RPE 5 at top of rep range → +15
         return roundedBase + 15;
       }
       if (rpeGap >= 2 && hitTopOfRange) {
-        // e.g. target RPE 8, logged RPE 6 at top of rep range → +10
         return roundedBase + 10;
       }
       if (rpeGap >= 2) {
-        // Hit RPE gap of 2+ but didn't hit top of rep range → +5
         return roundedBase + 5;
       }
       if (rpeGap >= 1 && hitTopOfRange) {
-        // e.g. target RPE 7, logged RPE 6 at top of rep range → +5
         return roundedBase + 5;
       }
 
-      // Too hard: fell more than 1 RPE above target
       if (rpeGap <= -2) {
         return Math.max(5, roundedBase - 5);
       }
 
-      // On target (gap within ±1): hold same weight
-      // Still populate next set so it doesn't stay blank
       return roundedBase;
     })();
 
-    // ── Pyramid set weight suggestion ──
-    // For pyramids, Jordan computes what the NEXT set should be
-    // based on RPE gap from this set's target. The pyramid weight
-    // ladder is pre-programmed, but if RPE signals the ladder is
-    // wrong we adjust the next step.
     const pyramidSuggestedWeight = (() => {
+      if (isDeloadWeek) return null;
       if (!isPyramidExercise) return null;
       if (isLastSetOfExercise) return null;
       if (loggedWeightNum <= 0) return null;
       if (loggedRpeNum2 <= 0) return null;
 
-      // Pyramid sets escalate weight each set. The standard ladder
-      // adds roughly 10-15% per step. If RPE is way off, we nudge
-      // the next step accordingly.
-      // Base next-set estimate: logged weight + standard pyramid step
+      const isSelfSelect = targetWeightNum <= 0;
       const standardStep = Math.round(loggedWeightNum * 0.1 / 5) * 5;
       const nextSetBase = roundedBase + standardStep;
 
-      if (rpeGap >= 3) {
-        // Way too easy — jump more aggressively
+      if (!isSelfSelect && rpeGap >= -1 && rpeGap <= 1) {
+        return null;
+      }
+
+      if (rpeGap >= 3 && hitTopOfRange) {
         return Math.round((roundedBase + standardStep * 1.5) / 5) * 5;
       }
-      if (rpeGap >= 2) {
-        // Too easy — normal jump is fine, maybe slightly more
+      if (rpeGap >= 2 && hitTopOfRange) {
         return Math.round((roundedBase + standardStep * 1.2) / 5) * 5;
       }
+      if (rpeGap >= 2) {
+        return nextSetBase;
+      }
+      if (rpeGap >= 1 && hitTopOfRange) {
+        return nextSetBase;
+      }
       if (rpeGap >= 1) {
-        // Slightly easy — standard step
-        return nextSetBase;
+        return isSelfSelect ? nextSetBase : null;
       }
-      if (rpeGap >= -1 && rpeGap <= 1) {
-        // On target — standard pyramid step, still give the number
-        return nextSetBase;
-      }
+
       if (rpeGap <= -2) {
-        // Too hard — next pyramid step should be smaller
         return Math.max(5, Math.round((roundedBase + standardStep * 0.5) / 5) * 5);
       }
+
+      if (isSelfSelect) return nextSetBase;
 
       return null;
     })();
 
-    const suggestedWeight = isPyramidExercise
-      ? pyramidSuggestedWeight
-      : straightSuggestedWeight;
+    suggestedWeight = isSessionSummary
+      ? null
+      : isPyramidExercise
+        ? pyramidSuggestedWeight
+        : straightSuggestedWeight;
 
     const setPositionContext = isLastExercise
       ? 'This is the LAST SET of the LAST EXERCISE. The session is done after this.'
@@ -311,21 +353,21 @@ Write one pre-session coaching sentence for the athlete.`;
     const isStrengthPrescribed =
       goal === 'strength' && targetWeightNum > 0;
 
-    const forwardOrientRule = isLastExercise
-      ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
-      : isLastSetOfExercise
-        ? `- This exercise is done. Orient toward the next exercise or the rest of the session. Do NOT say "next set of this exercise".`
-        : isPyramidExercise && suggestedWeight != null
-          ? `- This is a pyramid set building to a heavy top set. The athlete's RPE on this set was ${loggedRpeNum2} against a target of ${targetRpeNum2}. You MUST include the phrase "try ${suggestedWeight} lbs" for the next set. Frame it as a specific coaching adjustment. One sentence only.`
-          : isPyramidExercise && rpeGap >= -1 && rpeGap <= 1
-            ? `- This is a pyramid set and RPE is on target. The next set is heavier by design. Tell them what to expect. Do NOT mention any specific weight.`
-            : isPyramidExercise && rpeGap <= -2
-              ? `- This is a pyramid set but RPE ran above target. You MUST include the phrase "try ${suggestedWeight ?? Math.max(5, roundedBase - 5)} lbs" for the next set. One sentence only.`
+    const forwardOrientRule = isDeloadWeek
+      ? `- This is a deload week. Weight is intentionally reduced regardless of how any single set feels. Do NOT suggest a different weight. If RPE ran unusually high or low, note it briefly as information, not as something to correct. One sentence.`
+      : isLastExercise
+        ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
+        : isLastSetOfExercise
+          ? `- This exercise is done. Orient toward the next exercise or the rest of the session. Do NOT say "next set of this exercise".`
+          : isPyramidExercise && suggestedWeight != null
+            ? `- This is a pyramid set. RPE was ${loggedRpeNum2} against a target of ${targetRpeNum2} — the planned weight needs adjusting. Orient toward execution on the next set. Do NOT mention any specific weight. One sentence only.`
+            : isPyramidExercise
+              ? `- This is a pyramid set and RPE is on target. The next set is heavier by design. Tell them what to expect or give an execution cue. Do NOT mention any specific weight.`
               : isStrengthPrescribed
-                ? `- This is a strength plan with prescribed loads. Do NOT suggest a different weight. Orient toward execution quality on the next set — brace, timing, bar path, or position cues only. One sentence.`
-                : suggestedWeight != null
-                  ? `- A weight adjustment is warranted. You MUST include the phrase "try ${suggestedWeight} lbs" in your response. Frame it as a coaching directive.`
-                  : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
+                  ? `- This is a strength plan with prescribed loads. Do NOT suggest a different weight. Orient toward execution quality on the next set — brace, timing, bar path, or position cues only. One sentence.`
+                  : suggestedWeight != null
+                    ? `- A weight adjustment is warranted. Orient toward what to focus on for the next set. Frame it as a coaching directive. Do NOT mention any specific weight.`
+                    : `- Orient toward the next set of this exercise. Be specific about what to adjust or maintain.`;
 
     const perSetSystemPrompt = `${perSetToneInstruction}
 
@@ -352,7 +394,7 @@ ${forwardOrientRule}
   * Never mention HR on the last set of the last exercise — session is done, forward focus only
   * Never mention HR when no HR data is provided
 - Recovery context (sleep, readiness, HRV, resting HR) may be provided. Use it ONLY when it is directly relevant to the set just logged — e.g. low sleep + high RPE on a normally easy exercise warrants a brief mention. Do not mention recovery metrics on every set. When you do reference them, be specific: "7h sleep but RPE running high — back off next set" not generic wellness advice. Never mention metrics that weren't provided.
-- NEVER mention a specific weight in lbs unless the forwardOrientRule above explicitly tells you to include "try X lbs". If no weight was specified in your instructions, do not mention any number followed by lbs.
+- NEVER mention a specific weight in lbs. Do not mention any number followed by lbs.
 - Never mention being an AI.
 - No markdown.`;
 
@@ -424,7 +466,7 @@ Give a 2-sentence session debrief.
 - If HR trended UP: note accumulated fatigue if RPE also ran high
 - If no trend: ignore HR unless strong RPE contradiction
 - Never mention HR if RPE unrecorded`
-      : `Exercise: ${exerciseName}
+      : `Exercise: ${safeExerciseName}
 Target: ${targetReps} reps at ${targetWeight} lbs, RPE ${targetRpe}
 Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}${
   hasHeartRateData
@@ -437,26 +479,29 @@ Logged: ${loggedReps} reps at ${loggedWeight} lbs, RPE ${loggedRpe}${
 }
 Give a brief coaching note.`;
 
+    const jordanMode: JordanMode = isSessionSummary ? 'session_summary' : 'per_set';
+    const maxSentences = isSessionSummary ? 2 : 1;
+
     const response = await fetchAnthropicMessagesWithRetry(() =>
       fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: isSessionSummary ? 160 : 100,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userContent,
-          },
-        ],
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: isSessionSummary ? 160 : 100,
+          system: systemPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: userContent,
+            },
+          ],
+        }),
       }),
-    })
     );
 
     if (response.status === 503) {
@@ -469,39 +514,92 @@ Give a brief coaching note.`;
     const data = await response.json();
 
     if (!response.ok) {
+      const feedback = isSessionSummary ? null : JORDAN_FALLBACK;
+      const payload = isSessionSummary
+        ? { feedback }
+        : { feedback, suggestedWeight };
       return new Response(
-        JSON.stringify({
-          feedback: isSessionSummary ? null : 'Set logged — stay locked in for the next one.',
-        }),
+        JSON.stringify(payload),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         },
       );
     }
+
     const raw = data.content?.[0]?.text;
-    const text = isSessionSummary
-      ? (typeof raw === 'string' && raw.trim() ? raw.trim() : null)
-      : (raw ?? 'Set logged — stay locked in for the next one.');
+    let feedback: string | null = null;
+
+    if (typeof raw === 'string' && raw.trim()) {
+      feedback = sanitizeJordanOutput(raw.trim(), maxSentences);
+      if (!feedback) {
+        console.warn('[jordan-leak]', { mode: jordanMode, raw });
+        const retryResponse = await fetchAnthropicMessagesWithRetry(() =>
+          fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-6',
+              max_tokens: isSessionSummary ? 160 : 100,
+              system: systemPrompt,
+              messages: [
+                {
+                  role: 'user',
+                  content: userContent,
+                },
+              ],
+            }),
+          }),
+        );
+
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          const retryRaw = retryData.content?.[0]?.text;
+          if (typeof retryRaw === 'string' && retryRaw.trim()) {
+            feedback = sanitizeJordanOutput(retryRaw.trim(), maxSentences);
+          }
+          if (!feedback) {
+            console.warn('[jordan-leak]', { mode: jordanMode, raw: retryRaw });
+          }
+        }
+      }
+    } else {
+      console.warn('[jordan-leak]', { mode: jordanMode, raw });
+    }
+
+    if (!feedback) {
+      feedback = isSessionSummary ? null : JORDAN_FALLBACK;
+    }
+
+    if (!isSessionSummary && feedback) {
+      feedback = finalizePerSetFeedback(feedback, suggestedWeight, isLastSetOfExercise);
+    }
 
     return new Response(
       JSON.stringify(
         isSessionSummary
-          ? { feedback: text }
-          : { feedback: text, suggestedWeight },
+          ? { feedback }
+          : { feedback, suggestedWeight },
       ),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       },
     );
   } catch {
+    const payload = isSessionSummary
+      ? { feedback: null as string | null }
+      : isPreSession
+        ? { feedback: JORDAN_FALLBACK }
+        : { feedback: JORDAN_FALLBACK, suggestedWeight };
     return new Response(
-      JSON.stringify({
-        feedback: isSessionSummary ? null : 'Set logged — stay locked in for the next one.',
-      }),
+      JSON.stringify(payload),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200, // always return 200 — coaching feedback is non-critical
+        status: 200,
       },
     );
   }

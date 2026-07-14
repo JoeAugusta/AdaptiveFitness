@@ -8,7 +8,7 @@ export type Week1PyramidTargetSet = {
 };
 
 const roundTen = (w: number) => Math.round(w / 10) * 10;
-const roundPlate = (w: number) => Math.round(w / 2.5) * 2.5;
+const roundPlate = (w: number) => Math.round(w / 5) * 5;
 
 /**
  * Standard pyramid rep buckets keyed by top-set rep range.

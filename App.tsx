@@ -19,6 +19,14 @@ import {
   DMSans_600SemiBold,
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
+import {
+  IBMPlexMono_400Regular,
+  IBMPlexMono_500Medium,
+} from '@expo-google-fonts/ibm-plex-mono';
+import {
+  ChakraPetch_600SemiBold,
+  ChakraPetch_700Bold,
+} from '@expo-google-fonts/chakra-petch';
 import type { RootStackParamList } from './navigation/types';
 import RootNavigator from './navigation';
 import { supabase } from './Lib/supabase';
@@ -115,6 +123,10 @@ export default function App() {
     DMSans_500Medium,
     DMSans_600SemiBold,
     DMSans_700Bold,
+    IBMPlexMono_400Regular,
+    IBMPlexMono_500Medium,
+    ChakraPetch_600SemiBold,
+    ChakraPetch_700Bold,
   });
 
   if (!fontsLoaded && !fontError) {

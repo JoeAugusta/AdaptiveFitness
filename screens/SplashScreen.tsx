@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,6 +7,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { Colors, Fonts } from '../constants/design';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BrandLockup from '../components/BrandLockup';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
@@ -47,17 +48,12 @@ export default function SplashScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.centerContent}>
-        <Image
-          source={require('../assets/splash-icon.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text style={styles.wordmark}>Hone</Text>
+        <BrandLockup orientation="vertical" size={280} />
       </View>
 
       <ActivityIndicator
         style={styles.spinner}
-        color={Colors.accent}
+        color={Colors.ember}
         size="small"
       />
     </SafeAreaView>
@@ -74,17 +70,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: '20%',
-  },
-  logo: {
-    width: 280,
-    height: 280,
-  },
-  wordmark: {
-    marginTop: 4,
-    fontFamily: Fonts.bold,
-    fontSize: 32,
-    color: Colors.textPrimary,
-    letterSpacing: 3,
   },
   spinner: {
     position: 'absolute',

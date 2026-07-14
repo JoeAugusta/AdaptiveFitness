@@ -1,19 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
+import BrandLockup from '../../components/BrandLockup';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 
 export default function AuthScreen() {
   const navigation = useNavigation<NavProp>();
 
-  // One shared driver per element, staggered via delay
-  const logoAnim = useRef(new Animated.Value(0)).current;
-  const wordmarkAnim = useRef(new Animated.Value(0)).current;
+  const lockupAnim = useRef(new Animated.Value(0)).current;
   const taglineAnim = useRef(new Animated.Value(0)).current;
   const ctaAnim = useRef(new Animated.Value(0)).current;
 
@@ -27,14 +26,12 @@ export default function AuthScreen() {
       });
 
     Animated.stagger(100, [
-      fadeUp(logoAnim, 0),
-      fadeUp(wordmarkAnim, 0),
+      fadeUp(lockupAnim, 0),
       fadeUp(taglineAnim, 0),
       fadeUp(ctaAnim, 0),
     ]).start();
-  }, [logoAnim, wordmarkAnim, taglineAnim, ctaAnim]);
+  }, [lockupAnim, taglineAnim, ctaAnim]);
 
-  // Helper: maps 0→1 driver to {opacity, translateY}
   const entrance = (val: Animated.Value) => ({
     opacity: val,
     transform: [
@@ -50,17 +47,9 @@ export default function AuthScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.logoZone}>
-        <Animated.View style={entrance(logoAnim)}>
-          <Image
-            source={require('../../assets/logo-transparent.png')}
-            style={styles.brandLogo}
-            resizeMode="contain"
-          />
+        <Animated.View style={entrance(lockupAnim)}>
+          <BrandLockup orientation="vertical" size={150} />
         </Animated.View>
-
-        <Animated.Text style={[styles.wordmark, entrance(wordmarkAnim)]}>
-          Hone
-        </Animated.Text>
 
         <Animated.Text style={[styles.tagline, entrance(taglineAnim)]}>
           Your coach. Built around you.
@@ -98,18 +87,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingTop: '28%',
     paddingHorizontal: Spacing.xl,
-  },
-  brandLogo: {
-    width: 150,
-    height: 150,
-  },
-  wordmark: {
-    marginTop: 8,
-    fontFamily: Fonts.bold,
-    fontSize: 38,
-    color: Colors.textPrimary,
-    letterSpacing: 3,
-    textAlign: 'center',
   },
   tagline: {
     marginTop: 12,

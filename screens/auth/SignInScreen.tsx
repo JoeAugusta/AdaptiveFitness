@@ -9,7 +9,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +18,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../Lib/supabase';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { useAuth } from '../../contexts/AuthContext';
+import BrandLockup from '../../components/BrandLockup';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
 
@@ -106,14 +106,7 @@ export default function SignInScreen() {
             <Ionicons name="chevron-back" size={28} color={Colors.accent} />
           </TouchableOpacity>
 
-          <View style={styles.brandHeader}>
-            <Image
-              source={require('../../assets/icon.png')}
-              style={styles.brandLogo}
-              resizeMode="contain"
-            />
-            <Text style={styles.brandWord}>Hone</Text>
-          </View>
+          <BrandLockup size={24} style={styles.brandHeader} />
 
           <Text style={styles.screenTitle}>Welcome back</Text>
           <Text style={styles.screenSubtitle}>Sign in to continue</Text>
@@ -217,21 +210,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   brandHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     marginBottom: Spacing.xl,
     marginTop: Spacing.sm,
-  },
-  brandLogo: {
-    width: 36,
-    height: 36,
-  },
-  brandWord: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSizes.title,
-    color: Colors.textPrimary,
-    letterSpacing: 2,
   },
   screenTitle: {
     fontFamily: Fonts.bold,

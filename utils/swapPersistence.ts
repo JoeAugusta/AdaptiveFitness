@@ -10,6 +10,9 @@ type PlanExercise = {
   compoundTier?: string;
   muscleEmphasis?: string;
   secondaryMuscleTags?: string[];
+  targetWeight?: number;
+  targetRpe?: number;
+  setTargets?: unknown[];
 };
 
 type PlanDay = {
@@ -54,6 +57,10 @@ export async function persistExerciseSwapsToPlan(
         continue;
       }
 
+      const isCurrentSessionSlot =
+        week.weekNumber === currentWeekNumber &&
+        day.dayNumber === currentDayNumber;
+
       for (const exercise of day.exercises ?? []) {
         const newName = swaps[exercise.id];
         if (newName && newName !== exercise.name) {
@@ -70,6 +77,17 @@ export async function persistExerciseSwapsToPlan(
             exercise.muscleEmphasis = libraryMatch.muscleEmphasis;
             exercise.secondaryMuscleTags = libraryMatch.secondaryMuscleTags;
           }
+
+          if (!isCurrentSessionSlot) {
+            exercise.targetWeight = 0;
+            if (Array.isArray(exercise.setTargets)) {
+              delete exercise.setTargets;
+            }
+            if (typeof exercise.targetRpe === 'number') {
+              delete exercise.targetRpe;
+            }
+          }
+
           modified = true;
         }
       }

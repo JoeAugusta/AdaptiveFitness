@@ -49,6 +49,7 @@ import { getLocalDateString } from '../utils/dateUtils';
 interface StrengthDataPoint {
   week: number;
   estimated1RM: number;
+  isDeload?: boolean;
 }
 
 interface WeightLogPoint {
@@ -283,19 +284,36 @@ function LineChart({
         );
       })}
       {/* X axis labels */}
-      {xLabelWeeks.map((wk) => (
-        <SvgText
-          key={`x-${wk}`}
-          x={toX(wk)}
-          y={height - 6}
-          fill={Colors.textSecondary}
-          fontSize={FontSizes.micro}
-          fontFamily={Fonts.regular}
-          textAnchor="middle"
-        >
-          W{wk}
-        </SvgText>
-      ))}
+      {xLabelWeeks.map((wk) => {
+        const isDeloadWeek =
+          plotActual && data.some((d) => d.week === wk && d.isDeload);
+        return (
+          <G key={`x-${wk}`}>
+            {isDeloadWeek ? (
+              <SvgText
+                x={toX(wk)}
+                y={height - 16}
+                fill={Colors.textTertiary}
+                fontSize={FontSizes.micro}
+                fontFamily={Fonts.regular}
+                textAnchor="middle"
+              >
+                D
+              </SvgText>
+            ) : null}
+            <SvgText
+              x={toX(wk)}
+              y={height - 6}
+              fill={Colors.textSecondary}
+              fontSize={FontSizes.micro}
+              fontFamily={Fonts.regular}
+              textAnchor="middle"
+            >
+              W{wk}
+            </SvgText>
+          </G>
+        );
+      })}
       {/* Line */}
       <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={Colors.divider} strokeWidth={1} />
       {projectionPoints.length > 1
@@ -323,6 +341,7 @@ function LineChart({
         ? (() => {
             const pathEl: React.ReactNode[] = [];
             for (let i = 1; i < actualPoints.length; i++) {
+              const segIsDeload = data[i - 1]?.isDeload || data[i]?.isDeload;
               pathEl.push(
                 <SvgLine
                   key={`act-${i}`}
@@ -330,17 +349,32 @@ function LineChart({
                   y1={actualPoints[i - 1].y}
                   x2={actualPoints[i].x}
                   y2={actualPoints[i].y}
-                  stroke={Colors.accent}
+                  stroke={segIsDeload ? Colors.textTertiary : Colors.accent}
                   strokeWidth={2.5}
+                  strokeDasharray={segIsDeload ? '6,5' : undefined}
+                  opacity={segIsDeload ? 0.75 : 1}
                 />,
               );
             }
             return pathEl;
           })()
         : null}
-      {actualPoints.map((p, i) => (
-        <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
-      ))}
+      {actualPoints.map((p, i) => {
+        const isDeload = data[i]?.isDeload;
+        return isDeload ? (
+          <Circle
+            key={`dot-${i}`}
+            cx={p.x}
+            cy={p.y}
+            r={4}
+            fill={Colors.bgCard}
+            stroke={Colors.textTertiary}
+            strokeWidth={2}
+          />
+        ) : (
+          <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
+        );
+      })}
     </Svg>
   );
 }
@@ -501,10 +535,16 @@ function getStrengthInsight(
   exerciseName: string,
 ): string | null {
   if (data.length < 2) return null;
+  const lastPoint = data[data.length - 1];
   const first = data[0].estimated1RM;
-  const last = data[data.length - 1].estimated1RM;
+  const last = lastPoint.estimated1RM;
   const gain = Math.round(last - first);
-  const weeks = data[data.length - 1].week - data[0].week;
+  const weeks = lastPoint.week - data[0].week;
+
+  if (lastPoint.isDeload) {
+    return `Week ${lastPoint.week} is a scheduled deload — the dip here is planned recovery, not lost strength. Numbers pick back up next week.`;
+  }
+
   if (gain <= 0) {
     return `${exerciseName} has held steady over ${weeks} weeks — weights may need increasing to drive further progress.`;
   }
@@ -622,6 +662,7 @@ function getConsistencyInsight(
 type PlanWeekLike = {
   weekNumber?: number;
   week_number?: number;
+  phase?: string;
   days?: Array<{ type?: string }>;
 };
 
@@ -1349,12 +1390,28 @@ export default function ProgressChartsScreen() {
   }, [gridDates, trainedIndices, planMondayHeatmap]);
 
   const activeExercise = selectedExercise ?? exerciseChipList[0] ?? null;
+
+  const deloadWeekNumbers = useMemo(() => {
+    const set = new Set<number>();
+    for (const w of planWeeksJson) {
+      const wk = w.weekNumber ?? w.week_number;
+      if (typeof wk === 'number' && w.phase === 'deload') {
+        set.add(wk);
+      }
+    }
+    return set;
+  }, [planWeeksJson]);
+
   const strengthData: StrengthDataPoint[] = useMemo(() => {
     if (!activeExercise || !strengthMap[activeExercise]) return [];
     return Array.from(strengthMap[activeExercise].entries())
-      .map(([week, estimated1RM]) => ({ week, estimated1RM }))
+      .map(([week, estimated1RM]) => ({
+        week,
+        estimated1RM,
+        isDeload: deloadWeekNumbers.has(week),
+      }))
       .sort((a, b) => a.week - b.week);
-  }, [activeExercise, strengthMap]);
+  }, [activeExercise, strengthMap, deloadWeekNumbers]);
 
   useEffect(() => {
     chartFadeAnim.setValue(0);
@@ -1647,11 +1704,19 @@ export default function ProgressChartsScreen() {
                 </Text>
               ) : null}
 
+              {strengthData.some((d) => d.isDeload) ? (
+                <Text style={styles.chartHintText}>
+                  Dashed segment = scheduled deload week (weight intentionally reduced)
+                </Text>
+              ) : null}
+
               {showWeek1ChartHint ? (
                 <Text style={styles.chartWeek1Hint}>
                   Complete more sessions to see your progression curve
                 </Text>
-              ) : strengthData.length === 1 && !isWeek1SparseState ? (
+              ) : strengthData.length === 1 &&
+                !isWeek1SparseState &&
+                !strengthData.some((d) => d.isDeload) ? (
                 <Text style={styles.chartHintText}>
                   Log more workouts to see progression
                 </Text>

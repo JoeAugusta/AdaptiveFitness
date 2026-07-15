@@ -99,6 +99,7 @@ serve(async (req) => {
     const goal: string | null = typeof body.goal === 'string'
       ? body.goal
       : null;
+    const isDeloadWeek: boolean = body.isDeloadWeek === true;
     const heartRateAvgBpm =
       typeof body.heartRateAvgBpm === 'number' ? body.heartRateAvgBpm : null;
     const heartRatePeakBpm =
@@ -139,7 +140,6 @@ serve(async (req) => {
 
     const isLastSetOfExercise = body.isLastSetOfExercise === true;
     const isLastExercise = body.isLastExercise === true;
-    const isDeloadWeek: boolean = body.isDeloadWeek === true;
 
     const planContext =
       body.planContext && typeof body.planContext === 'object'
@@ -354,7 +354,7 @@ Write one pre-session coaching sentence for the athlete.`;
       goal === 'strength' && targetWeightNum > 0;
 
     const forwardOrientRule = isDeloadWeek
-      ? `- This is a deload week. Weight is intentionally reduced regardless of how any single set feels. Do NOT suggest a different weight. If RPE ran unusually high or low, note it briefly as information, not as something to correct. One sentence.`
+      ? `- This is a deload week. Weight is intentionally reduced and RPE will vary set to set — that is expected, not a signal to act on. Do NOT suggest a different weight, do NOT frame this as a decision ("bump it", "the obvious move", "try X next"). Acknowledge the rep/effort briefly and orient toward finishing the session with good execution. One sentence.`
       : isLastExercise
         ? `- Session is complete after this set. Reference what the data showed and what it means for next session. Do NOT say "next set".`
         : isLastSetOfExercise
@@ -414,6 +414,11 @@ RPE INTERPRETATION — follow exactly:
 - loggedRpe gap of -2 or more below target (too easy): "I've already stepped the load up for next session" — not "weights were too light"
 - loggedRpe within 1 point of target: "calibrated well" framing — same approach next session
 - loggedRpe above target: "ran hard" framing — next session stays controlled, not "weights were too heavy"
+${isDeloadWeek ? `
+DELOAD WEEK OVERRIDE — ignore the RPE interpretation rules above:
+- Do NOT use "stepped the load up for next session", "ran hard, staying controlled", or any load-adjustment framing based on session RPE.
+- Frame this week as intentional recovery: reduced load and RPE variation are expected, not signals to act on.
+- Sentence 2: note that normal progression resumes next week after this deload.` : ''}
 
 FRAMING RULE: Jordan already has the data and has already acted on it. The tone is "here is what I saw, here is what I have done" — never "here is a problem I detected."
 

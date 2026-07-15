@@ -142,6 +142,15 @@ function calculateProgress(
   };
 }
 
+function calculateWeekBasedProgress(
+  currentWeek: number,
+  totalWeeks: number,
+): number {
+  if (totalWeeks <= 0) return 0;
+  const completedWeeks = Math.max(0, currentWeek - 1);
+  return Math.min(100, Math.round((completedWeeks / totalWeeks) * 100));
+}
+
 function buildMilestones(progressPct: number): Milestone[] {
   return MILESTONE_DEFS.map((m) => ({
     pct: m.pct,
@@ -391,11 +400,37 @@ type TrackerChartModel = {
   compareIndex: number;
 };
 
+/** Cumulative distinct sessions (week,day pairs) logged through the end
+ *  of each week index, 0..totalWeeks. Index 0 is always 0 (no sessions
+ *  possible before week 1 starts). */
+function buildCumulativeSessionsByWeek(
+  logs: { week_number: number; day_number: number }[],
+  totalWeeks: number,
+): number[] {
+  const seen = new Set<string>();
+  const perWeekCount: number[] = Array(totalWeeks + 1).fill(0);
+  for (const log of logs) {
+    const wk = log.week_number;
+    if (wk < 1 || wk > totalWeeks) continue;
+    const key = `${wk}:${log.day_number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    perWeekCount[wk] = (perWeekCount[wk] ?? 0) + 1;
+  }
+  const cumulative: number[] = Array(totalWeeks + 1).fill(0);
+  let running = 0;
+  for (let i = 1; i <= totalWeeks; i++) {
+    running += perWeekCount[i] ?? 0;
+    cumulative[i] = running;
+  }
+  return cumulative;
+}
+
 function buildTrackerChartModel(
   goal: GoalRow,
   plan: PlanRow,
   weightLogs: { log_date: string; weight_lbs: number }[],
-  workoutLogs: { week_number: number; sets_json: any[] }[],
+  workoutLogs: { week_number: number; day_number: number; sets_json: any[] }[],
   caloriePace: string | null,
 ): TrackerChartModel | null {
   const totalWeeks = plan.total_weeks;
@@ -578,22 +613,43 @@ function buildTrackerChartModel(
     };
   }
 
-  // general
-  const projection = Array.from({ length: totalWeeks + 1 }, (_, i) =>
-    Math.round(i * 1.2 * 10) / 10,
+  // general — cumulative sessions completed vs. cumulative sessions expected
+  const daysPerWeekGeneral = Number(
+    plan.plan_json?.daysPerWeek ?? plan.plan_json?.days_per_week ?? 4,
   );
+  const projection = Array.from({ length: totalWeeks + 1 }, (_, i) =>
+    i * daysPerWeekGeneral,
+  );
+  const actualsCumulative = buildCumulativeSessionsByWeek(
+    workoutLogs,
+    totalWeeks,
+  );
+  const actuals: (number | null)[] = actualsCumulative.map((v, i) =>
+    i <= plan.current_week ? v : null,
+  );
+  const totalExpectedSessions = totalWeeks * daysPerWeekGeneral;
+  const totalActualSessions = actualsCumulative[actualsCumulative.length - 1] ?? 0;
+  const yMax = Math.max(totalExpectedSessions, totalActualSessions) * 1.1 || 5;
   return {
     projection,
-    actuals: Array(totalWeeks + 1).fill(null),
+    actuals,
     yMin: 0,
-    yMax: Math.max(...projection) * 1.2 || 5,
-    yLabel: '',
+    yMax,
+    yLabel: 'sessions',
     goalColor: badgeColor,
     weeks: totalWeeks,
     compareIndex: Math.min(plan.current_week, totalWeeks),
     callout: {
-      col1: { label: 'Track', value: 'Consistency', sub: 'training' },
-      col2: { label: 'Phase', value: 'Build', sub: 'habit + load' },
+      col1: {
+        label: 'Sessions',
+        value: `${totalActualSessions}/${totalExpectedSessions}`,
+        sub: 'completed / expected',
+      },
+      col2: {
+        label: 'Pace',
+        value: `${daysPerWeekGeneral}/wk`,
+        sub: 'target',
+      },
       col3: { label: 'Plan', value: `${totalWeeks} wks` },
     },
   };
@@ -855,7 +911,9 @@ export default function GoalTrackerScreen() {
   const milestoneProgressPct =
     goal?.goal_type === 'strength'
       ? strengthGoalHero?.progressPct
-      : progress?.progressPct;
+      : plan
+        ? calculateWeekBasedProgress(plan.current_week, plan.total_weeks)
+        : undefined;
   const milestones =
     milestoneProgressPct != null
       ? buildMilestones(milestoneProgressPct)
@@ -878,7 +936,7 @@ export default function GoalTrackerScreen() {
     if (!trackerModel || !goal || !plan) return null;
     if ((plan.current_week ?? 1) < 2) return null;
     const gt = goal.goal_type;
-    if (gt !== 'fat_loss' && gt !== 'hypertrophy' && gt !== 'strength') {
+    if (gt !== 'fat_loss' && gt !== 'hypertrophy' && gt !== 'strength' && gt !== 'general') {
       return null;
     }
     const i = trackerModel.compareIndex;
@@ -967,7 +1025,10 @@ export default function GoalTrackerScreen() {
       }
     } else if (currentWeek > 1) {
       volumeTrendInProgress = true;
-      volumeTrendLabel = 'Week in progress — check back when complete';
+      const partialVol = weeklyVolumes[currentWeek] ?? 0;
+      volumeTrendLabel = partialVol > 0
+        ? `${Math.round(partialVol).toLocaleString()} lbs logged so far this week`
+        : 'No sets logged yet this week';
     }
   }
 
@@ -1247,8 +1308,7 @@ export default function GoalTrackerScreen() {
                   <Text style={styles.evrMetricValue}>Just getting started</Text>
                 ) : (
                   <Text style={styles.evrMetricValue}>
-                    <Text style={styles.evrMetricValueNumber}>{consistencyPct}</Text>
-                    % of weeks trained
+                    {`${weeksWithAtLeastOneSession}/${weeksElapsed} weeks (${consistencyPct}%)`}
                   </Text>
                 )}
               </View>
@@ -1261,23 +1321,13 @@ export default function GoalTrackerScreen() {
                   </Text>
                 </View>
                 <View style={styles.evrPaceValue}>
-                  <Text
-                    style={[
-                      styles.evrMetricValue,
-                      currentWeek <= 1 && styles.evrMetricValueWarning,
-                    ]}
-                  >
-                    {currentWeek <= 1 ? (
-                      '—'
-                    ) : (
-                      <>
-                        <Text style={styles.evrMetricValueNumber}>
-                          {avgSessionsPerWeek.toFixed(1)}
-                        </Text>
-                        {' avg'}
-                      </>
-                    )}
-                  </Text>
+                  {currentWeek <= 1 ? (
+                    <Text style={[styles.evrMetricValue, styles.evrMetricValueWarning]}>—</Text>
+                  ) : (
+                    <Text style={styles.evrMetricValue}>
+                      {`${avgSessionsPerWeek.toFixed(1)} avg`}
+                    </Text>
+                  )}
                   <Text style={styles.evrPaceTarget}> (target: {daysPerWeek})</Text>
                 </View>
               </View>

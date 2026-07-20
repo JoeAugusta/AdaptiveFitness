@@ -71,6 +71,7 @@ import { JordanAvatar } from '../components/JordanAvatar';
 import { JordanLabel } from '../components/JordanLabel';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { useHealthData } from '../hooks/useHealthData';
+import { syncHealthHistory } from '../utils/syncHealthHistory';
 import HealthConnectCard, {
   HEALTH_PERMISSION_DISMISSED_KEY,
   HEALTH_PERMISSION_GRANTED_KEY,
@@ -605,6 +606,7 @@ export default function HomeScreen() {
     permissionStatus: healthPermissionStatus,
     requestPermission: requestHealthPermission,
     fetchHealthData,
+    fetchHealthHistory,
     healthData,
   } = useHealthData();
 
@@ -738,6 +740,7 @@ export default function HomeScreen() {
   } | null>(null);
   const [showHealthCard, setShowHealthCard] = useState(false);
   const [healthGranted, setHealthGranted] = useState(false);
+  const [healthHistoryDayCount, setHealthHistoryDayCount] = useState(0);
 
   const displayedGoalProgress = useMemo(() => {
     if (!goalProgress || goalProgress.target1RM <= 0) return null;
@@ -772,6 +775,28 @@ export default function HomeScreen() {
     }
     return false;
   }, []);
+
+  const syncHealthHistoryBackground = useCallback(
+    async (userId: string) => {
+      try {
+        const history = await fetchHealthHistory(30);
+        const source = Platform.OS === 'ios' ? 'apple_health' : 'health_connect';
+        await syncHealthHistory(userId, history, source);
+        // TODO(prompt-2): exact stored-day count if you use array length
+        setHealthHistoryDayCount(
+          history.filter(
+            (d) =>
+              d.hrvMs != null ||
+              d.restingHeartRate != null ||
+              d.sleepHours != null,
+          ).length,
+        );
+      } catch (err) {
+        console.warn('[HomeScreen] syncHealthHistory failed:', err);
+      }
+    },
+    [fetchHealthHistory],
+  );
 
   const loadDashboardData = async () => {
     try {
@@ -1677,6 +1702,7 @@ export default function HomeScreen() {
             );
           }
         });
+        void syncHealthHistoryBackground(userId);
       }
     } catch (e) {
       console.error('Dashboard load error:', e);
@@ -2564,6 +2590,10 @@ export default function HomeScreen() {
                     setTodaySleepHours(Math.min(10, Math.round(data.sleepHours)));
                   }
                 });
+                const uid = uidRef.current;
+                if (uid) {
+                  void syncHealthHistoryBackground(uid);
+                }
               }
               return granted;
             }}
@@ -2945,6 +2975,7 @@ export default function HomeScreen() {
         {healthGranted && (
           <HealthRecoveryCard
             healthData={healthData}
+            historyDayCount={healthHistoryDayCount}
           />
         )}
 

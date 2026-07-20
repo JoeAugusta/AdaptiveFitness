@@ -64,6 +64,13 @@ export type HealthData = {
   hasDataToday: boolean;
 };
 
+export type HealthHistoryDay = {
+  date: string;
+  hrvMs: number | null;
+  restingHeartRate: number | null;
+  sleepHours: number | null;
+};
+
 export type LiveWorkoutHR = {
   avgBpm: number | null;
   peakBpm: number | null;
@@ -119,6 +126,71 @@ function getNoonToday(): Date {
   const d = new Date();
   d.setHours(12, 0, 0, 0);
   return d;
+}
+
+function toLocalDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getStartOfLocalDayDaysAgo(days: number): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - days);
+  return d;
+}
+
+type QuantitySampleLike = {
+  startDate?: string | Date;
+  endDate?: string | Date;
+  quantity?: number;
+  value?: number;
+};
+
+function bucketLatestQuantityPerDay(samples: QuantitySampleLike[]): Map<string, number> {
+  const latestByDate = new Map<string, { time: number; value: number }>();
+  for (const sample of samples) {
+    const rawDate = sample.startDate ?? sample.endDate;
+    if (rawDate == null) continue;
+    const sampleDate = new Date(rawDate);
+    const dateKey = toLocalDateKey(sampleDate);
+    const time = sampleDate.getTime();
+    const val = Math.round(sample.quantity ?? sample.value ?? 0);
+    if (val <= 0) continue;
+    const existing = latestByDate.get(dateKey);
+    if (!existing || time > existing.time) {
+      latestByDate.set(dateKey, { time, value: val });
+    }
+  }
+  const result = new Map<string, number>();
+  for (const [dateKey, { value }] of latestByDate) {
+    result.set(dateKey, value);
+  }
+  return result;
+}
+
+function mergeHistoryDayMaps(
+  hrvByDate: Map<string, number>,
+  rhrByDate: Map<string, number>,
+): HealthHistoryDay[] {
+  const allDates = new Set([...hrvByDate.keys(), ...rhrByDate.keys()]);
+  const days: HealthHistoryDay[] = [];
+  for (const date of allDates) {
+    const hrvMs = hrvByDate.get(date) ?? null;
+    const restingHeartRate = rhrByDate.get(date) ?? null;
+    if (hrvMs != null || restingHeartRate != null) {
+      days.push({
+        date,
+        hrvMs,
+        restingHeartRate,
+        sleepHours: null,
+      });
+    }
+  }
+  days.sort((a, b) => a.date.localeCompare(b.date));
+  return days;
 }
 
 // ── iOS implementation ───────────────────────────────────────────────────────
@@ -244,6 +316,46 @@ async function fetchHealthDataIOS(): Promise<HealthData> {
     fetchedAt: now.toISOString(),
     hasDataToday: sleepHours !== null || hrvMs !== null || restingHeartRate !== null,
   };
+}
+
+async function fetchHealthHistoryIOS(days: number): Promise<HealthHistoryDay[]> {
+  if (!QuantityTypes) return [];
+  const now = new Date();
+  const startDate = getStartOfLocalDayDaysAgo(days);
+
+  let hrvSamples: QuantitySampleLike[] = [];
+  try {
+    hrvSamples = (await QuantityTypes.queryQuantitySamples(
+      'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
+      {
+        filter: { date: { startDate, endDate: now } },
+        limit: 0,
+        ascending: true,
+      },
+    )) as QuantitySampleLike[];
+  } catch (err) {
+    console.warn('[useHealthData] iOS HRV history query failed:', err);
+  }
+
+  let rhrSamples: QuantitySampleLike[] = [];
+  try {
+    rhrSamples = (await QuantityTypes.queryQuantitySamples(
+      'HKQuantityTypeIdentifierRestingHeartRate',
+      {
+        filter: { date: { startDate, endDate: now } },
+        limit: 0,
+        ascending: true,
+      },
+    )) as QuantitySampleLike[];
+  } catch (err) {
+    console.warn('[useHealthData] iOS RHR history query failed:', err);
+  }
+
+  // TODO(prompt-2): windowed sleep attribution.
+  return mergeHistoryDayMaps(
+    bucketLatestQuantityPerDay(hrvSamples),
+    bucketLatestQuantityPerDay(rhrSamples),
+  );
 }
 
 async function fetchNutritionDataIOS(): Promise<NutritionData> {
@@ -448,6 +560,89 @@ async function fetchHealthDataAndroid(): Promise<HealthData> {
   };
 }
 
+type AndroidTimedRecord = {
+  time?: string;
+  startTime?: string;
+  endTime?: string;
+};
+
+function androidRecordLocalDateKey(record: AndroidTimedRecord): string | null {
+  const raw = record.time ?? record.endTime ?? record.startTime;
+  if (!raw) return null;
+  return toLocalDateKey(new Date(raw));
+}
+
+function androidRecordTimeMs(record: AndroidTimedRecord): number {
+  const raw = record.time ?? record.endTime ?? record.startTime;
+  return raw ? new Date(raw).getTime() : 0;
+}
+
+function bucketLatestAndroidPerDay<T extends AndroidTimedRecord>(
+  records: T[],
+  readValue: (record: T) => number,
+): Map<string, number> {
+  const latestByDate = new Map<string, { time: number; value: number }>();
+  for (const record of records) {
+    const dateKey = androidRecordLocalDateKey(record);
+    if (!dateKey) continue;
+    const val = Math.round(readValue(record));
+    if (val <= 0) continue;
+    const time = androidRecordTimeMs(record);
+    const existing = latestByDate.get(dateKey);
+    if (!existing || time > existing.time) {
+      latestByDate.set(dateKey, { time, value: val });
+    }
+  }
+  const result = new Map<string, number>();
+  for (const [dateKey, { value }] of latestByDate) {
+    result.set(dateKey, value);
+  }
+  return result;
+}
+
+async function fetchHealthHistoryAndroid(days: number): Promise<HealthHistoryDay[]> {
+  if (!HC) return [];
+  try {
+    const initialized = await HC.initialize();
+    if (!initialized) return [];
+  } catch {
+    return [];
+  }
+
+  const now = new Date();
+  const startDate = getStartOfLocalDayDaysAgo(days);
+  const timeRangeFilter = {
+    operator: 'between' as const,
+    startTime: startDate.toISOString(),
+    endTime: now.toISOString(),
+  };
+
+  let hrvByDate = new Map<string, number>();
+  try {
+    const result = await HC.readRecords('HeartRateVariabilityRmssd', { timeRangeFilter });
+    const records = result.records as Array<
+      AndroidTimedRecord & { heartRateVariabilityMillis: number }
+    >;
+    hrvByDate = bucketLatestAndroidPerDay(records, (r) => r.heartRateVariabilityMillis ?? 0);
+  } catch (err) {
+    console.warn('[useHealthData] Android HRV history query failed:', err);
+  }
+
+  let rhrByDate = new Map<string, number>();
+  try {
+    const result = await HC.readRecords('RestingHeartRate', { timeRangeFilter });
+    const records = result.records as Array<
+      AndroidTimedRecord & { beatsPerMinute: number }
+    >;
+    rhrByDate = bucketLatestAndroidPerDay(records, (r) => r.beatsPerMinute ?? 0);
+  } catch (err) {
+    console.warn('[useHealthData] Android RHR history query failed:', err);
+  }
+
+  // TODO(prompt-2): windowed sleep attribution.
+  return mergeHistoryDayMaps(hrvByDate, rhrByDate);
+}
+
 async function fetchNutritionDataAndroid(): Promise<NutritionData> {
   if (!HC) return EMPTY_NUTRITION;
   try {
@@ -639,6 +834,18 @@ export function useHealthData() {
     }
   }, [isAvailable]);
 
+  const fetchHealthHistory = useCallback(async (days = 30): Promise<HealthHistoryDay[]> => {
+    if (!isAvailable) return [];
+    try {
+      return Platform.OS === 'ios'
+        ? await fetchHealthHistoryIOS(days)
+        : await fetchHealthHistoryAndroid(days);
+    } catch (err) {
+      console.warn('[useHealthData] fetchHealthHistory failed:', err);
+      return [];
+    }
+  }, [isAvailable]);
+
   return {
     permissionStatus,
     healthData,
@@ -650,6 +857,7 @@ export function useHealthData() {
     hkAvailableRaw,
     requestPermission,
     fetchHealthData,
+    fetchHealthHistory,
     fetchNutritionData,
     queryPostSetHeartRate,
   };

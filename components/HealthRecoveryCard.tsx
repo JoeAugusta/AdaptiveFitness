@@ -6,6 +6,8 @@ import type { HealthData } from '../hooks/useHealthData';
 interface HealthRecoveryCardProps {
   healthData: HealthData;
   onOpenSettings?: () => void;
+  /** Stored recovery-metric days available for baseline maturation (0 if unknown). */
+  historyDayCount?: number;
 }
 
 function MetricCell({
@@ -54,8 +56,11 @@ function MetricCell({
 export default function HealthRecoveryCard({
   healthData,
   onOpenSettings,
+  historyDayCount = 0,
 }: HealthRecoveryCardProps) {
-  const hasAnyData = healthData.hasDataToday;
+  const isReady = healthData.hasDataToday;
+  const isMaturing = !isReady && historyDayCount > 0;
+  const maturingDayLabel = Math.min(historyDayCount, 14);
 
   const hrvSignal = (() => {
     if (!healthData.hrvMs) return null;
@@ -103,7 +108,7 @@ export default function HealthRecoveryCard({
         ) : null}
       </View>
 
-      {hasAnyData ? (
+      {isReady ? (
         <View style={styles.metricsRow}>
           <MetricCell
             icon="pulse-outline"
@@ -135,15 +140,26 @@ export default function HealthRecoveryCard({
             signal={sleepSignal}
           />
         </View>
-      ) : (
+      ) : isMaturing ? (
         <View style={styles.noDataRow}>
           <Ionicons
-            name="sync-outline"
+            name="hourglass-outline"
             size={14}
             color={Colors.textTertiary}
           />
           <Text style={styles.noDataText}>
-            No data yet today. Open your Health app to sync.
+            {`Learning your baseline — ${maturingDayLabel}/14 days of recovery data.`}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.noDataRow}>
+          <Ionicons
+            name="watch-outline"
+            size={14}
+            color={Colors.textTertiary}
+          />
+          <Text style={styles.noDataText}>
+            Connect a sleep or HRV wearable to see recovery trends here.
           </Text>
         </View>
       )}

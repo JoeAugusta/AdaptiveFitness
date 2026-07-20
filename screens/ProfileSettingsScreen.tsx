@@ -393,7 +393,6 @@ export default function ProfileSettingsScreen() {
     fetchHealthData,
     healthModuleError,
     coreLoaded,
-    hkAvailableRaw,
   } = useHealthData();
 
   useEffect(() => {
@@ -1042,11 +1041,6 @@ export default function ProfileSettingsScreen() {
               <Text style={styles.deviceNotConnectedText}>Not available</Text>
             )}
           </View>
-          {!healthConnected ? (
-            <Text style={styles.healthDiagnosticText}>
-              {`core:${coreLoaded ? 'y' : 'n'} hk:${hkAvailableRaw}${healthModuleError ? ` err:${healthModuleError.slice(0, 50)}` : ''}`}
-            </Text>
-          ) : null}
 
           {/* Nutrition sync toggle — only shown when health is connected */}
           {healthConnected && healthAvailable && (
@@ -1239,7 +1233,7 @@ export default function ProfileSettingsScreen() {
 
         {/* ── 6. Support ── */}
         <Text style={styles.sectionHeading}>SUPPORT</Text>
-        {/* TODO: replace with live URL before public launch */}
+       
         <View style={styles.sectionCard}>
           <TouchableOpacity
             style={styles.row}
@@ -1248,7 +1242,7 @@ export default function ProfileSettingsScreen() {
                 try {
                   await Linking.openURL('https://honefitness.app/privacy');
                 } catch {
-                  /* Placeholder URL may be unreachable */
+                 
                 }
               })();
             }}
@@ -1264,7 +1258,7 @@ export default function ProfileSettingsScreen() {
                 try {
                   await Linking.openURL('https://honefitness.app/terms');
                 } catch {
-                  /* Placeholder URL may be unreachable */
+                
                 }
               })();
             }}
@@ -1455,26 +1449,6 @@ export default function ProfileSettingsScreen() {
               <Text style={styles.devPlanCompleteJumpText}>
                 DEV: Jump to Plan Complete Screen
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                styles.devButtonAfter,
-                { zIndex: 999, elevation: 999 },
-              ]}
-              onPress={() => {
-                void AsyncStorage.removeItem('hone_beta_welcome_seen')
-                  .then(() => {
-                    Alert.alert('Done', 'Beta welcome screen will show on next launch');
-                  })
-                  .catch((e: unknown) => {
-                    Alert.alert('Error', e instanceof Error ? e.message : String(e));
-                  });
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.devButtonText}>DEV: Reset Beta Welcome Screen</Text>
             </TouchableOpacity>
 
             <Text style={styles.devSectionLabel}>DEV: Date Override</Text>
@@ -1977,13 +1951,6 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     maxWidth: 140,
     textAlign: 'right',
-  },
-  healthDiagnosticText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro,
-    color: Colors.textTertiary,
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
   },
   deviceReconnectBtn: {
     backgroundColor: Colors.accentMuted,

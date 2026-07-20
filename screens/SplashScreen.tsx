@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { Colors, Fonts } from '../constants/design';
+import { Colors } from '../constants/design';
 import { useAuth } from '../contexts/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import BrandLockup from '../components/BrandLockup';
 
 type SplashNavProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
@@ -21,27 +20,25 @@ export default function SplashScreen() {
     if (hasNavigated.current) return;
     hasNavigated.current = true;
 
-    AsyncStorage.getItem('hone_beta_welcome_seen').then((seenWelcome) => {
-      if (!session) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: seenWelcome ? 'Auth' : 'BetaWelcome' }],
-        });
-        return;
-      }
-
-      if (session.user.is_anonymous) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Dashboard' }],
-        });
-        return;
-      }
-
+    if (!session) {
       navigation.reset({
         index: 0,
-        routes: [{ name: hasPlans ? 'Dashboard' : 'JordanIntro' }],
+        routes: [{ name: 'Auth' }],
       });
+      return;
+    }
+
+    if (session.user.is_anonymous) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Dashboard' }],
+      });
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: hasPlans ? 'Dashboard' : 'JordanIntro' }],
     });
   }, [authReady, session, hasPlans, navigation]);
 

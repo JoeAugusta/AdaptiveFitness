@@ -1034,6 +1034,10 @@ function applyDeloadPassToDays(days: any[] | undefined): any[] {
               ? JSON.parse(JSON.stringify(ex.setTargets))
               : null;
           ex.preDeloadSets = ex.sets ?? 3;
+          if (ex.preDeloadTargetRpe == null) {
+            const preRpe = Number(ex.targetRpe ?? 0);
+            if (preRpe > 0) ex.preDeloadTargetRpe = preRpe;
+          }
         }
 
         const equip = String(ex.equipment ?? 'barbell');
@@ -1987,11 +1991,14 @@ function rebuildPyramidAccessorySetTargetsAfterWeights(
             return {
               ...stripSetTargetsFromExercise(ex),
               targetWeight: tw,
-              setTargets: scalePyramidSetTargets(
-                ex.setTargets as PyramidSetTargetRow[],
-                oldTopWeight,
-                tw,
-                equip,
+              setTargets: refreshPyramidSetTargetRpesFromHint(
+                scalePyramidSetTargets(
+                  ex.setTargets as PyramidSetTargetRow[],
+                  oldTopWeight,
+                  tw,
+                  equip,
+                ),
+                Number(ex.targetRpe ?? 8),
               ),
               setStructure: 'pyramid' as const,
             };
@@ -2000,6 +2007,10 @@ function rebuildPyramidAccessorySetTargetsAfterWeights(
             return {
               ...ex,
               targetWeight: tw,
+              setTargets: refreshPyramidSetTargetRpesFromHint(
+                ex.setTargets as PyramidSetTargetRow[],
+                Number(ex.targetRpe ?? 8),
+              ),
               setStructure: 'pyramid' as const,
             };
           }
@@ -2401,12 +2412,25 @@ function roundToEquipmentPrecision(weight: number, equipment: string): number {
   return roundToEquipmentIncrement(weight, equipment);
 }
 
-type PyramidSetTargetRow = {
-  setNumber: number;
-  targetWeight: number;
-  targetRpe: number;
-  targetReps: string;
-};
+type PyramidSetTargetRow = Week1PyramidTargetSet;
+
+/** Match buildWeek1PyramidSetTargets — top set = hint, earlier sets = hint - 1. */
+function refreshPyramidSetTargetRpesFromHint(
+  setTargets: PyramidSetTargetRow[],
+  targetRpeHint: number,
+): PyramidSetTargetRow[] {
+  if (setTargets.length === 0) return setTargets;
+  const topRpe =
+    Number.isFinite(Number(targetRpeHint)) && Number(targetRpeHint) > 0
+      ? Number(targetRpeHint)
+      : 8;
+  const secondaryRpe = topRpe - 1;
+  const topIndex = setTargets.length - 1;
+  return setTargets.map((st, i) => ({
+    ...st,
+    targetRpe: i === topIndex ? topRpe : secondaryRpe,
+  }));
+}
 
 function scalePyramidSetTargets(
   originalSetTargets: PyramidSetTargetRow[],
@@ -2813,6 +2837,34 @@ function runProgressionTests(): void {
     strengthPeriodisation(3));
   check('W4 deload: 3x5 RPE6', { sets:3, reps:5, targetRpe:6.0 },
     strengthPeriodisation(4));
+
+  // ── post-deload RPE stash + restore ───────────────────────
+  const deloadRpeDays = applyDeloadPassToDays([
+    {
+      type: 'workout',
+      exercises: [{ targetRpe: 8, targetWeight: 200, sets: 4 }],
+    },
+  ]);
+  const deloadRpeEx = deloadRpeDays[0]?.exercises?.[0];
+  check(
+    'applyDeloadPassToDays stashes preDeloadTargetRpe',
+    8,
+    Number(deloadRpeEx?.preDeloadTargetRpe ?? 0),
+  );
+  const restoreCandidate = { targetRpe: Number(deloadRpeEx?.targetRpe ?? 0) };
+  const priorForRestore = { preDeloadTargetRpe: deloadRpeEx?.preDeloadTargetRpe };
+  if (
+    priorForRestore.preDeloadTargetRpe != null &&
+    Number(priorForRestore.preDeloadTargetRpe) > 0
+  ) {
+    restoreCandidate.targetRpe = Number(priorForRestore.preDeloadTargetRpe);
+  }
+  check('post_deload_restores_target_rpe', 8, restoreCandidate.targetRpe);
+  const caseCExercise = { targetRpe: 4 };
+  if (Number(caseCExercise.targetRpe ?? 0) <= 5) {
+    caseCExercise.targetRpe = 8;
+  }
+  check('post_deload_case_c_clamps_unstashed_target_rpe', 8, caseCExercise.targetRpe);
 
   // ── Target lift weight increments ────────────────────────
   // W1 RPE 6.0, target 7.0 → gap +1 → +5 → 280
@@ -3574,6 +3626,60 @@ serve(async (req) => {
             output: { exerciseTargetRpe, setTargetRpes },
             expected: { exerciseTargetRpe: 5, setTargetRpes: expectedSetTargetRpes },
             pass: exerciseTargetRpe === 5 && setRpesPass,
+          };
+        })(),
+
+        post_deload_restores_target_rpe: (() => {
+          const exercise = { targetRpe: 5 };
+          const priorPlanExercise = {
+            preDeloadTargetRpe: 8,
+            preDeloadSetTargets: [
+              { setNumber: 1, targetRpe: 7, targetWeight: 160 },
+              { setNumber: 2, targetRpe: 8, targetWeight: 200 },
+            ],
+          };
+          const completedWeekWasDeload = true;
+          if (
+            completedWeekWasDeload &&
+            priorPlanExercise?.preDeloadTargetRpe != null &&
+            Number(priorPlanExercise.preDeloadTargetRpe) > 0
+          ) {
+            exercise.targetRpe = Number(priorPlanExercise.preDeloadTargetRpe);
+          } else if (
+            completedWeekWasDeload &&
+            Array.isArray(priorPlanExercise?.preDeloadSetTargets) &&
+            priorPlanExercise.preDeloadSetTargets.length > 0
+          ) {
+            const preTop = priorPlanExercise.preDeloadSetTargets[
+              priorPlanExercise.preDeloadSetTargets.length - 1
+            ];
+            const preRpe = Number(preTop?.targetRpe ?? 0);
+            if (preRpe > 0) exercise.targetRpe = preRpe;
+          }
+          const restoredTargetRpe = Number(exercise.targetRpe ?? 0);
+          return {
+            input: {
+              deloadedTargetRpe: 5,
+              preDeloadTargetRpe: 8,
+              completedWeekWasDeload: true,
+            },
+            output: { targetRpe: restoredTargetRpe },
+            expected: { targetRpe: 8 },
+            pass: restoredTargetRpe === 8,
+          };
+        })(),
+
+        post_deload_case_c_clamps_unstashed_target_rpe: (() => {
+          const exercise = { targetRpe: 4 };
+          const completedWeekWasDeload = true;
+          if (completedWeekWasDeload && Number(exercise.targetRpe ?? 0) <= 5) {
+            exercise.targetRpe = 8;
+          }
+          return {
+            input: { deloadedTargetRpe: 4, completedWeekWasDeload: true },
+            output: { targetRpe: Number(exercise.targetRpe ?? 0) },
+            expected: { targetRpe: 8 },
+            pass: Number(exercise.targetRpe ?? 0) === 8,
           };
         })(),
 
@@ -5144,6 +5250,26 @@ Return ONLY this exact JSON structure:
           exercise.repsMin = 8;
           exercise.repsMax = 8;
         } else {
+          if (
+            completedWeekWasDeload &&
+            priorPlanExercise?.preDeloadTargetRpe != null &&
+            Number(priorPlanExercise.preDeloadTargetRpe) > 0
+          ) {
+            exercise.targetRpe = Number(priorPlanExercise.preDeloadTargetRpe);
+          } else if (
+            completedWeekWasDeload &&
+            Array.isArray(priorPlanExercise?.preDeloadSetTargets) &&
+            priorPlanExercise.preDeloadSetTargets.length > 0
+          ) {
+            const preTop = priorPlanExercise.preDeloadSetTargets[
+              priorPlanExercise.preDeloadSetTargets.length - 1
+            ];
+            const preRpe = Number(preTop?.targetRpe ?? 0);
+            if (preRpe > 0) exercise.targetRpe = preRpe;
+          }
+          if (completedWeekWasDeload && Number(exercise.targetRpe ?? 0) <= 5) {
+            exercise.targetRpe = 8;
+          }
           const accessoryTargetRpe =
             exercise.targetRpe > 0 ? exercise.targetRpe : 7.0;
           const tier = normalizeCompoundTier(

@@ -596,6 +596,8 @@ export default function ActiveWorkoutScreen() {
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Raw `phase` from plan_json for the active week (training mesocycle). */
   const [sessionPlanPhaseRaw, setSessionPlanPhaseRaw] = useState<string | null>(null);
+  /** Whether the week immediately before the active session was a deload (adaptation copy). */
+  const [completedWeekWasDeload, setCompletedWeekWasDeload] = useState(false);
   /** DB row id — use for workout_logs so it always matches the loaded plan row */
   const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(null);
   /** Same plan_id / day_number as INSERT — must match plan_json DayObject.dayNumber */
@@ -918,6 +920,11 @@ export default function ActiveWorkoutScreen() {
           : params.dayNumber;
 
       const previousWeekNumber = resolvedWeekNumber - 1;
+      const previousWeekPlanData =
+        previousWeekNumber >= 1 ? findWeekInPlan(previousWeekNumber) : null;
+      const priorWeekWasDeload =
+        previousWeekPlanData?.weekOverride?.type === 'deload' ||
+        previousWeekPlanData?.phase === 'deload';
       const previousSetsMap: Record<string, LoggedSet[]> = {};
       let previousLogForDev:
         | { sets_json?: LoggedSet[] | string | null; day_number?: number }
@@ -1048,6 +1055,7 @@ export default function ActiveWorkoutScreen() {
       }
 
       setResolvedPlanWeekNumber(resolvedWeekNumber);
+      setCompletedWeekWasDeload(Boolean(priorWeekWasDeload));
       setSessionPlanIdForLogs(idForQueries);
       setSessionDayNumber(dayData.dayNumber);
 
@@ -2657,6 +2665,7 @@ export default function ActiveWorkoutScreen() {
                       exerciseIdx === 0
                     }
                     onDismissWarmupCallout={dismissWarmupCallout}
+                    completedWeekWasDeload={completedWeekWasDeload}
                   />
                     </>
                   )}

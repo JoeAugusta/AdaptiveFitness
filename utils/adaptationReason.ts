@@ -114,6 +114,7 @@ export function deriveAdaptationReason(
   planGoal?: string,
   setCountHint?: number,
   extras?: AdaptationExtras,
+  completedWeekWasDeload = false,
 ): AdaptationReason {
 
   // Week 1 — no prior data (or missing history envelope)
@@ -179,6 +180,42 @@ export function deriveAdaptationReason(
     signal = targetWeight > 0 ? 'up' : 'hold';
   }
 
+  const sessionCtxDefault = (() => {
+    const formattedCurrent = formatWorkoutWeight(targetWeight, isMetric);
+    const prescribeRpeThisWeek =
+      typeof currentTargetRpe === 'number' && Number.isFinite(currentTargetRpe)
+        ? currentTargetRpe.toFixed(1)
+        : '—';
+    const repN = repsHintFromPrescription(extras?.currentRepsPrescription);
+    return `${formattedCurrent} × ${repN} reps @ RPE ${prescribeRpeThisWeek}`;
+  })();
+
+  if (completedWeekWasDeload) {
+    const deltaStrLocal = formatLoadDeltaForCopy(weightDelta, isMetric);
+    if (signal === 'up') {
+      return {
+        headline: `Up ${deltaStrLocal} — back to full intensity`,
+        detail: `Coming off your deload — back up to pick up where you left off.`,
+        sessionContextValue: sessionCtxDefault,
+        signal: 'up',
+      };
+    }
+    if (signal === 'down') {
+      return {
+        headline: `Down ${deltaStrLocal} — back to full intensity`,
+        detail: `Coming off your deload — easing back into your working range.`,
+        sessionContextValue: sessionCtxDefault,
+        signal: 'down',
+      };
+    }
+    return {
+      headline: 'Back to full intensity',
+      detail: 'Holding at your pre-deload weight to rebuild momentum.',
+      sessionContextValue: sessionCtxDefault,
+      signal: 'hold',
+    };
+  }
+
   const topStr = formatWorkoutWeight(topSetWeight, isMetric);
   const deltaStr = formatLoadDeltaForCopy(weightDelta, isMetric);
   const prescribeRpe =
@@ -187,12 +224,6 @@ export function deriveAdaptationReason(
       : null;
 
   const formattedCurrent = formatWorkoutWeight(targetWeight, isMetric);
-  const prescribeRpeThisWeek =
-    typeof currentTargetRpe === 'number' && Number.isFinite(currentTargetRpe)
-      ? currentTargetRpe.toFixed(1)
-      : '—';
-  const repN = repsHintFromPrescription(extras?.currentRepsPrescription);
-  const sessionCtxDefault = `${formattedCurrent} × ${repN} reps @ RPE ${prescribeRpeThisWeek}`;
 
   if (
     planGoal === 'strength' &&
@@ -274,7 +305,7 @@ export function deriveAdaptationReason(
       return {
         headline: `Up ${deltaStr} — progressing as planned`,
         detail:
-          'On target last week. Small load increase to drive continued adaptation.',
+          'On target last week — adding load to keep the progression moving.',
         sessionContextValue: sessionCtxDefault,
         signal: 'up',
       };

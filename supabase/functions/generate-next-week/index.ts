@@ -103,6 +103,7 @@ function buildAdaptationReason(params: {
   completionTier: 'full' | 'partial' | 'low';
   hadRpeData: boolean;
   weekNumber: number;
+  completedWeekWasDeload: boolean;
 }): string {
   const deltaAbs = formatAdaptationLb(Math.abs(params.weightDelta));
 
@@ -112,40 +113,53 @@ function buildAdaptationReason(params: {
   if (params.changeType === 'deload') {
     return `Week ${params.weekNumber} is your scheduled recovery week. Weights drop to 85% — this is programmed, not a setback. Come back stronger Week ${params.weekNumber + 1}.`;
   }
-  if (params.changeType === 'increase' && params.repsExceeded) {
-    return `You exceeded the rep target last week. Added ${deltaAbs} lbs.`;
+
+  if (params.completedWeekWasDeload) {
+    if (params.changeType === 'increase') {
+      return `Coming off your deload — back up ${deltaAbs} lbs to pick up where you left off.`;
+    }
+    if (params.changeType === 'decrease') {
+      return `Coming off your deload — easing ${deltaAbs} lbs back into your working range.`;
+    }
+    return 'Back to full intensity — holding at your pre-deload weight to rebuild momentum.';
   }
-  if (
-    params.changeType === 'increase' &&
-    params.rpeGap != null &&
-    params.rpeGap > 0 &&
-    params.avgLoggedRpe != null &&
-    params.targetRpe != null
-  ) {
-    return `Average RPE ${params.avgLoggedRpe.toFixed(1)} was below your ${params.targetRpe.toFixed(1)} target. Added ${deltaAbs} lbs.`;
+
+  if (params.changeType === 'increase') {
+    if (params.repsExceeded) {
+      return `You exceeded the rep target last week. Added ${deltaAbs} lbs.`;
+    }
+    if (
+      params.rpeGap != null && params.rpeGap > 0 &&
+      params.avgLoggedRpe != null && params.targetRpe != null
+    ) {
+      return `Average RPE ${params.avgLoggedRpe.toFixed(1)} was below your ${params.targetRpe.toFixed(1)} target. Added ${deltaAbs} lbs.`;
+    }
+    return `On target last week — adding ${deltaAbs} lbs to keep the progression moving.`;
   }
-  if (params.changeType === 'decrease' && params.completionTier === 'low') {
-    return 'Fewer than 60% of sessions completed. Dropping weight slightly to reset and build back up.';
+
+  if (params.changeType === 'decrease') {
+    if (params.completionTier === 'low') {
+      return 'Fewer than 60% of sessions completed. Dropping weight slightly to reset and build back up.';
+    }
+    if (
+      params.rpeGap != null && params.rpeGap < 0 &&
+      params.avgLoggedRpe != null && params.targetRpe != null
+    ) {
+      return `Average RPE ${params.avgLoggedRpe.toFixed(1)} exceeded your ${params.targetRpe.toFixed(1)} target. Dropped ${deltaAbs} lbs to bring effort back into range.`;
+    }
+    return `Pulled back ${deltaAbs} lbs to keep your reps crisp.`;
   }
-  if (
-    params.changeType === 'decrease' &&
-    params.rpeGap != null &&
-    params.rpeGap < 0 &&
-    params.avgLoggedRpe != null &&
-    params.targetRpe != null
-  ) {
-    return `Average RPE ${params.avgLoggedRpe.toFixed(1)} exceeded your ${params.targetRpe.toFixed(1)} target. Dropped ${deltaAbs} lbs to bring effort back into range.`;
-  }
-  if (params.changeType === 'hold' && params.completionTier === 'partial') {
+
+  if (params.completionTier === 'partial') {
     return 'Sessions were inconsistent last week. Holding weight until you have a full week to measure from.';
   }
-  if (params.changeType === 'hold' && !params.hadRpeData) {
+  if (!params.hadRpeData) {
     return 'No RPE data logged last week. Holding weight until I have your numbers.';
   }
-  if (params.changeType === 'hold' && params.avgLoggedRpe != null) {
+  if (params.avgLoggedRpe != null) {
     return `RPE averaged ${params.avgLoggedRpe.toFixed(1)} — right on target. Holding weight this week.`;
   }
-  return 'Holding weight this week based on last week\'s performance.';
+  return "Holding weight based on last week's performance.";
 }
 
 function upsertAdaptationDraft(drafts: AdaptationDraft[], draft: AdaptationDraft): void {
@@ -161,6 +175,7 @@ function buildAdaptationChangesFromDrafts(
     phase: string;
     nextWeekNumber: number;
     completionTier: 'full' | 'partial' | 'low';
+    completedWeekWasDeload: boolean;
   },
 ): AdaptationChange[] {
   const finalWeightByKey = new Map<string, number>();
@@ -216,6 +231,7 @@ function buildAdaptationChangesFromDrafts(
         completionTier: opts.completionTier,
         hadRpeData: d.hadRpeData,
         weekNumber: opts.nextWeekNumber,
+        completedWeekWasDeload: opts.completedWeekWasDeload,
       }),
     });
   }
@@ -1286,6 +1302,7 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
   nextWeekNumber: number;
   wasSwapped?: boolean;
   loggedBaselineWeight?: number;
+  completedWeekWasDeload?: boolean;
 }): void {
   const {
     exercise,
@@ -1297,6 +1314,7 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
     nextWeekNumber,
     wasSwapped = false,
     loggedBaselineWeight,
+    completedWeekWasDeload = false,
   } = params;
 
   const newWeight = Number(exercise.targetWeight ?? 0);
@@ -1309,6 +1327,31 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
 
   let headline: string;
   let body: string;
+
+  // Post-deload: deload-week RPE is not a real effort signal. Lead with
+  // weight direction, never quote RPE.
+  if (!wasSwapped && completedWeekWasDeload) {
+    if (diff > 0) {
+      headline = `Up ${diff} lbs — back to full intensity`;
+      body = `Coming off your deload — back up ${diff} lbs to pick up where you left off.`;
+    } else if (diff < 0) {
+      headline = `Down ${Math.abs(diff)} lbs — back to full intensity`;
+      body = `Coming off your deload — easing ${Math.abs(diff)} lbs back into your working range.`;
+    } else {
+      headline = 'Back to full intensity';
+      body = 'Holding at your pre-deload weight to rebuild momentum.';
+    }
+    exercise.coachingNote = body;
+    if ('adaptationReason' in exercise) exercise.adaptationReason = headline;
+    exercise.adaptationHeadline = headline;
+    exercise.adaptationBody = body;
+    const trD = Number(exercise.targetRpe ?? 0);
+    exercise.adaptationThisSession =
+      `${newWeight} lbs × ${String(exercise.reps)} reps @ RPE ${
+        Number.isFinite(trD) ? trD.toFixed(1) : String(exercise.targetRpe ?? '?')
+      }`;
+    return;
+  }
 
   if (wasSwapped) {
     const originalName = String(exercise.originalName ?? '').trim();
@@ -1333,7 +1376,7 @@ function stampExerciseAdaptationCopyAfterProgression(params: {
         `${prevWeight} lbs at RPE ${avgLoggedRpe.toFixed(1)} was within your range — adding load to keep the stimulus honest.`;
     } else {
       headline = `Up ${diff} lbs — building on last week`;
-      body = `On target last week. Small load increase for continued adaptation.`;
+      body = `Adding ${diff} lbs to keep the progression moving.`;
     }
   } else if (diff < 0) {
     headline = `Down ${Math.abs(diff)} lbs — recovery week`;
@@ -5176,6 +5219,7 @@ Return ONLY this exact JSON structure:
           loggedBaselineWeight: discardLoggedForProgression
             ? undefined
             : loggedBaselineWeight,
+          completedWeekWasDeload,
         });
 
         const progressedWeight = Number(exercise.targetWeight ?? 0);
@@ -5279,7 +5323,7 @@ Return ONLY this exact JSON structure:
     nextWeekData.adaptationChanges = buildAdaptationChangesFromDrafts(
       adaptationDrafts,
       nextWeekData.days,
-      { phase, nextWeekNumber, completionTier },
+      { phase, nextWeekNumber, completionTier, completedWeekWasDeload },
     );
 
     nextWeekData = normalizeLoads(nextWeekData);

@@ -361,6 +361,8 @@ interface ExerciseCardProps {
   isActiveCard?: boolean;
   /** Plan week — affects self-select coach copy when no prescribed weight */
   weekNumber?: number;
+  /** True when the just-completed plan week (weekNumber − 1) was a deload */
+  completedWeekWasDeload?: boolean;
   /** From plan_json.goal */
   goal?: PlanGoalType;
   /** From plan_json.goalLift / targetLift — strength primary lift id */
@@ -422,6 +424,7 @@ export default function ExerciseCard({
   coachingLoading,
   isActiveCard = false,
   weekNumber = 1,
+  completedWeekWasDeload = false,
   goal = 'strength',
   programGoalLift = null,
   experience: _experience = 'intermediate',
@@ -1131,6 +1134,7 @@ export default function ExerciseCard({
         goal,
         exercise.sets.length,
         extras,
+        completedWeekWasDeload,
       ),
     );
   }, [
@@ -1144,6 +1148,7 @@ export default function ExerciseCard({
     exercise.setStructure,
     exercise.setTargets,
     weekNumber,
+    completedWeekWasDeload,
     firstTarget?.targetRpe,
     prescribedDisplayWeight,
     programGoalLift,

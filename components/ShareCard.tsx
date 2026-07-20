@@ -1,6 +1,6 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Fonts, FontSizes, Spacing } from '../constants/design';
+import { Colors, Fonts, Spacing } from '../constants/design';
 import {
   formatShareLiftLineCompact,
   type ShareTopLift,
@@ -14,8 +14,9 @@ import {
   ShareMonoLabel,
   SharePrChip,
   ShareStatNumber,
+  ShareType,
   SHARE_CARD_BG,
-  SHARE_LABEL_COLOR,
+  SHARE_GUTTER,
   SHARE_PR_ROW_BG,
 } from './shareCardShared';
 
@@ -43,19 +44,9 @@ function formatAvgRpe(avgRpe: number): string {
 }
 
 function ShareLiftRow({ lift }: { lift: ShareTopLift }) {
-  const [rowHeight, setRowHeight] = useState(LIFT_ROW_HEIGHT);
-
   return (
-    <View
-      style={[styles.liftRow, lift.isPr && styles.liftRowPr]}
-      onLayout={(event) => {
-        const nextHeight = Math.round(event.nativeEvent.layout.height);
-        if (nextHeight > 0 && nextHeight !== rowHeight) {
-          setRowHeight(nextHeight);
-        }
-      }}
-    >
-      {lift.isPr ? <EmberLeftAccent rowHeight={rowHeight} /> : null}
+    <View style={[styles.liftRow, lift.isPr && styles.liftRowPr]}>
+      {lift.isPr ? <EmberLeftAccent /> : null}
       <View style={styles.liftRowContent}>
         <View style={styles.liftNameRow}>
           <Text style={styles.liftName} numberOfLines={1} ellipsizeMode="tail">
@@ -165,25 +156,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sessionBlock: {
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     marginBottom: Spacing.lg,
   },
   sessionMeta: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.label,
+    fontSize: ShareType.monoLabel,
     color: Colors.accent,
     letterSpacing: 3,
     marginBottom: 6,
   },
   sessionTitle: {
     fontFamily: Fonts.display,
-    fontSize: FontSizes.display,
+    fontSize: ShareType.sessionTitle,
     color: Colors.textPrimary,
     letterSpacing: 0.2,
   },
   statsRow: {
     flexDirection: 'row',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     marginBottom: Spacing.lg,
   },
   statCell: {
@@ -210,8 +201,9 @@ const styles = StyleSheet.create({
   },
   liftsBlock: {
     flex: 1,
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     paddingTop: Spacing.md,
+    overflow: 'hidden',
   },
   liftsSpacer: {
     flex: 1,
@@ -223,12 +215,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     minHeight: LIFT_ROW_HEIGHT,
-    paddingVertical: 10,
   },
   liftRowPr: {
     backgroundColor: SHARE_PR_ROW_BG,
-    marginHorizontal: -Spacing.xl,
-    paddingHorizontal: Spacing.xl,
   },
   liftRowContent: {
     flex: 1,
@@ -237,6 +226,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.sm,
+    paddingVertical: 10,
   },
   liftNameRow: {
     flex: 1,
@@ -247,14 +237,14 @@ const styles = StyleSheet.create({
   liftName: {
     flexShrink: 1,
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.caption,
+    fontSize: ShareType.liftName,
     color: Colors.textSecondary,
   },
   liftStat: {
     flexShrink: 0,
     maxWidth: '46%',
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.body,
+    fontSize: ShareType.liftStat,
     color: Colors.textPrimary,
     textAlign: 'right',
   },

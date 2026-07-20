@@ -1,13 +1,30 @@
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import { Colors, Fonts, FontSizes, Spacing } from '../constants/design';
+import { Colors, Fonts, Spacing } from '../constants/design';
 import BrandLockup, { BrandMark } from './BrandLockup';
 export const SHARE_CARD_BG = '#0E0F12';
+export const ShareType = {
+  monoLabel: 7,
+  footerSub: 7,
+  footerUrl: 8,
+  liftName: 11,
+  liftStat: 11,
+  footerTagline: 11,
+  prReps: 17,
+  prExerciseName: 20,
+  sessionTitle: 26,
+  statNumber: 36,
+  prWeightUnit: 28,
+  prWeightNumber: 92,
+} as const;
+
+export const SHARE_GUTTER = 28;
+
+export const SHARE_BRAND_LOCKUP_SIZE = 16;
 export const SHARE_LABEL_COLOR = '#5B636E';
 export const SHARE_MUTED_COLOR = '#98A1AC';
 export const SHARE_PR_ROW_BG = 'rgba(244,82,14,0.08)';
 export const SHARE_SKEW_DEG = '-20deg';
 export const SHARE_COUNTER_SKEW_DEG = '20deg';
-const TAN_20_DEG = 0.36397;
 
 export function ShareStatNumber({
   children,
@@ -33,7 +50,7 @@ export function ShareStatNumber({
 export function ShareCardHeader({ contextLabel }: { contextLabel: string }) {
   return (
     <View style={styles.header}>
-      <BrandLockup size={46} />
+      <BrandLockup size={SHARE_BRAND_LOCKUP_SIZE} />
       <Text style={styles.headerContext}>{contextLabel}</Text>
     </View>
   );
@@ -65,24 +82,8 @@ export function ShareCardFooter({
   );
 }
 
-export function EmberLeftAccent({ rowHeight }: { rowHeight: number }) {
-  const borderWidth = 5;
-  const cut = Math.max(rowHeight * TAN_20_DEG, 6);
-
-  return (
-    <View style={[styles.emberAccentClip, { height: rowHeight }]}>
-      <View
-        style={[
-          styles.emberAccentBar,
-          {
-            width: borderWidth,
-            height: rowHeight + cut,
-            marginTop: -cut * 0.35,
-          },
-        ]}
-      />
-    </View>
-  );
+export function EmberLeftAccent() {
+  return <View style={styles.emberAccentBar} />;
 }
 
 export function SharePrChip() {
@@ -110,22 +111,22 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontFamily: Fonts.monoMedium,
-    fontSize: 52,
+    fontSize: ShareType.statNumber,
     color: Colors.accent,
-    lineHeight: 56,
+    lineHeight: 38,
     includeFontPadding: false,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
   },
   headerContext: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.micro,
+    fontSize: ShareType.monoLabel,
     color: SHARE_LABEL_COLOR,
     letterSpacing: 2,
   },
@@ -147,7 +148,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },
@@ -157,29 +158,26 @@ const styles = StyleSheet.create({
   },
   footerTagline: {
     fontFamily: Fonts.displaySemi,
-    fontSize: FontSizes.caption,
+    fontSize: ShareType.footerTagline,
     color: Colors.textPrimary,
   },
   footerSubTagline: {
     fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro,
+    fontSize: ShareType.footerSub,
     color: SHARE_MUTED_COLOR,
     marginTop: 2,
   },
   footerUrl: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.micro,
+    fontSize: ShareType.footerUrl,
     color: SHARE_MUTED_COLOR,
     letterSpacing: 0.3,
   },
-  emberAccentClip: {
-    width: 8,
-    overflow: 'hidden',
-    marginRight: Spacing.sm,
-  },
   emberAccentBar: {
+    width: 5,
+    alignSelf: 'stretch',
     backgroundColor: Colors.ember,
-    transform: [{ skewX: SHARE_SKEW_DEG }],
+    marginRight: Spacing.sm,
   },
   prChipClip: {
     overflow: 'hidden',
@@ -194,14 +192,14 @@ const styles = StyleSheet.create({
   },
   prChipText: {
     fontFamily: Fonts.monoMedium,
-    fontSize: 9,
+    fontSize: ShareType.monoLabel,
     color: SHARE_CARD_BG,
     letterSpacing: 0.4,
     transform: [{ skewX: SHARE_COUNTER_SKEW_DEG }],
   },
   monoLabel: {
     fontFamily: Fonts.monoMedium,
-    fontSize: 9,
+    fontSize: ShareType.monoLabel,
     color: SHARE_LABEL_COLOR,
     letterSpacing: 3,
     textTransform: 'uppercase',
@@ -209,6 +207,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: Colors.divider,
-    marginHorizontal: Spacing.xl,
+    marginHorizontal: SHARE_GUTTER,
   },
 });

@@ -1,12 +1,14 @@
 import { View, Text, StyleSheet } from 'react-native';
 import type { RefObject } from 'react';
-import { Colors, Fonts, FontSizes, Spacing } from '../constants/design';
+import { Colors, Fonts, Spacing } from '../constants/design';
 import { LBS_TO_KG } from '../utils/units';
 import {
   ShareCardFooter,
   ShareCardHeader,
   ShareCardWatermark,
+  ShareType,
   SHARE_CARD_BG,
+  SHARE_GUTTER,
   SHARE_MUTED_COLOR,
 } from './shareCardShared';
 
@@ -84,11 +86,10 @@ export default function PRShareCard({
           >
             {displayWeight}
           </Text>
-          <View style={styles.unitRepsStack}>
-            <Text style={styles.weightUnit}>{unit}</Text>
-            <Text style={styles.repsInline}>{repsLabel}</Text>
-          </View>
+          <Text style={styles.weightUnit}>{unit}</Text>
         </View>
+
+        <Text style={styles.repsLine}>{repsLabel}</Text>
 
         <Text style={styles.exerciseName} numberOfLines={1} ellipsizeMode="tail">
           {exerciseName}
@@ -127,7 +128,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     justifyContent: 'flex-end',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: SHARE_GUTTER,
     paddingBottom: Spacing.lg,
   },
   badgeRow: {
@@ -138,7 +139,7 @@ const styles = StyleSheet.create({
   },
   recordLabel: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.label,
+    fontSize: ShareType.monoLabel,
     color: Colors.accent,
     letterSpacing: 3,
   },
@@ -150,7 +151,7 @@ const styles = StyleSheet.create({
   },
   rankBadgeText: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.micro,
+    fontSize: ShareType.monoLabel,
     color: Colors.accent,
     letterSpacing: 1,
   },
@@ -161,39 +162,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
-    marginBottom: Spacing.md,
+    marginBottom: 2,
   },
   weightNumber: {
     flexShrink: 1,
-    maxWidth: '72%',
+    maxWidth: '76%',
     fontFamily: Fonts.display,
-    fontSize: 118,
+    fontSize: ShareType.prWeightNumber,
     color: Colors.accent,
-    lineHeight: 118,
-    letterSpacing: -2,
+    lineHeight: ShareType.prWeightNumber,
+    letterSpacing: -1.5,
     includeFontPadding: false,
   },
   weightUnit: {
     fontFamily: Fonts.monoMedium,
-    fontSize: 28,
+    fontSize: ShareType.prWeightUnit,
     color: SHARE_MUTED_COLOR,
     paddingBottom: 8,
   },
-  unitRepsStack: {
-    flexDirection: 'column',
-    justifyContent: 'flex-end',
-    paddingBottom: 6,
-    gap: 4,
-  },
-  repsInline: {
+  repsLine: {
     fontFamily: Fonts.monoMedium,
-    fontSize: FontSizes.body,
+    fontSize: ShareType.prReps,
     color: SHARE_MUTED_COLOR,
     letterSpacing: 0.3,
+    marginBottom: Spacing.md,
   },
   exerciseName: {
     fontFamily: Fonts.displaySemi,
-    fontSize: FontSizes.title,
+    fontSize: ShareType.prExerciseName,
     color: Colors.textPrimary,
   },
 });

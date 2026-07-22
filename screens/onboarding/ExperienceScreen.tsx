@@ -1070,6 +1070,8 @@ export default function ExperienceScreen() {
                         styles.presetRowLabel,
                         selectedPresetIndex === idx && styles.presetRowLabelSelected,
                       ]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
                     >
                       {preset.label}
                     </Text>
@@ -1668,6 +1670,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   presetRadio: {
     width: 18,
@@ -1685,6 +1689,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: FontSizes.body,
     color: Colors.textSecondary,
+    flexShrink: 1,
   },
   presetRowLabelSelected: {
     color: Colors.textPrimary,
@@ -1697,6 +1702,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderWidth: 1,
     borderColor: Colors.accentBorder,
+    flexShrink: 0,
+    marginLeft: Spacing.sm,
   },
   presetRecommendedBadgeText: {
     fontFamily: Fonts.medium,

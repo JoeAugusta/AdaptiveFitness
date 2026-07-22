@@ -315,7 +315,7 @@ async function persistGeneratedPlan(
     replacePlanId: string | null;
     planOut: Record<string, unknown>;
   },
-): Promise<string> {
+): Promise<string | null> {
   const { userId, goalId, replacePlanId, planOut } = params;
 
   const title =
@@ -378,6 +378,13 @@ async function persistGeneratedPlan(
     }
   }
 
+  if (!goalId) {
+    console.error(
+      '[generate-plan] goalId missing — skipping server-side persist; returning plan to client',
+    );
+    return null;
+  }
+
   const { error: pauseErr } = await supabase
     .from('plans')
     .update({ status: 'paused' })
@@ -385,10 +392,6 @@ async function persistGeneratedPlan(
     .eq('status', 'active');
   if (pauseErr) {
     console.warn('[generate-plan] could not pause existing active plans:', pauseErr.message);
-  }
-
-  if (!goalId) {
-    throw new Error('goalId required to persist full plan');
   }
 
   const { data: inserted, error: insertErr } = await supabase
@@ -4858,13 +4861,15 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
           ? body.replacePlanId.trim()
           : null;
 
-      savedPlanId = await persistGeneratedPlan(supabaseAdmin, {
+      savedPlanId = (await persistGeneratedPlan(supabaseAdmin, {
         userId,
         goalId,
         replacePlanId,
         planOut: planOut as Record<string, unknown>,
-      });
-      console.log('[generate-plan] persisted plan id:', savedPlanId);
+      })) ?? undefined;
+      if (savedPlanId) {
+        console.log('[generate-plan] persisted plan id:', savedPlanId);
+      }
     }
 
     return new Response(JSON.stringify({

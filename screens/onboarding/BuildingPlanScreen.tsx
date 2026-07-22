@@ -280,6 +280,52 @@ async function fetchRecoverablePlan(
   return null;
 }
 
+async function savePlanClientSide(
+  userId: string,
+  goalId: string,
+  planJson: GeneratedPlanJson,
+  replacePlanId?: string | null,
+): Promise<string | null> {
+  if (replacePlanId) {
+    const { data, error } = await supabase
+      .from('plans')
+      .update({
+        title: planJson.title,
+        total_weeks: planJson.totalWeeks,
+        plan_json: planJson,
+        is_preview: false,
+      })
+      .eq('id', replacePlanId)
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      console.error('[BuildingPlan] client plan update failed:', error);
+      return null;
+    }
+    return data?.id ?? null;
+  }
+
+  const { data, error } = await supabase
+    .from('plans')
+    .insert({
+      user_id: userId,
+      goal_id: goalId,
+      title: planJson.title,
+      current_week: 1,
+      total_weeks: planJson.totalWeeks,
+      status: 'active',
+      plan_json: planJson,
+      is_preview: false,
+    })
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    console.error('[BuildingPlan] client plan insert failed:', error);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
 function getGeneratePlanBlockMessage(data: GeneratePlanFnData | null): string | null {
   if (!data?.status) return null;
   if (data.status === 'rate_limited') {
@@ -981,8 +1027,16 @@ export default function BuildingPlanScreen() {
         if (!ctx) throw new Error('Nothing to retry');
         userId = ctx.userId;
         goalData = ctx.goalData;
-        generatePlanBody = ctx.generatePlanBody;
+        generatePlanBody = {
+          ...ctx.generatePlanBody,
+          goalId: ctx.goalData.id,
+          ...(replacePlanId ? { replacePlanId } : {}),
+        };
         planWeeksResolved = ctx.planWeeksResolved;
+      }
+
+      if (!goalData.id) {
+        throw new Error('Goal id missing before generate-plan');
       }
 
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -1039,6 +1093,17 @@ export default function BuildingPlanScreen() {
       }
 
       if (!planJson) throw new Error('No plan returned from Edge Function');
+
+      if (!savedPlanId) {
+        savedPlanId =
+          (await savePlanClientSide(
+            userId,
+            goalData.id,
+            planJson,
+            replacePlanId ?? null,
+          )) ?? undefined;
+      }
+
       if (!savedPlanId) throw new Error('No plan id returned from Edge Function');
 
       await applyPlanSuccess(

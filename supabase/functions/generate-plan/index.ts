@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 /** Match app `constants/betaBypass.ts` — flip both to false before launch. */
-const BETA_BYPASS = true;
+const BETA_BYPASS = false;
 const RATE_LIMIT_ENABLED = !BETA_BYPASS;
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;

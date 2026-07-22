@@ -6,17 +6,25 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import Purchases, {
+  PURCHASES_ERROR_CODE,
+  type PurchasesError,
+  type PurchasesPackage,
+} from 'react-native-purchases';
 import type { RootStackParamList, SubscriptionPlanId } from '../../navigation/types';
 import { BETA_BYPASS } from '../../constants/betaBypass';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../../constants/design';
 import { JordanLabel } from '../../components/JordanLabel';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { supabase } from '../../Lib/supabase';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Pricing'>;
 type RouteType = RouteProp<RootStackParamList, 'Pricing'>;
@@ -85,8 +93,33 @@ export default function PricingScreen() {
   const route = useRoute<RouteType>();
   const params = route.params;
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanId>('annual');
+  const [monthlyPackage, setMonthlyPackage] = useState<PurchasesPackage | null>(null);
+  const [quarterlyPackage, setQuarterlyPackage] = useState<PurchasesPackage | null>(null);
+  const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
   const { isPro, loading: entitlementLoading } = useEntitlement();
   const skipPaywall = (params as { skipPaywall?: boolean })?.skipPaywall === true;
+
+  useEffect(() => {
+    if (BETA_BYPASS || Platform.OS === 'web') return;
+    let cancelled = false;
+    void Purchases.getOfferings()
+      .then((offerings) => {
+        if (cancelled) return;
+        const current = offerings?.current;
+        setMonthlyPackage(current?.monthly ?? null);
+        setQuarterlyPackage(
+          current?.threeMonth ??
+            current?.availablePackages.find((p) => p.identifier === '$rc_quarterly') ??
+            null,
+        );
+        setAnnualPackage(current?.annual ?? null);
+      })
+      .catch(() => { /* leave packages null; handleContinue guards */ });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     // skipPaywall: returning subscriber starting a new plan — always skip
@@ -108,18 +141,67 @@ export default function PricingScreen() {
     }
   }, [skipPaywall, isPro, entitlementLoading]);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const buildingPlanParams = {
       ...params,
       selectedPlan,
     };
 
-    if (BETA_BYPASS) {
+    if (BETA_BYPASS || Platform.OS === 'web') {
       navigation.navigate('BuildingPlan', buildingPlanParams);
       return;
     }
 
-    navigation.navigate('BuildingPlan', buildingPlanParams);
+    const pkg =
+      selectedPlan === 'annual'
+        ? annualPackage
+        : selectedPlan === 'quarterly'
+          ? quarterlyPackage
+          : monthlyPackage;
+
+    if (!pkg) {
+      Alert.alert('Not Available', 'Plans are still loading. Please try again in a moment.');
+      return;
+    }
+
+    setPurchasing(true);
+    try {
+      const result = await Purchases.purchasePackage(pkg);
+      if (result.customerInfo.entitlements.active['pro']) {
+        const proEnt = result.customerInfo.entitlements.active['pro'];
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase
+              .from('user_profiles')
+              .update({
+                subscription_status: 'pro',
+                subscription_tier: proEnt?.identifier ?? 'pro',
+              })
+              .eq('user_id', user.id);
+          }
+        } catch (e) {
+          console.error('[PricingScreen] subscription_status write failed', e);
+          // Do NOT block navigation solely on the DB write — the webhook (Option A)
+          // is the durable backstop. But log loudly; generate-plan may reject if
+          // this failed and the webhook hasn't landed.
+        }
+        navigation.navigate('BuildingPlan', buildingPlanParams);
+      } else {
+        Alert.alert(
+          'Subscription Incomplete',
+          "We couldn't confirm your trial. Please try again.",
+        );
+      }
+    } catch (e) {
+      const purchaseError = e as PurchasesError;
+      if (purchaseError.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {
+        return;
+      }
+      Alert.alert('Purchase Failed', 'Please try again.');
+    } finally {
+      setPurchasing(false);
+    }
   };
 
   return (
@@ -194,11 +276,14 @@ export default function PricingScreen() {
         </View>
 
         <TouchableOpacity
-          style={styles.ctaButton}
+          style={[styles.ctaButton, purchasing && styles.ctaButtonDisabled]}
           activeOpacity={0.8}
           onPress={handleContinue}
+          disabled={purchasing}
         >
-          <Text style={styles.ctaText}>Continue — Start Free Trial →</Text>
+          <Text style={styles.ctaText}>
+            {purchasing ? 'Starting your trial…' : 'Continue — Start Free Trial →'}
+          </Text>
         </TouchableOpacity>
 
         <Text style={styles.finePrint}>
@@ -330,6 +415,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  ctaButtonDisabled: {
+    opacity: 0.6,
   },
   ctaText: {
     fontFamily: Fonts.semiBold,

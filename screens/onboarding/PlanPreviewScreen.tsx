@@ -475,12 +475,12 @@ async function updateSupabaseSubscription(customerInfo: CustomerInfo): Promise<v
     if (!user) return;
     const activeEntitlement = customerInfo.entitlements.active['pro'];
     await supabase
-      .from('users')
+      .from('user_profiles')
       .update({
         subscription_status: 'pro',
         subscription_tier: activeEntitlement?.identifier ?? 'pro',
       })
-      .eq('id', user.id);
+      .eq('user_id', user.id);
   } catch (e) {
     console.error('updateSupabaseSubscription error:', e);
   }

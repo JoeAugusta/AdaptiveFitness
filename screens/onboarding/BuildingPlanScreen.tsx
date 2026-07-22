@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import Purchases, { PURCHASES_ERROR_CODE } from 'react-native-purchases';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -415,7 +414,7 @@ export default function BuildingPlanScreen() {
     });
   }, [navigation]);
 
-  const attemptPurchaseAndFinish = useCallback(async () => {
+  const finishOnboarding = useCallback(async () => {
     const startDateToSave = selectedStartDate ?? firstSessionDateISO;
 
     console.log('[StartDate] saving:', {
@@ -447,43 +446,6 @@ export default function BuildingPlanScreen() {
     }
 
     await AsyncStorage.setItem(ONBOARDING_SELECTED_PLAN_KEY, selectedPlan);
-
-    if (BETA_BYPASS || Platform.OS === 'web') {
-      scheduleReEngagementPush();
-      goToDashboard();
-      return;
-    }
-
-    try {
-      const offerings = await Purchases.getOfferings();
-      const offering = offerings.current;
-      if (offering) {
-        const quarterlyPkg =
-          offering.threeMonth ??
-          offering.availablePackages.find(
-            (p) => p.identifier === '$rc_quarterly',
-          );
-        const packageToPurchase =
-          selectedPlan === 'annual'
-            ? offering.annual
-            : selectedPlan === 'quarterly'
-              ? quarterlyPkg
-              : offering.monthly;
-
-        if (packageToPurchase) {
-          await Purchases.purchasePackage(packageToPurchase);
-        }
-      }
-    } catch (error) {
-      const purchaseError = error as { userCancelled?: boolean; code?: string };
-      if (
-        purchaseError.code !== PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR &&
-        !purchaseError.userCancelled
-      ) {
-        console.error('[purchase]', error);
-      }
-    }
-
     scheduleReEngagementPush();
     goToDashboard();
   }, [selectedStartDate, firstSessionDateISO, planId, selectedPlan, goToDashboard]);
@@ -491,8 +453,8 @@ export default function BuildingPlanScreen() {
   const handleSuccessCTA = useCallback(async () => {
     if (hasAdvancedFromSuccessRef.current) return;
     hasAdvancedFromSuccessRef.current = true;
-    await attemptPurchaseAndFinish();
-  }, [attemptPurchaseAndFinish]);
+    await finishOnboarding();
+  }, [finishOnboarding]);
 
   useEffect(() => {
     if (!planReady || errorState) return;

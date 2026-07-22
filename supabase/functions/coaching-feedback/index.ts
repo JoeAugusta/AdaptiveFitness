@@ -292,10 +292,11 @@ Write one pre-session coaching sentence for the athlete.`;
       }
 
       if (rpeGap <= -2) {
-        return Math.max(5, roundedBase - 5);
+        const dropped = Math.max(5, roundedBase - 5);
+        return dropped < roundedBase ? dropped : null;
       }
 
-      return roundedBase;
+      return null;
     })();
 
     const pyramidSuggestedWeight = (() => {
@@ -308,32 +309,42 @@ Write one pre-session coaching sentence for the athlete.`;
       const isSelfSelect = targetWeightNum <= 0;
       const standardStep = Math.round(loggedWeightNum * 0.1 / 5) * 5;
       const nextSetBase = roundedBase + standardStep;
+      const suggestIfDifferent = (computed: number): number | null =>
+        Math.round(computed) === roundedBase ? null : computed;
 
       if (!isSelfSelect && rpeGap >= -1 && rpeGap <= 1) {
         return null;
       }
 
       if (rpeGap >= 3 && hitTopOfRange) {
-        return Math.round((roundedBase + standardStep * 1.5) / 5) * 5;
+        return suggestIfDifferent(
+          Math.round((roundedBase + standardStep * 1.5) / 5) * 5,
+        );
       }
       if (rpeGap >= 2 && hitTopOfRange) {
-        return Math.round((roundedBase + standardStep * 1.2) / 5) * 5;
+        return suggestIfDifferent(
+          Math.round((roundedBase + standardStep * 1.2) / 5) * 5,
+        );
       }
       if (rpeGap >= 2) {
-        return nextSetBase;
+        return suggestIfDifferent(nextSetBase);
       }
       if (rpeGap >= 1 && hitTopOfRange) {
-        return nextSetBase;
+        return suggestIfDifferent(nextSetBase);
       }
       if (rpeGap >= 1) {
-        return isSelfSelect ? nextSetBase : null;
+        return isSelfSelect ? suggestIfDifferent(nextSetBase) : null;
       }
 
       if (rpeGap <= -2) {
-        return Math.max(5, Math.round((roundedBase + standardStep * 0.5) / 5) * 5);
+        const dropped = Math.max(
+          5,
+          Math.round((roundedBase + standardStep * 0.5) / 5) * 5,
+        );
+        return dropped !== roundedBase ? dropped : null;
       }
 
-      if (isSelfSelect) return nextSetBase;
+      if (isSelfSelect) return suggestIfDifferent(nextSetBase);
 
       return null;
     })();
@@ -343,6 +354,9 @@ Write one pre-session coaching sentence for the athlete.`;
       : isPyramidExercise
         ? pyramidSuggestedWeight
         : straightSuggestedWeight;
+    if (suggestedWeight != null && Math.round(suggestedWeight) === roundedBase) {
+      suggestedWeight = null;
+    }
 
     const setPositionContext = isLastExercise
       ? 'This is the LAST SET of the LAST EXERCISE. The session is done after this.'

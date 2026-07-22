@@ -164,9 +164,9 @@ export default function SubscriptionManagementScreen() {
       if (authError || !user) throw authError ?? new Error('Not authenticated');
 
       const supabaseTask = supabase
-        .from('users')
+        .from('user_profiles')
         .select('subscription_status, subscription_tier')
-        .eq('id', user.id)
+        .eq('user_id', user.id)
         .single();
 
       const rcCustomerTask =
@@ -259,6 +259,21 @@ export default function SubscriptionManagementScreen() {
     try {
       const result = await Purchases.purchasePackage(pkg);
       if (result.customerInfo.entitlements.active['pro']) {
+        const proEnt = result.customerInfo.entitlements.active['pro'];
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase
+              .from('user_profiles')
+              .update({
+                subscription_status: 'pro',
+                subscription_tier: proEnt?.identifier ?? 'pro',
+              })
+              .eq('user_id', user.id);
+          }
+        } catch (e) {
+          console.error('[SubscriptionManagement] subscription_status write failed', e);
+        }
         setIsProActive(true);
         Alert.alert('Welcome to Pro!', 'Your free trial has started. Enjoy full access.');
       }
@@ -298,6 +313,21 @@ export default function SubscriptionManagementScreen() {
       setIsRestoring(true);
       const customerInfo = await Purchases.restorePurchases();
       if (customerInfo.entitlements.active['pro']) {
+        const proEnt = customerInfo.entitlements.active['pro'];
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase
+              .from('user_profiles')
+              .update({
+                subscription_status: 'pro',
+                subscription_tier: proEnt?.identifier ?? 'pro',
+              })
+              .eq('user_id', user.id);
+          }
+        } catch (e) {
+          console.error('[SubscriptionManagement] subscription_status write failed', e);
+        }
         setIsProActive(true);
         Alert.alert(
           'Purchases Restored!',

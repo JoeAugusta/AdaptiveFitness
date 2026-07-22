@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -218,11 +219,66 @@ type GeneratedPlanJson = {
 
 type GeneratePlanFnData = {
   plan?: GeneratedPlanJson;
+  planId?: string;
   status?: string;
   reason?: string;
   message?: string;
   error?: string;
 };
+
+const PLAN_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
+
+type SavedPlanRow = {
+  id: string;
+  plan_json: GeneratedPlanJson;
+  start_date?: string | null;
+};
+
+function isFullGeneratedPlanJson(json: unknown): json is GeneratedPlanJson {
+  if (!json || typeof json !== 'object') return false;
+  const weeks = (json as GeneratedPlanJson).weeks;
+  return Array.isArray(weeks) && weeks.length > 0;
+}
+
+async function fetchRecoverablePlan(
+  userId: string,
+  goalId: string,
+  replacePlanId?: string | null,
+): Promise<SavedPlanRow | null> {
+  const since = new Date(Date.now() - PLAN_RECOVERY_WINDOW_MS).toISOString();
+
+  if (replacePlanId) {
+    const { data } = await supabase
+      .from('plans')
+      .select('id, plan_json, start_date')
+      .eq('id', replacePlanId)
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .eq('is_preview', false)
+      .maybeSingle();
+    if (data?.id && isFullGeneratedPlanJson(data.plan_json)) {
+      return data as SavedPlanRow;
+    }
+    return null;
+  }
+
+  const { data } = await supabase
+    .from('plans')
+    .select('id, plan_json, start_date')
+    .eq('user_id', userId)
+    .eq('goal_id', goalId)
+    .eq('status', 'active')
+    .eq('is_preview', false)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (data?.id && isFullGeneratedPlanJson(data.plan_json)) {
+    return data as SavedPlanRow;
+  }
+  return null;
+}
 
 function getGeneratePlanBlockMessage(data: GeneratePlanFnData | null): string | null {
   if (!data?.status) return null;
@@ -294,12 +350,97 @@ export default function BuildingPlanScreen() {
   const retryContextRef = useRef<RetryPlanContext | null>(null);
   const hasGeneratedRef = useRef(false);
   const hasAdvancedFromSuccessRef = useRef(false);
+  const generationInFlightRef = useRef(false);
+  const apiDoneRef = useRef(false);
+  const showSuccessRef = useRef(false);
 
   const avatarPulseOpacity = useRef(new Animated.Value(1)).current;
   const subtitleOpacity = useRef(new Animated.Value(1)).current;
   const rowOpacities = useRef(
     LOADING_STEPS.map(() => new Animated.Value(0)),
   ).current;
+
+  useEffect(() => {
+    apiDoneRef.current = apiDone;
+  }, [apiDone]);
+
+  useEffect(() => {
+    showSuccessRef.current = showSuccess;
+  }, [showSuccess]);
+
+  const applyPlanSuccess = useCallback(
+    async (
+      savedPlanId: string,
+      planJson: GeneratedPlanJson,
+      goalId: string,
+      planWeeksResolved: number,
+    ) => {
+      const week1Days = planJson.weeks?.[0]?.days ?? [];
+      const firstWorkout = week1Days.find((d) => d.type === 'workout');
+
+      setPlanId(savedPlanId);
+      setJordanMessage(planJson.jordanWelcome ?? null);
+      setFirstDayNumber(firstWorkout?.dayNumber ?? 1);
+      setFirstWorkoutTitle(firstWorkout?.title ?? 'Workout');
+
+      const scheduledFromPlan = Array.isArray(planJson.scheduledDays)
+        ? (planJson.scheduledDays as string[])
+        : (params.trainingDays ?? []);
+      const firstSession = computeFirstSessionDate(scheduledFromPlan);
+      if (firstSession) {
+        setFirstSessionDateISO(firstSession.dateStr);
+        setFirstSessionDisplayLine(firstSession.displayLine);
+      } else {
+        const fallback = computeFirstSessionDate(params.trainingDays ?? []);
+        if (fallback) {
+          setFirstSessionDateISO(fallback.dateStr);
+          setFirstSessionDisplayLine(fallback.displayLine);
+        }
+      }
+
+      saveGoalProjection(goalId, params.goal, planWeeksResolved, {
+        current1RM: params.current1RM,
+        target1RM: params.target1RM,
+        targetLift: params.targetLift,
+        startingWeightLbs: params.startingWeightLbs,
+        targetWeightLbs: params.targetWeightLbs,
+      });
+
+      await refreshPlans();
+      setApiDone(true);
+    },
+    [params, refreshPlans],
+  );
+
+  const tryRecoverAndComplete = useCallback(async (): Promise<boolean> => {
+    const ctx = retryContextRef.current;
+    if (!ctx) return false;
+
+    const recovered = await fetchRecoverablePlan(
+      ctx.userId,
+      ctx.goalData.id,
+      replacePlanId ?? null,
+    );
+    if (!recovered) return false;
+
+    await applyPlanSuccess(
+      recovered.id,
+      recovered.plan_json,
+      ctx.goalData.id,
+      ctx.planWeeksResolved,
+    );
+    setErrorState(null);
+    return true;
+  }, [replacePlanId, applyPlanSuccess]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      if (apiDoneRef.current || showSuccessRef.current) return;
+      void tryRecoverAndComplete();
+    });
+    return () => sub.remove();
+  }, [tryRecoverAndComplete]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -606,6 +747,9 @@ export default function BuildingPlanScreen() {
       subtitleOpacity.setValue(1);
       prevStepForSubtitleRef.current = 0;
       setSequenceEpoch((e) => e + 1);
+
+      const recoveredOnRetry = await tryRecoverAndComplete();
+      if (recoveredOnRetry) return;
     }
     try {
       let userId: string;
@@ -772,6 +916,7 @@ export default function BuildingPlanScreen() {
           subMusclePreferences: params.subMusclePreferences ?? {},
           userId,
           deviceId,
+          goalId: goalData.id,
           isPreview: false,
         };
 
@@ -820,6 +965,8 @@ export default function BuildingPlanScreen() {
           subMusclePreferences: params.subMusclePreferences ?? {},
           userId,
           deviceId,
+          goalId: goalData.id,
+          replacePlanId,
           isPreview: false,
         };
 
@@ -840,6 +987,7 @@ export default function BuildingPlanScreen() {
 
       const { data: { session: currentSession } } = await supabase.auth.getSession();
 
+      generationInFlightRef.current = true;
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'generate-plan',
         {
@@ -875,90 +1023,34 @@ export default function BuildingPlanScreen() {
 
       if (fnError) throw fnError;
 
-      const planJson = fnPayload?.plan;
-      if (!planJson) throw new Error('No plan returned from Edge Function');
+      let planJson = fnPayload?.plan;
+      let savedPlanId = fnPayload?.planId;
 
-      let savedPlan: { id: string; start_date?: string | null } | null = null;
-
-      if (replacePlanId) {
-        const { data: updated, error: planError } = await supabase
-          .from('plans')
-          .update({
-            title: planJson.title,
-            total_weeks: planJson.totalWeeks,
-            plan_json: planJson,
-            is_preview: false,
-          })
-          .eq('id', replacePlanId)
-          .select('id, start_date')
-          .maybeSingle();
-
-        if (planError) throw planError;
-        savedPlan = updated;
-      } else {
-        const { data: inserted, error: planError } = await supabase
-          .from('plans')
-          .insert({
-            user_id: userId,
-            goal_id: goalData.id,
-            title: planJson.title,
-            current_week: 1,
-            total_weeks: planJson.totalWeeks,
-            status: 'active',
-            plan_json: planJson,
-            is_preview: false,
-          })
-          .select('id, start_date')
-          .maybeSingle();
-
-        if (planError) throw planError;
-        savedPlan = inserted;
-      }
-
-      if (!savedPlan?.id) {
-        throw new Error('Plan save did not return a row');
-      }
-
-      const week1Days = planJson.weeks?.[0]?.days ?? [];
-      const firstWorkout = week1Days.find((d: any) => d.type === 'workout');
-
-      setPlanId(savedPlan.id);
-      setJordanMessage(planJson.jordanWelcome ?? null);
-      setFirstDayNumber(firstWorkout?.dayNumber ?? 1);
-      setFirstWorkoutTitle(firstWorkout?.title ?? 'Workout');
-
-      const scheduledFromPlan = Array.isArray(planJson.scheduledDays)
-        ? (planJson.scheduledDays as string[])
-        : (params.trainingDays ?? []);
-      const firstSession = computeFirstSessionDate(scheduledFromPlan);
-      if (firstSession) {
-        setFirstSessionDateISO(firstSession.dateStr);
-        setFirstSessionDisplayLine(firstSession.displayLine);
-      } else {
-        const fallback = computeFirstSessionDate(params.trainingDays ?? []);
-        if (fallback) {
-          setFirstSessionDateISO(fallback.dateStr);
-          setFirstSessionDisplayLine(fallback.displayLine);
+      if (!planJson || !savedPlanId) {
+        const recovered = await fetchRecoverablePlan(
+          userId,
+          goalData.id,
+          replacePlanId ?? null,
+        );
+        if (recovered) {
+          planJson = planJson ?? recovered.plan_json;
+          savedPlanId = savedPlanId ?? recovered.id;
         }
       }
 
-      saveGoalProjection(
-        goalData.id,
-        params.goal,
-        planWeeksResolved,
-        {
-          current1RM:        params.current1RM,
-          target1RM:         params.target1RM,
-          targetLift:        params.targetLift,
-          startingWeightLbs: params.startingWeightLbs,
-          targetWeightLbs:   params.targetWeightLbs,
-        },
-      );
+      if (!planJson) throw new Error('No plan returned from Edge Function');
+      if (!savedPlanId) throw new Error('No plan id returned from Edge Function');
 
-      await refreshPlans();
-      setApiDone(true);
+      await applyPlanSuccess(
+        savedPlanId,
+        planJson,
+        goalData.id,
+        planWeeksResolved,
+      );
     } catch (error) {
       console.error('Plan generation failed:', error);
+      const recovered = await tryRecoverAndComplete();
+      if (recovered) return;
       if (retryContextRef.current) {
         stopLoadingSequence();
         subtitleOpacity.setValue(1);
@@ -969,6 +1061,8 @@ export default function BuildingPlanScreen() {
       } else {
         navigateAfterDelay(1000);
       }
+    } finally {
+      generationInFlightRef.current = false;
     }
   };
 
@@ -1065,6 +1159,9 @@ export default function BuildingPlanScreen() {
 
             <Text style={styles.buildTitle}>Building your plan</Text>
             <Text style={styles.buildTimeHint}>This takes about 2 minutes</Text>
+            <Text style={styles.buildTimeSubHint}>
+              You can leave — we'll keep building and it'll be ready when you're back.
+            </Text>
 
             <Animated.Text
               style={[styles.buildSubtitle, { opacity: subtitleOpacity }]}
@@ -1333,6 +1430,14 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     marginTop: Spacing.xs,
+  },
+  buildTimeSubHint: {
+    fontFamily: Fonts.regular,
+    fontSize: FontSizes.caption,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.xl,
   },
   waitingRow: {
     flexDirection: 'row',

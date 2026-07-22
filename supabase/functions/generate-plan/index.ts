@@ -307,6 +307,106 @@ async function checkRateLimits(
   return null;
 }
 
+async function persistGeneratedPlan(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    userId: string;
+    goalId: string | null;
+    replacePlanId: string | null;
+    planOut: Record<string, unknown>;
+  },
+): Promise<string> {
+  const { userId, goalId, replacePlanId, planOut } = params;
+
+  const title =
+    typeof planOut.title === 'string' && planOut.title.trim() !== ''
+      ? planOut.title
+      : 'Training Plan';
+  const totalWeeks =
+    typeof planOut.totalWeeks === 'number' && Number.isFinite(planOut.totalWeeks)
+      ? planOut.totalWeeks
+      : Array.isArray(planOut.weeks)
+      ? planOut.weeks.length
+      : 12;
+
+  const rowPatch = {
+    title,
+    total_weeks: totalWeeks,
+    plan_json: planOut,
+    is_preview: false,
+    status: 'active' as const,
+  };
+
+  if (replacePlanId) {
+    const { data, error } = await supabase
+      .from('plans')
+      .update(rowPatch)
+      .eq('id', replacePlanId)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      throw new Error(`persist plan replace update failed: ${error.message}`);
+    }
+    if (data?.id) return data.id as string;
+    throw new Error('replacePlanId not found for user');
+  }
+
+  if (goalId) {
+    const { data: existing, error: findErr } = await supabase
+      .from('plans')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('goal_id', goalId)
+      .eq('status', 'active')
+      .eq('is_preview', false)
+      .maybeSingle();
+    if (findErr) {
+      throw new Error(`persist plan lookup failed: ${findErr.message}`);
+    }
+    if (existing?.id) {
+      const { data: updated, error: updateErr } = await supabase
+        .from('plans')
+        .update(rowPatch)
+        .eq('id', existing.id)
+        .select('id')
+        .maybeSingle();
+      if (updateErr) {
+        throw new Error(`persist plan dedupe update failed: ${updateErr.message}`);
+      }
+      if (updated?.id) return updated.id as string;
+    }
+  }
+
+  const { error: pauseErr } = await supabase
+    .from('plans')
+    .update({ status: 'paused' })
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  if (pauseErr) {
+    console.warn('[generate-plan] could not pause existing active plans:', pauseErr.message);
+  }
+
+  if (!goalId) {
+    throw new Error('goalId required to persist full plan');
+  }
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from('plans')
+    .insert({
+      user_id: userId,
+      goal_id: goalId,
+      current_week: 1,
+      ...rowPatch,
+    })
+    .select('id')
+    .single();
+  if (insertErr) {
+    throw new Error(`persist plan insert failed: ${insertErr.message}`);
+  }
+  return inserted.id as string;
+}
+
 function trimPreviewWeekDays(planJson: Record<string, unknown>): void {
   const weeks = planJson.weeks as { days?: { type?: string }[] }[] | undefined;
   if (!Array.isArray(weeks) || !weeks[0]?.days) return;
@@ -2245,6 +2345,8 @@ interface GeneratePlanBody {
   planGenerationMode?: 'preview' | 'full';
   userId?: string;
   deviceId?: string;
+  goalId?: string;
+  replacePlanId?: string;
 }
 
 interface ProgrammingParams {
@@ -4722,30 +4824,52 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       trimPreviewWeekDays(planOut as Record<string, unknown>);
     }
 
-    if (!isPreview && userId && RATE_LIMIT_ENABLED) {
+    let savedPlanId: string | undefined;
+    if (!isPreview) {
       const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       );
-      const isPro = await isUserPro(supabaseAdmin, userId);
-      if (!isPro) {
-        const { data: profile } = await supabaseAdmin
-          .from('user_profiles')
-          .select('full_plan_generations_used')
-          .eq('user_id', userId)
-          .maybeSingle();
-        const used = Number(
-          (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
-        );
-        await supabaseAdmin
-          .from('user_profiles')
-          .update({ full_plan_generations_used: used + 1 })
-          .eq('user_id', userId);
+
+      if (userId && RATE_LIMIT_ENABLED) {
+        const isPro = await isUserPro(supabaseAdmin, userId);
+        if (!isPro) {
+          const { data: profile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('full_plan_generations_used')
+            .eq('user_id', userId)
+            .maybeSingle();
+          const used = Number(
+            (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
+          );
+          await supabaseAdmin
+            .from('user_profiles')
+            .update({ full_plan_generations_used: used + 1 })
+            .eq('user_id', userId);
+        }
       }
+
+      const goalId =
+        typeof body.goalId === 'string' && body.goalId.trim() !== ''
+          ? body.goalId.trim()
+          : null;
+      const replacePlanId =
+        typeof body.replacePlanId === 'string' && body.replacePlanId.trim() !== ''
+          ? body.replacePlanId.trim()
+          : null;
+
+      savedPlanId = await persistGeneratedPlan(supabaseAdmin, {
+        userId,
+        goalId,
+        replacePlanId,
+        planOut: planOut as Record<string, unknown>,
+      });
+      console.log('[generate-plan] persisted plan id:', savedPlanId);
     }
 
     return new Response(JSON.stringify({
       plan: planOut,
+      ...(savedPlanId ? { planId: savedPlanId } : {}),
       ...(isPreview ? { isPreview: true } : {}),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

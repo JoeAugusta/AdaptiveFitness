@@ -1,4 +1,4 @@
-import Purchases from 'react-native-purchases';
+import Purchases, { type CustomerInfo } from 'react-native-purchases';
 import { Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 import { BETA_BYPASS } from '../constants/betaBypass';
@@ -23,14 +23,7 @@ export function useEntitlement(): {
   const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (BETA_BYPASS) {
-      setIsPro(true);
-      setStatus('paid');
-      setLoading(false);
-      setTrialEndsAt(null);
-      return;
-    }
-    if (Platform.OS === 'web') {
+    if (BETA_BYPASS || Platform.OS === 'web') {
       setIsPro(true);
       setStatus('paid');
       setLoading(false);
@@ -38,37 +31,50 @@ export function useEntitlement(): {
       return;
     }
 
-    async function check() {
-      try {
-        const info = await Purchases.getCustomerInfo();
-        const entitlement = info.entitlements.active['pro'];
-
-        if (!entitlement) {
-          setIsPro(false);
-          setStatus('free');
-          setTrialEndsAt(null);
-          return;
-        }
-
-        const isInTrial = entitlement.periodType === 'TRIAL';
-        const endsAt =
-          isInTrial && entitlement.expirationDate
-            ? new Date(entitlement.expirationDate)
-            : null;
-
-        setIsPro(true);
-        setStatus(isInTrial ? 'trial' : 'paid');
-        setTrialEndsAt(endsAt);
-      } catch {
+    const applyInfo = (info: CustomerInfo) => {
+      const entitlement = info.entitlements.active['pro'];
+      if (!entitlement) {
         setIsPro(false);
         setStatus('free');
         setTrialEndsAt(null);
-      } finally {
-        setLoading(false);
+        return;
       }
-    }
+      const isInTrial = entitlement.periodType === 'TRIAL';
+      setIsPro(true);
+      setStatus(isInTrial ? 'trial' : 'paid');
+      setTrialEndsAt(
+        isInTrial && entitlement.expirationDate
+          ? new Date(entitlement.expirationDate)
+          : null,
+      );
+    };
 
-    check();
+    let mounted = true;
+
+    Purchases.getCustomerInfo()
+      .then((info) => {
+        if (mounted) applyInfo(info);
+      })
+      .catch(() => {
+        if (mounted) {
+          setIsPro(false);
+          setStatus('free');
+          setTrialEndsAt(null);
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    const listener = (info: CustomerInfo) => {
+      if (mounted) applyInfo(info);
+    };
+    Purchases.addCustomerInfoUpdateListener(listener);
+
+    return () => {
+      mounted = false;
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    };
   }, []);
 
   return { isPro, status, loading, trialEndsAt };

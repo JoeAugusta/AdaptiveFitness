@@ -316,8 +316,9 @@ function LineChart({
       })}
       {/* Line */}
       <SvgLine x1={padL} y1={padT + ch} x2={width - padR} y2={padT + ch} stroke={Colors.divider} strokeWidth={1} />
-      {projectionPoints.length > 1
-        ? (() => {
+      {projectionPoints.length > 1 ? (
+        <G key="proj-layer">
+          {(() => {
             const pathEl: React.ReactNode[] = [];
             for (let i = 1; i < projectionPoints.length; i++) {
               pathEl.push(
@@ -329,52 +330,59 @@ function LineChart({
                   y2={projectionPoints[i].y}
                   stroke={projectionDashedOnly ? Colors.textTertiary : Colors.accent}
                   strokeWidth={2.5}
-                  strokeDasharray={projectionDashedOnly ? '8,6' : undefined}
+                  strokeDasharray={projectionDashedOnly ? '8,6' : '0'}
                   opacity={projectionDashedOnly ? 0.85 : 0.45}
                 />,
               );
             }
             return pathEl;
-          })()
-        : null}
-      {actualPoints.length > 1
-        ? (() => {
+          })()}
+        </G>
+      ) : null}
+      {actualPoints.length > 1 ? (
+        <G key="act-layer">
+          {(() => {
             const pathEl: React.ReactNode[] = [];
             for (let i = 1; i < actualPoints.length; i++) {
               const segIsDeload = data[i - 1]?.isDeload || data[i]?.isDeload;
               pathEl.push(
                 <SvgLine
-                  key={`act-${i}`}
+                  key={`act-seg-${i}`}
                   x1={actualPoints[i - 1].x}
                   y1={actualPoints[i - 1].y}
                   x2={actualPoints[i].x}
                   y2={actualPoints[i].y}
                   stroke={segIsDeload ? Colors.textTertiary : Colors.accent}
                   strokeWidth={2.5}
-                  strokeDasharray={segIsDeload ? '6,5' : undefined}
+                  strokeDasharray={segIsDeload ? '6,5' : '0'}
                   opacity={segIsDeload ? 0.75 : 1}
                 />,
               );
             }
             return pathEl;
-          })()
-        : null}
-      {actualPoints.map((p, i) => {
-        const isDeload = data[i]?.isDeload;
-        return isDeload ? (
-          <Circle
-            key={`dot-${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={4}
-            fill={Colors.bgCard}
-            stroke={Colors.textTertiary}
-            strokeWidth={2}
-          />
-        ) : (
-          <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
-        );
-      })}
+          })()}
+        </G>
+      ) : null}
+      {actualPoints.length > 0 ? (
+        <G key="dot-layer">
+          {actualPoints.map((p, i) => {
+            const isDeload = data[i]?.isDeload;
+            return isDeload ? (
+              <Circle
+                key={`dot-${i}`}
+                cx={p.x}
+                cy={p.y}
+                r={4}
+                fill={Colors.bgCard}
+                stroke={Colors.textTertiary}
+                strokeWidth={2}
+              />
+            ) : (
+              <Circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={Colors.accent} />
+            );
+          })}
+        </G>
+      ) : null}
     </Svg>
   );
 }

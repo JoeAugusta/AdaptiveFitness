@@ -216,10 +216,6 @@ export default function RootNavigator() {
       <Root.Screen name="ActiveWorkout"    component={ActiveWorkoutScreen} />
       <Root.Screen name="WorkoutComplete"  component={WorkoutCompleteScreen} />
       <Root.Screen name="PlanComplete" component={PlanCompleteScreen} />
-      <Root.Screen
-        name="SubscriptionManagement"
-        component={SubscriptionManagementScreen}
-      />
     </Root.Navigator>
   );
 }

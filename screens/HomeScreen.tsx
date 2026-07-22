@@ -2825,17 +2825,12 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.weekUnlockButton}
                 activeOpacity={0.8}
-                onPress={() => {
-                  const rootNav = navigation.getParent()?.getParent();
-                  if (rootNav) {
-                    rootNav.navigate('SubscriptionManagement');
-                  } else {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    navigation.navigate('ProfileTab' as any, {
-                      screen: 'SubscriptionManagement',
-                    });
-                  }
-                }}
+                onPress={() =>
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  navigation.navigate('ProfileTab' as any, {
+                    screen: 'SubscriptionManagement',
+                  })
+                }
               >
                 <View style={styles.weekUnlockRow}>
                   <Ionicons

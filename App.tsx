@@ -31,6 +31,10 @@ import type { RootStackParamList } from './navigation/types';
 import RootNavigator from './navigation';
 import { supabase } from './Lib/supabase';
 import { AuthProvider } from './contexts/AuthContext';
+import {
+  markRevenueCatConfigured,
+  syncRevenueCatLogin,
+} from './utils/revenueCatIdentity';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
@@ -115,6 +119,14 @@ export default function App() {
     if (__DEV__) {
       Purchases.setLogLevel(LOG_LEVEL.DEBUG);
     }
+
+    markRevenueCatConfigured();
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      const userId = session?.user?.id;
+      if (userId) {
+        void syncRevenueCatLogin(userId);
+      }
+    });
   }, []);
 
   const [fontsLoaded, fontError] = useFonts({

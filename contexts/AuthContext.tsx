@@ -8,6 +8,10 @@ import React, {
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../Lib/supabase';
+import {
+  syncRevenueCatLogin,
+  syncRevenueCatLogout,
+} from '../utils/revenueCatIdentity';
 
 type AuthContextValue = {
   session: Session | null;
@@ -99,6 +103,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           void fetchHasPlans(s.user.id).then(setHasPlans);
         } else {
           setHasPlans(false);
+        }
+
+        if (event === 'SIGNED_OUT') {
+          void syncRevenueCatLogout();
+        } else if (
+          (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+          s?.user?.id
+        ) {
+          void syncRevenueCatLogin(s.user.id);
         }
       },
     );

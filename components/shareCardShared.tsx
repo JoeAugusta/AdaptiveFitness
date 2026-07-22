@@ -39,7 +39,7 @@ export function ShareStatNumber({
         style={styles.statNumber}
         numberOfLines={1}
         adjustsFontSizeToFit
-        minimumFontScale={0.6}
+        minimumFontScale={0.85}
       >
         {children}
       </Text>
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.monoMedium,
     fontSize: ShareType.statNumber,
     color: Colors.accent,
-    lineHeight: 38,
+    lineHeight: 44,
     includeFontPadding: false,
   },
   header: {

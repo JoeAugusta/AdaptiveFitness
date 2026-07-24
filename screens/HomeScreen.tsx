@@ -2106,7 +2106,10 @@ export default function HomeScreen() {
       if (entitlementLoading) return;
       if (!isPro) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        navigation.navigate('ProfileTab' as any, { screen: 'SubscriptionManagement' });
+        navigation.navigate('ProfileTab' as any, {
+          screen: 'SubscriptionManagement',
+          initial: false,
+        });
         return;
       }
     }
@@ -2478,6 +2481,7 @@ export default function HomeScreen() {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 navigation.navigate('ProfileTab' as any, {
                   screen: 'SubscriptionManagement',
+                  initial: false,
                 })
               }
             >
@@ -2829,6 +2833,7 @@ export default function HomeScreen() {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   navigation.navigate('ProfileTab' as any, {
                     screen: 'SubscriptionManagement',
+                    initial: false,
                   })
                 }
               >

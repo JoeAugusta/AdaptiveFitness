@@ -1476,6 +1476,7 @@ export default function ProgressChartsScreen() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     navigation.navigate('ProfileTab' as any, {
       screen: 'SubscriptionManagement',
+      initial: false,
     });
   };
 

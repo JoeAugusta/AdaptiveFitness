@@ -114,7 +114,6 @@ interface PlanData {
 interface ScreenData {
   email: string;
   displayName: string;
-  subscriptionStatus: string;
   profile: UserProfile;
   goal: GoalData | null;
   plan: PlanData | null;
@@ -506,7 +505,6 @@ export default function ProfileSettingsScreen() {
       setData({
         email: user.email ?? '',
         displayName,
-        subscriptionStatus: 'free',
         profile: profileRes.data as UserProfile,
         goal: (goalRes.data as GoalData | null) ?? null,
         plan: (planRes.data as PlanData | null) ?? null,
@@ -767,7 +765,7 @@ export default function ProfileSettingsScreen() {
     );
   }
 
-  const isPro = data?.subscriptionStatus === 'pro';
+  const isPro = rcIsPro;
 
   const today = getLocalDateString();
   const isToday = latestWeightLog?.log_date === today;
@@ -791,7 +789,7 @@ export default function ProfileSettingsScreen() {
     }
     Alert.alert(
       'Pro Feature',
-      'Changing your goal generates a new plan — this is a Pro feature. Upgrade to get unlimited plan generations.',
+      'Changing your goal generates a new plan — this is a Pro feature. Upgrade to unlock weekly plan adaptation.',
       [
         { text: 'Not Now', style: 'cancel' },
         {
@@ -800,6 +798,7 @@ export default function ProfileSettingsScreen() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             navigation.navigate('ProfileTab' as any, {
               screen: 'SubscriptionManagement',
+              initial: false,
             }),
         },
       ],

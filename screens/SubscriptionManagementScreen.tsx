@@ -44,7 +44,6 @@ const formatDate = (dateStr: string | null): string => {
 const FEATURES: [string, boolean, boolean][] = [
   ['Onboarding + goal setup', true, true],
   ['1 plan generation', true, true],
-  ['Unlimited plan generation', false, true],
   ['Weekly plan adaptation', false, true],
   ['Real-time coaching feedback', false, true],
   ['Weekly coach summary', false, true],
@@ -441,7 +440,7 @@ export default function SubscriptionManagementScreen() {
                   </View>
 
                   <Text style={styles.statusDescription}>
-                    Full access to adaptive coaching, unlimited plans, macro tracking, and progress
+                    Full access to adaptive coaching, weekly plan adaptation, macro tracking, and progress
                     analytics.
                   </Text>
 
@@ -478,7 +477,7 @@ export default function SubscriptionManagementScreen() {
                     </View>
                   </View>
                   <Text style={styles.statusDescription}>
-                    Upgrade to Pro to unlock adaptive coaching, unlimited plans, nutrition targets, and
+                    Upgrade to Pro to unlock adaptive coaching, weekly plan adaptation, nutrition targets, and
                     all progress features.
                   </Text>
                 </>

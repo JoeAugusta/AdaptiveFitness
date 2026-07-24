@@ -236,7 +236,13 @@ type SavedPlanRow = {
   id: string;
   plan_json: GeneratedPlanJson;
   start_date?: string | null;
+  goal_id?: string | null;
 };
+
+type PollResult =
+  | { status: 'found'; plan: SavedPlanRow }
+  | { status: 'not_found' }
+  | { status: 'busy' };
 
 function isFullGeneratedPlanJson(json: unknown): json is GeneratedPlanJson {
   if (!json || typeof json !== 'object') return false;
@@ -333,7 +339,7 @@ async function savePlanClientSide(
 function getGeneratePlanBlockMessage(data: GeneratePlanFnData | null): string | null {
   if (!data?.status) return null;
   if (data.status === 'rate_limited') {
-    return "You've already generated a plan recently. Subscribe to Hone Pro to create unlimited plans.";
+    return "You've already generated a plan recently. Subscribe to Hone Pro for weekly plan adaptation and additional plan generation.";
   }
   if (data.status === 'generation_limit_reached') {
     return 'Subscribe to Hone Pro to start a new plan.';
@@ -481,18 +487,22 @@ export default function BuildingPlanScreen() {
     [params, refreshPlans],
   );
 
-  const pollForRecoverablePlan = useCallback(async (): Promise<SavedPlanRow | null> => {
-    if (isRecoveringRef.current) return null;
+  const pollForRecoverablePlan = useCallback(async (): Promise<PollResult> => {
+    if (isRecoveringRef.current) return { status: 'busy' };
     isRecoveringRef.current = true;
     try {
       const deadline = Date.now() + RECOVERY_MAX_WAIT_MS;
       while (Date.now() < deadline) {
-        if (!isMountedRef.current) return null;
+        if (!isMountedRef.current) return { status: 'busy' };
         const found = await fetchRecoverablePlanForContext();
-        if (found) return found;
+        if (found) return { status: 'found', plan: found };
         await new Promise((r) => setTimeout(r, RECOVERY_POLL_INTERVAL_MS));
       }
-      return null;
+      // Deadline may have elapsed while the app was suspended (timers frozen,
+      // Date.now() still advancing). Do one final check before giving up.
+      const lastChance = await fetchRecoverablePlanForContext();
+      if (lastChance) return { status: 'found', plan: lastChance };
+      return { status: 'not_found' };
     } finally {
       isRecoveringRef.current = false;
     }
@@ -500,6 +510,7 @@ export default function BuildingPlanScreen() {
 
   const applyRecoveredPlan = useCallback(
     async (recovered: SavedPlanRow) => {
+      setErrorState(null);
       if (apiDoneRef.current) return;
       const ctx = retryContextRef.current;
       if (!ctx) return;
@@ -509,7 +520,6 @@ export default function BuildingPlanScreen() {
         ctx.goalData.id,
         ctx.planWeeksResolved,
       );
-      setErrorState(null);
     },
     [applyPlanSuccess],
   );
@@ -522,9 +532,9 @@ export default function BuildingPlanScreen() {
   }, [fetchRecoverablePlanForContext, applyRecoveredPlan]);
 
   const tryRecoverWithPoll = useCallback(async (): Promise<boolean> => {
-    const plan = await pollForRecoverablePlan();
-    if (!plan) return false;
-    await applyRecoveredPlan(plan);
+    const result = await pollForRecoverablePlan();
+    if (result.status !== 'found') return false;
+    await applyRecoveredPlan(result.plan);
     return true;
   }, [pollForRecoverablePlan, applyRecoveredPlan]);
 
@@ -535,10 +545,15 @@ export default function BuildingPlanScreen() {
       void (async () => {
         if (!retryContextRef.current) return;
         setErrorState(null);
-        const plan = await pollForRecoverablePlan();
+        const result = await pollForRecoverablePlan();
         if (!isMountedRef.current) return;
-        if (plan) {
-          await applyRecoveredPlan(plan);
+        if (result.status === 'found') {
+          await applyRecoveredPlan(result.plan);
+          return;
+        }
+        if (result.status === 'busy') {
+          const direct = await fetchRecoverablePlanForContext();
+          if (direct) await applyRecoveredPlan(direct);
           return;
         }
         if (retryContextRef.current) {
@@ -552,7 +567,11 @@ export default function BuildingPlanScreen() {
       })();
     });
     return () => sub.remove();
-  }, [pollForRecoverablePlan, applyRecoveredPlan]);
+  }, [
+    pollForRecoverablePlan,
+    applyRecoveredPlan,
+    fetchRecoverablePlanForContext,
+  ]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -790,7 +809,65 @@ export default function BuildingPlanScreen() {
   useEffect(() => {
     if (hasGeneratedRef.current) return;
     hasGeneratedRef.current = true;
-    generateAndSavePlan(false);
+
+    void (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId) {
+          await generateAndSavePlan(false);
+          return;
+        }
+
+        const planWeeksResolved = resolvePlanWeeksFromParams(params);
+        let recovered: SavedPlanRow | null = null;
+        let recoveredGoalId: string | null = params.goalId ?? null;
+
+        if (params.goalId) {
+          recovered = await fetchRecoverablePlan(
+            userId,
+            params.goalId,
+            replacePlanId ?? null,
+          );
+        } else {
+          const since = new Date(Date.now() - PLAN_RECOVERY_WINDOW_MS).toISOString();
+          const { data } = await supabase
+            .from('plans')
+            .select('id, plan_json, start_date, goal_id')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .eq('is_preview', false)
+            .gte('created_at', since)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (
+            data?.id &&
+            data.goal_id &&
+            isFullGeneratedPlanJson(data.plan_json)
+          ) {
+            recovered = data as SavedPlanRow;
+            recoveredGoalId = data.goal_id;
+          }
+        }
+
+        if (recovered && recoveredGoalId) {
+          retryContextRef.current = {
+            userId,
+            goalData: { id: recoveredGoalId },
+            generatePlanBody: {},
+            planWeeksResolved,
+          };
+          await applyRecoveredPlan(recovered);
+          return;
+        }
+
+        await generateAndSavePlan(false);
+      } catch (e) {
+        console.error('[BuildingPlan] mount recovery check failed:', e);
+        await generateAndSavePlan(false);
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -843,7 +920,14 @@ export default function BuildingPlanScreen() {
   const generateAndSavePlan = async (isRetry: boolean) => {
     setErrorState(null);
     if (isRetry) {
-      if (isRecoveringRef.current) return;
+      if (isRecoveringRef.current) {
+        const direct = await fetchRecoverablePlanForContext();
+        if (direct) {
+          await applyRecoveredPlan(direct);
+          return;
+        }
+        isRecoveringRef.current = false;
+      }
       stopLoadingSequence();
       setShowSuccess(false);
       setSelectedStartDate(null);
@@ -1328,7 +1412,10 @@ export default function BuildingPlanScreen() {
                 onPress={() =>
                   navigation.navigate('Dashboard', {
                     screen: 'ProfileTab',
-                    params: { screen: 'SubscriptionManagement' },
+                    params: {
+                      screen: 'SubscriptionManagement',
+                      initial: false,
+                    },
                   } as never)
                 }
               >

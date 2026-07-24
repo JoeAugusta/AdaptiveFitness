@@ -47,7 +47,9 @@ export default function SignInScreen() {
       setError('Enter your email above to reset your password.');
       return;
     }
-    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed);
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: 'https://honefitness.app/reset.html',
+    });
     if (resetErr) {
       setError(resetErr.message);
       return;

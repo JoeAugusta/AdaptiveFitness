@@ -6,9 +6,17 @@ const META_LEAK_PATTERN =
 const BANNED_PRAISE_OPENER = /^(great|good|nice|well done)\b/i;
 
 function extractCompleteSentences(text: string): string[] {
-  const matches = text.match(/[^.!?]+[.!?]+/g);
-  if (!matches) return [];
-  return matches.map((s) => s.trim()).filter(Boolean);
+  // Protect number-internal periods (9.5, 3.14, 9.5/10) from being treated as
+  // sentence terminators.
+  const protectedText = text.replace(/(\d)\.(\d)/g, '$1\u0001$2');
+  const matches = protectedText.match(/[^.!?]+[.!?]+/g);
+  if (!matches) {
+    const whole = protectedText.trim().replace(/\u0001/g, '.');
+    return whole ? [whole] : [];
+  }
+  return matches
+    .map((s) => s.replace(/\u0001/g, '.').trim())
+    .filter(Boolean);
 }
 
 export function sanitizeJordanOutput(text: string, maxSentences: number): string | null {

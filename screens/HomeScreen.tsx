@@ -2044,39 +2044,11 @@ export default function HomeScreen() {
   ): Promise<string | null> => {
     if (!signal) return null;
     try {
-      const todayDate = getLocalDateString();
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-      const userId = authSession?.user?.id;
-
-      // Fetch today's check-in data
-      let sleepHours: number | null = null;
-      let readinessScore: number | null = null;
-      if (userId) {
-        const { data: weightLog } = await supabase
-          .from('weight_logs')
-          .select('sleep_hours, readiness_score')
-          .eq('user_id', userId)
-          .eq('log_date', todayDate)
-          .maybeSingle();
-        sleepHours = (weightLog?.sleep_hours as number | null) ?? null;
-        readinessScore = (weightLog?.readiness_score as number | null) ?? null;
-      }
-
-      // Use Health data if available
-      const isHealthGranted =
-        healthAvailable &&
-        (await AsyncStorage.getItem(HEALTH_PERMISSION_GRANTED_KEY)) === '1';
-      const healthResult = isHealthGranted ? healthData : null;
-
       const { data } = await supabase.functions.invoke('coaching-feedback', {
         body: {
           mode: 'pre_session',
           exerciseName: 'pre_session',
           lastSessionSignal: signal,
-          sleepHours: sleepHours ?? healthResult?.sleepHours ?? null,
-          readinessScore,
-          hrvMs: healthResult?.hrvMs ?? null,
-          restingHeartRate: healthResult?.restingHeartRate ?? null,
           targetRpe: 0,
           loggedRpe: 0,
           targetReps: '',
@@ -2092,7 +2064,7 @@ export default function HomeScreen() {
       if (__DEV__) console.warn('[preSession] Edge Function failed:', err);
       return null;
     }
-  }, [healthAvailable, healthData]);
+  }, []);
 
   const handleStartWorkout = useCallback(async () => {
     const todayWorkout = planData?.todayWorkout ?? null;
@@ -2145,16 +2117,10 @@ export default function HomeScreen() {
           ? await generatePreSessionMessage(lastSignalLocal)
           : null;
 
-      // Compute readiness-based RPE adjustment.
-      // Readiness ≤ 2 → lower intensity ceiling by 1 RPE point.
-      // Readiness ≥ 4 → nudge intensity up by 0.5 RPE points.
-      // Only applies to primary compounds — see ActiveWorkoutScreen.
-      const rpeAdjustment: number = (() => {
-        const r = todayReadiness;
-        if (r !== null && r <= 2) return -1;
-        if (r !== null && r >= 4) return 0.5;
-        return 0;
-      })();
+      // Readiness-based RPE adjustment is deferred (HealthKit Prompt 2). Disabled
+      // for launch until readiness scoring is validated. Passing 0 makes
+      // applyRpeAdjustment a no-op.
+      const rpeAdjustment = 0;
 
       navigation.navigate('ActiveWorkout', {
         planId: planData?.planId ?? 'mock',

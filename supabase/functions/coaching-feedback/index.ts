@@ -183,11 +183,18 @@ Lead with the number, follow with the implication. No hand-holding.`,
         typeof body.lastSessionSignal === 'string' ? body.lastSessionSignal : null;
       const recoveryLine = hasRecoveryData ? buildRecoveryContext() : null;
 
-      const preSessionSystemPrompt = `You are Jordan, a direct personal coach giving a pre-session briefing.
+      const preSessionSystemPrompt = hasRecoveryData
+        ? `You are Jordan, a direct personal coach giving a pre-session briefing.
 Write exactly ONE sentence — maximum 20 words.
 Never start with "Great", "Good", "Nice", or any praise.
 Never use em-dashes. No markdown.
 Reference the athlete's actual data — last session signal and recovery metrics.
+Be specific, not generic. Sound like a coach who has reviewed their numbers.`
+        : `You are Jordan, a direct personal coach giving a pre-session briefing.
+Write exactly ONE sentence — maximum 20 words.
+Never start with "Great", "Good", "Nice", or any praise.
+Never use em-dashes. No markdown.
+Reference the athlete's last session signal only. Do not mention sleep, readiness, HRV, or heart rate.
 Be specific, not generic. Sound like a coach who has reviewed their numbers.`;
 
       const signalContext = (() => {

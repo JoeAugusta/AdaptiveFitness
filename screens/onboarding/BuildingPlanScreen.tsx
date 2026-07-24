@@ -227,6 +227,10 @@ type GeneratePlanFnData = {
 };
 
 const PLAN_RECOVERY_WINDOW_MS = 10 * 60 * 1000;
+const RECOVERY_POLL_INTERVAL_MS = 3000;
+// Observed generation is 45-50s; 3 min is ~3.5x worst case. A false "try again"
+// on a still-running generation is worse than a longer wait on a real failure.
+const RECOVERY_MAX_WAIT_MS = 180000;
 
 type SavedPlanRow = {
   id: string;
@@ -399,6 +403,8 @@ export default function BuildingPlanScreen() {
   const generationInFlightRef = useRef(false);
   const apiDoneRef = useRef(false);
   const showSuccessRef = useRef(false);
+  const isRecoveringRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const avatarPulseOpacity = useRef(new Animated.Value(1)).current;
   const subtitleOpacity = useRef(new Animated.Value(1)).current;
@@ -413,6 +419,23 @@ export default function BuildingPlanScreen() {
   useEffect(() => {
     showSuccessRef.current = showSuccess;
   }, [showSuccess]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const fetchRecoverablePlanForContext = useCallback(async (): Promise<SavedPlanRow | null> => {
+    const ctx = retryContextRef.current;
+    if (!ctx) return null;
+    return fetchRecoverablePlan(
+      ctx.userId,
+      ctx.goalData.id,
+      replacePlanId ?? null,
+    );
+  }, [replacePlanId]);
 
   const applyPlanSuccess = useCallback(
     async (
@@ -458,35 +481,78 @@ export default function BuildingPlanScreen() {
     [params, refreshPlans],
   );
 
-  const tryRecoverAndComplete = useCallback(async (): Promise<boolean> => {
-    const ctx = retryContextRef.current;
-    if (!ctx) return false;
+  const pollForRecoverablePlan = useCallback(async (): Promise<SavedPlanRow | null> => {
+    if (isRecoveringRef.current) return null;
+    isRecoveringRef.current = true;
+    try {
+      const deadline = Date.now() + RECOVERY_MAX_WAIT_MS;
+      while (Date.now() < deadline) {
+        if (!isMountedRef.current) return null;
+        const found = await fetchRecoverablePlanForContext();
+        if (found) return found;
+        await new Promise((r) => setTimeout(r, RECOVERY_POLL_INTERVAL_MS));
+      }
+      return null;
+    } finally {
+      isRecoveringRef.current = false;
+    }
+  }, [fetchRecoverablePlanForContext]);
 
-    const recovered = await fetchRecoverablePlan(
-      ctx.userId,
-      ctx.goalData.id,
-      replacePlanId ?? null,
-    );
-    if (!recovered) return false;
+  const applyRecoveredPlan = useCallback(
+    async (recovered: SavedPlanRow) => {
+      if (apiDoneRef.current) return;
+      const ctx = retryContextRef.current;
+      if (!ctx) return;
+      await applyPlanSuccess(
+        recovered.id,
+        recovered.plan_json,
+        ctx.goalData.id,
+        ctx.planWeeksResolved,
+      );
+      setErrorState(null);
+    },
+    [applyPlanSuccess],
+  );
 
-    await applyPlanSuccess(
-      recovered.id,
-      recovered.plan_json,
-      ctx.goalData.id,
-      ctx.planWeeksResolved,
-    );
-    setErrorState(null);
+  const tryRecoverOnce = useCallback(async (): Promise<boolean> => {
+    const plan = await fetchRecoverablePlanForContext();
+    if (!plan) return false;
+    await applyRecoveredPlan(plan);
     return true;
-  }, [replacePlanId, applyPlanSuccess]);
+  }, [fetchRecoverablePlanForContext, applyRecoveredPlan]);
+
+  const tryRecoverWithPoll = useCallback(async (): Promise<boolean> => {
+    const plan = await pollForRecoverablePlan();
+    if (!plan) return false;
+    await applyRecoveredPlan(plan);
+    return true;
+  }, [pollForRecoverablePlan, applyRecoveredPlan]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') return;
       if (apiDoneRef.current || showSuccessRef.current) return;
-      void tryRecoverAndComplete();
+      void (async () => {
+        if (!retryContextRef.current) return;
+        setErrorState(null);
+        const plan = await pollForRecoverablePlan();
+        if (!isMountedRef.current) return;
+        if (plan) {
+          await applyRecoveredPlan(plan);
+          return;
+        }
+        if (retryContextRef.current) {
+          stopLoadingSequence();
+          subtitleOpacity.setValue(1);
+          setErrorState({
+            message: 'Something went wrong while building your plan. Tap to try again.',
+            canRetry: true,
+          });
+        }
+      })();
     });
     return () => sub.remove();
-  }, [tryRecoverAndComplete]);
+  }, [pollForRecoverablePlan, applyRecoveredPlan]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -777,6 +843,7 @@ export default function BuildingPlanScreen() {
   const generateAndSavePlan = async (isRetry: boolean) => {
     setErrorState(null);
     if (isRetry) {
+      if (isRecoveringRef.current) return;
       stopLoadingSequence();
       setShowSuccess(false);
       setSelectedStartDate(null);
@@ -794,7 +861,7 @@ export default function BuildingPlanScreen() {
       prevStepForSubtitleRef.current = 0;
       setSequenceEpoch((e) => e + 1);
 
-      const recoveredOnRetry = await tryRecoverAndComplete();
+      const recoveredOnRetry = await tryRecoverOnce();
       if (recoveredOnRetry) return;
     }
     try {
@@ -1114,7 +1181,7 @@ export default function BuildingPlanScreen() {
       );
     } catch (error) {
       console.error('Plan generation failed:', error);
-      const recovered = await tryRecoverAndComplete();
+      const recovered = await tryRecoverWithPoll();
       if (recovered) return;
       if (retryContextRef.current) {
         stopLoadingSequence();
@@ -1223,7 +1290,7 @@ export default function BuildingPlanScreen() {
             </Animated.View>
 
             <Text style={styles.buildTitle}>Building your plan</Text>
-            <Text style={styles.buildTimeHint}>This takes about 2 minutes</Text>
+            <Text style={styles.buildTimeHint}>This takes about a minute.</Text>
             <Text style={styles.buildTimeSubHint}>
               You can leave — we'll keep building and it'll be ready when you're back.
             </Text>

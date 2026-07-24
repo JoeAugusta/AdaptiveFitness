@@ -652,8 +652,10 @@ function resolveProgressionBaseline(
   opts?: {
     wasSwapped?: boolean;
     loggedBaselineWeight?: number;
-    /** DC-1: false when completed week was a deload — skip logged-weight fallback. */
+    /** Legacy: true only for a non-deload completed week 1. */
     isCalibrationWeek?: boolean;
+    /** DC-1: true when the completed week was a deload. */
+    completedWeekWasDeload?: boolean;
   },
 ): {
   baseline: number;
@@ -692,11 +694,14 @@ function resolveProgressionBaseline(
     return { baseline: 0, source: 'none' };
   }
 
-  // When the completed week was a deload (isCalibrationWeek === false), do not
-  // fall through to logged weights. The plan-prescription path (DC-1 pre-deload
-  // fields) is the correct anchor; using logged weights here would base
-  // progression on the reduced 85% session, not the pre-deload baseline.
-  if (opts?.isCalibrationWeek === false) {
+  const hasPreDeloadAnchor =
+    Number(priorPlanExercise?.preDeloadTargetWeight ?? 0) > 0 ||
+    (Array.isArray(priorPlanExercise?.preDeloadSetTargets) &&
+      priorPlanExercise.preDeloadSetTargets.length > 0);
+
+  if (opts?.completedWeekWasDeload === true && hasPreDeloadAnchor) {
+    // Pre-deload prescription exists — getPlanBaselineWeight will use it.
+    // Do not fall through to the artificially reduced deload logged weights.
     return { baseline: 0, source: 'none' };
   }
 
@@ -2866,6 +2871,35 @@ function runProgressionTests(): void {
   }
   check('post_deload_case_c_clamps_unstashed_target_rpe', 8, caseCExercise.targetRpe);
 
+  const selfSelectWorkingSets = [
+    { weightLbs: 60, rpe: 7 },
+    { weightLbs: 65, rpe: 7 },
+    { weightLbs: 70, rpe: 7 },
+  ];
+  const selfSelectBaseline = resolveProgressionBaseline(
+    'hypertrophy',
+    { targetWeight: 0 },
+    selfSelectWorkingSets,
+    { isCalibrationWeek: false, completedWeekWasDeload: false },
+  );
+  check(
+    'self_select_zero_prescription_uses_logged_weight',
+    70,
+    selfSelectBaseline.baseline,
+  );
+
+  const postDeloadAnchorBaseline = resolveProgressionBaseline(
+    'hypertrophy',
+    { targetWeight: 0, preDeloadTargetWeight: 100 },
+    [{ weightLbs: 85, rpe: 5 }],
+    { isCalibrationWeek: false, completedWeekWasDeload: true },
+  );
+  check(
+    'post_deload_with_anchor_ignores_deload_logs',
+    0,
+    postDeloadAnchorBaseline.baseline,
+  );
+
   // ── Target lift weight increments ────────────────────────
   // W1 RPE 6.0, target 7.0 → gap +1 → +5 → 280
   const benchW1Rpe6 = Math.round((275 + 5) / 5) * 5;
@@ -3915,9 +3949,6 @@ serve(async (req) => {
 
     // DC-1: if the completed week was a deload (manual override or scheduled),
     // it is not a calibration week even when completedWeekNumber === 1.
-    // isCalibrationWeek controls whether the logged-weight fallback in
-    // resolveProgressionBaseline is allowed (it is only valid for a true
-    // first-ever baseline week, not for a deload that happened to be week 1).
     const completedWeekWasDeload =
       weekData?.weekOverride?.type === 'deload' ||
       weekData?.phase === 'deload';
@@ -4987,8 +5018,13 @@ Return ONLY this exact JSON structure:
             priorPlanExercise,
             progressionWorkingSets,
             discardLoggedForProgression
-              ? { isCalibrationWeek }
-              : { wasSwapped, loggedBaselineWeight, isCalibrationWeek },
+              ? { isCalibrationWeek, completedWeekWasDeload }
+              : {
+                  wasSwapped,
+                  loggedBaselineWeight,
+                  isCalibrationWeek,
+                  completedWeekWasDeload,
+                },
           );
 
         if (loggedBaselineWeight === 0 && !discardLoggedForProgression) {

@@ -24,6 +24,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { hapticHeavy, hapticLight, hapticMedium } from '../utils/haptics';
+import { getLastLoggedWeight } from '../utils/lastLoggedWeight';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHealthData, type HealthData } from '../hooks/useHealthData';
 import { useBLEHeartRate } from '../hooks/useBLEHeartRate';
@@ -1898,10 +1899,27 @@ export default function ActiveWorkoutScreen() {
     });
   };
 
-  const handleAddExercise = useCallback((libraryExercise: Exercise) => {
+  const handleAddExercise = useCallback(async (libraryExercise: Exercise) => {
     void hapticMedium();
     const newId = `added_${Date.now()}`;
     const SET_COUNT = 3;
+
+    let prefill = 0;
+    let historyDate: string | null = null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (uid) {
+        const last = await getLastLoggedWeight(uid, libraryExercise.name);
+        if (last && last.weightLbs > 0) {
+          prefill = last.weightLbs;
+          historyDate = last.loggedAt;
+        }
+      }
+    } catch {
+      /* no history — fall through with prefill 0 */
+    }
+
     const newExercise: WorkoutExercise = {
       id: newId,
       name: libraryExercise.name,
@@ -1912,12 +1930,12 @@ export default function ActiveWorkoutScreen() {
       compoundTier: libraryExercise.compoundTier ?? 'isolation',
       category: libraryExercise.compoundTier ?? 'isolation',
       movementPattern: libraryExercise.movementPattern,
-      targetWeight: 0,
+      targetWeight: prefill,
       reps: '8–12',
       sets: Array.from({ length: SET_COUNT }, (_, i) => ({
         setNumber: i + 1,
         targetReps: '8–12',
-        targetWeight: 0,
+        targetWeight: prefill,
         targetRpe: 8,
       })),
       alternatives: getAlternatives(libraryExercise.primaryMuscle),
@@ -1928,7 +1946,21 @@ export default function ActiveWorkoutScreen() {
     setExerciseOrder((prev) => [...prev, newId]);
     setShowAddExerciseSheet(false);
     setAddPickerMuscleGroup(null);
-  }, []);
+
+    if (prefill > 0) {
+      const dateLabel = historyDate
+        ? new Date(historyDate).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })
+        : null;
+      showToast(
+        dateLabel
+          ? `${libraryExercise.name} added at ${prefill} lbs — your weight from ${dateLabel}.`
+          : `${libraryExercise.name} added at ${prefill} lbs from your history.`,
+      );
+    }
+  }, [showToast]);
 
   const handleUnskipExercise = (exerciseId: string) => {
     void hapticLight();
@@ -3330,7 +3362,7 @@ export default function ActiveWorkoutScreen() {
                       key={ex.name}
                       style={styles.addPickerRow}
                       activeOpacity={0.7}
-                      onPress={() => handleAddExercise(ex)}
+                      onPress={() => void handleAddExercise(ex)}
                     >
                       <Text style={styles.addPickerRowText}>{ex.name}</Text>
                       <Ionicons name="add" size={20} color={Colors.accent} />

@@ -578,10 +578,6 @@ export default function SubscriptionManagementScreen() {
                     ? 'Cancel anytime. 7-day free trial, then billed at the selected rate. Recurring subscription.'
                     : 'Subscription auto-renews at the selected rate. Cancel anytime in Settings.'}
                 </Text>
-                <Text style={styles.finePrintBlock2}>
-                  Subscriptions are managed through the App Store or Google Play. Hone
-                  does not have access to your payment details.
-                </Text>
               </View>
             ) : showPaidManage ? (
               <View style={styles.manageSection}>
@@ -611,12 +607,10 @@ export default function SubscriptionManagementScreen() {
               </View>
             ) : null}
 
-            {isProActive ? (
-              <Text style={styles.footerManagedNote}>
-                Subscriptions are managed through the App Store or Google Play. Hone
-                does not have access to your payment details.
-              </Text>
-            ) : null}
+            <Text style={styles.footerManagedNote}>
+              Subscriptions are managed through the App Store or Google Play. Hone
+              does not have access to your payment details.
+            </Text>
           </>
         )}
       </ScrollView>
@@ -1016,14 +1010,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     marginTop: 12,
-  },
-  finePrintBlock2: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSizes.micro,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 8,
   },
 
   manageSection: { marginTop: Spacing.lg },

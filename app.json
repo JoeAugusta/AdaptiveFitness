@@ -21,13 +21,11 @@
         "tinted": "./assets/icon-ios-tinted.png"
       },
       "entitlements": {
-        "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.background-delivery": true
+        "com.apple.developer.healthkit": true
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSHealthShareUsageDescription": "Hone reads your sleep and heart rate data so Jordan can adapt your training plan to your recovery.",
-        "NSHealthUpdateUsageDescription": "Hone writes completed workout sessions to Apple Health.",
         "NSBluetoothAlwaysUsageDescription": "Hone uses Bluetooth to connect to your heart rate monitor during workouts so Jordan can track your effort in real time."
       }
     },

@@ -35,12 +35,7 @@ export function ShareStatNumber({
 }) {
   return (
     <View style={[styles.statNumberWrap, style]}>
-      <Text
-        style={styles.statNumber}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.85}
-      >
+      <Text style={styles.statNumber} numberOfLines={1} allowFontScaling={false}>
         {children}
       </Text>
     </View>
@@ -107,7 +102,6 @@ export function ShareDivider() {
 const styles = StyleSheet.create({
   statNumberWrap: {
     minWidth: 0,
-    width: '100%',
   },
   statNumber: {
     fontFamily: Fonts.monoMedium,

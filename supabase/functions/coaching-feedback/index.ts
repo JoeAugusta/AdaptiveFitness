@@ -7,7 +7,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 import { requireAuth } from '../_shared/auth.ts';
-import { requireProUser } from '../_shared/entitlement.ts';
+import { requireProUser, isOverPerUserHourlyLimit, logUsageEvent } from '../_shared/entitlement.ts';
 import {
   appendJordanWeightLine,
   JORDAN_FALLBACK,
@@ -91,6 +91,14 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ status: 'pro_required', message: 'Subscribe to use coaching features' }),
       { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const COACHING_FEEDBACK_HOURLY_LIMIT = 80; // generous: a long session logs ~30-40 sets
+  if (await isOverPerUserHourlyLimit(supabaseAdmin, userId, 'coaching_feedback', COACHING_FEEDBACK_HOURLY_LIMIT)) {
+    return new Response(
+      JSON.stringify({ status: 'rate_limited', message: 'Take a breather and try again shortly.' }),
+      { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -241,6 +249,8 @@ Write one pre-session coaching sentence for the athlete.`;
             }),
           }),
       );
+
+      await logUsageEvent(supabaseAdmin, userId, 'coaching_feedback');
 
       return new Response(
         JSON.stringify({ feedback: preSessionText ?? JORDAN_FALLBACK }),
@@ -619,6 +629,8 @@ Give a brief coaching note.`;
     if (!isSessionSummary && feedback) {
       feedback = finalizePerSetFeedback(feedback, suggestedWeight, isLastSetOfExercise);
     }
+
+    await logUsageEvent(supabaseAdmin, userId, 'coaching_feedback');
 
     return new Response(
       JSON.stringify(

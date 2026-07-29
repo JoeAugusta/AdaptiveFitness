@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk';
+import { logAiUsage } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser, isOverPerUserHourlyLimit, logUsageEvent } from '../_shared/entitlement.ts';
 
@@ -163,6 +164,14 @@ ${planContextLines}`;
       max_tokens: 400,
       system: systemPrompt,
       messages,
+    });
+
+    await logAiUsage(supabaseAdmin, {
+      userId,
+      functionName: 'jordan-chat',
+      model: 'claude-haiku-4-5',
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     const responseText = response.content

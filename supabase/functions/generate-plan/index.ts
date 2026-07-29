@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { logAiUsageFromAnthropicBody } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser } from '../_shared/entitlement.ts';
 import {
@@ -2892,11 +2893,12 @@ serve(async (req) => {
         ? body.deviceId.trim()
         : null;
 
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
     if (RATE_LIMIT_ENABLED && userId) {
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      );
       const blocked = await checkRateLimits(supabaseAdmin, userId, deviceId);
       if (blocked) return blocked;
     }
@@ -4542,6 +4544,13 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
       console.error('Claude API error:', JSON.stringify(data));
       throw new Error(`Claude API error: ${data.error?.message ?? 'unknown'}`);
     }
+
+    await logAiUsageFromAnthropicBody(supabaseAdmin, {
+      userId,
+      functionName: 'generate-plan',
+      model: 'claude-sonnet-4-6',
+      body: data,
+    });
 
     const responseText = data.content?.[0]?.text ?? '';
     console.log('[generate-plan] Claude response length:', responseText.length);

@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { logAiUsageFromAnthropicBody } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser } from '../_shared/entitlement.ts';
 import { requirePlanOwnership } from '../_shared/planOwnership.ts';
@@ -562,6 +563,13 @@ Return ONLY the JSON object.`,
         `Vision API error: ${(visionData as { error?: { message?: string } }).error?.message ?? visionResponse.status}`,
       );
     }
+
+    await logAiUsageFromAnthropicBody(supabase, {
+      userId,
+      functionName: 'analyze-progress-photo',
+      model: 'claude-sonnet-4-6',
+      body: visionData,
+    });
 
     const visionText: string = visionData.content?.[0]?.text ?? '';
     const analysis = parseVisionJson(visionText) as {

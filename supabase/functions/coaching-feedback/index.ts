@@ -6,6 +6,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
+import { logAiUsageFromAnthropicBody } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser, isOverPerUserHourlyLimit, logUsageEvent } from '../_shared/entitlement.ts';
 import {
@@ -29,10 +30,18 @@ function getJordanToneTier(weeks: number): 'newcomer' | 'building' | 'establishe
   return 'veteran';
 }
 
+type AiUsageLogContext = {
+  supabase: ReturnType<typeof createClient>;
+  userId: string;
+  functionName: string;
+  model: string;
+};
+
 async function fetchSanitizedJordanText(
   mode: JordanMode,
   maxSentences: number,
   makeFetch: () => Promise<Response>,
+  usageLog?: AiUsageLogContext,
 ): Promise<string | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const response = await fetchAnthropicMessagesWithRetry(makeFetch);
@@ -44,6 +53,15 @@ async function fetchSanitizedJordanText(
     const data = await response.json();
     if (!response.ok) {
       return mode === 'session_summary' ? null : JORDAN_FALLBACK;
+    }
+
+    if (usageLog) {
+      await logAiUsageFromAnthropicBody(usageLog.supabase, {
+        userId: usageLog.userId,
+        functionName: usageLog.functionName,
+        model: usageLog.model,
+        body: data,
+      });
     }
 
     const raw = data.content?.[0]?.text;
@@ -93,6 +111,13 @@ serve(async (req) => {
       { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
+
+  const aiUsageCtx: AiUsageLogContext = {
+    supabase: supabaseAdmin,
+    userId,
+    functionName: 'coaching-feedback',
+    model: 'claude-sonnet-4-6',
+  };
 
   const COACHING_FEEDBACK_HOURLY_LIMIT = 80; // generous: a long session logs ~30-40 sets
   if (await isOverPerUserHourlyLimit(supabaseAdmin, userId, 'coaching_feedback', COACHING_FEEDBACK_HOURLY_LIMIT)) {
@@ -248,6 +273,7 @@ Write one pre-session coaching sentence for the athlete.`;
               messages: [{ role: 'user', content: preSessionUserContent }],
             }),
           }),
+        aiUsageCtx,
       );
 
       await logUsageEvent(supabaseAdmin, userId, 'coaching_feedback');
@@ -578,6 +604,13 @@ Give a brief coaching note.`;
       );
     }
 
+    await logAiUsageFromAnthropicBody(supabaseAdmin, {
+      userId,
+      functionName: 'coaching-feedback',
+      model: 'claude-sonnet-4-6',
+      body: data,
+    });
+
     const raw = data.content?.[0]?.text;
     let feedback: string | null = null;
 
@@ -609,6 +642,12 @@ Give a brief coaching note.`;
 
         if (retryResponse.ok) {
           const retryData = await retryResponse.json();
+          await logAiUsageFromAnthropicBody(supabaseAdmin, {
+            userId,
+            functionName: 'coaching-feedback',
+            model: 'claude-sonnet-4-6',
+            body: retryData,
+          });
           const retryRaw = retryData.content?.[0]?.text;
           if (typeof retryRaw === 'string' && retryRaw.trim()) {
             feedback = sanitizeJordanOutput(retryRaw.trim(), maxSentences);

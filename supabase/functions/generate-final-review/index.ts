@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { logAiUsage } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser } from '../_shared/entitlement.ts';
 import { requirePlanOwnership } from '../_shared/planOwnership.ts';
@@ -297,6 +298,14 @@ Respond ONLY with valid JSON, no markdown fences, no preamble:
       model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
+    });
+
+    await logAiUsage(supabase, {
+      userId,
+      functionName: 'generate-final-review',
+      model: 'claude-sonnet-4-6',
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     const block = response.content[0];

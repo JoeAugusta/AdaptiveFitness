@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { logAiUsageFromAnthropicBody } from '../_shared/aiUsage.ts';
 import { requireAuth } from '../_shared/auth.ts';
 import { requireProUser } from '../_shared/entitlement.ts';
 import { requirePlanOwnership } from '../_shared/planOwnership.ts';
@@ -273,6 +274,13 @@ Return ONLY the JSON object.`,
     if (!claudeResponse.ok) {
       throw new Error(`Claude API error: ${claudeData.error?.message ?? 'unknown'}`);
     }
+
+    await logAiUsageFromAnthropicBody(supabase, {
+      userId,
+      functionName: 'adjust-macros',
+      model: 'claude-sonnet-4-6',
+      body: claudeData,
+    });
 
     const text: string = claudeData.content?.[0]?.text ?? '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);

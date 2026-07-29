@@ -4,8 +4,10 @@
 // Never commit your API key. Never put it in .env for client use.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 import { requireAuth } from '../_shared/auth.ts';
+import { requireProUser } from '../_shared/entitlement.ts';
 import {
   appendJordanWeightLine,
   JORDAN_FALLBACK,
@@ -78,6 +80,19 @@ serve(async (req) => {
 
   const authResult = await requireAuth(req, { corsHeaders });
   if ('errorResponse' in authResult) return authResult.errorResponse;
+  const userId = authResult.user!.id;
+
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  );
+  const isPro = await requireProUser(supabaseAdmin, userId);
+  if (!isPro) {
+    return new Response(
+      JSON.stringify({ status: 'pro_required', message: 'Subscribe to use coaching features' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
 
   let isSessionSummary = false;
   let isPreSession = false;

@@ -5,6 +5,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { requireAuth } from '../_shared/auth.ts';
+import { requireProUser } from '../_shared/entitlement.ts';
 import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
@@ -64,6 +65,14 @@ serve(async (req) => {
   const authResult = await requireAuth(req, { corsHeaders });
   if ('errorResponse' in authResult) return authResult.errorResponse;
   const userId = authResult.user!.id;
+
+  const isPro = await requireProUser(supabase, userId);
+  if (!isPro) {
+    return new Response(
+      JSON.stringify({ status: 'pro_required', message: 'Subscribe to use coaching features' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
 
   try {
     const body = (await req.json()) as { planId?: string };

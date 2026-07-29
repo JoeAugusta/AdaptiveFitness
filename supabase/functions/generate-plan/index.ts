@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchAnthropicMessagesWithRetry } from '../_shared/anthropicRetry.ts';
 import { requireAuth } from '../_shared/auth.ts';
+import { requireProUser } from '../_shared/entitlement.ts';
 import {
   enforceSetStructureExercise,
   finalizeStrengthGoalTargetLift,
@@ -212,24 +213,12 @@ async function logRateLimitEvent(
   }
 }
 
-async function isUserPro(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<boolean> {
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('subscription_status')
-    .eq('user_id', userId)
-    .maybeSingle();
-  return (data as { subscription_status?: string } | null)?.subscription_status === 'pro';
-}
-
 async function checkRateLimits(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   deviceId: string | null,
 ): Promise<Response | null> {
-  const isPro = await isUserPro(supabase, userId);
+  const isPro = await requireProUser(supabase, userId);
   if (isPro) return null;
   // Neither full nor preview generation is available to non-Pro users. Preview is
   // not used by the app (client always sends isPreview:false); gating it here closes

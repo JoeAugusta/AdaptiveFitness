@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { requireAuth } from '../_shared/auth.ts';
+import { requireProUser } from '../_shared/entitlement.ts';
 import { requirePlanOwnership } from '../_shared/planOwnership.ts';
 
 const corsHeaders = {
@@ -49,6 +50,14 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
+
+    const isPro = await requireProUser(supabase, userId);
+    if (!isPro) {
+      return new Response(
+        JSON.stringify({ status: 'pro_required', message: 'Subscribe to use coaching features' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const ownership = await requirePlanOwnership(supabase, planId, userId, corsHeaders, 'id, user_id');
     if ('errorResponse' in ownership) return ownership.errorResponse;

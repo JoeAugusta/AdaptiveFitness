@@ -333,6 +333,28 @@ async function persistGeneratedPlan(
   return inserted.id as string;
 }
 
+function assertPlanHasContent(planOut: unknown): void {
+  const p = planOut as {
+    weeks?: Array<{ days?: Array<{ type?: string; exercises?: unknown[] }> }>;
+  };
+  const weeks = p?.weeks ?? [];
+  if (weeks.length === 0) throw new Error('Plan validation: no weeks');
+  const days = weeks[0]?.days ?? [];
+  if (days.length === 0) throw new Error('Plan validation: week 1 has no days');
+  const workoutDays = days.filter((d) => d?.type === 'workout');
+  if (workoutDays.length === 0)
+    throw new Error('Plan validation: week 1 has no workout days');
+  for (const d of workoutDays) {
+    const ex = d.exercises;
+    if (!Array.isArray(ex) || ex.length === 0)
+      throw new Error('Plan validation: a workout day has no exercises');
+    for (const e of ex as Array<{ name?: unknown }>) {
+      if (typeof e?.name !== 'string' || !e.name.trim())
+        throw new Error('Plan validation: exercise missing name');
+    }
+  }
+}
+
 function trimPreviewWeekDays(planJson: Record<string, unknown>): void {
   const weeks = planJson.weeks as { days?: { type?: string }[] }[] | undefined;
   if (!Array.isArray(weeks) || !weeks[0]?.days) return;
@@ -4765,6 +4787,8 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
         typeof body.replacePlanId === 'string' && body.replacePlanId.trim() !== ''
           ? body.replacePlanId.trim()
           : null;
+
+      assertPlanHasContent(planOut);
 
       savedPlanId = (await persistGeneratedPlan(supabaseAdmin, {
         userId,

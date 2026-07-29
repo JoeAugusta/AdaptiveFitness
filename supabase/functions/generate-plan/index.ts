@@ -21,8 +21,6 @@ const corsHeaders = {
 const BETA_BYPASS = false;
 const RATE_LIMIT_ENABLED = !BETA_BYPASS;
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
 type CalorieDirection = 'deficit' | 'surplus' | 'maintenance';
 
 function calculateBMR(params: {
@@ -230,81 +228,17 @@ async function checkRateLimits(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   deviceId: string | null,
-  isPreview: boolean,
 ): Promise<Response | null> {
   const isPro = await isUserPro(supabase, userId);
   if (isPro) return null;
-
-  if (!isPreview) {
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('full_plan_generations_used')
-      .eq('user_id', userId)
-      .maybeSingle();
-    const used = Number(
-      (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
-    );
-    if (used >= 1) {
-      await logRateLimitEvent(supabase, userId, deviceId, 'generation_limit_reached');
-      return rateLimitJsonResponse({
-        status: 'generation_limit_reached',
-        message: 'Subscribe to generate additional plans',
-      });
-    }
-
-    const since = new Date(Date.now() - THIRTY_DAYS_MS).toISOString();
-    const { data: recentPlans } = await supabase
-      .from('plans')
-      .select('id, created_at, is_preview')
-      .eq('user_id', userId)
-      .gte('created_at', since)
-      .order('created_at', { ascending: false });
-
-    const hasRecentFull = (recentPlans ?? []).some(
-      (p) => !(p as { is_preview?: boolean }).is_preview,
-    );
-    if (hasRecentFull) {
-      await logRateLimitEvent(supabase, userId, deviceId, 'plan_cooldown');
-      return rateLimitJsonResponse({
-        status: 'rate_limited',
-        reason: 'plan_cooldown',
-        message: 'Subscribe to generate a new plan',
-      });
-    }
-
-    if (deviceId) {
-      const { data: deviceProfiles } = await supabase
-        .from('user_profiles')
-        .select('user_id')
-        .eq('device_id', deviceId)
-        .neq('user_id', userId);
-
-      const otherIds = (deviceProfiles ?? [])
-        .map((r) => (r as { user_id: string }).user_id)
-        .filter(Boolean);
-
-      if (otherIds.length > 0) {
-        const { data: otherFull } = await supabase
-          .from('plans')
-          .select('id')
-          .in('user_id', otherIds)
-          .eq('is_preview', false)
-          .gte('created_at', since)
-          .limit(1);
-
-        if ((otherFull ?? []).length > 0) {
-          await logRateLimitEvent(supabase, userId, deviceId, 'plan_cooldown_device');
-          return rateLimitJsonResponse({
-            status: 'rate_limited',
-            reason: 'plan_cooldown',
-            message: 'Subscribe to generate a new plan',
-          });
-        }
-      }
-    }
-  }
-
-  return null;
+  // Neither full nor preview generation is available to non-Pro users. Preview is
+  // not used by the app (client always sends isPreview:false); gating it here closes
+  // a direct-API vector where a bot sends isPreview:true to harvest free Claude output.
+  await logRateLimitEvent(supabase, userId, deviceId, 'pro_required');
+  return rateLimitJsonResponse({
+    status: 'pro_required',
+    message: 'Subscribe to generate a plan',
+  });
 }
 
 async function persistGeneratedPlan(
@@ -2952,7 +2886,7 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       );
-      const blocked = await checkRateLimits(supabaseAdmin, userId, deviceId, isPreview);
+      const blocked = await checkRateLimits(supabaseAdmin, userId, deviceId);
       if (blocked) return blocked;
     }
 
@@ -4833,24 +4767,6 @@ planks, or any isolation movement for sets of 3–5 reps. This is a critical err
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       );
-
-      if (userId && RATE_LIMIT_ENABLED) {
-        const isPro = await isUserPro(supabaseAdmin, userId);
-        if (!isPro) {
-          const { data: profile } = await supabaseAdmin
-            .from('user_profiles')
-            .select('full_plan_generations_used')
-            .eq('user_id', userId)
-            .maybeSingle();
-          const used = Number(
-            (profile as { full_plan_generations_used?: number } | null)?.full_plan_generations_used ?? 0,
-          );
-          await supabaseAdmin
-            .from('user_profiles')
-            .update({ full_plan_generations_used: used + 1 })
-            .eq('user_id', userId);
-        }
-      }
 
       const goalId =
         typeof body.goalId === 'string' && body.goalId.trim() !== ''
